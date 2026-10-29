@@ -273,9 +273,13 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("bob saves the template block after each successful @@template: capture. Rows are never saved. Type @@@ at the start of a draft to begin one.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "bob saves the template block after each successful @@template: capture. "
+                        + "Rows are never saved. Type @@@ at the start of a draft or the end of "
+                        + "any line to begin one."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 Button("Clear Templates…", role: .destructive) {
                     isConfirmingTemplateClear = true

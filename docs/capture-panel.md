@@ -143,10 +143,14 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
-  Typing a third `@` immediately after a first physical line that is exactly
-  `@@` asks bob to start a template through the same rewrite lane. This gesture
-  needs a bob build that implements `start_template`; with an older bob, the
-  third `@` remains literal.
+  Typing a third `@` after a standalone `@@` at the end of any physical line
+  asks bob to start a template through the same rewrite lane. Bob erases the
+  token and its separating spaces or tabs, inserts `@@template:` as the first
+  line, and keeps the caret where the token began. If the second `@` was already
+  absorbed into `@@route` before the third arrives, the app retries from the
+  recorded pre-absorption draft; moving the caret or editing the draft clears
+  that recovery. This gesture needs a bob build that implements
+  `start_template`; with an older bob, the third `@` remains literal.
   Typing `^` immediately after a complete `@route:id`, or `:` immediately after
   `@route^id`, uses that same rewrite lane. Bob decides whether the marker is
   eligible; the app forwards the post-key draft and caret. A matching reply

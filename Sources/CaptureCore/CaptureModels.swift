@@ -2317,6 +2317,78 @@ public struct CaptureRewriteResponse: Codable, Equatable {
         self.notices = notices
     }
 
+    /// Combines Bob's sorted edits into one replacement suitable for a native
+    /// text view. Returns nil unless every range is valid, the edits do not
+    /// overlap, and applying them reproduces `text` byte-for-byte.
+    public func coveringEdit(in draft: String) -> CaptureRewriteEdit? {
+        guard let first = edits.first, let last = edits.last else {
+            return nil
+        }
+
+        var applied = ""
+        var inputCursor = 0
+        var previousEnd = 0
+        for edit in edits {
+            let start = edit.range.start
+            let end = edit.range.end
+            guard start >= previousEnd,
+                let unchanged = stringRange(in: draft, start: inputCursor, end: start),
+                stringRange(in: draft, start: start, end: end) != nil
+            else {
+                return nil
+            }
+            applied.append(contentsOf: draft[unchanged])
+            applied.append(contentsOf: edit.replacement)
+            inputCursor = end
+            previousEnd = end
+        }
+        guard
+            let trailing = stringRange(
+                in: draft,
+                start: inputCursor,
+                end: draft.utf8.count
+            )
+        else {
+            return nil
+        }
+        applied.append(contentsOf: draft[trailing])
+        guard applied.utf8.elementsEqual(text.utf8) else {
+            return nil
+        }
+
+        var replacement = ""
+        var coveringCursor = first.range.start
+        for edit in edits {
+            guard
+                let unchanged = stringRange(
+                    in: draft,
+                    start: coveringCursor,
+                    end: edit.range.start
+                )
+            else {
+                return nil
+            }
+            replacement.append(contentsOf: draft[unchanged])
+            replacement.append(contentsOf: edit.replacement)
+            coveringCursor = edit.range.end
+        }
+        guard
+            let trailingReplacement = stringRange(
+                in: draft,
+                start: coveringCursor,
+                end: last.range.end
+            )
+        else {
+            return nil
+        }
+        replacement.append(contentsOf: draft[trailingReplacement])
+
+        return CaptureRewriteEdit(
+            range: CaptureRange(start: first.range.start, end: last.range.end),
+            replacement: replacement
+        )
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ok = try container.decode(Bool.self, forKey: .ok)

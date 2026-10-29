@@ -6,17 +6,41 @@ import Foundation
 public enum CaptureTemplateStart {
     public static let rewriteRule = "start_template"
 
-    /// True when typing `@` at the end of the exact first-line marker `@@`
-    /// would produce the `@@@` template-start gesture.
+    /// True when typing `@` after a standalone `@@` at the end of a physical
+    /// line would produce the `@@@` template-start gesture.
     public static func isRewriteKeystroke(
         typed: String,
         text: String,
         selectedRange: NSRange
     ) -> Bool {
-        typed == "@"
-            && selectedRange.length == 0
-            && selectedRange.location == 2
-            && firstPhysicalLineIsBareAtAt(in: text)
+        guard typed == "@",
+            selectedRange.length == 0,
+            selectedRange.location >= 2
+        else {
+            return false
+        }
+
+        let nsText = text as NSString
+        let cursor = selectedRange.location
+        guard cursor <= nsText.length,
+            nsText.character(at: cursor - 2) == 64,
+            nsText.character(at: cursor - 1) == 64
+        else {
+            return false
+        }
+
+        if cursor > 2 {
+            let preceding = nsText.character(at: cursor - 3)
+            guard let scalar = UnicodeScalar(preceding),
+                CharacterSet.whitespacesAndNewlines.contains(scalar)
+            else {
+                return false
+            }
+        }
+
+        return cursor == nsText.length
+            || nsText.character(at: cursor) == 10
+            || nsText.character(at: cursor) == 13
     }
 
     /// True while the caret is immediately after a first physical line that is

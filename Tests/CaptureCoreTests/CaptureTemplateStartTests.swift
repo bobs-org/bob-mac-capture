@@ -4,13 +4,27 @@ import XCTest
 @testable import CaptureCore
 
 final class CaptureTemplateStartTests: XCTestCase {
-    func testRewriteKeystrokeAcceptsOnlyAtAtAtTheEndOfTheFirstLine() {
-        for text in ["@@", "@@\nApply {0}", "@@\r\n🧪"] {
-            XCTAssertTrue(CaptureTemplateStart.isRewriteKeystroke(
-                typed: "@",
-                text: text,
-                selectedRange: NSRange(location: 2, length: 0)
-            ), "\(text.debugDescription)")
+    func testRewriteKeystrokeAcceptsStandaloneAtAtAtAnyPhysicalLineEnd() {
+        let accepted: [(String, Int)] = [
+            ("@@", 2),
+            ("@@\nApply {0}", 2),
+            ("@@\r\n🧪", 2),
+            ("Read {0} @@", 11),
+            ("Buy milk\nRead {0} @@", 20),
+            ("x\n@@", 4),
+            (" @@", 3),
+            ("Read\t@@\r\nmore", 7),
+            ("Read @@\nmore", 7),
+            ("🧪 @@", 5),
+        ]
+
+        for (text, cursor) in accepted {
+            XCTAssertTrue(
+                CaptureTemplateStart.isRewriteKeystroke(
+                    typed: "@",
+                    text: text,
+                    selectedRange: NSRange(location: cursor, length: 0)
+                ), "\(text.debugDescription)")
         }
     }
 
@@ -23,17 +37,27 @@ final class CaptureTemplateStartTests: XCTestCase {
             ("@@", "@@", NSRange(location: 2, length: 0)),
             ("a", "@@", NSRange(location: 2, length: 0)),
             ("@", "@@x", NSRange(location: 2, length: 0)),
+            ("@", "x@@", NSRange(location: 3, length: 0)),
+            ("@", "@@@", NSRange(location: 3, length: 0)),
+            ("@", "Read @@ ", NSRange(location: 7, length: 0)),
+            ("@", "Read @@x", NSRange(location: 7, length: 0)),
+            ("@", "Read @@", NSRange(location: 6, length: 0)),
+            ("@", "@@", NSRange(location: 99, length: 0)),
             ("@", " @@", NSRange(location: 2, length: 0)),
             ("@", "\n@@", NSRange(location: 2, length: 0)),
             ("@", "@@🧪", NSRange(location: 2, length: 0)),
         ]
 
         for (typed, text, selection) in rejected {
-            XCTAssertFalse(CaptureTemplateStart.isRewriteKeystroke(
-                typed: typed,
-                text: text,
-                selectedRange: selection
-            ), "typed=\(typed.debugDescription), text=\(text.debugDescription), selection=\(selection)")
+            XCTAssertFalse(
+                CaptureTemplateStart.isRewriteKeystroke(
+                    typed: typed,
+                    text: text,
+                    selectedRange: selection
+                ),
+                "typed=\(typed.debugDescription), text=\(text.debugDescription), "
+                    + "selection=\(selection)"
+            )
         }
     }
 
@@ -53,5 +77,6 @@ final class CaptureTemplateStartTests: XCTestCase {
         for draft in ["@@x", " @@", "\n@@", "@@🧪"] {
             XCTAssertFalse(CaptureTemplateStart.hintApplies(draft: draft, cursorUTF8Offset: 2), draft)
         }
+        XCTAssertFalse(CaptureTemplateStart.hintApplies(draft: "x\n@@", cursorUTF8Offset: 4))
     }
 }

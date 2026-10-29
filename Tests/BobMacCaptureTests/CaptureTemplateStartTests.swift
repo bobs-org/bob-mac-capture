@@ -152,6 +152,136 @@ final class CaptureTemplateStartTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Started a @@template: draft")
     }
 
+    func testTypingThirdAtAtEndOfLineStartsTemplate() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = "Read {0} @@"
+        let textView = makeTextView("Read {0} @@", cursor: 11)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        await waitUntil { model.plainDraft == "@@template:\nRead {0}" }
+
+        XCTAssertEqual(textView.string, "@@template:\nRead {0}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 20, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 20)
+        XCTAssertEqual(model.statusText, "Started a @@template: draft")
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 12 --format json -- Read {0} @@@")
+        )
+    }
+
+    func testTypingThirdAtAtEndOfLastLineStartsTemplate() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        model.plainDraft = "Buy milk\nRead {0} @@"
+        let textView = makeTextView("Buy milk\nRead {0} @@", cursor: 20)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        await waitUntil { model.plainDraft == "@@template:\nBuy milk\nRead {0}" }
+
+        XCTAssertEqual(textView.string, "@@template:\nBuy milk\nRead {0}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 29, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 29)
+        XCTAssertEqual(model.statusText, "Started a @@template: draft")
+    }
+
+    func testEndOfLineTemplateStartUsesOneUndoStep() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        model.plainDraft = "Read {0} @@"
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let textView = makeTextView("Read {0} @@", cursor: 11)
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        await waitUntil { textView.string == "@@template:\nRead {0}" }
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Read {0} @@@")
+        textView.undoManager?.redo()
+        XCTAssertEqual(textView.string, "@@template:\nRead {0}")
+    }
+
+    func testTemplateStartRecoversWhenAbsorptionFinishesFirst() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = "Buy milk @dev @"
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let textView = makeTextView("Buy milk @dev @", cursor: 15)
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        await waitUntil { model.plainDraft == "Buy milk @@dev" }
+        textView.string = model.plainDraft
+        textView.setSelectedRange(
+            NSRange(location: (model.plainDraft as NSString).length, length: 0)
+        )
+
+        typeAt(into: textView, model: model)
+        await waitUntil { model.plainDraft == "@@template:\nBuy milk @dev" }
+
+        XCTAssertEqual(textView.string, "@@template:\nBuy milk @dev")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 25, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 25)
+        XCTAssertEqual(model.statusText, "Started a @@template: draft")
+        XCTAssertFalse(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 17 --format json -- Buy milk @dev @@@")
+        )
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Buy milk @@dev@")
+    }
+
+    func testTemplateStartRecoveryRequiresTheAbsorbedOutputCaret() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = "Buy milk @dev @"
+        let textView = makeTextView("Buy milk @dev @", cursor: 15)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        await waitUntil { model.plainDraft == "Buy milk @@dev" }
+        textView.string = model.plainDraft
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        typeAt(into: textView, model: model)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertFalse(record.contains("Buy milk @dev @@@"))
+    }
+
     func testNativeUndoRedoPreservesTheTypedAtAndNeverCallsRewriteAgain() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

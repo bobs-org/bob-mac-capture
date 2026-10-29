@@ -49,9 +49,9 @@ struct CaptureLineAboveEdit: Equatable {
     let resultingSelection: NSRange
 }
 
-/// One native `NSTextView` replacement for Bob's single-edit rewrite rules
-/// rewrite. Ranges are UTF-16; `expectedDraft` is the post-key buffer Bob
-/// rewrote, and `resultingDraft` is the corrected text.
+/// One native `NSTextView` replacement covering Bob's rewrite edits. Ranges
+/// are UTF-16; `expectedDraft` is the visible post-key buffer, and
+/// `resultingDraft` is the corrected text.
 struct CaptureNativeRewriteEdit: Equatable {
     let replacementRange: NSRange
     let replacementText: String
@@ -1013,7 +1013,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
     }
 
-    /// Applies Bob's single-edit rewrite through `NSTextView` so
+    /// Applies Bob's one covering native replacement through `NSTextView` so
     /// undo, IME, and accessibility stay AppKit-owned. Returns false without
     /// changing state when the focused editor is missing, composing, or no
     /// longer showing the draft Bob rewrote.
