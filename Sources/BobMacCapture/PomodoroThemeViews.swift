@@ -142,7 +142,7 @@ struct PomodoroThemePillView: View {
             .foregroundStyle(isMuted ? .secondary : .primary)
             .onHover { hovering = $0 }
             .help("\(name) · \(spokenHue)")
-            .accessibilityLabel("\(name), \(spokenHue) theme")
+            .accessibilityLabel("\(name), \(spokenHue) type")
     }
 }
 

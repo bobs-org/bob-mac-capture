@@ -129,8 +129,8 @@ Preview shows every block Bob will write, in Bob's own order: each item's parent
   shows a destination row above it (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
   `→ new Pomodoro BOB`, with a `timer` symbol) from the destination `role`, and a
   batch that changed today's Pomodoros section shows one plan-budget meter row above
-  the items (`Themes 3/3`, `Links 8/10` capsules — green within the cap, red over —
-  a `+1 BOB` delta chip whenever the themes meter grew, and orange warning captions).
+  the items (`Types 3/3`, `Links 8/10` capsules — green within the cap, red over —
+  a `+1 BOB` delta chip whenever the types meter grew, and orange warning captions).
   Both rows join the VoiceOver summary.
 
 ### Close card

@@ -46,7 +46,7 @@ struct CapturePlanBudgetMeterRow: View {
                         .background(deltaTint, in: Capsule())
                         .foregroundStyle(.secondary)
                         .help("\(delta) · \(deltaSpokenHue)")
-                        .accessibilityLabel("\(delta), \(deltaSpokenHue) theme")
+                        .accessibilityLabel("\(delta), \(deltaSpokenHue) type")
                 }
             }
             ForEach(Array(budget.warningTexts.enumerated()), id: \.offset) { _, warning in

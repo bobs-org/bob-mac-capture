@@ -9,7 +9,7 @@ import Foundation
 /// there is no Swift-side ledger logic here, only wording.
 ///
 /// Wording mirrors `print_plan_budget` and `format_pomodoro_task_destination`
-/// in `src/native/capture/output.rs` (`plan T/Tc themes · L/Lc links`,
+/// in `src/native/capture/output.rs` (`plan T/Tc types · L/Lc links`,
 /// `(+N theme: NAME)`, `→ new Pomodoro BOB`, `→ into running GOALS (…)`,
 /// `→ under GOALS (named)`) so the panel and the CLI describe the same
 /// budget the same way. The Mac destination row shortens the CLI's arrow
@@ -22,13 +22,13 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// destination. The time range uses an en dash; Bob's wire
     /// `time_range` uses a hyphen.
     public let destinationRowText: String?
-    /// `"Themes 3/3"` — always present when the budget is present.
+    /// `"Types 3/3"` — always present when the budget is present.
     public let themesCapsuleText: String
     public let themesOverCap: Bool
     /// `"Links 8/10"` — always present when the budget is present.
     public let linksCapsuleText: String
     public let linksOverCap: Bool
-    /// `"+1 BOB"` when the themes meter grew past its previous count,
+    /// `"+1 BOB"` when the types meter grew past its previous count,
     /// else nil. Names the first added theme when Bob reported one.
     public let deltaChipText: String?
     /// Per-component swatches for the added theme names, from Bob's
@@ -55,7 +55,7 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         includeProposalDetails: Bool = true
     ) {
         destinationRowText = Self.destinationRowText(for: destination)
-        themesCapsuleText = "Themes \(budget.themes.count)/\(budget.themes.cap)"
+        themesCapsuleText = "Types \(budget.themes.count)/\(budget.themes.cap)"
         themesOverCap = budget.themes.over
         linksCapsuleText = "Links \(budget.links.count)/\(budget.links.cap)"
         linksOverCap = budget.links.over

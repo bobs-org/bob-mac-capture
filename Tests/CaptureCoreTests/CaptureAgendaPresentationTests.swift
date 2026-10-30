@@ -61,6 +61,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         retired: Int = 0,
         notes: [CaptureAgendaLine] = [],
         items: [CaptureAgendaItem] = [],
+        themes: [CapturePomodoroThemeRef] = [],
         slug: String? = "fix",
         selectable: Bool = true
     ) -> CaptureAgendaPomodoro {
@@ -76,7 +77,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             notes: notes,
             items: items,
             slug: slug,
-            selectable: selectable
+            selectable: selectable,
+            themes: themes
         )
     }
 
@@ -127,6 +129,18 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.titleRow.text, "Today · Fri 28 Aug")
         XCTAssertEqual(presentation.summaryText, "1 done · 2h 40m")
         XCTAssertEqual(presentation.titleRow.accessoryText, "1 done · 2h 40m")
+    }
+
+    func testPomodoroTypeColorsUseTypeWordingForVoiceOver() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 5,
+                themes: [CapturePomodoroThemeRef(key: "fix", name: "FIX", hue: .blue)]
+            ),
+        ]))
+
+        XCTAssertTrue(presentation.groups[0].headerRow.accessibilityLabel?.contains("types") == true)
+        XCTAssertFalse(presentation.groups[0].headerRow.accessibilityLabel?.contains("themes") == true)
     }
 
     func testLegacyAgendaFixtureKeepsItsCurrentRowsWithoutBudget() throws {
@@ -300,9 +314,9 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.state, .noOpen)
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
         XCTAssertEqual(row.kind, .planBudget)
-        XCTAssertEqual(row.text, "Themes 3/3, Links 8/10")
-        XCTAssertEqual(row.key.text, "Themes 3/3, Links 8/10")
-        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Themes 3/3, Links 8/10")
+        XCTAssertEqual(row.text, "Types 3/3, Links 8/10")
+        XCTAssertEqual(row.key.text, "Types 3/3, Links 8/10")
+        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Types 3/3, Links 8/10")
         XCTAssertNil(row.planBudget?.destinationRowText)
         XCTAssertNil(row.planBudget?.deltaChipText)
         XCTAssertTrue(row.planBudget?.warningTexts.isEmpty == true)
@@ -321,7 +335,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(presentation.state, .noOpen)
-        XCTAssertEqual(presentation.planBudgetRow?.text, "Themes 0/4, Links 0/7")
+        XCTAssertEqual(presentation.planBudgetRow?.text, "Types 0/4, Links 0/7")
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
     }
 

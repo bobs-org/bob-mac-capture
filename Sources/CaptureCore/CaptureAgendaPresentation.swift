@@ -703,7 +703,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         )
         let spokenLabel = themeWords.isEmpty
             ? label
-            : "\(label), themes \(themeWords.joined(separator: "; "))"
+            : "\(label), types \(themeWords.joined(separator: "; "))"
         return CaptureAgendaRow(
             kind: .groupHeader,
             text: name,

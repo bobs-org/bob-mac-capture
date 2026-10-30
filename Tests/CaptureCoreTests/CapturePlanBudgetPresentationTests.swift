@@ -86,7 +86,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ new Pomodoro NEWT")
-        XCTAssertEqual(presentation.themesCapsuleText, "Themes 4/3")
+        XCTAssertEqual(presentation.themesCapsuleText, "Types 4/3")
         XCTAssertTrue(presentation.themesOverCap)
         XCTAssertEqual(presentation.linksCapsuleText, "Links 4/10")
         XCTAssertFalse(presentation.linksOverCap)
@@ -95,7 +95,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.warningTexts[0].contains("4/3 themes (adds NEWT)"))
         // Both rows are in the accessibility summary.
         XCTAssertTrue(presentation.accessibilitySummary.contains("→ new Pomodoro NEWT"))
-        XCTAssertTrue(presentation.accessibilitySummary.contains("Themes 4/3, Links 4/10"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Types 4/3, Links 4/10"))
         XCTAssertTrue(presentation.accessibilitySummary.contains("+1 NEWT"))
     }
 
@@ -106,7 +106,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ GOALS · named")
-        XCTAssertEqual(presentation.themesCapsuleText, "Themes 3/3")
+        XCTAssertEqual(presentation.themesCapsuleText, "Types 3/3")
         XCTAssertFalse(presentation.themesOverCap)
         XCTAssertNil(presentation.deltaChipText)
         XCTAssertTrue(presentation.warningTexts.isEmpty)
@@ -144,7 +144,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertNil(presentation.deltaChipText)
         XCTAssertEqual(
             presentation.accessibilitySummary,
-            "Themes 2/3, Links 11/10, today's plan now has 11/10 links"
+            "Types 2/3, Links 11/10, today's plan now has 11/10 links"
         )
     }
 
