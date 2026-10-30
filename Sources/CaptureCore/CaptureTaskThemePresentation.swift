@@ -1,13 +1,13 @@
 import Foundation
 
-/// Shared task-theme preview copy for Bob Mac Capture. Bob owns the rule;
+/// Shared task-type preview copy for Bob Mac Capture. Bob owns the rule;
 /// Swift only renders the additive `task_theme` change Bob reports using the
-/// PT12 shared-contract phrases.
+/// D10 phrases.
 public enum CaptureTaskThemePresentation {
-    /// The inherited half of the task-theme line, mirroring
+    /// The inherited half of the task-type line, mirroring
     /// `format_task_theme_row` in `src/native/capture/output.rs`:
     /// `this task suggests X`, `reading tasks suggest X`,
-    /// `daily review suggests X`, `<stem> suggests X`, else `no default here`.
+    /// `<stem> suggests X`, `default type suggests X`, else `no default here`.
     public static func inheritedPhrase(_ suggestion: CaptureThemeSuggestion?) -> String {
         guard let suggestion else {
             return "no default here"
@@ -23,6 +23,8 @@ public enum CaptureTaskThemePresentation {
             return "reading tasks suggest \(shown.theme.name)"
         case "review":
             return "daily review suggests \(shown.theme.name)"
+        case "default":
+            return "default type suggests \(shown.theme.name)"
         case "note":
             let stem: String = {
                 if let from = shown.from, !from.stem.isEmpty {
@@ -40,10 +42,10 @@ public enum CaptureTaskThemePresentation {
         }
     }
 
-    /// One optional task-theme preview line, e.g.
-    /// `task theme → FIX · sase_blog suggests WRITE` or
-    /// `task theme cleared · sase_blog suggests WRITE`. Dry runs read as
-    /// `would set …` / `would clear …`, mirroring Bob's human output.
+    /// One optional task-type preview line, e.g.
+    /// `type → FIX · sase_blog suggests WRITE` or
+    /// `type cleared · sase_blog suggests WRITE`. Dry runs read as
+    /// `would set type …` / `would clear type …`, mirroring Bob's human output.
     /// Returns nil for unknown actions or when Bob reported no change.
     public static func line(
         for change: CaptureTaskThemeChange?,
@@ -59,14 +61,14 @@ public enum CaptureTaskThemePresentation {
                 return nil
             }
             if isDryRun {
-                return "would set task theme → \(theme.name) · \(inherited)"
+                return "would set type → \(theme.name) · \(inherited)"
             }
-            return "task theme → \(theme.name) · \(inherited)"
+            return "type → \(theme.name) · \(inherited)"
         case "cleared":
             if isDryRun {
-                return "would clear task theme · \(inherited)"
+                return "would clear type · \(inherited)"
             }
-            return "task theme cleared · \(inherited)"
+            return "type cleared · \(inherited)"
         default:
             return nil
         }

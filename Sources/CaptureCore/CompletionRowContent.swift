@@ -349,9 +349,9 @@ public enum PomodoroThemeSwatches {
         }
     }
 
-    /// Spoken theme colors for an accessibility label (`BOB, magenta`).
-    /// Unknown components read as unknown; exempt themes read as muted;
-    /// unconfigured themes read as muted and not in your themes.
+    /// Spoken type colors for an accessibility label (`BOB, magenta`).
+    /// Unknown components read as unknown; exempt types read as muted;
+    /// unconfigured types read as muted and not in your types.
     public static func spokenThemeColors(
         forName name: String?,
         refs: [CapturePomodoroThemeRef]
@@ -366,7 +366,7 @@ public enum PomodoroThemeSwatches {
                 return nil
             }
             guard let ref = byKey[normalizeThemeKey(String(part))] else {
-                return "\(display), unknown theme"
+                return "\(display), unknown type"
             }
             return CaptureUnconfiguredThemePresentation.spokenColor(
                 name: display,
@@ -507,7 +507,7 @@ public func completionRowContent(
             contextLabel = ""
             primaryText = candidate.name ?? candidate.replacement
             secondaryText = themeHistorySummary(lastUsed: candidate.lastUsed, daysUsed: candidate.daysUsed)
-            accessibilityHint = "Uses this recent Pomodoro theme."
+            accessibilityHint = "Uses this recent Pomodoro type."
         } else if candidate.createsPomodoro {
             category = .priority
             symbolName = "timer.badge.plus"
@@ -600,7 +600,7 @@ public func completionRowContent(
                 badges.append("Hidden")
             }
             let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
-            accessibilityHint = "Starts a new \(name) session using this recent theme."
+            accessibilityHint = "Starts a new \(name) session using this recent type."
         } else if candidate.createsPomodoro, candidate.state == "completed" {
             category = .pomodoroStart
             symbolName = "arrow.clockwise.circle"
@@ -1022,7 +1022,7 @@ public func completionRowContent(
         suggestedFromHue: suggestedFromHue,
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: isHiddenThemeGhost
-            ? "Theme hidden from Recent. Press Control+D to undo."
+            ? "Type hidden from Recent. Press Control+D to undo."
             : accessibilityHint
     )
 }
@@ -1049,7 +1049,7 @@ private func themeHistorySummary(lastUsed: String?, daysUsed: Int?) -> String? {
     if let daysUsed, daysUsed > 0 {
         parts.append("\(daysUsed) \(daysUsed == 1 ? "day" : "days")")
     }
-    return parts.isEmpty ? "Recent theme" : parts.joined(separator: " · ")
+    return parts.isEmpty ? "your type · never used" : parts.joined(separator: " · ")
 }
 
 /// The `book` override for reading-task rows in the task pickers, or

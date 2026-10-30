@@ -79,7 +79,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
-    /// Optional task-theme line, e.g. `task theme → FIX · sase_blog suggests WRITE`.
+    /// Optional task-type line, e.g. `type → FIX · sase_blog suggests WRITE`.
     public let taskThemeLine: String?
 
     public init?(capture: CaptureCommandSuccess) {

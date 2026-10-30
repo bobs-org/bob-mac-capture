@@ -339,7 +339,7 @@ In the `@route+` and `@@route+` task contexts, Bob may return open tasks that st
 
 ### Naming a Pomodoro
 
-In the `pomodoro_name` context, Bob may preselect a suggested row from the task-theme
+In the `pomodoro_name` context, Bob may preselect a suggested row from the task-type
   rule (`theme_suggestion` plus `suggested` and `suggestion_label` on one candidate).
   With an empty query the initial selection is that row and its secondary text reads
   `Suggested · <reason>` (for example `Suggested · from ● sase_blog`, with the dot in

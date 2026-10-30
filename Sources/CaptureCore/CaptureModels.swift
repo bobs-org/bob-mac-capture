@@ -2518,12 +2518,25 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
     // Older Bob omits it and it decodes as nil; unknown values are
     // preserved verbatim and degrade to neutral presentation.
     public let role: String?
+    // Additive D7 typed-placement record: the task's effective type, the
+    // cascade source, and the human label (`from dev`, `default type`).
+    // Set only on destinations Bob placed by type; legacy and named
+    // destinations leave this unset. Older Bob omits the whole object and
+    // it decodes as nil.
+    public let placedType: CapturePlacedType?
 
-    public init(line: Int, name: String? = nil, timeRange: String? = nil, role: String? = nil) {
+    public init(
+        line: Int,
+        name: String? = nil,
+        timeRange: String? = nil,
+        role: String? = nil,
+        placedType: CapturePlacedType? = nil
+    ) {
         self.line = line
         self.name = name
         self.timeRange = timeRange
         self.role = role
+        self.placedType = placedType
     }
 
     public init(from decoder: Decoder) throws {
@@ -2532,6 +2545,9 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
         role = try container.decodeIfPresent(String.self, forKey: .role)
+        placedType =
+            (try? container.decodeIfPresent(
+                CapturePlacedType.self, forKey: .placedType)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2539,6 +2555,44 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
         case name
         case timeRange = "time_range"
         case role
+        case placedType = "type"
+    }
+}
+
+/// Additive D7 typed-placement record on a link destination (D10): the
+/// task's effective type, the cascade source, and the human label Bob
+/// appends to its destination row (`→ new Pomodoro CHORE · default type`).
+/// Bob omits the whole object when it did not place by type; malformed
+/// values decode as nil so they can never fail the capture decode.
+public struct CapturePlacedType: Codable, Equatable, Sendable {
+    public let theme: CapturePomodoroThemeRef
+    public let source: String
+    public let label: String
+
+    public init(
+        theme: CapturePomodoroThemeRef = CapturePomodoroThemeRef(key: "", name: ""),
+        source: String = "",
+        label: String = ""
+    ) {
+        self.theme = theme
+        self.source = source
+        self.label = label
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        theme =
+            (try? container.decodeIfPresent(
+                CapturePomodoroThemeRef.self, forKey: .theme))
+            ?? CapturePomodoroThemeRef(key: "", name: "")
+        source = (try? container.decodeIfPresent(String.self, forKey: .source)) ?? ""
+        label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case theme
+        case source
+        case label
     }
 }
 

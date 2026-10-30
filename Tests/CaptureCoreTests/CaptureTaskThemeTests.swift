@@ -115,16 +115,19 @@ final class CaptureTaskThemeTests: XCTestCase {
             inherited: noteSuggestion())
         XCTAssertEqual(
             CaptureTaskThemePresentation.line(for: set, isDryRun: false),
-            "task theme → FIX · sase_blog suggests WRITE")
+            "type → FIX · sase_blog suggests WRITE")
         XCTAssertEqual(
             CaptureTaskThemePresentation.line(for: set, isDryRun: true),
-            "would set task theme → FIX · sase_blog suggests WRITE")
+            "would set type → FIX · sase_blog suggests WRITE")
 
         let cleared = CaptureTaskThemeChange(
             action: "cleared", inherited: noteSuggestion())
         XCTAssertEqual(
             CaptureTaskThemePresentation.line(for: cleared, isDryRun: false),
-            "task theme cleared · sase_blog suggests WRITE")
+            "type cleared · sase_blog suggests WRITE")
+        XCTAssertEqual(
+            CaptureTaskThemePresentation.line(for: cleared, isDryRun: true),
+            "would clear type · sase_blog suggests WRITE")
         XCTAssertNil(CaptureTaskThemePresentation.line(for: nil, isDryRun: false))
     }
 
@@ -146,6 +149,13 @@ final class CaptureTaskThemeTests: XCTestCase {
         XCTAssertEqual(
             CaptureTaskThemePresentation.inheritedPhrase(bareTask),
             "this task suggests FIX")
+        // A default-source suggestion reads as Bob's `default type suggests X`.
+        let fallback = CaptureThemeSuggestion(
+            theme: CapturePomodoroThemeRef(key: "chore", name: "CHORE"),
+            source: "default", label: "default type")
+        XCTAssertEqual(
+            CaptureTaskThemePresentation.inheritedPhrase(fallback),
+            "default type suggests CHORE")
     }
 
     func testLinkAndTogglePresentationsIncludeTaskThemeLine() throws {
@@ -158,21 +168,80 @@ final class CaptureTaskThemeTests: XCTestCase {
             CapturePomodoroLinkPresentation(capture: linkCapture(taskTheme: theme)))
         XCTAssertEqual(
             link.taskThemeLine,
-            "would set task theme → FIX · sase_blog suggests WRITE")
+            "would set type → FIX · sase_blog suggests WRITE")
         XCTAssertTrue(
             link.notificationBody.contains(
-                "would set task theme → FIX · sase_blog suggests WRITE"))
+                "would set type → FIX · sase_blog suggests WRITE"))
         XCTAssertTrue(
-            link.previewAccessibilitySummary.contains("would set task theme → FIX"))
+            link.previewAccessibilitySummary.contains("would set type → FIX"))
 
         let toggle = try XCTUnwrap(
             CaptureTogglePresentation(capture: toggleCapture(taskTheme: theme)))
         XCTAssertEqual(
             toggle.taskThemeLine,
-            "would set task theme → FIX · sase_blog suggests WRITE")
-        XCTAssertTrue(toggle.notificationBody.contains("would set task theme"))
-        XCTAssertTrue(toggle.previewAccessibilitySummary.contains("would set task theme"))
-        XCTAssertTrue(toggle.voiceOverAnnouncement.contains("would set task theme"))
+            "would set type → FIX · sase_blog suggests WRITE")
+        XCTAssertTrue(toggle.notificationBody.contains("would set type"))
+        XCTAssertTrue(toggle.previewAccessibilitySummary.contains("would set type"))
+        XCTAssertTrue(toggle.voiceOverAnnouncement.contains("would set type"))
+    }
+
+    // MARK: - Destination placed type
+
+    func testLinkDestinationDecodesPlacedType() throws {
+        let success = try decodeSuccess(placedTypeJSON())
+        let placed = try XCTUnwrap(success.pomodoroLinkDestination?.placedType)
+        XCTAssertEqual(placed.theme.name, "CHORE")
+        XCTAssertEqual(placed.source, "default")
+        XCTAssertEqual(placed.label, "default type")
+    }
+
+    func testLinkDestinationOmitsPlacedTypeForOlderBob() throws {
+        let success = try decodeSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"sase",
+             "route_label":"sase.md","relative_target":"sase.md",
+             "target":"/tmp/bob/sase.md","text":"t","task_line":"- [ ] #task t ^t",
+             "kind":"pomodoro_link","created":"2026-07-10","placement":"linked",
+             "pomodoro_link_destination":{"line":5,"name":"BUILD","role":"current"}}
+            """)
+        XCTAssertNil(success.pomodoroLinkDestination?.placedType)
+    }
+
+    func testLinkPresentationRendersPlacedTypeLabel() throws {
+        let success = try decodeSuccess(placedTypeJSON())
+        let link = try XCTUnwrap(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertEqual(link.ledgerText, "Linked under CHORE · default type")
+        XCTAssertEqual(
+            link.dayFileDestinationLabel, "2026/20260710.md · under CHORE · default type")
+        XCTAssertTrue(link.notificationBody.contains("Linked under CHORE · default type"))
+        XCTAssertTrue(
+            link.previewAccessibilitySummary.contains("Linked under CHORE · default type"))
+    }
+
+    func testLinkPresentationOmitsPlacedTypeLabelForOlderBob() throws {
+        let cleared = CaptureTaskThemeChange(
+            action: "cleared", inherited: noteSuggestion())
+        let link = try XCTUnwrap(
+            CapturePomodoroLinkPresentation(capture: linkCapture(taskTheme: cleared)))
+        // The helper builds a destination without a `type` object, so the
+        // ledger line renders exactly as before.
+        XCTAssertEqual(link.ledgerText, "Linked under FIX")
+    }
+
+    private func placedTypeJSON() -> String {
+        """
+        {"ok":true,"dry_run":false,"routed":true,"route":"sase",
+         "route_label":"sase.md","relative_target":"sase.md",
+         "target":"/tmp/bob/sase.md","text":"t","task_line":"- [ ] #task t ^t",
+         "kind":"pomodoro_link","created":"2026-07-10","placement":"linked",
+         "blockID":"t","day_file":"/tmp/bob/2026/20260710.md",
+         "status_symbol":" ","status_name":"Todo",
+         "previous_status_symbol":" ","previous_status_name":"Todo",
+         "pomodoro_name":"CHORE",
+         "pomodoro_link_destination":{"line":5,"name":"CHORE","role":"created",
+          "type":{"theme":{"key":"chore","name":"CHORE"},
+           "source":"default","label":"default type"}}}
+        """
     }
 
     // MARK: - Helpers

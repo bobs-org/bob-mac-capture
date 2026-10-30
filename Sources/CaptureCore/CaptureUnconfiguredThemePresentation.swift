@@ -5,8 +5,8 @@ import Foundation
 /// this type only filters and words what Bob already returned.
 public enum CaptureUnconfiguredThemePresentation {
     public static let warningCode = "theme_not_configured"
-    public static let createBadge = "Not in your themes"
-    public static let accessibilitySuffix = "not in your themes"
+    public static let createBadge = "Not in your types"
+    public static let accessibilitySuffix = "not in your types"
 
     public static func structuredWarnings(
         in warnings: [CaptureWarning]
@@ -81,6 +81,8 @@ public enum CaptureUnconfiguredThemePresentation {
 
     /// Name-it warnings from Bob's `configured_themes` catalog. Prefixes of a
     /// configured name stay quiet while typing, matching the preview rule.
+    /// The copy mirrors Bob's unconfigured-type warning (D10); labels read
+    /// the same here because the completion payload carries no inventory list.
     public static func nameItWarnings(
         authoredName: String,
         configuredThemes: [CaptureConfiguredTheme]
@@ -103,14 +105,14 @@ public enum CaptureUnconfiguredThemePresentation {
                 StructuredCaptureWarning(
                     code: warningCode,
                     label: component,
-                    message: "\(component) isn't one of your configured themes"
+                    message: "\(component) isn't one of your types; tasks here keep their own types"
                 )
             )
         }
         return warnings
     }
 
-    /// Recent-theme chips when `configured_themes` is present: visible
+    /// Recent-type chips when `configured_themes` is present: visible
     /// configured rows, in config order.
     public static func nameItSuggestions(
         configuredThemes: [CaptureConfiguredTheme],
@@ -146,7 +148,7 @@ public enum CaptureUnconfiguredThemePresentation {
         configured: Bool?
     ) -> String {
         guard known else {
-            return "\(name), unknown theme"
+            return "\(name), unknown type"
         }
         if configured == false || hueSource == "unconfigured" {
             return "\(name), muted, \(accessibilitySuffix)"

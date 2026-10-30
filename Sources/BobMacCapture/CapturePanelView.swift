@@ -1813,7 +1813,7 @@ private struct PomodoroNamePromptCard: View {
 
                 if !prompt.suggestions.isEmpty {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("Recent themes")
+                        Text("Recent types")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .textCase(.uppercase)
@@ -1844,7 +1844,7 @@ private struct PomodoroNamePromptCard: View {
                                             } else if theme.hueSource == "unconfigured"
                                                 || theme.configured == false
                                             {
-                                                Text("Not in your themes")
+                                                Text("Not in your types")
                                                     .font(.caption2)
                                                     .foregroundStyle(
                                                         Color(nsColor: .systemOrange)
@@ -1860,7 +1860,7 @@ private struct PomodoroNamePromptCard: View {
                                         )
                                     }
                                     .buttonStyle(.plain)
-                                    .help("Use exact theme name \(theme.name)")
+                                    .help("Use exact type name \(theme.name)")
                                     .accessibilityLabel(
                                         CaptureUnconfiguredThemePresentation.spokenColor(
                                             name: theme.name,
@@ -1875,18 +1875,18 @@ private struct PomodoroNamePromptCard: View {
                             .padding(.vertical, 1)
                         }
                         .scrollIndicators(.hidden)
-                        .accessibilityLabel("Recent theme suggestions")
+                        .accessibilityLabel("Recent type suggestions")
                     }
                 } else if prompt.suggestionsLoading {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Loading recent themes")
+                        Text("Loading recent types")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 } else if prompt.suggestionsUnavailable {
-                    Text("Recent themes unavailable")
+                    Text("Recent types unavailable")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

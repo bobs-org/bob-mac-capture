@@ -8,7 +8,7 @@ final class CaptureUnconfiguredThemePresentationTests: XCTestCase {
             StructuredCaptureWarning(
                 code: "theme_not_configured",
                 label: "BUI",
-                message: "BUI isn't one of your configured themes"
+                message: "BUI isn't one of your types; tasks here keep their own types"
             )
         )
         let span = CapturePomodoroThemeRef(
@@ -43,7 +43,7 @@ final class CaptureUnconfiguredThemePresentationTests: XCTestCase {
             StructuredCaptureWarning(
                 code: "theme_not_configured",
                 label: "SNACK",
-                message: "SNACK isn't one of your configured themes"
+                message: "SNACK isn't one of your types; tasks here keep their own types"
             )
         )
         let span = CapturePomodoroThemeRef(
@@ -87,7 +87,7 @@ final class CaptureUnconfiguredThemePresentationTests: XCTestCase {
         XCTAssertEqual(snack.map(\.label), ["SNACK"])
         XCTAssertEqual(
             snack.first?.message,
-            "SNACK isn't one of your configured themes"
+            "SNACK isn't one of your types; tasks here keep their own types"
         )
     }
 
@@ -154,7 +154,7 @@ final class CaptureUnconfiguredThemePresentationTests: XCTestCase {
                     configured: false
                 )
             ),
-            "SNACK, muted, not in your themes"
+            "SNACK, muted, not in your types"
         )
     }
 }

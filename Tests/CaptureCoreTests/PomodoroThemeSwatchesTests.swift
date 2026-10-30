@@ -115,7 +115,7 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
             refs: []
         )
 
-        XCTAssertEqual(spoken, ["NEW, unknown theme"])
+        XCTAssertEqual(spoken, ["NEW, unknown type"])
     }
 
     func testSpokenColorsCallOutUnconfiguredAndConfigSources() {
@@ -140,7 +140,7 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
 
         XCTAssertEqual(
             spoken,
-            ["BUILD, yellow", "SNACK, muted, not in your themes"]
+            ["BUILD, yellow", "SNACK, muted, not in your types"]
         )
     }
 

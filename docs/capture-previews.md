@@ -118,12 +118,14 @@ Preview shows every block Bob will write, in Bob's own order: each item's parent
   transition (`[ ] → [*]`, `[*] already Next`, `[/] stays In Progress`), the daily-note
   destination, and the ledger outcome Bob planned (`Linked under BUGS`,
   `Moved Task Link BUGS → FOCUS (created FOCUS)`, or
-  `Task Link already in BUGS; no ledger change.`), plus the optional task-theme line
-  Bob reported (`task theme → FIX · sase_blog suggests WRITE` or
-  `task theme cleared · sase_blog suggests WRITE`; dry runs read `would set/clear`),
-  plus the atomic-start session row
-  when the link starts one. Task-toggle items show the same task-theme line. Every
-  theme line joins the VoiceOver summary and the notification body. Every item with a `pomodoro_link_destination` also
+  `Task Link already in BUGS; no ledger change.`), plus the optional task-type line
+  Bob reported (`type → FIX · sase_blog suggests WRITE` or
+  `type cleared · sase_blog suggests WRITE`; dry runs read `would set type` /
+  `would clear type`), plus the atomic-start session row
+  when the link starts one. Task-toggle items show the same task-type line. Every
+  type line joins the VoiceOver summary and the notification body. When Bob placed
+  the link by type, the ledger and day-file destination rows carry the additive
+  label (`Linked under CHORE · default type`). Every item with a `pomodoro_link_destination` also
   shows a destination row above it (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
   `→ new Pomodoro BOB`, with a `timer` symbol) from the destination `role`, and a
   batch that changed today's Pomodoros section shows one plan-budget meter row above

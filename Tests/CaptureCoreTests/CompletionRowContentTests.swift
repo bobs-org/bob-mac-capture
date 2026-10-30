@@ -432,7 +432,7 @@ final class CompletionRowContentTests: XCTestCase {
         )
     }
 
-    func testUnconfiguredCreateRowAddsNotInYourThemesBadge() {
+    func testUnconfiguredCreateRowAddsNotInYourTypesBadge() {
         let candidate = CaptureCompletionCandidate(
             replacement: "SNACK",
             name: "SNACK",
@@ -461,7 +461,7 @@ final class CompletionRowContentTests: XCTestCase {
             content.themeSwatches,
             [CaptureThemeSwatch(hue: nil, known: true, configured: false)]
         )
-        XCTAssertTrue(content.accessibilityLabel.contains("not in your themes"))
+        XCTAssertTrue(content.accessibilityLabel.contains("not in your types"))
     }
 
     func testHistoryRowDoesNotAddUnconfiguredCreateBadge() {
@@ -527,6 +527,53 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertTrue(visible.badges.contains("Pinned"))
         XCTAssertTrue(visible.accessibilityLabel.contains("BOOKS, aqua"))
         XCTAssertFalse(visible.isHiddenThemeGhost)
+    }
+
+    func testHistoryRowWithoutUsageReadsYourTypeNeverUsed() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "SNACK",
+            name: "SNACK",
+            createsPomodoro: true,
+            themes: [
+                CapturePomodoroThemeRef(
+                    key: "snack",
+                    name: "SNACK",
+                    hueSource: "unconfigured",
+                    configured: false
+                ),
+            ],
+            origin: "history"
+        )
+
+        let content = completionRowContent(
+            for: candidate, context: "pomodoro_name", query: "")
+        XCTAssertEqual(content.secondaryText, "your type · never used")
+    }
+
+    func testHiddenGhostHintReadsTypeHiddenFromRecent() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "BOOKS",
+            name: "BOOKS",
+            createsPomodoro: true,
+            themes: [
+                CapturePomodoroThemeRef(
+                    key: "books",
+                    name: "BOOKS",
+                    hue: .aqua,
+                    hueSource: "pin"
+                ),
+            ],
+            origin: "history"
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_name",
+            query: "boo",
+            temporarilyHiddenThemeKey: "books"
+        )
+        XCTAssertTrue(
+            content.accessibilityHint.contains("Type hidden from Recent"))
     }
 
     func testPomodoroNameNamedRowIgnoresAbsentCreatesPomodoro() {

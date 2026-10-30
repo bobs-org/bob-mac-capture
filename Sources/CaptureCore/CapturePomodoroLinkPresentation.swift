@@ -30,7 +30,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     /// `"[/] stays In Progress  Outline talk"` — the compact transition line.
     public let transitionText: String
     /// `"Linked under BUGS"`, `"Moved Task Link BUGS \u{2192} FOCUS (created
-    /// FOCUS)"`, or `"Task Link already in BUGS; no ledger change."`
+    /// FOCUS)"`, or `"Task Link already in BUGS; no ledger change."`, each with
+    /// an appended ` · <label>` when Bob placed the destination by type.
+    /// (`Linked under CHORE · default type`).
     public let ledgerText: String
     /// The resolved destination entry name (`"BUGS"`), used for notification
     /// titles and the day-file destination line.
@@ -54,7 +56,7 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
-    /// Optional task-theme line, e.g. `task theme → FIX · sase_blog suggests WRITE`.
+    /// Optional task-type line, e.g. `type → FIX · sase_blog suggests WRITE`.
     public let taskThemeLine: String?
 
     public init?(capture: CaptureCommandSuccess) {
@@ -91,21 +93,36 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
             ?? "today's Pomodoro"
         destinationLabel = destination
 
+        // Additive D7 label: Bob appends ` · <label>` (`from dev`,
+        // `default type`) to the destination it placed by type. Older Bob
+        // omits `type`, so the suffix stays empty and rendering is unchanged.
+        let placedSuffix: String = {
+            guard
+                let label = capture.pomodoroLinkDestination?.placedType?.label,
+                !label.isEmpty
+            else {
+                return ""
+            }
+            return " · \(label)"
+        }()
+
         let sourceLabel = CaptureTogglePresentation.endpointLabel(capture.pomodoroLinkSource)
         let createdPomodoro = capture.createsPomodoro ?? false
         switch capture.pomodoroLinkAction {
         case "moved":
             let source = sourceLabel ?? "source"
             if createdPomodoro {
-                ledgerText =
-                    "Moved Task Link \(source) \u{2192} \(destination) (created \(destination))"
-            } else {
                 ledgerText = "Moved Task Link \(source) \u{2192} \(destination)"
+                    + " (created \(destination))\(placedSuffix)"
+            } else {
+                ledgerText =
+                    "Moved Task Link \(source) \u{2192} \(destination)\(placedSuffix)"
             }
         case "already_current":
-            ledgerText = "Task Link already in \(destination); no ledger change."
+            ledgerText =
+                "Task Link already in \(destination)\(placedSuffix); no ledger change."
         default:
-            ledgerText = "Linked under \(destination)"
+            ledgerText = "Linked under \(destination)\(placedSuffix)"
         }
 
         if let dayFile = capture.dayFile {
@@ -114,7 +131,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
                 target: capture.target,
                 relativeTarget: capture.relativeTarget
             )
-            dayFileDestinationLabel = "\(relativeDayFile) \u{00b7} under \(destination)"
+            dayFileDestinationLabel =
+                "\(relativeDayFile) \u{00b7} under \(destination)\(placedSuffix)"
         } else {
             dayFileDestinationLabel = nil
         }
