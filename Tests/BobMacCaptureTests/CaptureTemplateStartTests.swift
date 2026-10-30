@@ -65,7 +65,9 @@ final class CaptureTemplateStartTests: XCTestCase {
             model.attributedDraft.startIndex,
             offsetByCharacters: prefix.count
         )
-        model.editorSelection = AttributedTextSelection(insertionPoint: insertion)
+        let editorSelection = AttributedTextSelection(insertionPoint: insertion)
+        model.editorSelectionDidChange(to: editorSelection)
+        model.editorSelection = editorSelection
         model.editorTextDidChange(cursorUTF8Offset: prefix.utf8.count)
     }
 
@@ -173,6 +175,117 @@ final class CaptureTemplateStartTests: XCTestCase {
         XCTAssertTrue(
             record.contains("argv=capture-rewrite --cursor 12 --format json -- Read {0} @@@")
         )
+    }
+
+    func testTypingAllThreeAtSignsAtEndOfLineStartsTemplate() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = "Read {0} "
+        let textView = makeTextView("Read {0} ", cursor: 9)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        typeAt(into: textView, model: model)
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains(
+                "argv=capture-rewrite --cursor 11 --format json -- Read {0} @@")
+        }
+
+        typeAt(into: textView, model: model)
+        await waitUntil {
+            model.plainDraft == "@@template:\nRead {0}"
+                && model.statusText == "Started a @@template: draft"
+        }
+
+        XCTAssertEqual(textView.string, "@@template:\nRead {0}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 20, length: 0))
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 12 --format json -- Read {0} @@@")
+        )
+    }
+
+    func testTypingThirdAtWhileSecondAtRewriteIsInFlightStartsTemplate() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.2"]
+        )
+        model.plainDraft = "Read {0} "
+        let textView = makeTextView("Read {0} ", cursor: 9)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        typeAt(into: textView, model: model)
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains(
+                "argv=capture-rewrite --cursor 11 --format json -- Read {0} @@")
+        }
+
+        typeAt(into: textView, model: model)
+        await waitUntil {
+            model.plainDraft == "@@template:\nRead {0}"
+                && model.statusText == "Started a @@template: draft"
+        }
+
+        XCTAssertEqual(textView.string, "@@template:\nRead {0}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 20, length: 0))
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 12 --format json -- Read {0} @@@")
+        )
+    }
+
+    func testCaretMoveAwayClearsThirdAtIntent() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.2"]
+        )
+        model.plainDraft = "Read {0} "
+        let textView = makeTextView("Read {0} ", cursor: 9)
+        wireNativeApply(model, textView: textView)
+
+        typeAt(into: textView, model: model)
+        typeAt(into: textView, model: model)
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains(
+                "argv=capture-rewrite --cursor 11 --format json -- Read {0} @@")
+        }
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: keyEvent(characters: "@"),
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        model.editorSelectionDidChange(cursorUTF8Offset: 0)
+        textView.insertText("@", replacementRange: textView.selectedRange())
+        let cursor = textView.selectedRange().location
+        model.plainDraft = textView.string
+        let prefix = (textView.string as NSString).substring(to: cursor)
+        let insertion = model.attributedDraft.index(
+            model.attributedDraft.startIndex,
+            offsetByCharacters: prefix.count
+        )
+        let editorSelection = AttributedTextSelection(insertionPoint: insertion)
+        model.editorSelectionDidChange(to: editorSelection)
+        model.editorSelection = editorSelection
+        model.editorTextDidChange(cursorUTF8Offset: prefix.utf8.count)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(model.plainDraft, "Read {0} @@@")
+        XCTAssertNotEqual(model.statusText, "Started a @@template: draft")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("--cursor 12 --format json -- Read {0} @@@"))
     }
 
     func testTypingThirdAtAtEndOfLastLineStartsTemplate() async throws {

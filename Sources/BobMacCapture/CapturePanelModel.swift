@@ -2186,7 +2186,17 @@ final class CapturePanelModel: ObservableObject {
                     !rewriteSawMatchingSelection
                     && insertionOffset == expected - 1
                 if !laggedPreInsertCaret {
-                    invalidateRewrite()
+                    cancelInFlightRewrite()
+                    // The selection publisher fires before the text `.onChange`, so this
+                    // caret move can be the keystroke that recorded the pending intent.
+                    let matchesPendingIntent =
+                        pendingSeparatorToggleIntent.map { intent in
+                            insertionOffset == intent.expectedCursorUTF8
+                                || insertionOffset == intent.expectedCursorUTF8 - 1
+                        } ?? false
+                    if !matchesPendingIntent {
+                        pendingSeparatorToggleIntent = nil
+                    }
                 }
             }
         }
@@ -11969,6 +11979,13 @@ final class CapturePanelModel: ObservableObject {
             } catch {
                 // Rewriting is a typing assist. Parse, completion, and preview still run
                 // on the original draft, so transport failures should not disturb the UI.
+                await MainActor.run {
+                    guard self?.rewriteGeneration == generation else {
+                        return
+                    }
+                    self?.rewriteExpectedCursorUTF8 = nil
+                    self?.rewriteSawMatchingSelection = false
+                }
             }
         }
         rewriteTask = task
@@ -11990,6 +12007,12 @@ final class CapturePanelModel: ObservableObject {
             response.input == draft
         else {
             return
+        }
+        defer {
+            if rewriteGeneration == generation {
+                rewriteExpectedCursorUTF8 = nil
+                rewriteSawMatchingSelection = false
+            }
         }
         if draft != visibleDraft {
             guard collapsedSelectionUTF8Offset() == visibleCursorUTF8Offset,
@@ -12981,12 +13004,16 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func invalidateRewrite() {
+        cancelInFlightRewrite()
+        pendingSeparatorToggleIntent = nil
+    }
+
+    private func cancelInFlightRewrite() {
         rewriteTask?.cancel()
         rewriteTask = nil
         rewriteGeneration &+= 1
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
-        pendingSeparatorToggleIntent = nil
     }
 
     private func consumeSeparatorToggleIntent(
