@@ -41,6 +41,8 @@ block link such as `[[sase_cleanup#^no-idle]]`; the draft never stores the
 `((` itself. `bob` owns the trigger grammar, the candidate list and order,
 the replacement bytes, and the block-ID write; the app only filters locally,
 renders, and splices what `bob` returns.
+The picker opens because `bob capture-parse` marks the `((` token with task
+wikilink spans, which the app uses to request completion.
 
 The card groups an empty filter in `bob`'s order — This note, In Progress,
 Next, one section per note, then Completed history — and a non-empty filter

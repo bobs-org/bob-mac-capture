@@ -13318,6 +13318,9 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_heading",
             "wikilink_block_id",
             "wikilink_alias",
+            // Bob's `((` spans request `wikilink_task` completion; Swift never sniffs `((`.
+            "wikilink_task_delimiter",
+            "wikilink_task_query",
             "pomodoro_close_drop",
             "pomodoro_close_park",
             "pomodoro_start_drop",

@@ -66,10 +66,12 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
-  Task Wikilink picks require a Bob that emits the `wikilink_task` completion
-  context (with the additive `link_target` candidate field, Bob-order groups,
-  and the picker descriptor) and `wikilink_replacement` on `capture-task-id`
-  results.
+  Task Wikilink picks require `capture-parse` spans
+  `wikilink_task_delimiter` / `wikilink_task_query` to request the `wikilink_task`
+  completion context (with the additive `link_target` candidate field, Bob-order
+  groups, and picker descriptor) and `wikilink_replacement` on `capture-task-id`
+  results. An older Bob sends no task-wikilink spans, so the app requests no
+  completion and `((` stays plain text; upgrade `bob`.
   Go To and Command-\ today-Pomodoro landing and Bob Refs Control-Return
   also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the
   version that shipped `obsidian://bob-goto-task`). Control-Return landing via
@@ -388,7 +390,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `cancels_source`, `configured`, `relation_cancel`, span `cancels_source`, `relation_cancels[]`, `cancel_effect`, `relation_cancelled_source` | ⊘ cancels capsule, dimmed source, verdict slot, cancelled span tint, ⊘ preview rows, `Capture & cancel N task(s)` | No cue; ordinary relation labels and preview rows | Upgrade `bob` for cancel labels |
 | `completes_source`, `relation_complete`, span `completes_source`, `relation_completes[]` (with nested `task_complete`), `complete_effect`, `relation_completed_source` | ✓ completes capsule, dimmed source, verdict slot, complete span tint, ✓ preview rows with `!` detail rows, `Capture & complete N task(s)` / `Capture & close N tasks`, in-panel successor choice | No cue; ordinary relation labels and preview rows, no successor offers | Upgrade `bob` for complete labels |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
-| `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | No completion, so `((` stays plain text | Upgrade `bob` |
+| `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
 that rejects the command is remembered for that executable identity, so the app keeps

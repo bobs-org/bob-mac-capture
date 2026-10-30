@@ -22,11 +22,11 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
             statusName: "In Progress",
             statusType: "IN_PROGRESS",
             text: "Stop idling when no agents run",
+            cursorAfter: 35,
+            linkTarget: "sase_cleanup",
             group: "in_progress",
             notePath: "sase_cleanup.md",
-            locator: "sase_cleanup",
-            linkTarget: "sase_cleanup",
-            cursorAfter: 35
+            locator: "sase_cleanup"
         )
     }
 
@@ -39,11 +39,11 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
             statusName: "Todo",
             statusType: "TODO",
             text: "Inbox plain",
+            linkTarget: "mac_inbox",
             blockIDSuggestions: ["inbox-plain"],
             group: "in_this_note",
             notePath: "mac_inbox.md",
-            locator: "mac_inbox",
-            linkTarget: "mac_inbox"
+            locator: "mac_inbox"
         )
     }
 
@@ -56,11 +56,11 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
             statusName: "Done",
             statusType: "DONE",
             text: "Old done without id",
+            linkTarget: "home",
             blockIDSuggestions: ["old-done"],
             group: "completed",
             notePath: "home.md",
-            locator: "home",
-            linkTarget: "home"
+            locator: "home"
         )
     }
 
@@ -74,10 +74,10 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
             statusName: "Todo",
             statusType: "TODO",
             text: "Second twin",
+            linkTarget: "twin",
             group: "open",
             notePath: "twin.md",
             locator: "twin",
-            linkTarget: "twin",
             disabledReason: "duplicate block ID ^twin in twin.md"
         )
     }
@@ -153,7 +153,9 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         model.plainDraft = "Follow up (( changed"
         model.acceptPickerRow(id: "sase_cleanup.md|1:fa53e656", submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "Follow up (( changed")
-        XCTAssertTrue(model.statusText.contains("stale") || model.pickerVisible)
+        XCTAssertTrue(
+            model.statusText.contains("Draft changed") || model.pickerVisible
+        )
     }
 
     func testHistoryPromptCarriesAllowClosed() {
@@ -188,9 +190,38 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         let model = try liveModel()
         model.plainDraft = "Follow up (("
         model.editorTextDidChange(cursorUTF8Offset: 12)
+        await waitUntil { model.latestParse?.input == model.plainDraft }
+        XCTAssertEqual(
+            model.latestParse?.spans.map(\.kind),
+            ["wikilink_task_delimiter"]
+        )
         await waitUntil { model.pickerVisible }
         XCTAssertTrue(model.pickerSourceIsWikilinkTask)
         XCTAssertFalse(model.picker?.candidates.isEmpty ?? true)
+    }
+
+    func testCaretMoveIntoWikilinkTaskShowsReopenChip() async throws {
+        let model = try liveModel()
+        model.plainDraft = "Follow up ((s"
+        model.editorSelectionDidChange(cursorUTF8Offset: 13)
+        await waitUntil { model.latestParse?.input == model.plainDraft }
+        XCTAssertEqual(
+            model.latestParse?.spans.map(\.kind),
+            ["wikilink_task_delimiter", "wikilink_task_query"]
+        )
+        await waitUntil { model.pickerChipVisible }
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testOlderBobWithoutTaskWikilinkParseSpansKeepsTokenPlain() async throws {
+        let model = try liveModel(
+            environment: ["FAKE_BOB_PARSE_FIXTURE": "capture-parse-wikilink-task-old-bob.json"]
+        )
+        model.plainDraft = "Follow up (("
+        model.editorTextDidChange(cursorUTF8Offset: 12)
+        await waitUntil { model.latestParse?.input == model.plainDraft }
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
     }
 
     func testIDPromptSplicesWikilinkReplacement() async throws {

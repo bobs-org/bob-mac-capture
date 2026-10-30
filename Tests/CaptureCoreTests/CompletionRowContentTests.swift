@@ -1189,6 +1189,10 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "priority"), .priority)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "clipboard"), .clipboard)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_delimiter"), .wikilinkDelimiter)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "wikilink_task_delimiter"), .wikilinkDelimiter
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_task_query"), .neutral)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_target"), .wikilinkTarget)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_heading"), .wikilinkHeading)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_block_id"), .wikilinkBlock)

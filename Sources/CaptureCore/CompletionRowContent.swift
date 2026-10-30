@@ -106,6 +106,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .route
     case "wikilink_delimiter":
         return .wikilinkDelimiter
+    case "wikilink_task_delimiter":
+        return .wikilinkDelimiter
     case "wikilink_target":
         return .wikilinkTarget
     case "wikilink_heading":

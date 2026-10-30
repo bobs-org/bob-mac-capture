@@ -210,6 +210,12 @@ case "${command}" in
     if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
       exit 0
+    elif [[ "${draft}" == "Follow up ((" ]]; then
+      cat "${fixtures_dir}/capture-parse-wikilink-task-open.json"
+    elif [[ "${draft}" == "Follow up ((s" ]]; then
+      cat "${fixtures_dir}/capture-parse-wikilink-task-query.json"
+    elif [[ "${draft}" == "Follow up [[mac_inbox#^inbox-plain]]" ]]; then
+      cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json"
     # This is real bob capture-parse output for a bare @@ draft.
     elif [[ "${draft}" == "@@" ]]; then
       cat "${fixtures_dir}/capture-parse-template-bare.json"

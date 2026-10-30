@@ -793,11 +793,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Todo",
                 statusType: "TODO",
                 text: "Inbox chore",
+                cursorAfter: 26,
+                linkTarget: "mac_inbox",
                 group: "in_this_note",
                 notePath: "mac_inbox.md",
-                locator: "mac_inbox",
-                linkTarget: "mac_inbox",
-                cursorAfter: 26
+                locator: "mac_inbox"
             ),
             CaptureCompletionCandidate(
                 replacement: "",
@@ -807,11 +807,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Todo",
                 statusType: "TODO",
                 text: "Try Opus with Blender. [💡](https://keep.google.com/u/0/#NOTE/x)",
+                linkTarget: "mac_inbox",
                 blockIDSuggestions: ["try-opus-blender"],
                 group: "in_this_note",
                 notePath: "mac_inbox.md",
-                locator: "mac_inbox",
-                linkTarget: "mac_inbox"
+                locator: "mac_inbox"
             ),
             CaptureCompletionCandidate(
                 replacement: "[[sase_cleanup#^no-idle]]",
@@ -821,11 +821,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "In Progress",
                 statusType: "IN_PROGRESS",
                 text: "Stop idling when no agents run",
+                cursorAfter: 25,
+                linkTarget: "sase_cleanup",
                 group: "in_progress",
                 notePath: "sase_cleanup.md",
-                locator: "sase_cleanup",
-                linkTarget: "sase_cleanup",
-                cursorAfter: 25
+                locator: "sase_cleanup"
             ),
             CaptureCompletionCandidate(
                 replacement: "[[cash#^meals]]",
@@ -835,11 +835,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Next",
                 statusType: "ON_HOLD",
                 text: "Plan meals",
+                cursorAfter: 15,
+                linkTarget: "cash",
                 group: "next",
                 notePath: "cash.md",
-                locator: "cash",
-                linkTarget: "cash",
-                cursorAfter: 15
+                locator: "cash"
             ),
             CaptureCompletionCandidate(
                 replacement: "[[projects/shopping#^weekly-list-with-a-very-long-block-id]]",
@@ -850,11 +850,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusType: "TODO",
                 text: "Buy the weekly list for the very long quarterly household spending review",
                 section: "Lists",
+                cursorAfter: 60,
+                linkTarget: "projects/shopping",
                 group: "open",
                 notePath: "projects/shopping.md",
-                locator: "projects/shopping",
-                linkTarget: "projects/shopping",
-                cursorAfter: 60
+                locator: "projects/shopping"
             ),
             CaptureCompletionCandidate(
                 replacement: "[[sase#^hidden-chore]]",
@@ -864,12 +864,12 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Todo",
                 statusType: "TODO",
                 text: "Hidden housekeeping",
+                cursorAfter: 24,
+                linkTarget: "sase",
                 group: "open",
                 notePath: "sase.md",
                 locator: "sase",
-                linkTarget: "sase",
-                hidden: true,
-                cursorAfter: 24
+                hidden: true
             ),
             CaptureCompletionCandidate(
                 replacement: "",
@@ -879,10 +879,10 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Todo",
                 statusType: "TODO",
                 text: "Second twin",
+                linkTarget: "twin",
                 group: "open",
                 notePath: "twin.md",
                 locator: "twin",
-                linkTarget: "twin",
                 disabledReason: "duplicate block ID ^twin in twin.md"
             ),
             CaptureCompletionCandidate(
@@ -894,11 +894,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusType: "DONE",
                 text: "Done deed",
                 section: "Home",
+                cursorAfter: 19,
+                linkTarget: "home",
                 group: "completed",
                 notePath: "home.md",
-                locator: "home",
-                linkTarget: "home",
-                cursorAfter: 19
+                locator: "home"
             ),
             CaptureCompletionCandidate(
                 replacement: "",
@@ -908,11 +908,11 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Cancelled",
                 statusType: "CANCELLED",
                 text: "Old cancelled chore without an id",
+                linkTarget: "home",
                 blockIDSuggestions: ["old-cancelled-chore"],
                 group: "completed",
                 notePath: "home.md",
-                locator: "home",
-                linkTarget: "home"
+                locator: "home"
             ),
         ]
     }
