@@ -153,9 +153,8 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         model.plainDraft = "Follow up (( changed"
         model.acceptPickerRow(id: "sase_cleanup.md|1:fa53e656", submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "Follow up (( changed")
-        XCTAssertTrue(
-            model.statusText.contains("Draft changed") || model.pickerVisible
-        )
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Draft changed — reopen the task picker")
     }
 
     func testHistoryPromptCarriesAllowClosed() {

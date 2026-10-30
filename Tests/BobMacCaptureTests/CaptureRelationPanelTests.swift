@@ -1564,7 +1564,7 @@ final class CaptureRelationPanelTests: XCTestCase {
         )
 
         model.selectRelationLabelSuggestion(key: "duplicate of")
-        XCTAssertEqual(model.relationLabelPromptBadgeText, "1 link")
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "one-off · 1 link")
     }
 
     func testTypedRefusedCancelLabelKeepsItsBadgeAndShowsBobMessage() throws {

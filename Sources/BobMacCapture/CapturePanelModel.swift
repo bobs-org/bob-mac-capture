@@ -6882,6 +6882,9 @@ final class CapturePanelModel: ObservableObject {
         if needs("task_complete") {
             return .taskComplete
         }
+        if needs("wikilink_task") {
+            return .wikilinkTask
+        }
         if needs("dependency_target") {
             return .dependencyTarget
         }
@@ -13253,7 +13256,7 @@ final class CapturePanelModel: ObservableObject {
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
-            "dependency_target", "task_complete", "block_id",
+            "dependency_target", "task_complete", "wikilink_task", "block_id",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true

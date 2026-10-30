@@ -6778,7 +6778,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.pomodoroNamePromptWarnings.map(\.label), ["SNACK"])
         XCTAssertEqual(
             model.pomodoroNamePromptWarnings.first?.message,
-            "SNACK isn't one of your configured themes"
+            "SNACK isn't one of your types; tasks here keep their own types"
         )
         model.updatePomodoroNamePromptName("BUI")
         XCTAssertTrue(model.pomodoroNamePromptWarnings.isEmpty)

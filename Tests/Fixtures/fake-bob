@@ -1718,6 +1718,16 @@ JSON
       # resolves it to the canonical route (real `bob capture-parse`
       # output).
       cat "${fixtures_dir}/capture-parse-ref-alias.json"
+    elif [[ "${draft}" == "Follow up (("* ]]; then
+      # `((query` is a capture-complete field. Advertise `wikilink_task` so
+      # the app requests completion and skips the doomed live dry-run, same
+      # as `!` / `task_complete`.
+      draft_bytes=$(printf '%s' "${draft}" | wc -c)
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"body":'
+      json_string "${draft}"
+      printf ',"mode":"task","needs":["wikilink_task"],"spans":[{"start":10,"end":%s,"kind":"interactive_placeholder"}],"diagnostics":[]}\n' "${draft_bytes}"
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -3791,9 +3801,42 @@ JSON
       # ID assignment via `--note-path` (the `!` Complete, `&` dependency,
       # and `((` Task Wikilink flows): splice Bob's backend-formatted
       # replacements verbatim. The locator strips the `.md` extension; it
-      # never echoes the file name.
+      # never echoes the file name. A `-old` block ID omits
+      # `blocked_task_replacement` / `relation_*_replacement` so the app
+      # keeps the prompt open with the upgrade copy, matching
+      # `FAKE_BOB_WIKILINK_OLD` for `wikilink_replacement`.
       locator="${note_path%.md}"
       updated_ref="8:${block_id}-updated"
+      if [[ "${block_id}" == *-old ]]; then
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": ${dry_run},
+  "relative_target": "${note_path}",
+  "note_path": "${note_path}",
+  "block_id": "${block_id}",
+  "line": 8,
+  "ref": "${updated_ref}",
+  "dependency_replacement": "&${locator}:${block_id}",
+  "complete_replacement": "!${locator}:${block_id}",
+  "wikilink_replacement": "[[${locator}#^${block_id}]]",
+  "task": {
+    "ref": "${updated_ref}",
+    "line": 8,
+    "block_id": "${block_id}",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Plan the handoff",
+    "section": "Tasks",
+    "depth": 1,
+    "child_count": 0
+  }
+}
+JSON
+        exit 0
+      fi
       cat <<JSON
 {
   "ok": true,
