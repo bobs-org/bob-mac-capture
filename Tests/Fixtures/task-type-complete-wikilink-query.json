@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"cursor":14,"replacement":{"start":10,"end":15},"context":"wikilink_task","candidates":[],"query":"fo","picker":{"kind":"wikilink_task","scope":"vault","scope_token":"((","marker_range":{"start":10,"end":15},"trigger_removal_range":{"start":11,"end":15}}}

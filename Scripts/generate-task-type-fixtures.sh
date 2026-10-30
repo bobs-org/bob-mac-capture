@@ -15,8 +15,9 @@
 #
 # Fixtures cover empty/leading/trailing/child parse, prefix and literal
 # names, configured/hidden-exact/history-only/typed-unknown completion,
-# new and existing subjects, set/cleared/kept captures, and all five
-# relocation outcomes. Commit operations affect only the scratch vault.
+# new and existing subjects, set/cleared/kept captures, all five
+# relocation outcomes, and a Task Wikilink plus trailing `t:` coexistence
+# case. Commit operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
@@ -209,6 +210,7 @@ parse 'Fix it t:nope' task-type-parse-unknown.json
 parse 'Ask about t:fix today' task-type-parse-midline.json
 parse '@dev t:' task-type-parse-routed-empty.json
 parse '@dev:current t:' task-type-parse-existing.json
+parse 'Follow up ((foo t:' task-type-parse-wikilink-coexist.json
 
 # Completion: empty leading/trailing, prefix, literal, new/existing subjects.
 complete 't:' task-type-complete-empty.json
@@ -220,6 +222,8 @@ complete '@dev:inherited t:' task-type-complete-existing-inherited.json
 complete $'Parent task\n- check the lexer t:fi' task-type-complete-child.json
 complete $'Parent task\n t:fi' task-type-complete-second-line.json
 complete_at '@de t:fix' 3 task-type-complete-adjacent-route.json
+complete 'Follow up ((foo t:' task-type-complete-wikilink-coexist.json
+complete_at 'Follow up ((foo t:' 14 task-type-complete-wikilink-query.json
 
 # Hidden-exact: hide FIX from Recent, then complete empty vs exact.
 "$bob_bin" themes hide FIX --via fixture --format json >/dev/null
@@ -248,10 +252,7 @@ cat > "$day_file" <<'MD'
 MD
 capture_dry task-type-capture-set-existing.json '^setx:fix-x' 't:fix'
 
-# Relocations: seed a dedicated day file per outcome, then commit retype.
-# Debug bob panics in pomodoro-block resolution on a dry-run rename
-# (`changed or created pomodoro needs an explicit before`); commit
-# matches the landed existing-task tests and still yields type_relocation.
+# Relocations: seed a dedicated day file per outcome, then dry-run retype.
 relocate() {
   local stem="$1"
   local id="$2"
@@ -261,7 +262,7 @@ relocate() {
 ## Pomodoros
 $day
 MD
-  capture_commit "$out" "^${stem}:${id}" "t:fix"
+  capture_dry "$out" "^${stem}:${id}" "t:fix"
 }
 
 relocate ren fix-r $'- [ ] (**0900-1000**) — BUILD\n  - [[ren#^fix-r]]\n' \

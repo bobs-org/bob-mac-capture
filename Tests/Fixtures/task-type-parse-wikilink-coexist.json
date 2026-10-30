@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Follow up ((foo t:","body":"Follow up ((foo","mode":"incomplete","route":null,"section":null,"block_id":null,"needs":["task_type"],"spans":[{"start":10,"end":12,"kind":"wikilink_task_delimiter"},{"start":12,"end":16,"kind":"wikilink_task_query"},{"start":16,"end":18,"kind":"task_type"}],"diagnostics":[]}

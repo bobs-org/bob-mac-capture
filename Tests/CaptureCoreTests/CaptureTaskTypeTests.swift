@@ -155,6 +155,68 @@ final class CaptureTaskTypeTests: XCTestCase {
         }
     }
 
+    func testRelocationFixturesRejectCreatedUnchangedLie() throws {
+        let rename = try decodeSuccess("task-type-capture-rename-entry.json")
+        XCTAssertEqual(rename.dryRun, true)
+        XCTAssertEqual(rename.pomodoroName, "FIX")
+        XCTAssertEqual(rename.createsPomodoro, false)
+        XCTAssertFalse(rename.pomodoroBlocks.contains(where: \.created), "rename_entry")
+        XCTAssertEqual(rename.pomodoroBlocks.first?.lines.first?.change, .changed)
+        XCTAssertFalse(
+            rename.pomodoroBlocks.allSatisfy { $0.lines.allSatisfy { $0.change == .unchanged } },
+            "rename_entry must not report every line unchanged")
+
+        let placeholder = try decodeSuccess("task-type-capture-rename-placeholder.json")
+        XCTAssertEqual(placeholder.dryRun, true)
+        XCTAssertEqual(placeholder.pomodoroName, "FIX")
+        XCTAssertEqual(placeholder.createsPomodoro, false)
+        XCTAssertFalse(
+            placeholder.pomodoroBlocks.contains(where: \.created), "rename_placeholder")
+        XCTAssertEqual(placeholder.pomodoroBlocks.first?.lines.first?.change, .changed)
+
+        let create = try decodeSuccess("task-type-capture-create-below.json")
+        XCTAssertEqual(create.dryRun, true)
+        XCTAssertEqual(create.pomodoroName, "FIX")
+        XCTAssertEqual(create.createsPomodoro, true)
+        let created = try XCTUnwrap(create.pomodoroBlocks.first(where: { $0.name == "FIX" }))
+        XCTAssertTrue(created.created)
+        XCTAssertTrue(created.lines.contains(where: { $0.change == .added }))
+        XCTAssertFalse(created.lines.allSatisfy { $0.change == .unchanged })
+        let source = try XCTUnwrap(create.pomodoroBlocks.first(where: { $0.name == "BUILD" }))
+        XCTAssertFalse(source.created)
+        XCTAssertTrue(source.lines.contains(where: { $0.change == .removed }))
+
+        let move = try decodeSuccess("task-type-capture-move-to.json")
+        XCTAssertEqual(move.dryRun, true)
+        XCTAssertEqual(move.pomodoroName, "FIX")
+        let fromBuild = try XCTUnwrap(move.pomodoroBlocks.first(where: { $0.name == "BUILD" }))
+        XCTAssertTrue(fromBuild.lines.contains(where: { $0.change == .removed }))
+        let toFix = try XCTUnwrap(move.pomodoroBlocks.first(where: { $0.name == "FIX" }))
+        XCTAssertTrue(toFix.lines.contains(where: { $0.change == .added }))
+    }
+
+    func testTypeMarkerInsideTaskWikilinkOwnsTheCaret() throws {
+        let parsed = try decodeParse("task-type-parse-wikilink-coexist.json")
+        XCTAssertEqual(parsed.input, "Follow up ((foo t:")
+        XCTAssertTrue(parsed.spans.contains(where: { $0.kind == "wikilink_task_delimiter" }))
+        let typeSpan = try XCTUnwrap(parsed.spans.first(where: { $0.kind == "task_type" }))
+        XCTAssertEqual(typeSpan.start, 16)
+        XCTAssertEqual(typeSpan.end, 18)
+
+        let typeComplete = try decodeCompletion("task-type-complete-wikilink-coexist.json")
+        XCTAssertEqual(typeComplete.context, "task_type")
+        XCTAssertEqual(typeComplete.replacement.start, 16)
+        XCTAssertEqual(typeComplete.replacement.end, 18)
+        XCTAssertTrue(
+            typeComplete.candidates.contains(where: { $0.replacement.hasPrefix("t:") }))
+
+        let query = try decodeCompletion("task-type-complete-wikilink-query.json")
+        XCTAssertEqual(query.context, "wikilink_task")
+        XCTAssertEqual(query.query, "fo")
+        XCTAssertEqual(query.replacement.start, 10)
+        XCTAssertEqual(query.replacement.end, 15)
+    }
+
     func testOlderCaptureOmitsRelocation() throws {
         let success = try decodeSuccessJSON(
             """
