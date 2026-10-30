@@ -30,10 +30,10 @@ struct HotKeyConfiguration: Equatable, Hashable {
         displayName: "Command-\\"
     )
 
-    static let refsCommandSlash = HotKeyConfiguration(
-        keyCode: UInt32(kVK_ANSI_Slash),
+    static let refsCommandRightBracket = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_RightBracket),
         modifiers: UInt32(cmdKey),
-        displayName: "Command-/"
+        displayName: "Command-]"
     )
 
     static let highlightsCommandO = HotKeyConfiguration(

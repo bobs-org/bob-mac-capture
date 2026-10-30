@@ -50,11 +50,11 @@ struct SettingsView: View {
                     isOn: $settings.refsHotkeyEnabled
                 )
                 Toggle(
-                    "Also open Bob Refs with Command-/",
+                    "Also open Bob Refs with Command-]",
                     isOn: $settings.refsAliasHotkeyEnabled
                 )
                 Text(
-                    "Command-/ is global: while this is on, other apps never receive Command-/."
+                    "Command-] is global: while this is on, other apps never receive Command-]."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

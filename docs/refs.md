@@ -504,7 +504,7 @@ link finishes if the panel hides.
 ### Opening Bob Refs
 
 - Control-Shift-Command-O toggles Refs; Settings can turn it off.
-- Command-/ also toggles Refs. It is on by default (Settings › References) and is independent of the Control-Shift-Command-O toggle.
+- Command-] also toggles Refs. It is on by default (Settings › References) and is independent of the Control-Shift-Command-O toggle.
 - While Highlights is frontmost, Command-O opens Bob Refs instead of
   Highlights' Open… dialog. Settings can switch the takeover to
   Control-O or turn it Off. The takeover registers only while

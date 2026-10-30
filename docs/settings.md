@@ -32,7 +32,7 @@ One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), R
 | Control | Default | Notes |
 | --- | --- | --- |
 | Open Bob Refs with Control-Shift-Command-O | on | Global Refs toggle. Off unregisters that chord. |
-| **Also open Bob Refs with Command-/** | on | Global. Re-registers immediately when toggled. Off unregisters only that chord. Editors' Command-/ (Toggle comment) stops working while it is on. |
+| **Also open Bob Refs with Command-]** | on | Global. Re-registers immediately when toggled. Off unregisters only that chord. Command-] Forward (browsers, Finder) and Indent (editors) stop working in other apps while it is on. |
 | Preview highlights per page | 5 | Range 1–20 (`RefsNotesPage.sizeRange`). Control-D at the bottom of the inspector preview shows this many more. Also `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`. |
 | In Highlights, open Bob Refs with | Command-O | `Off`, `Command-O`, or `Control-O`. Registers only while Highlights or the override app is frontmost. Highlights' File › Open… keeps its own dialog. |
 | In Highlights, show open tabs with | Command-T | `Command-T`, `Shift-Command-O`, `Command-E`, or `Off`. Registers only for Highlights or the override app. Command-T steps aside while Bob Refs is visible so its in-panel Tabs toggle works. |

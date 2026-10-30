@@ -510,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyRegisteredHotkeyStatus()
     }
 
-    /// Registers the global Refs alias (Command-/) when its setting is
+    /// Registers the global Refs alias (Command-]) when its setting is
     /// on. Success names every registered Refs chord on the Diagnostics
     /// line; a failure is reported as a Refs alias conflict. The primary
     /// chord re-registers only at launch and on Recheck Bob; the alias
@@ -561,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             names.append(HotKeyConfiguration.refs.displayName)
         }
         if hotKeyRegistry.isRegistered(.refsAlias) {
-            names.append(HotKeyConfiguration.refsCommandSlash.displayName)
+            names.append(HotKeyConfiguration.refsCommandRightBracket.displayName)
         }
         guard !names.isEmpty else {
             return nil

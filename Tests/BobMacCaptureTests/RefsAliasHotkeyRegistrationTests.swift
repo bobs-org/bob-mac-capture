@@ -26,7 +26,7 @@ final class RefsAliasHotkeyRegistrationTests: XCTestCase {
         XCTAssertTrue(errors.isEmpty)
     }
 
-    func testSyncRegistersCommandSlashUnderId9() {
+    func testSyncRegistersCommandRightBracketUnderId9() {
         let registrar = RefsAliasFakeRegistrar()
         let registry = HotKeyRegistry(registrar: registrar) { _ in }
         var errors: [String] = []
@@ -39,11 +39,11 @@ final class RefsAliasHotkeyRegistrationTests: XCTestCase {
         XCTAssertEqual(HotKeyAction.refsAlias.rawValue, 9)
         XCTAssertEqual(
             registrar.configuration(for: .refsAlias),
-            .refsCommandSlash
+            .refsCommandRightBracket
         )
         XCTAssertEqual(
             registrar.configuration(for: .refsAlias)?.keyCode,
-            UInt32(kVK_ANSI_Slash)
+            UInt32(kVK_ANSI_RightBracket)
         )
         XCTAssertEqual(
             registrar.configuration(for: .refsAlias)?.modifiers,

@@ -39,7 +39,7 @@ final class HotKeyRegistryTests: XCTestCase {
         )
         try registry.register(
             .refsAlias,
-            configuration: .refsCommandSlash
+            configuration: .refsCommandRightBracket
         )
 
         XCTAssertEqual(
@@ -285,16 +285,16 @@ final class HotKeyRegistryTests: XCTestCase {
             "Command-\\"
         )
         XCTAssertEqual(
-            HotKeyConfiguration.refsCommandSlash.keyCode,
-            UInt32(kVK_ANSI_Slash)
+            HotKeyConfiguration.refsCommandRightBracket.keyCode,
+            UInt32(kVK_ANSI_RightBracket)
         )
         XCTAssertEqual(
-            HotKeyConfiguration.refsCommandSlash.modifiers,
+            HotKeyConfiguration.refsCommandRightBracket.modifiers,
             UInt32(cmdKey)
         )
         XCTAssertEqual(
-            HotKeyConfiguration.refsCommandSlash.displayName,
-            "Command-/"
+            HotKeyConfiguration.refsCommandRightBracket.displayName,
+            "Command-]"
         )
     }
 
@@ -343,7 +343,7 @@ final class HotKeyRegistryTests: XCTestCase {
     }
 
     func testRefsAliasDoesNotCollideWithOtherPresets() {
-        let alias = HotKeyConfiguration.refsCommandSlash
+        let alias = HotKeyConfiguration.refsCommandRightBracket
         let others: [HotKeyConfiguration] =
             [
                 .production,

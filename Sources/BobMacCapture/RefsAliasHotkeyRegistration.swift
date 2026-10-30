@@ -1,4 +1,4 @@
-/// Registers the global Bob Refs alias hotkey (Command-/) when its
+/// Registers the global Bob Refs alias hotkey (Command-]) when its
 /// setting is on, and unregisters it when off. Registering replaces
 /// only the alias key: a failure leaves every other registration intact
 /// and is reported, never thrown.
@@ -18,11 +18,11 @@ enum RefsAliasHotkeyRegistration {
         do {
             try registry.register(
                 .refsAlias,
-                configuration: .refsCommandSlash
+                configuration: .refsCommandRightBracket
             )
             return true
         } catch {
-            let chord = HotKeyConfiguration.refsCommandSlash.displayName
+            let chord = HotKeyConfiguration.refsCommandRightBracket.displayName
             onError("Refs alias hotkey conflict: \(chord) (\(error))")
             return false
         }
