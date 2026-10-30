@@ -792,7 +792,21 @@ final class NotificationService: NSObject, ObservableObject {
             .map { "\n\($0.notificationDetail)" } ?? ""
         let projectNote = CaptureProjectNotePresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)\(projectNote)"
+        let typeSuffix: String = {
+            if CapturePomodoroLinkPresentation(capture: capture) != nil
+                || CaptureTogglePresentation(capture: capture) != nil
+            {
+                return ""
+            }
+            guard let change = capture.taskTheme,
+                  change.action == "set" || change.action == "kept",
+                  let name = change.theme?.name, !name.isEmpty
+            else {
+                return ""
+            }
+            return "\ntype \(name)"
+        }()
+        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)\(projectNote)\(typeSuffix)"
     }
 
     nonisolated private static func startedSuffix(for capture: CaptureCommandSuccess) -> String {

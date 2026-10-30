@@ -1593,6 +1593,41 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testTaskTypeSetNotificationAppendsTypeSuffix() throws {
+        let success = try closeSuccessFixture("task-type-capture-set.json")
+        let content = NotificationService.successContent(captures: [success])
+        XCTAssertTrue(content.body.contains("type FIX"), content.body)
+        XCTAssertFalse(content.body.contains("would set type"), content.body)
+    }
+
+    func testTaskTypeKeptNotificationAppendsTypeSuffix() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "task",
+                routeLabel: "sase.md",
+                target: "/tmp/bob/sase.md",
+                text: "Write docs",
+                taskTheme: CaptureTaskThemeChange(
+                    action: "kept",
+                    theme: CapturePomodoroThemeRef(key: "write", name: "WRITE")
+                )
+            )
+        ])
+        XCTAssertTrue(content.body.contains("type WRITE"), content.body)
+    }
+
+    func testTaskTypeLinkNotificationOmitsDuplicateTypeSuffix() throws {
+        let success = try closeSuccessFixture("task-type-capture-kept-inherited.json")
+        let content = NotificationService.successContent(captures: [success])
+        XCTAssertFalse(content.body.hasSuffix("\ntype WRITE"), content.body)
+    }
+
+    func testTaskTypeClearedNotificationOmitsTypeSuffix() throws {
+        let success = try closeSuccessFixture("task-type-capture-cleared.json")
+        let content = NotificationService.successContent(captures: [success])
+        XCTAssertFalse(content.body.contains("\ntype "), content.body)
+    }
+
     func testTaskDependencyNotificationNamesOwnerAndRelationship() throws {
         let success = try closeSuccessFixture("task-dependency-preview-existing-owner-consumed.json")
         let content = NotificationService.successContent(captures: [success])
@@ -1615,7 +1650,8 @@ final class NotificationServiceTests: XCTestCase {
         pomodoroShift: PomodoroShiftSummary? = nil,
         relativeTarget: String? = nil,
         dayFile: String? = nil,
-        projectNote: CaptureProjectNoteSummary? = nil
+        projectNote: CaptureProjectNoteSummary? = nil,
+        taskTheme: CaptureTaskThemeChange? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -1636,7 +1672,8 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroStart: pomodoroStart,
             pomodoroAdjust: pomodoroAdjust,
             pomodoroShift: pomodoroShift,
-            projectNote: projectNote
+            projectNote: projectNote,
+            taskTheme: taskTheme
         )
     }
 

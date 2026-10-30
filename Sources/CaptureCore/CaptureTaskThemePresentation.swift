@@ -69,6 +69,61 @@ public enum CaptureTaskThemePresentation {
                 return "would clear type · \(inherited)"
             }
             return "type cleared · \(inherited)"
+        case "kept":
+            guard let theme = change.theme else {
+                return nil
+            }
+            let label = keptSourceLabel(for: change)
+            if isDryRun {
+                return "would keep type \(theme.name) · \(label)"
+            }
+            return "type \(theme.name) · \(label)"
+        default:
+            return nil
+        }
+    }
+
+    /// Short source label for a `kept` change: `this task`, `from <stem>`,
+    /// `default type`, `reading task`, or `no default here`.
+    public static func keptSourceLabel(for change: CaptureTaskThemeChange) -> String {
+        if let previous = change.previous, let theme = change.theme, previous.key == theme.key {
+            return "this task"
+        }
+        guard let suggestion = change.inherited else {
+            return "no default here"
+        }
+        switch suggestion.source {
+        case "task":
+            return "this task"
+        case "reading":
+            return "reading task"
+        case "default":
+            return "default type"
+        case "note":
+            return suggestion.label.isEmpty ? "from note" : suggestion.label
+        default:
+            return suggestion.label.isEmpty ? "no default here" : suggestion.label
+        }
+    }
+
+    /// Ledger relocation copy from Bob's `type_relocation` outcome. Unknown
+    /// outcomes return nil so rendering stays on the type line.
+    public static func relocationLine(for relocation: CaptureTypeRelocation?) -> String? {
+        guard let relocation, !relocation.to.isEmpty else {
+            return nil
+        }
+        let from = relocation.from.flatMap { $0.isEmpty ? nil : $0 } ?? "entry"
+        switch relocation.outcome {
+        case "rename_entry":
+            return "\(from) → \(relocation.to) · running entry renamed"
+        case "append_component":
+            return "\(from) → \(relocation.to) · running entry shared"
+        case "move_to":
+            return "moved under \(relocation.to)"
+        case "rename_placeholder":
+            return "\(from) → \(relocation.to) · planned entry renamed"
+        case "create_below":
+            return "moved under new \(relocation.to)"
         default:
             return nil
         }

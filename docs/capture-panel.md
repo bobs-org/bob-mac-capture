@@ -68,8 +68,13 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app
   validates UTF-8 byte ranges and ignores a malformed span set instead of applying a
   partial grammar view. Bob's `wikilink_task_delimiter` span paints `((` and `))` with
-  the same delimiter color as Obsidian wikilinks. Every span kind — capture markers and
-  the five Obsidian wikilink
+  the same delimiter color as Obsidian wikilinks. Any span that carries `themes` paints Bob's hue tint on each
+  name sub-range (UTF-8 offsets, with malformed ranges skipped). A `task_type` span
+  paints `t:` and quotes in tertiary label color and the type name in normal
+  foreground over the tint; an unconfigured name stays neutral while the caret is
+  in it, then takes the dashed orange underline. Typing `t:` at either edge of a
+  line, including a bare `t:` and a child `- t:`, opens the `task_type` menu after
+  the usual 50 ms debounce. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`

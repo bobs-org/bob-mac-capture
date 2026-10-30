@@ -81,6 +81,8 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let previewAccessibilitySummary: String
     /// Optional task-type line, e.g. `type → FIX · sase_blog suggests WRITE`.
     public let taskThemeLine: String?
+    /// Optional ledger relocation, e.g. `moved under FIX`.
+    public let typeRelocationLine: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard let rawDirection = capture.toggleDirection,
@@ -235,10 +237,15 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
 
         taskThemeLine = CaptureTaskThemePresentation.line(
             for: capture.taskTheme, isDryRun: capture.dryRun)
+        typeRelocationLine = CaptureTaskThemePresentation.relocationLine(
+            for: capture.typeRelocation)
 
         var announcementParts = ["\(statusVerb): \(routeLabel), \(statusPhrase)"]
         if let taskThemeLine {
             announcementParts.append(taskThemeLine)
+        }
+        if let typeRelocationLine {
+            announcementParts.append(typeRelocationLine)
         }
         if let relocationText {
             announcementParts.append(relocationText)
@@ -280,6 +287,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         if let taskThemeLine {
             bodyLines.append(taskThemeLine)
         }
+        if let typeRelocationLine {
+            bodyLines.append(typeRelocationLine)
+        }
         if !chips.isEmpty {
             bodyLines.append(chips.joined(separator: " \u{00b7} "))
         }
@@ -305,6 +315,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
         if let taskThemeLine {
             previewParts.append(taskThemeLine)
+        }
+        if let typeRelocationLine {
+            previewParts.append(typeRelocationLine)
         }
         previewParts.append(contentsOf: chips)
         previewAccessibilitySummary = previewParts.joined(separator: ", ")

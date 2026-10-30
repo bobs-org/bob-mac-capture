@@ -1409,7 +1409,10 @@ final class CapturePanelModel: ObservableObject {
         from success: CaptureCommandSuccess
     ) -> [StructuredCaptureWarning] {
         let themeSpans = (latestParse?.spans ?? []).filter {
-            $0.kind == "pomodoro_name" || $0.kind == "task_toggle_pomodoro_name"
+            $0.kind == "pomodoro_name"
+                || $0.kind == "task_toggle_pomodoro_name"
+                || $0.kind == "task_type"
+                || $0.kind == "task_type_marker"
         }.flatMap(\.themes)
         return CaptureUnconfiguredThemePresentation.visibleWarnings(
             from: success.warnings,
@@ -7152,6 +7155,10 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
 
+        if completionResponse.context == "task_type", candidate.refused != nil {
+            return true
+        }
+
         if completionResponse.context == "task", candidate.requiresBlockID {
             presentTaskIDPrompt(
                 candidate: candidate,
@@ -10051,6 +10058,18 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    func taskTypeMenuPresentation() -> CaptureTaskTypeMenuPresentation? {
+        guard let completionResponse, completionResponse.context == "task_type" else {
+            return nil
+        }
+        return CaptureTaskTypeMenuPresentation(
+            response: completionResponse,
+            selectedIndex: selectedCompletionIndex,
+            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey,
+            today: CaptureTaskTypeMenuPresentation.todayISODate()
+        )
+    }
+
     func toggleSelectedCompletionThemeVisibility() {
         guard let candidate = selectedHistoryThemeCandidate,
               !isWritingThemeVisibility,
@@ -10065,7 +10084,11 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        let hidden = temporarilyHiddenThemeKey != theme.key
+        let currentlyHidden = captureThemeCurrentlyHidden(
+            candidate: candidate,
+            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey
+        )
+        let hidden = !currentlyHidden
         let draftSnapshot = plainDraft
         let requestID = UUID()
         activeThemeVisibilityRequestID = requestID
@@ -10082,8 +10105,9 @@ final class CapturePanelModel: ObservableObject {
                     self.activeThemeVisibilityRequestID = nil
                     self.isWritingThemeVisibility = false
                     let draftIsUnchanged = self.plainDraft == draftSnapshot
-                    self.temporarilyHiddenThemeKey = hidden && draftIsUnchanged ? theme.key : nil
-                    self.hiddenThemeDraftSnapshot = hidden && draftIsUnchanged ? draftSnapshot : nil
+                    let overrideActive = hidden != candidate.hidden && draftIsUnchanged
+                    self.temporarilyHiddenThemeKey = overrideActive ? theme.key : nil
+                    self.hiddenThemeDraftSnapshot = overrideActive ? draftSnapshot : nil
                     self.statusText = hidden
                         ? "\(name) hidden from Recent suggestions"
                         : "\(name) restored to Recent suggestions"
@@ -10106,14 +10130,22 @@ final class CapturePanelModel: ObservableObject {
 
     private var selectedHistoryThemeCandidate: CaptureCompletionCandidate? {
         guard let completionResponse,
-              completionResponse.context == "pomodoro_name"
-                || completionResponse.context == "pomodoro_start_name",
               completionResponse.candidates.indices.contains(selectedCompletionIndex)
         else {
             return nil
         }
         let candidate = completionResponse.candidates[selectedCompletionIndex]
-        guard candidate.origin == "history",
+        let hideableOrigin: Bool
+        switch completionResponse.context {
+        case "pomodoro_name", "pomodoro_start_name":
+            hideableOrigin = candidate.origin == "history"
+        case "task_type":
+            hideableOrigin = candidate.origin == "history" || candidate.origin == "configured"
+        default:
+            return nil
+        }
+        guard hideableOrigin,
+              candidate.origin != "typed",
               candidate.name?.isEmpty == false,
               !candidate.themes.isEmpty
         else {
@@ -10123,12 +10155,17 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func completionQueryText() -> String {
-        guard let completionResponse,
-              let range = stringRange(
-                  in: plainDraft,
-                  start: completionResponse.replacement.start,
-                  end: min(completionResponse.cursor, completionResponse.replacement.end)
-              )
+        guard let completionResponse else {
+            return ""
+        }
+        if completionResponse.context == "task_type" {
+            return completionResponse.query ?? ""
+        }
+        guard let range = stringRange(
+            in: plainDraft,
+            start: completionResponse.replacement.start,
+            end: min(completionResponse.cursor, completionResponse.replacement.end)
+        )
         else {
             return ""
         }
@@ -13174,12 +13211,11 @@ final class CapturePanelModel: ObservableObject {
             if category.isItalic {
                 text[lower..<upper].inlinePresentationIntent = .emphasized
             }
-            // Theme tints wash Bob's hue behind each known component of a name.
-            // Unconfigured names take a dashed orange underline once the caret
-            // leaves the component, matching the Typing rule for unknown names.
-            if item.span.kind == "pomodoro_name"
-                || item.span.kind == "task_toggle_pomodoro_name"
-            {
+            // Theme tints wash Bob's hue behind each known component of a
+            // name, including `task_type` markers. Unconfigured names take
+            // a dashed orange underline once the caret leaves the
+            // component, matching the Typing rule for unknown names.
+            if !item.span.themes.isEmpty {
                 for theme in item.span.themes {
                     guard let start = theme.start,
                           let end = theme.end,
@@ -13223,6 +13259,12 @@ final class CapturePanelModel: ObservableObject {
                         continue
                     }
                     text[themeLower..<themeUpper].backgroundColor = tint
+                    if item.span.kind == "task_type"
+                        || item.span.kind == "task_type_marker"
+                    {
+                        text[themeLower..<themeUpper].foregroundColor =
+                            CaptureEditorPalette.color(for: .neutral)
+                    }
                 }
             }
         }
@@ -13256,7 +13298,7 @@ final class CapturePanelModel: ObservableObject {
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
-            "dependency_target", "task_complete", "wikilink_task", "block_id",
+            "dependency_target", "task_complete", "wikilink_task", "block_id", "task_type",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -13327,6 +13369,8 @@ final class CapturePanelModel: ObservableObject {
             "pomodoro_close_drop",
             "pomodoro_close_park",
             "pomodoro_start_drop",
+            "task_type",
+            "task_type_marker",
         ])
 
         return parse.spans.contains { span in

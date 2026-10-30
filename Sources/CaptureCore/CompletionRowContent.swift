@@ -22,6 +22,8 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case relationLabel
     case relationCancelLabel
     case relationCompleteLabel
+    case taskType
+    case taskTypeMarker
     case pomodoroStart
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -166,6 +168,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
     case "ref_url":
         // The whole reference URL token on a `ref` item renders as a link.
         return .link
+    case "task_type":
+        return .taskType
+    case "task_type_marker":
+        return .taskTypeMarker
     default:
         return .neutral
     }
@@ -214,6 +220,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case relationTo
     case relationFrom
     case relationLabel
+    case taskType
     case taskComplete
     case wikilinkNote
     case wikilinkHeading
@@ -240,6 +247,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "relation_to": self = .relationTo
         case "relation_from": self = .relationFrom
         case "relation_label": self = .relationLabel
+        case "task_type": self = .taskType
         case "task_complete": self = .taskComplete
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
@@ -921,6 +929,25 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts a link to this task."
 
+    case .taskType:
+        category = .taskType
+        symbolName = "tag"
+        contextLabel = "Task type"
+        primaryText = candidate.name ?? candidate.replacement
+        if isTypedTaskTypeRow(candidate) {
+            secondaryText = CaptureTaskTypeMenuPresentation.similarCaption(
+                similarTo: candidate.similarTo)
+            badges = [CaptureUnconfiguredThemePresentation.createBadge]
+            if candidate.refused != nil {
+                badges.append("Unavailable")
+            }
+            accessibilityHint = candidate.refused == nil
+                ? "Uses this typed type name."
+                : "Not one of your types."
+        } else {
+            accessibilityHint = "Sets this task type."
+        }
+
     case nil:
         category = .neutral
         symbolName = "text.cursor"
@@ -930,6 +957,7 @@ public func completionRowContent(
     }
 
     let themeContext = context == .pomodoroName || context == .pomodoroStartName
+        || context == .taskType
     let themeSwatches = themeContext
         ? candidate.themes.map { CaptureThemeSwatch($0) }
         : []
@@ -953,9 +981,18 @@ public func completionRowContent(
             badges.append(CaptureUnconfiguredThemePresentation.createBadge)
         }
     }
-    let isHistoryTheme = themeContext && candidate.origin == "history"
-    let isHiddenThemeGhost = isHistoryTheme
-        && candidate.themes.contains(where: { $0.key == temporarilyHiddenThemeKey })
+    let isHideableTheme =
+        ((context == .pomodoroName || context == .pomodoroStartName)
+            && candidate.origin == "history")
+        || (context == .taskType
+            && (candidate.origin == "history" || candidate.origin == "configured"))
+    let isHiddenThemeGhost = isHideableTheme
+        && captureThemeCurrentlyHidden(
+            candidate: candidate,
+            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey
+        )
+        && (candidate.themes.contains(where: { $0.key == temporarilyHiddenThemeKey })
+            || candidate.key == temporarilyHiddenThemeKey)
     if isHiddenThemeGhost {
         secondaryText = "Hidden · ⌃D undo"
         badges = []

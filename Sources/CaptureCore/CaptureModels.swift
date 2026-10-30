@@ -3729,8 +3729,13 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// array is an explicit instruction to open nothing.
     public let openNotes: [CaptureOpenNote]?
     /// Additive per-item task-theme change from an explicit named capture.
-    /// Older Bob omits it; malformed values decode as nil.
+    /// Older Bob omits it; malformed values decode as nil. `action` is
+    /// `set`, `cleared`, or `kept`.
     public let taskTheme: CaptureTaskThemeChange?
+    /// Additive ledger relocation so a retyped existing task's live Task
+    /// Link agrees with its new type. Older Bob omits it; malformed values
+    /// decode as nil.
+    public let typeRelocation: CaptureTypeRelocation?
 
     public init(
         ok: Bool,
@@ -3809,7 +3814,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         template: CaptureTemplateSummary? = nil,
         templateRow: CaptureTemplateRow? = nil,
         openNotes: [CaptureOpenNote]? = nil,
-        taskTheme: CaptureTaskThemeChange? = nil
+        taskTheme: CaptureTaskThemeChange? = nil,
+        typeRelocation: CaptureTypeRelocation? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -3888,6 +3894,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.templateRow = templateRow
         self.openNotes = openNotes?.filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
         self.taskTheme = taskTheme
+        self.typeRelocation = typeRelocation
     }
 
     public init(from decoder: Decoder) throws {
@@ -4071,6 +4078,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
         taskTheme =
             (try? container.decodeIfPresent(CaptureTaskThemeChange.self, forKey: .taskTheme)) ?? nil
+        typeRelocation =
+            (try? container.decodeIfPresent(CaptureTypeRelocation.self, forKey: .typeRelocation))
+            ?? nil
         if container.contains(.openNotes) {
             if try container.decodeNil(forKey: .openNotes) {
                 openNotes = []
@@ -4168,6 +4178,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case templateRow = "template_row"
         case openNotes = "open_notes"
         case taskTheme = "task_theme"
+        case typeRelocation = "type_relocation"
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the
@@ -6610,6 +6621,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// `Some(null)` (no suggestion) and a missing key both decode as nil.
     /// Older Bob omits it; missing keeps today's default.
     public let themeSuggestion: CaptureThemeSuggestion?
+    /// Additive `task_type` subject: `new` or `existing`. Older Bob omits
+    /// it; missing decodes as nil so other contexts stay unchanged.
+    public let subject: String?
 
     public init(
         ok: Bool,
@@ -6629,7 +6643,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         oneOff: Bool? = nil,
         relationCancel: CaptureCompletionRelationCancel? = nil,
         relationComplete: CaptureCompletionRelationComplete? = nil,
-        themeSuggestion: CaptureThemeSuggestion? = nil
+        themeSuggestion: CaptureThemeSuggestion? = nil,
+        subject: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -6649,6 +6664,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.relationCancel = relationCancel
         self.relationComplete = relationComplete
         self.themeSuggestion = themeSuggestion
+        self.subject = subject
     }
 
     public init(from decoder: Decoder) throws {
@@ -6685,6 +6701,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
                 CaptureThemeSuggestion.self,
                 forKey: .themeSuggestion
             )) ?? nil
+        subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6706,6 +6723,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case relationCancel = "relation_cancel"
         case relationComplete = "relation_complete"
         case themeSuggestion = "theme_suggestion"
+        case subject
     }
 
 }
@@ -7517,7 +7535,8 @@ public final class CaptureThemeSuggestionBox: Codable, Equatable, Sendable {
 /// Bob omits `task_theme` when nothing changed; malformed values decode as
 /// nil so they can never fail the capture decode.
 public struct CaptureTaskThemeChange: Codable, Equatable, Sendable {
-    /// `set` | `cleared`.
+    /// `set` | `cleared` | `kept`. Typed captures report `kept` when the
+    /// chosen type already matches the subject's field or inherited default.
     public let action: String
     public let theme: CapturePomodoroThemeRef?
     public let previous: CapturePomodoroThemeRef?
@@ -7551,6 +7570,36 @@ public struct CaptureTaskThemeChange: Codable, Equatable, Sendable {
         case theme
         case previous
         case inherited
+    }
+}
+
+/// Additive ledger relocation so a retyped existing task's live Task Link
+/// agrees with its new type. Older Bob omits it; malformed values decode
+/// as nil so they can never fail the capture decode.
+public struct CaptureTypeRelocation: Codable, Equatable, Sendable {
+    /// `rename_entry` | `append_component` | `move_to` |
+    /// `rename_placeholder` | `create_below`.
+    public let outcome: String
+    public let from: String?
+    public let to: String
+
+    public init(outcome: String = "", from: String? = nil, to: String = "") {
+        self.outcome = outcome
+        self.from = from
+        self.to = to
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        outcome = (try? container.decodeIfPresent(String.self, forKey: .outcome)) ?? ""
+        self.from = (try? container.decodeIfPresent(String.self, forKey: .from)) ?? nil
+        to = (try? container.decodeIfPresent(String.self, forKey: .to)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case outcome
+        case from
+        case to
     }
 }
 
@@ -7800,6 +7849,17 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     /// Older Bob omits both; missing decodes as false/nil.
     public let suggested: Bool
     public let suggestionLabel: String?
+    /// Additive `task_type` flag: true when this row is the subject's
+    /// current effective type. Distinct from Pomodoro `is_current`.
+    public let current: Bool
+    /// Additive `task_type` flag: true when this row is the inherited type.
+    public let inherited: Bool
+    /// Additive `task_type` effect: `set`, `clear`, or `keep`. Older Bob
+    /// and every other context omit it.
+    public let effect: String?
+    /// Additive `task_type` refusal: `type_not_configured` when the typed
+    /// row is refused. Warn-policy rows and older Bob omit it.
+    public let refused: String?
 
     public var id: String {
         [
@@ -7895,7 +7955,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         completesSource: Bool = false,
         configured: Bool = false,
         suggested: Bool = false,
-        suggestionLabel: String? = nil
+        suggestionLabel: String? = nil,
+        current: Bool = false,
+        inherited: Bool = false,
+        effect: String? = nil,
+        refused: String? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -7969,6 +8033,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.configured = configured
         self.suggested = suggested
         self.suggestionLabel = suggestionLabel
+        self.current = current
+        self.inherited = inherited
+        self.effect = effect
+        self.refused = refused
     }
 
     public init(from decoder: Decoder) throws {
@@ -8050,6 +8118,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         suggested = (try? container.decodeIfPresent(Bool.self, forKey: .suggested)) ?? false
         suggestionLabel =
             (try? container.decodeIfPresent(String.self, forKey: .suggestionLabel)) ?? nil
+        current = (try? container.decodeIfPresent(Bool.self, forKey: .current)) ?? false
+        inherited = (try? container.decodeIfPresent(Bool.self, forKey: .inherited)) ?? false
+        effect = (try? container.decodeIfPresent(String.self, forKey: .effect)) ?? nil
+        refused = (try? container.decodeIfPresent(String.self, forKey: .refused)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8125,6 +8197,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case configured
         case suggested
         case suggestionLabel = "suggestion_label"
+        case current
+        case inherited
+        case effect
+        case refused
     }
 }
 

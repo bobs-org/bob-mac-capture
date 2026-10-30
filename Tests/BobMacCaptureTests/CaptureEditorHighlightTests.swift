@@ -170,6 +170,140 @@ final class CaptureEditorHighlightTests: XCTestCase {
         XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
     }
 
+    func testTaskTypeNameTintLeavesSigilTertiary() throws {
+        let draft = "Fix it t:fix"
+        let theme = CapturePomodoroThemeRef(
+            key: "fix",
+            name: "FIX",
+            hue: .blue,
+            hueSource: "config",
+            configured: true,
+            start: 9,
+            end: 12
+        )
+        let spans = [
+            CaptureSpan(start: 7, end: 12, kind: "task_type", themes: [theme])
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(Self.strings(in: text, where: { $0.backgroundColor != nil }), ["fix"])
+        let tertiary = NSColor(CaptureEditorPalette.color(for: .taskType))
+        let sigil = Self.strings(in: text, where: { run in
+            guard let color = run.foregroundColor else {
+                return false
+            }
+            return NSColor(color) == tertiary
+        })
+        XCTAssertTrue(sigil.contains("t:"))
+        XCTAssertFalse(sigil.contains("fix"))
+    }
+
+    func testTaskTypeUnicodeOffsetsPaintNameOnly() throws {
+        let draft = "Fix 🧰 it t:fix"
+        let theme = CapturePomodoroThemeRef(
+            key: "fix",
+            name: "FIX",
+            hue: .blue,
+            hueSource: "config",
+            configured: true,
+            start: 14,
+            end: 17
+        )
+        let spans = [
+            CaptureSpan(start: 12, end: 17, kind: "task_type", themes: [theme])
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(Self.strings(in: text, where: { $0.backgroundColor != nil }), ["fix"])
+    }
+
+    func testUnknownTaskTypeDashedWhenCaretLeavesName() throws {
+        let draft = "Fix it t:nope"
+        let theme = CapturePomodoroThemeRef(
+            key: "nope",
+            name: "NOPE",
+            hueSource: "unconfigured",
+            known: false,
+            configured: false,
+            start: 9,
+            end: 13
+        )
+        let spans = [
+            CaptureSpan(start: 7, end: 13, kind: "task_type", themes: [theme])
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+        let dashed = NSUnderlineStyle([.single, .patternDash])
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text, parse: parse, draft: draft, ranges: ranges, cursorUTF8: 0)
+        )
+        XCTAssertEqual(Self.strings(in: text, where: { $0.underlineStyle == dashed }), ["nope"])
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
+    func testUnknownTaskTypeHasNoMarkWhileCaretIsInTheName() throws {
+        let draft = "Fix it t:nope"
+        let theme = CapturePomodoroThemeRef(
+            key: "nope",
+            name: "NOPE",
+            hueSource: "unconfigured",
+            known: false,
+            configured: false,
+            start: 9,
+            end: 13
+        )
+        let spans = [
+            CaptureSpan(start: 7, end: 13, kind: "task_type", themes: [theme])
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text, parse: parse, draft: draft, ranges: ranges, cursorUTF8: 11)
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.underlineStyle != nil }).isEmpty)
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
+    func testMalformedTaskTypeThemeRangeIsSkipped() throws {
+        let draft = "t:fix"
+        let theme = CapturePomodoroThemeRef(
+            key: "fix",
+            name: "FIX",
+            hue: .blue,
+            hueSource: "config",
+            configured: true,
+            start: 9,
+            end: 2
+        )
+        let spans = [
+            CaptureSpan(start: 0, end: 5, kind: "task_type", themes: [theme])
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
     func testUnconfiguredThemeHasNoMarkWhileCaretIsInTheName() throws {
         let draft = "Add bar @bob:theme-day-strip-bar#vibe=\n\nFix theme highlighting! @bob"
         let theme = CapturePomodoroThemeRef(

@@ -38,6 +38,14 @@ enum CapturePanelLayout {
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
+    static let taskTypeVisibleRows = 8
+    static let taskTypeRowHeight: CGFloat = 30
+    static let taskTypeHeaderHeight: CGFloat = 22
+    static let taskTypeFooterHeight: CGFloat = 28
+    static func taskTypeViewportHeight(rowCount: Int) -> CGFloat {
+        let rows = min(max(rowCount, 1), taskTypeVisibleRows)
+        return 12 + taskTypeHeaderHeight + CGFloat(rows) * taskTypeRowHeight + taskTypeFooterHeight
+    }
     static let stashVisibleRows = 5
     static let stashListPadding: CGFloat = 6
     static let stashRowSpacing: CGFloat = 2
@@ -386,6 +394,15 @@ struct CapturePanelView: View {
     @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
     @State private var measuredAuxiliaryContentHeight: CGFloat = 0
     @State private var measuredFooterHeight: CGFloat = 0
+
+    private var completionViewportHeight: CGFloat {
+        if model.completionResponse?.context == "task_type" {
+            return CapturePanelLayout.taskTypeViewportHeight(
+                rowCount: model.completionResponse?.candidates.count ?? 0
+            )
+        }
+        return CapturePanelLayout.completionViewportHeight
+    }
 
     var body: some View {
         agendaObservedContent
@@ -783,7 +800,7 @@ struct CapturePanelView: View {
             } else if model.completionVisible {
                 CompletionList(model: model)
                     .frame(width: 430)
-                    .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+                    .frame(maxHeight: completionViewportHeight, alignment: .top)
                     .padding(.leading, 14)
                     .layoutPriority(0)
                     .id(AuxiliarySection.completion)
@@ -2947,7 +2964,15 @@ private struct CompletionList: View {
                     // The File-under parent picker for a bare-URL reference
                     // draft headers its synthesized route list so the choice
                     // reads as a filing decision, not a destination edit.
-                    if model.fileUnderActive {
+                    if let presentation = model.taskTypeMenuPresentation() {
+                        CaptureTaskTypeMenuView(
+                            presentation: presentation,
+                            selectedIndex: model.selectedCompletionIndex
+                        ) { index in
+                            model.selectedCompletionIndex = index
+                            model.acceptSelectedCompletion()
+                        }
+                    } else if model.fileUnderActive {
                         Text("File under")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -2967,7 +2992,9 @@ private struct CompletionList: View {
                     }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
                     // context. Task-section rows stay a plain ungrouped list.
-                    if model.completionResponse?.context == "task" {
+                    if model.taskTypeMenuPresentation() != nil {
+                        EmptyView()
+                    } else if model.completionResponse?.context == "task" {
                         taskGroup(title: "Ready to use", rows: taskRows(requiresBlockID: false))
                         taskGroup(title: "Needs block ID", rows: taskRows(requiresBlockID: true))
                     } else {
@@ -2999,6 +3026,9 @@ private struct CompletionList: View {
     }
 
     private var listAccessibilityLabel: String {
+        if let presentation = model.taskTypeMenuPresentation() {
+            return presentation.listAccessibilityLabel
+        }
         guard let candidates = model.completionResponse?.candidates, !candidates.isEmpty else {
             return "Completion suggestions"
         }
@@ -4677,6 +4707,36 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder
+    private func taskTypePreviewRows(_ success: CaptureCommandSuccess) -> some View {
+        if let change = success.taskTheme,
+           let line = CaptureTaskThemePresentation.line(for: change, isDryRun: success.dryRun)
+        {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Type")
+                    .foregroundStyle(.secondary)
+                if let theme = change.theme {
+                    PomodoroThemePillView(name: theme.name, swatch: CaptureThemeSwatch(theme))
+                }
+                Text(line)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(line)
+        }
+        if let relocation = CaptureTaskThemePresentation.relocationLine(
+            for: success.typeRelocation)
+        {
+            Text(relocation)
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .accessibilityLabel(relocation)
+        }
+    }
+
+    @ViewBuilder
     private func standardPreviewItem(
         _ success: CaptureCommandSuccess,
         index: Int,
@@ -4812,6 +4872,8 @@ struct PreviewPane: View {
         // Bob's resolved `project_note.task_links`: a link symbol, the
         // destination header, then one row per task showing its text and
         // `^id`. No Swift-side ledger math — only Bob's rows and wording.
+        taskTypePreviewRows(success)
+
         if let projectNote = CaptureProjectNotePresentation(capture: success) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -5348,12 +5410,7 @@ struct PreviewPane: View {
             if let removedLinksText = toggle.removedLinksText {
                 toggleLinkLine(prefix: "\u{2212}", color: .red, text: removedLinksText)
             }
-            if let taskThemeLine = toggle.taskThemeLine {
-                Text(taskThemeLine)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+            taskTypePreviewRows(success)
             if !toggle.chips.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(toggle.chips, id: \.self) { chip in
@@ -5414,12 +5471,7 @@ struct PreviewPane: View {
             Text(link.ledgerText)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
-            if let taskThemeLine = link.taskThemeLine {
-                Text(taskThemeLine)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+            taskTypePreviewRows(success)
             if !link.chips.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(link.chips, id: \.self) { chip in
@@ -5495,7 +5547,13 @@ struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let projectNoteSummary = CaptureProjectNotePresentation(capture: success)
             .map { ", \($0.previewAccessibilitySummary)" } ?? ""
-        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(resetSummary)\(closeSummary)\(projectNoteSummary)"
+        let typeSummary = CaptureTaskThemePresentation.line(
+            for: success.taskTheme, isDryRun: success.dryRun)
+            .map { ", \($0)" } ?? ""
+        let relocationSummary = CaptureTaskThemePresentation.relocationLine(
+            for: success.typeRelocation)
+            .map { ", \($0)" } ?? ""
+        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(resetSummary)\(closeSummary)\(projectNoteSummary)\(typeSummary)\(relocationSummary)"
         guard includeBlockLines else {
             return summary
         }

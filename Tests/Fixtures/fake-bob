@@ -216,6 +216,33 @@ case "${command}" in
       cat "${fixtures_dir}/capture-parse-wikilink-task-query.json"
     elif [[ "${draft}" == "Follow up [[mac_inbox#^inbox-plain]]" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json"
+    elif [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
+      # Hosted tests inject this for `t:` drafts. The name ThemeRef covers
+      # only the type name; `t:` stays on the whole-token task_type span.
+      if [[ "${draft}" == "t:" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"input":"t:","text":"t:","mode":"task","needs":["task_type"],"spans":[{"start":0,"end":2,"kind":"task_type"}],"diagnostics":[]}
+JSON
+      elif [[ "${draft}" == "t:fix" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"input":"t:fix","text":"t:fix","mode":"task","needs":[],"spans":[{"start":0,"end":5,"kind":"task_type","themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":2,"end":5}]}],"diagnostics":[]}
+JSON
+      elif [[ "${draft}" == "Fix the parser t:" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"input":"Fix the parser t:","text":"Fix the parser t:","mode":"task","needs":["task_type"],"spans":[{"start":15,"end":17,"kind":"task_type"}],"diagnostics":[]}
+JSON
+      elif [[ "${draft}" == "Ask about t:fix today" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"input":"Ask about t:fix today","text":"Ask about t:fix today","mode":"task","needs":[],"spans":[],"diagnostics":[]}
+JSON
+      else
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"mode":"task","needs":[],"spans":[],"diagnostics":[]}\n'
+      fi
+      exit 0
     # This is real bob capture-parse output for a bare @@ draft.
     elif [[ "${draft}" == "@@" ]]; then
       cat "${fixtures_dir}/capture-parse-template-bare.json"
@@ -1967,7 +1994,73 @@ JSON
         all_tasks="true"
       fi
     done
-    if [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then
+    task_type_edge=0
+    if [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
+      if [[ "${draft}" == t:* || "${draft}" == *' t:' || "${draft}" == *' t:fi' \
+         || "${draft}" == *' t:fix' || "${draft}" == *' t:fixs' ]]; then
+        task_type_edge=1
+      fi
+    fi
+    if [[ "${task_type_edge}" == "1" ]]; then
+      query=""
+      start=0
+      end=${#draft}
+      subject="new"
+      if [[ "${draft}" == t:fixs* || "${draft}" == *' t:fixs' ]]; then
+        query="fixs"
+        start=0
+        end=6
+        if [[ "${draft}" == *' t:fixs' ]]; then
+          start=$(( ${#draft} - 6 ))
+          end=${#draft}
+        fi
+      elif [[ "${draft}" == t:fix* || "${draft}" == *' t:fix' ]]; then
+        query="fix"
+        start=0
+        end=5
+        if [[ "${draft}" == *' t:fix' ]]; then
+          start=$(( ${#draft} - 5 ))
+          end=${#draft}
+        fi
+      elif [[ "${draft}" == t:fi* || "${draft}" == *' t:fi' ]]; then
+        query="fi"
+        start=0
+        end=4
+        if [[ "${draft}" == *' t:fi' ]]; then
+          start=$(( ${#draft} - 4 ))
+          end=${#draft}
+        fi
+      elif [[ "${draft}" == t:* || "${draft}" == *' t:' ]]; then
+        query=""
+        start=0
+        end=2
+        if [[ "${draft}" == *' t:' ]]; then
+          start=$(( ${#draft} - 2 ))
+          end=${#draft}
+        fi
+      fi
+      if [[ "${draft}" == @dev:current* ]]; then
+        subject="existing"
+      fi
+      if [[ "${FAKE_BOB_TASK_TYPE_REFUSED:-}" == "1" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"${query}","candidates":[{"replacement":"t:fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","refused":"type_not_configured","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
+JSON
+      elif [[ "${query}" == "fixs" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fixs","candidates":[{"replacement":"t:fix","name":"FIX","key":"fix","origin":"configured","effect":"set","current":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"t:fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
+JSON
+      elif [[ "${query}" == "fix" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fix","candidates":[{"replacement":"t:fix","cursor_after":${end},"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]}]}
+JSON
+      else
+        cat <<JSON
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"","theme_suggestion":{"theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true},"source":"note","label":"from dev","from":{"path":"dev.md","stem":"dev","kind":"area","hue":"yellow","chain":["dev.md"]}},"candidates":[{"replacement":"t:build ","cursor_after":$((start + 8)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"t:fix ","cursor_after":$((start + 6)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"t:write ","cursor_after":$((start + 8)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
+JSON
+      fi
+      exit 0
+    elif [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then
       # FAKE_BOB_RELATION_LABEL_EXTRA appends one raw candidate row, so a
       # rename test can refetch a catalog that already contains NEW.
       if [[ -n "${FAKE_BOB_RELATION_LABEL_EXTRA:-}" ]]; then

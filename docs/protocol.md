@@ -319,7 +319,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `creates_pomodoro`, `pomodoro_start`, `pomodoro_adjust`, `pomodoro_shift`, `pomodoro_close` (plus `log`, `details`, `typed_work_log`, `typed_work_log_details`)
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
 - `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`, `added_theme_refs`
-- span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`), agenda entry `themes`, Refs Today row `themes`
+- span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`, `task_type`), agenda entry `themes`, Refs Today row `themes`
+- `task_type` completion context, top-level `subject` (`new`/`existing`), candidate `current` / `inherited` / `effect` / `refused`
+- `task_theme.action` `kept`, `type_relocation` (`outcome`, `from`, `to`)
 - `configured` on theme refs and `themes list` rows; `configured_themes` on `themes list`; `hue_source` `config` / `unconfigured`; structured `theme_not_configured` warnings on capture and `capture-pomodoro-name`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
@@ -351,7 +353,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `configured`, `configured_themes`, `hue_source` `config`/`unconfigured` | Dashed unconfigured pills, Name-it chips from the vocabulary, `theme_not_configured` captions | Today's pills; Name-it shows Recent as before; no unconfigured warning | Upgrade `bob` for configured themes |
 | structured `theme_not_configured` warning | Orange caption with the unconfigured pill in every settled preview and in Name-it | Absent; start/close cards still show other warning strings | Upgrade `bob` for the warning |
 | `theme_suggestion` on `capture-complete` (`pomodoro_name`), `suggested` + `suggestion_label` on candidates | Suggested row preselected with `Suggested · <reason>` secondary, `Suggested` header on a suggested create row, reason in accessibility label | First row selected; no reason shown | Upgrade `bob` for suggestions |
-| `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` line in link/toggle previews, VoiceOver summaries, and notifications | No type line | Upgrade `bob` for type writes |
+| `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` / `type X · <source>` (`kept`) line in new-task, link, toggle, and relationship previews, VoiceOver summaries, and notifications (`type FIX` on set/kept) | No type line | Upgrade `bob` for type writes |
+| `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
+| `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | `t:` stays prose; no menu | Upgrade `bob` for `t:` completion |
 | `type` on `pomodoro_link_destination` | ` · <label>` suffix on the ledger and day-file destination rows (`Linked under CHORE · default type`) | Destination rows without the label | Upgrade `bob` for typed placement |
 | `theme_suggestion` on `ref today`, `suggested` + `suggestion_label` on rows | Suggested row preselected with reason in `rowMeta`; synthetic `New X Pomodoro` row first when `create`; Return on a suggested non-default row sends its entry | Default row selected; Return sends `.automatic`; no synthetic row | Upgrade `bob` for suggestions |
 | `ref` object | Queue preview card, footer action | Ordinary inbox task | Upgrade `bob`; `-R` disables queueing |

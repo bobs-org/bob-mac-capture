@@ -104,6 +104,8 @@ enum CaptureEditorPalette {
             // `!` seal. A distinct role from the `!` sigil's category even
             // though both render green.
             return .green
+        case .taskType, .taskTypeMarker:
+            return Color(nsColor: .tertiaryLabelColor)
         case .pomodoroStart:
             return .pink
         case .pomodoroCloseInProgress:

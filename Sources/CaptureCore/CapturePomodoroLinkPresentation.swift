@@ -58,6 +58,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     public let previewAccessibilitySummary: String
     /// Optional task-type line, e.g. `type → FIX · sase_blog suggests WRITE`.
     public let taskThemeLine: String?
+    /// Optional ledger relocation, e.g. `BUILD → FIX · running entry renamed`.
+    public let typeRelocationLine: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard Self.isPomodoroLinkKind(capture.kind) else {
@@ -180,6 +182,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         }
         taskThemeLine = CaptureTaskThemePresentation.line(
             for: capture.taskTheme, isDryRun: capture.dryRun)
+        typeRelocationLine = CaptureTaskThemePresentation.relocationLine(
+            for: capture.typeRelocation)
 
         var bodyLines = ["\(statusPhrase)  \(routeDestinationLabel)"]
         if let dayFileDestinationLabel {
@@ -188,6 +192,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         bodyLines.append(ledgerText)
         if let taskThemeLine {
             bodyLines.append(taskThemeLine)
+        }
+        if let typeRelocationLine {
+            bodyLines.append(typeRelocationLine)
         }
         if let start = CapturePomodoroStartPresentation(capture: capture) {
             bodyLines.append(start.notificationDetail)
@@ -203,6 +210,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         }
         if let taskThemeLine {
             previewParts.append(taskThemeLine)
+        }
+        if let typeRelocationLine {
+            previewParts.append(typeRelocationLine)
         }
         if let start = CapturePomodoroStartPresentation(capture: capture) {
             previewParts.append(start.accessibilitySummary)
