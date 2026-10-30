@@ -192,7 +192,8 @@ struct CapturePickerCard: View {
                                         CapturePickerRowView(
                                             model: model,
                                             row: row,
-                                            showsChip: presentation.mode == .filtered,
+                                            showsChip: presentation.mode == .filtered
+                                                || model.picker?.source.isWikilinkTask == true,
                                             isInfoRow: section.kind == .usedIDs
                                         )
                                         .id(row.id)
@@ -497,17 +498,22 @@ private struct CapturePickerSectionHeader: View {
     let section: CapturePickerSection
 
     var body: some View {
+        // Task Wikilink sections (`wikilink-*`) never show the `^`
+        // "Not in a Pomodoro" subtitle; they render title plus count.
+        if section.id.hasPrefix("wikilink-") {
+            return AnyView(taskCompleteFilteredHeader)
+        }
         switch section.kind {
         case .noteHeading:
-            noteHeadingHeader
+            return AnyView(noteHeadingHeader)
         case .suggestions:
-            suggestionHeader
+            return AnyView(suggestionHeader)
         case .usedIDs:
-            usedIDsHeader
+            return AnyView(usedIDsHeader)
         case .taskCompleteFiltered, .thisNote:
-            taskCompleteFilteredHeader
+            return AnyView(taskCompleteFilteredHeader)
         case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note:
-            standardHeader
+            return AnyView(standardHeader)
         }
     }
 
@@ -702,7 +708,7 @@ private struct CapturePickerRowView: View {
             }
         }
         .onHover { isHovered = $0 }
-        .opacity(isInfoRow || row.isGuarded ? 0.8 : 1.0)
+        .opacity(row.isHidden ? 0.55 : (isInfoRow || row.isGuarded ? 0.8 : 1.0))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
     }
@@ -718,13 +724,22 @@ private struct CapturePickerRowView: View {
                 .truncationMode(.tail)
                 .layoutPriority(1)
             if showsChip, let chip = row.chipText {
+                let isQuietWikilinkChip = model.picker?.source.isWikilinkTask == true
+                    && (chip == "Hidden" || chip == "Done" || chip == "Cancelled")
                 Text(chip)
                     .font(.caption2)
-                    .foregroundStyle(.pink)
+                    .foregroundStyle(
+                        isQuietWikilinkChip ? Color.secondary : Color.pink
+                    )
                     .lineLimit(1)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.pink.opacity(0.12), in: Capsule())
+                    .background(
+                        isQuietWikilinkChip
+                            ? Color.secondary.opacity(0.15)
+                            : Color.pink.opacity(0.12),
+                        in: Capsule()
+                    )
             }
             if let badge = row.badgeText {
                 Text(badge)
@@ -816,7 +831,7 @@ private struct CapturePickerRowView: View {
         // is Bob's exact note path, used only for the ID assignment.
         // The Task Wikilink picker renders the link it will insert: the
         // target in the wikilink target color, `#^` in the delimiter color.
-        let isWikilink = model.picker?.source == .wikilinkTask
+        let isWikilink = model.picker?.source.isWikilinkTask == true
         let routeColor = isWikilink ? CaptureEditorPalette.color(for: .wikilinkTarget) : CaptureEditorPalette.color(for: .route)
         let markerColor = isWikilink ? CaptureEditorPalette.color(for: .wikilinkDelimiter) : .secondary
         if let pending = row.pendingBlockID {
@@ -1002,7 +1017,7 @@ private struct CapturePickerDetailStrip: View {
             return nil
         case .taskComplete:
             return nil
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return nil
         case .blockID(let context):
             if context.intent == .projectNote || context.scope == .projectTask {
@@ -1039,7 +1054,15 @@ private struct CapturePickerDetailStrip: View {
         if source == .taskComplete {
             return Text(TaskCompletePickerIndex.actionLine(for: row)).foregroundColor(.secondary)
         }
-        if source == .wikilinkTask {
+        if source.isWikilinkTask {
+            // Identified action line renders link-colored like the editor's
+            // wikilink spans; guarded and ID-less rows keep the secondary
+            // detail copy from Bob.
+            if row.insertion != nil {
+                return Text(WikilinkTaskPickerIndex.actionLine(for: row)).foregroundColor(
+                    CaptureEditorPalette.color(for: .wikilinkTarget)
+                )
+            }
             return Text(WikilinkTaskPickerIndex.actionLine(for: row)).foregroundColor(.secondary)
         }
         if source.isRelationshipModifier,
@@ -1068,7 +1091,7 @@ private struct CapturePickerDetailStrip: View {
     /// in the wikilink target color, `#^` in the delimiter color, and the
     /// block ID in the block-ID color.
     private func locatorInsertionText(for row: CapturePickerRow) -> Text {
-        if source == .wikilinkTask {
+        if source.isWikilinkTask {
             var targetPart = Text("")
             if let route = row.route {
                 targetPart = Text(route).foregroundStyle(CaptureEditorPalette.color(for: .wikilinkTarget))

@@ -6,10 +6,12 @@ import XCTest
 @testable import BobMacCapture
 
 /// Task Wikilink picker panel wiring: auto-open only on a written second
-/// `(`, the chip on caret moves and Backspace, Escape suppression,
-/// Backspace leaving `(`, accept/caret/no inline list, stale guard,
-/// Cmd/Ctrl-Return, the ID prompt success/failure/Escape/old-Bob paths,
-/// and `--allow-closed` for history.
+/// `(`, burst typing, and trailing `@@@`; the chip on caret moves and
+/// Backspace; closed and multiword chip reopen; Escape suppression;
+/// Backspace leaving `(`; accept/caret/no inline list; missing-replacement
+/// no-op; filter clearing without a refetch; stale guard; the ID prompt
+/// success/failure/Escape/filter-restoration/old-Bob paths; and
+/// `--allow-closed` for Done and Cancelled history.
 @MainActor
 final class CaptureWikilinkTaskPanelTests: XCTestCase {
     private func identifiedCandidate() -> CaptureCompletionCandidate {
@@ -64,6 +66,39 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         )
     }
 
+    private func cancelledCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "6:cancelled000",
+            requiresBlockID: true,
+            statusSymbol: "-",
+            statusName: "Cancelled",
+            statusType: "CANCELLED",
+            text: "Old cancelled without id",
+            linkTarget: "home",
+            blockIDSuggestions: ["old-cancelled"],
+            group: "completed",
+            notePath: "home.md",
+            locator: "home"
+        )
+    }
+
+    private func missingReplacementCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "3:missing000",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Replacement missing",
+            linkTarget: "mac_inbox",
+            group: "in_this_note",
+            notePath: "mac_inbox.md",
+            locator: "mac_inbox"
+        )
+    }
+
     private func disabledCandidate() -> CaptureCompletionCandidate {
         CaptureCompletionCandidate(
             replacement: "",
@@ -102,6 +137,160 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "Follow up [[sase_cleanup#^no-idle]]")
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.statusText, "Inserted [[sase_cleanup#^no-idle]]")
+    }
+
+    func testAcceptPlacesCaretAtCursorAfter() {
+        let model = installPicker()
+        model.acceptPickerRow(id: "sase_cleanup.md|1:fa53e656", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "Follow up [[sase_cleanup#^no-idle]]")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 35)
+    }
+
+    func testMarkerHighlightUsesBobDescriptor() {
+        let model = installPicker()
+        XCTAssertEqual(model.pickerMarkerHighlight, CaptureRange(start: 10, end: 12))
+    }
+
+    func testClosedChipReopenSeedsBobQuery() {
+        let model = CapturePanelModel()
+        model.installWikilinkTaskPickerForPreviews(
+            candidates: [identifiedCandidate()],
+            filter: "foo",
+            draft: "Follow up ((foo))",
+            replacement: CaptureRange(start: 10, end: 17)
+        )
+        XCTAssertTrue(model.pickerVisible)
+        // First Escape clears the filter; second Escape parks the chip.
+        model.escapePicker()
+        model.escapePicker()
+        XCTAssertTrue(model.pickerChipVisible)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.filterText, "foo")
+    }
+
+    func testMultiwordChipReopenSeedsBobQuery() {
+        let model = CapturePanelModel()
+        model.installWikilinkTaskPickerForPreviews(
+            candidates: [identifiedCandidate()],
+            filter: "foo bar",
+            draft: "Follow up ((foo bar))",
+            replacement: CaptureRange(start: 10, end: 21)
+        )
+        XCTAssertTrue(model.pickerVisible)
+        // First Escape clears the filter; second Escape parks the chip.
+        model.escapePicker()
+        model.escapePicker()
+        XCTAssertTrue(model.pickerChipVisible)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.filterText, "foo bar")
+    }
+
+    func testCancelledIdlessPromptCarriesAllowClosed() {
+        let model = CapturePanelModel()
+        model.installWikilinkTaskPickerForPreviews(
+            candidates: [identifiedCandidate(), cancelledCandidate()],
+            draft: "Follow up ((",
+            replacement: CaptureRange(start: 10, end: 12)
+        )
+        model.acceptPickerRow(id: "home.md|6:cancelled000", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsWikilinkTask)
+        if case .wikilinkTask(_, _, _, _, _, let allowClosed, _) = model.taskIDPrompt?.purpose {
+            XCTAssertTrue(allowClosed)
+        } else {
+            XCTFail("expected wikilinkTask purpose")
+        }
+    }
+
+    func testFilterClearingRevealsFullPoolLocally() {
+        let model = installPicker()
+        let fullCount = model.pickerPresentation?.orderedRowIDs.count ?? 0
+        XCTAssertGreaterThan(fullCount, 0)
+        // Narrowing then clearing the filter recomputes rows from Bob's
+        // original candidate pool without another subprocess.
+        model.updatePickerFilter("zzz-no-match")
+        model.updatePickerFilter("")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.pickerPresentation?.orderedRowIDs.count, fullCount)
+    }
+
+    func testMissingReplacementKeepsPickerOpen() {
+        let model = CapturePanelModel()
+        model.installWikilinkTaskPickerForPreviews(
+            candidates: [identifiedCandidate(), missingReplacementCandidate()],
+            draft: "Follow up ((",
+            replacement: CaptureRange(start: 10, end: 12)
+        )
+        // A row with no insertable replacement and no Add block ID flow is
+        // a no-op: the draft is unchanged and the picker stays open.
+        model.acceptPickerRow(id: "mac_inbox.md|3:missing000", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "Follow up ((")
+        XCTAssertTrue(model.pickerVisible)
+    }
+
+    func testEscapePromptRestoresFilter() {
+        let model = CapturePanelModel()
+        model.installWikilinkTaskPickerForPreviews(
+            candidates: [identifiedCandidate(), idlessCandidate()],
+            filter: "plain",
+            draft: "Follow up ((",
+            replacement: CaptureRange(start: 10, end: 12)
+        )
+        model.acceptPickerRow(id: "mac_inbox.md|2:c37a3d45", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        model.cancelTaskIDPrompt()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsWikilinkTask)
+        XCTAssertEqual(model.picker?.filterText, "plain")
+    }
+
+    func testSecondParenBurstAutoOpens() async throws {
+        let model = try liveModel()
+        model.plainDraft = "Follow up ("
+        model.editorTextDidChange(cursorUTF8Offset: 11)
+        await waitUntil { model.latestParse?.input == model.plainDraft }
+        model.plainDraft = "Follow up (("
+        model.editorTextDidChange(cursorUTF8Offset: 12)
+        await waitUntil { model.pickerVisible }
+        XCTAssertTrue(model.pickerSourceIsWikilinkTask)
+        XCTAssertFalse(model.picker?.candidates.isEmpty ?? true)
+    }
+
+    func testTrailingTemplateCoexistsWithWikilinkTask() async throws {
+        let model = try liveModel()
+        model.plainDraft = "Follow up ((s @@@"
+        model.editorTextDidChange(cursorUTF8Offset: 13)
+        await waitUntil { model.latestParse?.input == model.plainDraft }
+        // The trailing `@@@` template marker leaves the `((` parse spans
+        // intact, so the picker still auto-opens on the query.
+        XCTAssertEqual(
+            model.latestParse?.spans.map(\.kind),
+            ["wikilink_task_delimiter", "wikilink_task_query"]
+        )
+        await waitUntil { model.pickerVisible }
+        XCTAssertTrue(model.pickerSourceIsWikilinkTask)
+        XCTAssertFalse(model.picker?.candidates.isEmpty ?? true)
+    }
+
+    func testInvalidBlockIDKeepsPromptOpen() async throws {
+        let model = try liveModel()
+        model.plainDraft = "Follow up (("
+        model.editorTextDidChange(cursorUTF8Offset: 12)
+        await waitUntil { model.pickerVisible }
+        let idlessID = try XCTUnwrap(
+            model.pickerPresentation?.orderedRowIDs.first {
+                model.pickerPresentation?.row(id: $0)?.pendingBlockID != nil
+            }
+        )
+        model.acceptPickerRow(id: idlessID, submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        model.updateTaskIDPromptBlockID("not an id!!")
+        model.submitTaskIDPrompt()
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(
+            model.taskIDPrompt?.errorMessage, "Use only letters, numbers, and hyphens.")
     }
 
     func testAcceptDisabledKeepsPickerOpen() {

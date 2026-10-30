@@ -1317,7 +1317,7 @@ final class CapturePanelModel: ObservableObject {
 
     /// True when the open picker belongs to the `((` source.
     var pickerSourceIsWikilinkTask: Bool {
-        picker?.source == .wikilinkTask
+        picker?.source.isWikilinkTask == true
     }
 
     /// True when the Add block ID prompt is open in Task Wikilink mode.
@@ -4123,9 +4123,14 @@ final class CapturePanelModel: ObservableObject {
         draft: String = "Follow up ((",
         replacement: CaptureRange = CaptureRange(start: 10, end: 12)
     ) {
+        let context = WikilinkTaskPickerContext(
+            markerRange: replacement,
+            triggerRemovalRange: CaptureRange(start: replacement.start + 1, end: replacement.end),
+            query: filter
+        )
         let index = CapturePickerIndex.wikilinkTask(WikilinkTaskPickerIndex(candidates: candidates))
         installPickerSessionForPreviews(
-            source: .wikilinkTask,
+            source: .wikilinkTask(context),
             index: index,
             candidates: candidates,
             warnings: warnings,
@@ -5361,10 +5366,27 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
+        // Thin-client guard: without Bob's descriptor and query there is no
+        // contract to present. Keep the token plain, like an older Bob.
+        guard let bobQuery = completion.query,
+              let descriptor = completion.picker,
+              descriptor.isWikilinkTask,
+              stringRange(in: draft, byteRange: descriptor.markerRange) != nil,
+              stringRange(in: draft, byteRange: descriptor.triggerRemovalRange) != nil
+        else {
+            return
+        }
+        let context = WikilinkTaskPickerContext(
+            markerRange: descriptor.markerRange,
+            triggerRemovalRange: descriptor.triggerRemovalRange,
+            query: bobQuery
+        )
+        let source = CapturePickerSource.wikilinkTask(context)
+        let query = bobQuery
         let separatorTyped = captureEditWroteSeparator(writtenRange, before: r.start + 2)
         guard trigger == .edit, separatorTyped, pickerAutoOpenSuppressedStart != r.start else {
             pickerChip = CapturePickerChipState(
-                source: .wikilinkTask,
+                source: source,
                 draftSnapshot: draft,
                 replacementRange: r,
                 cursor: cursor,
@@ -5373,16 +5395,19 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        let query = completion.query ?? Self.wikilinkTaskPickerQuery(in: draft, range: r, cursor: cursor)
         if cursor > r.start + 2 {
+            // Multiword full-pool refetch: Bob's unclosed replacement end is
+            // caret-dependent by design, so only the opener must match.
+            // Keep the original ranges, descriptor, and query; take only the
+            // complete candidate pool from the refetch.
             if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start + 2),
                isCurrentAnalysis(generation),
                plainDraft == draft,
                snapshot.context == "wikilink_task",
-               snapshot.replacement == r
+               snapshot.replacement.start == r.start
             {
                 presentPicker(
-                    source: .wikilinkTask,
+                    source: source,
                     index: .wikilinkTask(WikilinkTaskPickerIndex(candidates: snapshot.candidates)),
                     candidates: snapshot.candidates,
                     warnings: snapshot.warnings,
@@ -5398,7 +5423,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             presentPicker(
-                source: .wikilinkTask,
+                source: source,
                 index: .wikilinkTask(WikilinkTaskPickerIndex(candidates: completion.candidates)),
                 candidates: completion.candidates,
                 warnings: completion.warnings,
@@ -5411,7 +5436,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         presentPicker(
-            source: .wikilinkTask,
+            source: source,
             index: .wikilinkTask(WikilinkTaskPickerIndex(candidates: completion.candidates)),
             candidates: completion.candidates,
             warnings: completion.warnings,
@@ -5421,6 +5446,14 @@ final class CapturePanelModel: ObservableObject {
             query: query,
             snapshotIsPartial: false
         )
+    }
+
+    /// Row key matching `WikilinkTaskPickerIndex.key`: exact note path plus
+    /// the stale-safe task ref, so `cursor_after` lookup never collides on
+    /// Bob's empty replacement for ID-less and guarded rows.
+    private static func wikilinkTaskKey(for candidate: CaptureCompletionCandidate) -> String {
+        let note = candidate.notePath ?? candidate.locator ?? candidate.route ?? ""
+        return "\(note)|\(candidate.taskRef ?? "")"
     }
 
     /// The `((` filter seed: draft bytes `(r.start + 2)..<caret`, so the
@@ -5535,11 +5568,9 @@ final class CapturePanelModel: ObservableObject {
             // Bob's `task_complete` replacement already includes the `!`
             // sigil, quoted note included.
             return replacementRange
-        case .wikilinkTask:
-            // Bob's `wikilink_task` `marker_range` equals the replacement
-            // range (the `((query` token), so the wash covers what gets
-            // replaced.
-            return replacementRange
+        case .wikilinkTask(let context):
+            // Bob's verbatim `marker_range` for the `((query` token.
+            return context.markerRange
         case .blockID:
             return markerRange ?? replacementRange
         case .parentTask(let context):
@@ -5900,7 +5931,7 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        if picker.source == .wikilinkTask, row.insertion == nil, let pending = row.pendingBlockID {
+        if picker.source.isWikilinkTask, row.insertion == nil, let pending = row.pendingBlockID {
             presentWikilinkTaskIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
@@ -5915,7 +5946,7 @@ final class CapturePanelModel: ObservableObject {
                 )
             } else if picker.source.isRelationshipModifier
                 || picker.source == .taskComplete
-                || picker.source == .wikilinkTask
+                || picker.source.isWikilinkTask
             {
                 // Already-added and guarded rows keep the draft unchanged and
                 // say why, leaving the picker open.
@@ -5939,7 +5970,17 @@ final class CapturePanelModel: ObservableObject {
         }
         var text = plainDraft
         text.replaceSubrange(range, with: insertionText)
-        let caret = picker.replacementRange.start + insertionText.utf8.count
+        let caret: Int
+        if picker.source.isWikilinkTask,
+           let match = picker.candidates.first(where: {
+               Self.wikilinkTaskKey(for: $0) == row.id
+           }),
+           let after = match.cursorAfter
+        {
+            caret = after
+        } else {
+            caret = picker.replacementRange.start + insertionText.utf8.count
+        }
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             closePickerAfterStaleDraft()
             return
@@ -5964,7 +6005,7 @@ final class CapturePanelModel: ObservableObject {
             } else {
                 announceStatus("Inserted @\(context.route)\(context.marker)\(insertionText)")
             }
-        } else if source == .taskLink || source.isRelationshipModifier || source == .taskComplete || source == .wikilinkTask {
+        } else if source == .taskLink || source.isRelationshipModifier || source == .taskComplete || source.isWikilinkTask {
             announceStatus("Inserted \(insertionText)")
         } else if case .parentTask = source {
             announceStatus("Inserted \(insertionText)")
@@ -6390,10 +6431,10 @@ final class CapturePanelModel: ObservableObject {
         }
         let r = picker.replacementRange
         let caretBytes = Array(plainDraft.utf8)
-        if picker.source == .wikilinkTask {
-            // Bob's `trigger_removal_range` runs from the second `(` to the
-            // range end; deleting it leaves one literal `(`.
-            let removal = CaptureRange(start: r.start + 1, end: r.end)
+        if case .wikilinkTask(let context) = picker.source {
+            // Bob's verbatim `trigger_removal_range`; deleting it leaves one
+            // literal `(`.
+            let removal = context.triggerRemovalRange
             if plainDraft == picker.draftSnapshot,
                let deleteRange = stringRange(in: plainDraft, byteRange: removal)
             {
@@ -6519,8 +6560,10 @@ final class CapturePanelModel: ObservableObject {
             )
         } else if chip.source == .taskComplete {
             query = Self.taskCompletePickerQuery(in: draft, range: r, cursor: chip.cursor)
-        } else if chip.source == .wikilinkTask {
-            query = Self.wikilinkTaskPickerQuery(in: draft, range: r, cursor: chip.cursor)
+        } else if case .wikilinkTask(let wikilinkContext) = chip.source {
+            // Closed-token reopen must seed Bob's query, never a draft slice
+            // that would include the closing parentheses.
+            query = wikilinkContext.query
         } else if case .parentTask(let context) = chip.source {
             query = Self.parentTaskPickerQuery(in: draft, range: r, cursor: chip.cursor, context: context)
         } else {
@@ -6534,7 +6577,7 @@ final class CapturePanelModel: ObservableObject {
         let needsRefetch: Bool
         if chip.source == .taskLink || chip.source == .taskGoto || chip.source == .taskComplete {
             needsRefetch = chip.cursor > r.start + 1
-        } else if chip.source == .wikilinkTask {
+        } else if chip.source.isWikilinkTask {
             needsRefetch = chip.cursor > r.start + 2
         } else if let direction = chip.source.dependencyDirection {
             needsRefetch = chip.cursor > r.start + direction.leadingSigil.utf8.count
@@ -6547,7 +6590,7 @@ final class CapturePanelModel: ObservableObject {
             // The chip came from a caret snapshot; refetch the full list at
             // the token start (`r.start + 2` for `((`, where the empty query
             // lives). A keystroke in the meantime abandons the open.
-            let refetchCursor = chip.source == .wikilinkTask ? r.start + 2 : r.start
+            let refetchCursor = chip.source.isWikilinkTask ? r.start + 2 : r.start
             Task { [weak self, processClient] in
                 guard let snapshot = try? await processClient.captureComplete(draft, cursor: refetchCursor) else {
                     return
@@ -6556,7 +6599,9 @@ final class CapturePanelModel: ObservableObject {
                     guard let self,
                           self.pickerChip?.draftSnapshot == draft,
                           self.plainDraft == draft,
-                          snapshot.replacement == r
+                          chip.source.isWikilinkTask
+                            ? snapshot.replacement.start == r.start
+                            : snapshot.replacement == r
                     else {
                         return
                     }
@@ -6665,7 +6710,7 @@ final class CapturePanelModel: ObservableObject {
                             snapshotIsPartial: false,
                             taskCompleteContinuationKeys: snapshot.picker?.actionContinuationKeys ?? []
                         )
-                    case .wikilinkTask:
+                    case .wikilinkTask(_):
                         guard snapshot.context == "wikilink_task" else {
                             return
                         }
@@ -6768,7 +6813,7 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: false
             )
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             presentPicker(
                 source: chip.source,
                 index: .wikilinkTask(WikilinkTaskPickerIndex(candidates: chip.candidates)),
@@ -7333,7 +7378,7 @@ final class CapturePanelModel: ObservableObject {
                 )
             case .taskComplete:
                 index = .taskComplete(TaskCompletePickerIndex(candidates: returnPicker.candidates))
-            case .wikilinkTask:
+            case .wikilinkTask(_):
                 index = .wikilinkTask(WikilinkTaskPickerIndex(candidates: returnPicker.candidates))
             case .activeTask:
                 index = .activeTask(ActiveTaskPickerIndex(candidates: returnPicker.candidates))

@@ -272,7 +272,13 @@ final class WikilinkTaskPickerPresentationTests: XCTestCase {
     }
 
     func testSourcePresentation() {
-        let source = CapturePickerSource.wikilinkTask
+        let source = CapturePickerSource.wikilinkTask(
+            WikilinkTaskPickerContext(
+                markerRange: CaptureRange(start: 10, end: 12),
+                triggerRemovalRange: CaptureRange(start: 11, end: 12),
+                query: ""
+            )
+        )
         XCTAssertEqual(source.triggerByte, 40)
         XCTAssertEqual(source.scopeSymbolText, "((")
         XCTAssertEqual(source.scopeCaption, "Link to Task")

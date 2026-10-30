@@ -1,5 +1,26 @@
 import Foundation
 
+/// Server-authored Task Wikilink (`((`) picker context: Bob's `query` plus
+/// the verbatim `marker_range` and `trigger_removal_range` from the
+/// `wikilink_task` picker descriptor. Swift never synthesizes grammar or
+/// ranges; a missing or invalid descriptor means an older Bob and the token
+/// stays plain.
+public struct WikilinkTaskPickerContext: Equatable, Sendable {
+    public let markerRange: CaptureRange
+    public let triggerRemovalRange: CaptureRange
+    public let query: String
+
+    public init(
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        query: String
+    ) {
+        self.markerRange = markerRange
+        self.triggerRemovalRange = triggerRemovalRange
+        self.query = query
+    }
+}
+
 /// One fetched `wikilink_task` snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
 /// Presents `CapturePickerPresentation` values for the source-agnostic card.
@@ -236,11 +257,11 @@ public struct WikilinkTaskPickerIndex: Sendable {
     // MARK: - Rows
 
     private func groupedRow(for entry: WikilinkTaskPickerIndexEntry) -> CapturePickerRow {
-        baseRow(for: entry, depth: 0, chipText: nil)
+        baseRow(for: entry, depth: 0, chipText: chipText(for: entry))
     }
 
     private func groupedNoteRow(for entry: WikilinkTaskPickerIndexEntry) -> CapturePickerRow {
-        baseRow(for: entry, depth: entry.candidate.depth ?? 0, chipText: nil)
+        baseRow(for: entry, depth: entry.candidate.depth ?? 0, chipText: chipText(for: entry))
     }
 
     private func filteredRow(
@@ -304,6 +325,7 @@ public struct WikilinkTaskPickerIndex: Sendable {
             routeMatchRanges: routeMatchRanges,
             blockIDMatchRanges: blockIDMatchRanges,
             chipText: chipText,
+            isHidden: candidate.hidden,
             badgeText: badge,
             depth: depth,
             insertion: insertion,

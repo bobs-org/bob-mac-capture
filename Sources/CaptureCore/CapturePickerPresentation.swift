@@ -77,7 +77,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case linksTo
     case linkedFrom
     case taskComplete
-    case wikilinkTask
+    case wikilinkTask(WikilinkTaskPickerContext)
     case blockID(BlockIDPickerContext)
     case parentTask(ParentTaskPickerContext)
 
@@ -113,6 +113,22 @@ public enum CapturePickerSource: Equatable, Sendable {
     /// Server-authored parent-task context when this source is `.parentTask`.
     public var parentTaskContext: ParentTaskPickerContext? {
         if case .parentTask(let context) = self {
+            return context
+        }
+        return nil
+    }
+
+    /// True when this source is the Task Wikilink (`((`) picker.
+    public var isWikilinkTask: Bool {
+        if case .wikilinkTask = self {
+            return true
+        }
+        return false
+    }
+
+    /// Server-authored wikilink-task context when this source is `.wikilinkTask`.
+    public var wikilinkTaskContext: WikilinkTaskPickerContext? {
+        if case .wikilinkTask(let context) = self {
             return context
         }
         return nil
@@ -154,7 +170,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return 126 // `~` (both `~` and `~~` start with this byte)
         case .taskComplete:
             return 33 // `!`
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return 40 // `(` (the `((` trigger starts with `(`)
         case .blockID(let context):
             return context.marker == "^" ? 94 : 58 // `^` or `:`
@@ -180,7 +196,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks by text, note, or ^id"
         case .taskComplete:
             return "Search open tasks to complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Search every task by text, note, or ^id"
         case .blockID(let context):
             if context.isNewIDMode {
@@ -215,7 +231,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks that will link here"
         case .taskComplete:
             return "Search open tasks to complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Search every task to link"
         case .blockID(let context):
             if context.isNewIDMode {
@@ -249,7 +265,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "~~"
         case .taskComplete:
             return "!"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "(("
         case .blockID(let context):
             return context.scopeToken
@@ -278,7 +294,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Linked From"
         case .taskComplete:
             return "Complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Link to Task"
         case .blockID(let context):
             if context.intent == .projectNote {
@@ -312,7 +328,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Choose a task that will link here"
         case .taskComplete:
             return "Pick a task to complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Link a task"
         case .blockID(let context):
             if context.isNewIDMode {
@@ -344,7 +360,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "arrow.left.arrow.right"
         case .taskComplete:
             return "checkmark.circle"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "link"
         case .blockID(let context):
             return context.isNewIDMode ? "sparkles" : "list.bullet.rectangle.portrait"
@@ -372,7 +388,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the linked-from picker for the ~~ item (Tab)."
         case .taskComplete:
             return "Reopen the Complete picker for the ! item (Tab)."
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Reopen the Task Wikilink picker for the (( token (Tab)."
         case .blockID(let context):
             return "Reopen the Block ID picker for \(context.scopeToken) (Tab)."
@@ -400,7 +416,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Choose a task that will link here"
         case .taskComplete:
             return "Pick a task to complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Link a task"
         case .blockID:
             return chipLabel
@@ -428,7 +444,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the linked-from picker for the current item."
         case .taskComplete:
             return "Opens the Complete picker for the current item."
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Opens the Task Wikilink picker for the current draft."
         case .blockID(let context):
             return "Opens the Block ID picker for \(context.scopeToken)."
@@ -456,7 +472,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Linked-from picker"
         case .taskComplete:
             return "Complete picker"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Task wikilink picker"
         case .blockID(let context):
             if context.isNewIDMode {
@@ -488,7 +504,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Arrow keys move, Return inserts the relation, Shift Return links with a relation, Command Return inserts and captures, Control-Return inserts, captures, and opens, tilde flips direction, Escape cancels."
         case .taskComplete:
             return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Control-Return completes and opens, Escape cancels."
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Arrow keys move, Return inserts the link, Command Return inserts and captures, Control Return inserts, captures, and opens, Escape cancels."
         case .blockID(let context):
             if context.isNewIDMode {
@@ -519,7 +535,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Tasks that will link here"
         case .taskComplete:
             return "Tasks to complete"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Task wikilinks"
         case .blockID(let context):
             if context.isNewIDMode {
@@ -629,7 +645,7 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("⌘↩", "Complete"),
                 ("esc", "Clear / Cancel"),
             ]
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return [
                 ("↑↓", "Move"),
                 ("↩", "Insert link"),
@@ -681,7 +697,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Picker keys: up and down to move, Return to link, Shift Return to link with a relation, tilde to flip direction, Command Return to link and capture, Control Return to link, capture, and open, Escape to clear or cancel."
         case .taskComplete:
             return "Picker keys: up and down to move, Return to insert, Shift Return to insert and start the next, Command Return to insert and capture, Control Return to complete and open, Escape to clear or cancel."
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "Picker keys: up and down to move, Return to insert the link, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .blockID(let context):
             if context.isNewIDMode {
@@ -713,7 +729,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.linked-from-picker-used"
         case .taskComplete:
             return "org.bobs.bob-mac-capture.task-complete-picker-used"
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "org.bobs.bob-mac-capture.wikilink-task-picker-used"
         case .blockID:
             return "org.bobs.bob-mac-capture.block-id-picker-used"
@@ -739,7 +755,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "+"
         case .blockID(let context):
             return context.marker
-        case .wikilinkTask:
+        case .wikilinkTask(_):
             return "#^"
         case .activeTask, .taskLink, .taskGoto, .dependency, .blockedTask, .linksTo, .linkedFrom,
             .taskComplete:
@@ -1083,8 +1099,13 @@ public struct CapturePickerRow: Equatable, Sendable {
     public let blockIDMatchRanges: [Range<Int>]
     public let locatorStyle: CapturePickerLocatorStyle
     /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
-    /// already says it) and for unqueued tasks.
+    /// already says it) and for unqueued tasks. For the Task Wikilink picker
+    /// grouped rows also carry it so Hidden and Done/Cancelled capsules show.
     public let chipText: String?
+    /// True when Bob marked this task hidden (`#hide`); the row renders
+    /// subdued and sorts last within its section. Only set by the Task
+    /// Wikilink picker today, so other sources behave byte-identically.
+    public let isHidden: Bool
     /// Trailing badge capsule: Bob's `disabled_reason`, already-added, or
     /// already-blocked copy. Nil when the row inserts or opens Add block ID.
     public let badgeText: String?
@@ -1126,6 +1147,7 @@ public struct CapturePickerRow: Equatable, Sendable {
         blockIDMatchRanges: [Range<Int>] = [],
         locatorStyle: CapturePickerLocatorStyle = .routeBlock,
         chipText: String? = nil,
+        isHidden: Bool = false,
         badgeText: String? = nil,
         depth: Int = 0,
         isSelectable: Bool = true,
@@ -1149,6 +1171,7 @@ public struct CapturePickerRow: Equatable, Sendable {
         self.blockIDMatchRanges = blockIDMatchRanges
         self.locatorStyle = locatorStyle
         self.chipText = chipText
+        self.isHidden = isHidden
         self.badgeText = badgeText
         self.depth = depth
         self.isSelectable = isSelectable
