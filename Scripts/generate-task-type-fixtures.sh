@@ -13,11 +13,12 @@
 #   daily note 2026/20261030.md plus yesterday's DEEP WORK history
 #   BOB_NOW=2026-10-30 09:00:00
 #
-# Fixtures cover empty/leading/trailing/child parse, prefix and literal
+# Fixtures cover leading/trailing/child/attached parse, prefix and literal
 # names, configured/hidden-exact/history-only/typed-unknown completion,
 # new and existing subjects, set/cleared/kept captures, all five
-# relocation outcomes, and a Task Wikilink plus trailing `t:` coexistence
-# case. Commit operations affect only the scratch vault.
+# relocation outcomes, a Task Wikilink coexistence case, the `jot idea #`
+# Pomodoro note (no menu), and the retired `t:` prose case. Commit
+# operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
@@ -197,38 +198,51 @@ capture_commit() {
   assert_json "$out"
 }
 
-# Parse: empty, leading, trailing, child, prefix, literal, unicode, unknown,
-# mid-line prose (no type span).
-parse 't:' task-type-parse-empty.json
-parse 't:fix Fix it' task-type-parse-leading.json
-parse 'Fix it t:fix' task-type-parse-trailing.json
-parse $'Parent task\n- check the lexer t:fi' task-type-parse-child.json
-parse 'Fix it t:fix' task-type-parse-prefix.json
-parse 'Fix it t:"DEEP WORK"' task-type-parse-literal.json
-parse 'Fix 🧰 it t:fix' task-type-parse-unicode.json
-parse 'Fix it t:nope' task-type-parse-unknown.json
-parse 'Ask about t:fix today' task-type-parse-midline.json
-parse '@dev t:' task-type-parse-routed-empty.json
-parse '@dev:current t:' task-type-parse-existing.json
-parse 'Follow up ((foo t:' task-type-parse-wikilink-coexist.json
+# Parse: edges, child, literals, refused, prose, routed, attached,
+# Pomodoro note, wikilink coexistence, retired `t:` (prose).
+parse '@dev^parser#' task-type-parse-empty.json
+parse '#fix Fix it' task-type-parse-leading.json
+parse 'Fix it #fix' task-type-parse-trailing.json
+parse $'Parent task\n- check the lexer #fi' task-type-parse-child.json
+parse 'Fix it #fix' task-type-parse-prefix.json
+parse 'Fix it #"DEEP WORK"' task-type-parse-literal.json
+parse 'Fix 🧰 it #fix' task-type-parse-unicode.json
+parse 'Fix it #nope' task-type-parse-unknown.json
+parse 'Ask about #fix today' task-type-parse-midline.json
+parse '@dev #f' task-type-parse-routed-empty.json
+parse '@dev:current #f' task-type-parse-existing.json
+parse 'Follow up ((foo #f' task-type-parse-wikilink-coexist.json
+parse '@dev^parser#' task-type-parse-attached-new-empty.json
+parse '@dev^parser#fix' task-type-parse-attached-new.json
+parse '@dev+current#' task-type-parse-attached-toggle-empty.json
+parse '@dev+current#fix' task-type-parse-attached-toggle.json
+parse 'jot idea #' task-type-parse-pomodoro-note.json
+parse 'Fix it t:fix' task-type-parse-retired.json
 
-# Completion: empty leading/trailing, prefix, literal, new/existing subjects.
-complete 't:' task-type-complete-empty.json
-complete '@dev t:' task-type-complete-new.json
-complete 'Fix it t:fix' task-type-complete-prefix.json
-complete 'Fix it t:fixs' task-type-complete-typed-unknown.json
-complete '@dev:current t:' task-type-complete-existing-current.json
-complete '@dev:inherited t:' task-type-complete-existing-inherited.json
-complete $'Parent task\n- check the lexer t:fi' task-type-complete-child.json
-complete $'Parent task\n t:fi' task-type-complete-second-line.json
-complete_at '@de t:fix' 3 task-type-complete-adjacent-route.json
-complete 'Follow up ((foo t:' task-type-complete-wikilink-coexist.json
-complete_at 'Follow up ((foo t:' 14 task-type-complete-wikilink-query.json
+# Completion: empty attached, leading/trailing, prefix, refused, new/existing
+# subjects, child/second-line, adjacent route, wikilink, Pomodoro note (empty).
+complete '@dev^parser#' task-type-complete-empty.json
+complete '@dev #f' task-type-complete-new.json
+complete 'Fix it #fix' task-type-complete-prefix.json
+complete 'Fix it #fixs' task-type-complete-typed-unknown.json
+complete '@dev:current #f' task-type-complete-existing-current.json
+complete '@dev:inherited #f' task-type-complete-existing-inherited.json
+complete $'Parent task\n- check the lexer #fi' task-type-complete-child.json
+complete $'Parent task\n #fi' task-type-complete-second-line.json
+complete_at '@de #fix' 3 task-type-complete-adjacent-route.json
+complete 'Follow up ((foo #f' task-type-complete-wikilink-coexist.json
+complete_at 'Follow up ((foo #f' 14 task-type-complete-wikilink-query.json
+complete 'jot idea #' task-type-complete-pomodoro-note.json
+complete '@dev+current#' task-type-complete-attached-toggle-empty.json
+complete '@dev^parser#fix' task-type-complete-attached-new.json
+complete '@dev+current#fix' task-type-complete-attached-toggle.json
+complete '#f' task-type-complete-leading.json
+complete_at '#fix Fix it' 4 task-type-complete-leading-prefix.json
 
 # Hidden-exact: hide FIX from Recent, then complete empty vs exact.
 "$bob_bin" themes hide FIX --via fixture --format json >/dev/null
-complete 't:' task-type-complete-empty-hidden.json
-complete 't:fix' task-type-complete-hidden-exact.json
+complete '@dev^parser#' task-type-complete-empty-hidden.json
+complete '#fix' task-type-complete-hidden-exact.json
 "$bob_bin" themes unhide FIX --via fixture --format json >/dev/null
 
 # History-only: unconfigured vocabulary uses history order.
@@ -238,19 +252,19 @@ plan:
   max_themes: 30
 EOF
 BOB_CONFIG_FILE="$scratch_root/config-history.yml" \
-  "$bob_bin" capture-complete -b "$vault" --cursor 2 --format json -- 't:' \
+  "$bob_bin" capture-complete -b "$vault" --cursor 12 --format json -- '@dev^parser#' \
   > "$fixtures/task-type-complete-history.json"
 assert_json task-type-complete-history.json
 
 # Captures: set / kept / cleared on new and existing tasks.
-capture_dry task-type-capture-set.json 'Fix the parser t:fix' '@sase'
-capture_dry task-type-capture-kept-inherited.json '^kept:write-x' 't:write'
-capture_dry task-type-capture-cleared.json '^typed:write-y' 't:write'
+capture_dry task-type-capture-set.json 'Fix the parser #fix' '@sase'
+capture_dry task-type-capture-kept-inherited.json '^kept:write-x' '#write'
+capture_dry task-type-capture-cleared.json '^typed:write-y' '#write'
 cat > "$day_file" <<'MD'
 ## Pomodoros
 - [ ] () — FIX
 MD
-capture_dry task-type-capture-set-existing.json '^setx:fix-x' 't:fix'
+capture_dry task-type-capture-set-existing.json '^setx:fix-x' '#fix'
 
 # Relocations: seed a dedicated day file per outcome, then dry-run retype.
 relocate() {
@@ -262,7 +276,7 @@ relocate() {
 ## Pomodoros
 $day
 MD
-  capture_dry "$out" "^${stem}:${id}" "t:fix"
+  capture_dry "$out" "^${stem}:${id}" "#fix"
 }
 
 relocate ren fix-r $'- [ ] (**0900-1000**) — BUILD\n  - [[ren#^fix-r]]\n' \
@@ -281,6 +295,6 @@ cat > "$day_file" <<'MD'
 ## Pomodoros
 - [ ] () — FIX
 MD
-capture_commit task-type-capture-set-existing-commit.json '^setx:fix-x' 't:fix'
+capture_commit task-type-capture-set-existing-commit.json '^setx:fix-x' '#fix'
 
 echo "Generated task-type fixtures with $($bob_bin --version | head -n 1)"

@@ -5,13 +5,13 @@ import XCTest
 @testable import BobMacCapture
 
 /// Hosted task-type menu: completion, accept, hide, refused rows, and
-/// the colon rewrite path. Injects Bob's additive contract; Swift only
+/// the retired `t:` prose path. Injects Bob's additive contract; Swift only
 /// presents it.
 @MainActor
 final class CaptureTaskTypeHostedTests: XCTestCase {
     func testBareLeadingTrailingAndChildMarkersOpenTaskTypeMenu() async throws {
         let model = try makeModel()
-        for draft in ["t:", "t:fix Fix it", "Fix the parser t:"] {
+        for draft in ["#f", "#fix Fix it", "Fix the parser #f"] {
             model.plainDraft = draft
             model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
             await waitUntil { model.completionResponse?.context == "task_type" }
@@ -19,7 +19,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             XCTAssertNotNil(model.taskTypeMenuPresentation(), draft)
         }
 
-        let child = "Parent task\n- check the lexer t:fi"
+        let child = "Parent task\n- check the lexer #fi"
         model.plainDraft = child
         model.editorTextDidChange(cursorUTF8Offset: child.utf8.count)
         await waitUntil { model.completionResponse?.context == "task_type" }
@@ -28,34 +28,30 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
 
     func testMidlineProseDoesNotOpenTaskTypeMenu() async throws {
         let model = try makeModel()
-        let draft = "Ask about t:fix today"
+        let draft = "Ask about #fix today"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertNotEqual(model.completionResponse?.context, "task_type")
     }
 
-    func testColonInTColonSurvivesRewriteAndOpensMenu() async throws {
+    func testBareHashOpensNoMenuAndSubmitsNote() async throws {
+        // `retire_t = prose`: `t:` is ordinary text, so the old `:` separator
+        // rewrite test is deleted. A bare `#` stays the Pomodoro note.
         let model = try makeModel()
-        model.noteSeparatorToggleIntent(
-            typed: ":",
-            text: "t",
-            selectedRange: NSRange(location: 1, length: 0)
-        )
-        model.plainDraft = "t:"
-        model.editorTextDidChange(cursorUTF8Offset: 2)
-        await waitUntil { model.completionResponse?.context == "task_type" }
-        XCTAssertEqual(model.plainDraft, "t:")
-        XCTAssertEqual(model.completionResponse?.query, "")
+        model.plainDraft = "jot idea #"
+        model.editorTextDidChange(cursorUTF8Offset: "jot idea #".utf8.count)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertNotEqual(model.completionResponse?.context, "task_type")
     }
 
     func testAcceptReplacesWholeTokenAndPlacesCursor() {
         let model = CapturePanelModel()
-        let draft = "Fix the parser t:"
+        let draft = "Fix the parser #f"
         let start = draft.utf8.count - 2
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fix ",
-            cursorAfter: start + 6,
+            replacement: "#fix",
+            cursorAfter: start + 4,
             name: "FIX",
             themes: [
                 CapturePomodoroThemeRef(
@@ -73,23 +69,23 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             replacement: CaptureRange(start: start, end: draft.utf8.count),
             context: "task_type",
             candidates: [candidate],
-            query: "",
+            query: "f",
             subject: "new"
         )
         model.selectedCompletionIndex = 0
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "Fix the parser t:fix ")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), start + 6)
+        XCTAssertEqual(model.plainDraft, "Fix the parser #fix")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), start + 4)
         XCTAssertNil(model.completionResponse)
     }
 
     func testLiteralAcceptUsesBobReplacement() {
         let model = CapturePanelModel()
-        let draft = "Fix it t:"
+        let draft = "Fix it #d"
         let start = draft.utf8.count - 2
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:\"DEEP WORK\" ",
-            cursorAfter: start + 14,
+            replacement: "#\"DEEP WORK\"",
+            cursorAfter: start + 12,
             name: "DEEP WORK",
             origin: "configured",
             key: "deep work",
@@ -102,19 +98,19 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             replacement: CaptureRange(start: start, end: draft.utf8.count),
             context: "task_type",
             candidates: [candidate],
-            query: "",
+            query: "d",
             subject: "new"
         )
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "Fix it t:\"DEEP WORK\" ")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), start + 14)
+        XCTAssertEqual(model.plainDraft, "Fix it #\"DEEP WORK\"")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), start + 12)
     }
 
     func testRefusedRowAcceptanceIsNoOp() {
         let model = CapturePanelModel()
-        let draft = "Fix it t:fixs"
+        let draft = "Fix it #fixs"
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fixs",
+            replacement: "#fixs",
             name: "FIXS",
             origin: "typed",
             key: "fixs",
@@ -142,7 +138,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         let model = try makeModel(recordURL: recordURL)
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fix ",
+            replacement: "#fix ",
             name: "FIX",
             themes: [
                 CapturePomodoroThemeRef(
@@ -177,7 +173,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         let model = try makeModel(recordURL: recordURL)
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:write ",
+            replacement: "#write ",
             name: "WRITE",
             themes: [
                 CapturePomodoroThemeRef(
@@ -212,7 +208,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         let model = try makeModel(recordURL: recordURL)
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fixs",
+            replacement: "#fixs",
             name: "FIXS",
             themes: [
                 CapturePomodoroThemeRef(
@@ -235,17 +231,17 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
     func testTaskTypeQueryUsesServerQueryNotReplacementSlice() throws {
         let model = CapturePanelModel()
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fix",
+            replacement: "#fix",
             name: "FIX",
             origin: "configured",
             key: "fix",
             effect: "set"
         )
-        model.plainDraft = "Fix it t:fix"
+        model.plainDraft = "Fix it #fix"
         model.completionResponse = CaptureCompletionResponse(
             ok: true,
-            cursor: 12,
-            replacement: CaptureRange(start: 7, end: 12),
+            cursor: 11,
+            replacement: CaptureRange(start: 7, end: 11),
             context: "task_type",
             candidates: [candidate],
             query: "fix",
@@ -260,7 +256,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
     func testDraftChangeClearsHideGhost() async throws {
         let model = try makeModel()
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fix ",
+            replacement: "#fix ",
             name: "FIX",
             themes: [
                 CapturePomodoroThemeRef(key: "fix", name: "FIX", configured: true)
@@ -303,14 +299,14 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         on model: CapturePanelModel,
         candidates: [CaptureCompletionCandidate]
     ) {
-        model.plainDraft = "t:"
+        model.plainDraft = "#f"
         model.completionResponse = CaptureCompletionResponse(
             ok: true,
             cursor: 2,
             replacement: CaptureRange(start: 0, end: 2),
             context: "task_type",
             candidates: candidates,
-            query: "",
+            query: "f",
             subject: "new"
         )
         model.selectedCompletionIndex = 0

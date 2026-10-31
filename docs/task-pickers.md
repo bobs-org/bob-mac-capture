@@ -205,7 +205,7 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   inserting. In the New ID composer the field only ever holds ID characters: typing a
   character outside Bob's allowed set (space, `#`, `=`, `+`, `.`, …) at the end of the
   field commits the typed ID and keeps typing that character in the editor, so `#`
-  after a commit opens `pomodoro_name` completion naturally. The Link picker keeps
+  after a commit opens `task_type` completion naturally. The Link picker keeps
   `^`'s semantics: spaces separate fuzzy tokens. Backspace on an empty field deletes
   the `:`/`^` separator and the part so route completion resumes. The chip reads
   `Browse <note> tasks ⇥` (Link) or `Suggest an ID for <note> ⇥` (New ID); Tab, Down,
@@ -313,8 +313,8 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
 ### Sections and Pomodoro names
 
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
-  while that item has no body text it opens `pomodoro_name` completion for the task
-  toggle, and once the item has body text it opens `task_section` completion for that
+  while that item has no body text it opens `task_type` completion for the task
+  toggle retype, and once the item has body text it opens `task_section` completion for that
   task's ALL-CAPS section bullets. A standalone trailing `#` stays the Pomodoro-note
   marker and `@route#` stays note-section completion. Typing `#` immediately after a
   resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion

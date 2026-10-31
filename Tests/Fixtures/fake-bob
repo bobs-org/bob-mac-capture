@@ -222,23 +222,23 @@ case "${command}" in
     elif [[ "${draft}" == "Follow up [[mac_inbox#^inbox-plain]]" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json"
     elif [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
-      # Hosted tests inject this for `t:` drafts. The name ThemeRef covers
-      # only the type name; `t:` stays on the whole-token task_type span.
-      if [[ "${draft}" == "t:" ]]; then
+      # Hosted tests inject this for `#` drafts. The name ThemeRef covers
+      # only the type name; `#` stays on the whole-token task_type span.
+      if [[ "${draft}" == "#f" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"t:","text":"t:","mode":"task","needs":["task_type"],"spans":[{"start":0,"end":2,"kind":"task_type"}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"input":"#f","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":2,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":1,"end":2}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#f` needs a task: add the task text (`Fix the parser #f`) or target one (`^sase:fix-x #f`)","range":[0,2]}]}
 JSON
-      elif [[ "${draft}" == "t:fix" ]]; then
+      elif [[ "${draft}" == "#fix" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"t:fix","text":"t:fix","mode":"task","needs":[],"spans":[{"start":0,"end":5,"kind":"task_type","themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":2,"end":5}]}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"input":"#fix","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":4,"kind":"task_type","themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":1,"end":4}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#fix` needs a task: add the task text (`Fix the parser #fix`) or target one (`^sase:fix-x #fix`)","range":[0,4]}]}
 JSON
-      elif [[ "${draft}" == "Fix the parser t:" ]]; then
+      elif [[ "${draft}" == "Fix the parser #f" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"Fix the parser t:","text":"Fix the parser t:","mode":"task","needs":["task_type"],"spans":[{"start":15,"end":17,"kind":"task_type"}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"input":"Fix the parser #f","text":"Fix the parser","mode":"task","needs":[],"spans":[{"start":15,"end":17,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":16,"end":17}]}],"diagnostics":[]}
 JSON
-      elif [[ "${draft}" == "Ask about t:fix today" ]]; then
+      elif [[ "${draft}" == "Ask about #fix today" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"Ask about t:fix today","text":"Ask about t:fix today","mode":"task","needs":[],"spans":[],"diagnostics":[]}
+{"ok":true,"schema_version":1,"input":"Ask about #fix today","text":"Ask about #fix today","mode":"task","needs":[],"spans":[],"diagnostics":[]}
 JSON
       else
         printf '{"ok":true,"schema_version":1,"input":'
@@ -460,62 +460,59 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#coding" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#fix" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "@file+goog-exit#coding",
+  "input": "@file+goog-exit#fix",
   "body": "",
   "mode": "task_toggle",
   "route": "file",
-  "section": "coding",
   "block_id": "goog-exit",
   "needs": [],
   "spans": [
     { "start": 0, "end": 5, "kind": "task_toggle_route" },
     { "start": 6, "end": 15, "kind": "task_toggle_block_id" },
-    { "start": 16, "end": 22, "kind": "task_toggle_pomodoro_name" }
+    { "start": 15, "end": 19, "kind": "task_type", "themes": [{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":16,"end":19}] }
   ],
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#already" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#build" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "@file+goog-exit#already",
+  "input": "@file+goog-exit#build",
   "body": "",
   "mode": "task_toggle",
   "route": "file",
-  "section": "already",
   "block_id": "goog-exit",
   "needs": [],
   "spans": [
     { "start": 0, "end": 5, "kind": "task_toggle_route" },
     { "start": 6, "end": 15, "kind": "task_toggle_block_id" },
-    { "start": 16, "end": 23, "kind": "task_toggle_pomodoro_name" }
+    { "start": 15, "end": 21, "kind": "task_type", "themes": [{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true,"start":16,"end":21}] }
   ],
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#fresh" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#nope" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "@file+goog-exit#fresh",
+  "input": "@file+goog-exit#nope",
   "body": "",
   "mode": "task_toggle",
   "route": "file",
-  "section": "fresh",
   "block_id": "goog-exit",
   "needs": [],
   "spans": [
     { "start": 0, "end": 5, "kind": "task_toggle_route" },
     { "start": 6, "end": 15, "kind": "task_toggle_block_id" },
-    { "start": 16, "end": 21, "kind": "task_toggle_pomodoro_name" }
+    { "start": 15, "end": 20, "kind": "task_type", "themes": [{"key":"nope","name":"NOPE","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":16,"end":20}] }
   ],
   "diagnostics": []
 }
@@ -2001,8 +1998,8 @@ JSON
     done
     task_type_edge=0
     if [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
-      if [[ "${draft}" == t:* || "${draft}" == *' t:' || "${draft}" == *' t:fi' \
-         || "${draft}" == *' t:fix' || "${draft}" == *' t:fixs' ]]; then
+      if [[ "${draft}" == '#'* || "${draft}" == *' #' || "${draft}" == *' #fi' \
+         || "${draft}" == *' #fix' || "${draft}" == *' #fixs' || "${draft}" == *' #f' ]]; then
         task_type_edge=1
       fi
     fi
@@ -2011,36 +2008,44 @@ JSON
       start=0
       end=${#draft}
       subject="new"
-      if [[ "${draft}" == t:fixs* || "${draft}" == *' t:fixs' ]]; then
+      if [[ "${draft}" == '#fixs'* || "${draft}" == *' #fixs' ]]; then
         query="fixs"
         start=0
-        end=6
-        if [[ "${draft}" == *' t:fixs' ]]; then
-          start=$(( ${#draft} - 6 ))
-          end=${#draft}
-        fi
-      elif [[ "${draft}" == t:fix* || "${draft}" == *' t:fix' ]]; then
-        query="fix"
-        start=0
         end=5
-        if [[ "${draft}" == *' t:fix' ]]; then
+        if [[ "${draft}" == *' #fixs' ]]; then
           start=$(( ${#draft} - 5 ))
           end=${#draft}
         fi
-      elif [[ "${draft}" == t:fi* || "${draft}" == *' t:fi' ]]; then
-        query="fi"
+      elif [[ "${draft}" == '#fix'* || "${draft}" == *' #fix' ]]; then
+        query="fix"
         start=0
         end=4
-        if [[ "${draft}" == *' t:fi' ]]; then
+        if [[ "${draft}" == *' #fix' ]]; then
           start=$(( ${#draft} - 4 ))
           end=${#draft}
         fi
-      elif [[ "${draft}" == t:* || "${draft}" == *' t:' ]]; then
-        query=""
+      elif [[ "${draft}" == '#fi'* || "${draft}" == *' #fi' ]]; then
+        query="fi"
+        start=0
+        end=3
+        if [[ "${draft}" == *' #fi' ]]; then
+          start=$(( ${#draft} - 3 ))
+          end=${#draft}
+        fi
+      elif [[ "${draft}" == '#f'* || "${draft}" == *' #f' ]]; then
+        query="f"
         start=0
         end=2
-        if [[ "${draft}" == *' t:' ]]; then
+        if [[ "${draft}" == *' #f' ]]; then
           start=$(( ${#draft} - 2 ))
+          end=${#draft}
+        fi
+      elif [[ "${draft}" == '#'* || "${draft}" == *' #' ]]; then
+        query=""
+        start=0
+        end=1
+        if [[ "${draft}" == *' #' ]]; then
+          start=$(( ${#draft} - 1 ))
           end=${#draft}
         fi
       fi
@@ -2049,19 +2054,19 @@ JSON
       fi
       if [[ "${FAKE_BOB_TASK_TYPE_REFUSED:-}" == "1" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"${query}","candidates":[{"replacement":"t:fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","refused":"type_not_configured","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"${query}","candidates":[{"replacement":"#fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","refused":"type_not_configured","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
 JSON
       elif [[ "${query}" == "fixs" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fixs","candidates":[{"replacement":"t:fix","name":"FIX","key":"fix","origin":"configured","effect":"set","current":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"t:fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fixs","candidates":[{"replacement":"#fix","name":"FIX","key":"fix","origin":"configured","effect":"set","current":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"#fixs","name":"FIXS","key":"fixs","origin":"typed","effect":"set","similar_to":["FIX"],"themes":[{"key":"fixs","name":"FIXS","known":false,"configured":false}]}]}
 JSON
       elif [[ "${query}" == "fix" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fix","candidates":[{"replacement":"t:fix","cursor_after":${end},"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]}]}
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fix","candidates":[{"replacement":"#fix","cursor_after":${end},"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]}]}
 JSON
       else
         cat <<JSON
-{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"","theme_suggestion":{"theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true},"source":"note","label":"from dev","from":{"path":"dev.md","stem":"dev","kind":"area","hue":"yellow","chain":["dev.md"]}},"candidates":[{"replacement":"t:build ","cursor_after":$((start + 8)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"t:fix ","cursor_after":$((start + 6)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"t:write ","cursor_after":$((start + 8)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"","theme_suggestion":{"theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true},"source":"note","label":"from dev","from":{"path":"dev.md","stem":"dev","kind":"area","hue":"yellow","chain":["dev.md"]}},"candidates":[{"replacement":"#build ","cursor_after":$((start + 7)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"#fix ","cursor_after":$((start + 5)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"#write ","cursor_after":$((start + 7)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
 JSON
       fi
       exit 0
@@ -2225,37 +2230,36 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#coding" || "${draft}" == "@file+goog-exit#already" || "${draft}" == "@file+goog-exit#fresh" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#fix" || "${draft}" == "@file+goog-exit#build" || "${draft}" == "@file+goog-exit#nope" ]]; then
       query="${draft#@file+goog-exit#}"
-      start=16
-      end=$((start + ${#query}))
+      start=15
+      end=$((start + 1 + ${#query}))
       cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
   "cursor": ${cursor},
   "replacement": { "start": ${start}, "end": ${end} },
-  "context": "pomodoro_name",
+  "context": "task_type",
+  "subject": "existing",
+  "query": "${query}",
   "candidates": [
     {
-      "replacement": "coding",
-      "ref": "3:coding",
-      "name": "CODING",
-      "requires_name": false,
-      "line": 3,
-      "state": "open",
-      "status_symbol": " ",
-      "time_range": null,
-      "placeholder": true,
-      "is_current": false,
-      "child_count": 0,
-      "creates_pomodoro": false
+      "replacement": "#fix",
+      "name": "FIX",
+      "key": "fix",
+      "origin": "configured",
+      "effect": "set",
+      "themes": [{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]
     },
     {
-      "replacement": "FRESH",
-      "name": "FRESH",
-      "requires_name": false,
-      "creates_pomodoro": true
+      "replacement": "#build",
+      "name": "BUILD",
+      "key": "build",
+      "origin": "configured",
+      "effect": "keep",
+      "current": true,
+      "themes": [{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]
     }
   ]
 }
@@ -4723,7 +4727,7 @@ JSON
   "removed_pomodoro_links": 0
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#coding" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#fix" ]]; then
       cat <<JSON
 {
   "ok": true,
@@ -4734,7 +4738,8 @@ JSON
   "relative_target": "file.md",
   "target": "/tmp/bob/file.md",
   "text": "",
-  "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+  "task_line": "- [*] #task Finish Google Exit Packet! [type:: FIX] ^goog-exit",
+  "task_theme": {"action":"set","theme":{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}},
   "kind": "task_toggle",
   "created": "2026-09-10",
   "scheduled": null,
@@ -4748,18 +4753,18 @@ JSON
   "status_name": "Next",
   "previous_status_symbol": " ",
   "previous_status_name": "Ready",
-  "pomodoro_name": "CODING",
-  "creates_pomodoro": false,
+  "pomodoro_name": "FIX",
+  "creates_pomodoro": true,
   "pomodoro_already_linked": false,
   "removed_pomodoro_links": 0,
   "toggle_behavior": "ensure_next",
   "status_changed": true,
   "pomodoro_link_action": "moved",
   "pomodoro_link_source": { "line": 4, "name": "LATER" },
-  "pomodoro_link_destination": { "line": 3, "name": "CODING" }
+  "pomodoro_link_destination": { "line": 3, "name": "FIX" }
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#already" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#build" ]]; then
       cat <<JSON
 {
   "ok": true,
@@ -4771,6 +4776,7 @@ JSON
   "target": "/tmp/bob/file.md",
   "text": "",
   "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+  "task_theme": {"action":"kept","theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}},
   "kind": "task_toggle",
   "created": "2026-09-10",
   "scheduled": null,
@@ -4784,51 +4790,23 @@ JSON
   "status_name": "Next",
   "previous_status_symbol": "*",
   "previous_status_name": "Next",
-  "pomodoro_name": "CODING",
+  "pomodoro_name": "BUILD",
   "creates_pomodoro": false,
   "pomodoro_already_linked": true,
   "removed_pomodoro_links": 0,
   "toggle_behavior": "ensure_next",
   "status_changed": false,
   "pomodoro_link_action": "already_current",
-  "pomodoro_link_source": { "line": 3, "name": "CODING" },
-  "pomodoro_link_destination": { "line": 3, "name": "CODING" }
+  "pomodoro_link_source": { "line": 3, "name": "BUILD" },
+  "pomodoro_link_destination": { "line": 3, "name": "BUILD" }
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit#fresh" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit#nope" ]]; then
       cat <<JSON
 {
-  "ok": true,
-  "dry_run": ${dry_run},
-  "routed": true,
-  "route": "file",
-  "route_label": "file.md",
-  "relative_target": "file.md",
-  "target": "/tmp/bob/file.md",
-  "text": "",
-  "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
-  "kind": "task_toggle",
-  "created": "2026-09-10",
-  "scheduled": null,
-  "placement": "toggled",
-  "block_id": "goog-exit",
-  "day_file": "/tmp/bob/2026/20260910.md",
-  "block_link": "[[file#^goog-exit]]",
-  "toggle_direction": "next",
-  "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
-  "status_symbol": "*",
-  "status_name": "Next",
-  "previous_status_symbol": " ",
-  "previous_status_name": "Ready",
-  "pomodoro_name": "FRESH",
-  "creates_pomodoro": true,
-  "pomodoro_already_linked": false,
-  "removed_pomodoro_links": 0,
-  "toggle_behavior": "ensure_next",
-  "status_changed": true,
-  "pomodoro_link_action": "moved",
-  "pomodoro_link_source": { "line": 4, "name": "LATER" },
-  "pomodoro_link_destination": { "line": 5, "name": "FRESH" }
+  "ok": false,
+  "code": "type_not_configured",
+  "error": "capture item 1 starting on line 1: `#nope` is not one of your task types; add NOPE under `types:` in /tmp/bob/config.yml to use it (to link the task under the NOPE Pomodoro, write `^file:goog-exit#nope`)"
 }
 JSON
     elif [[ "${draft}" == "Add context @file+parent-id" ]]; then

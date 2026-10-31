@@ -4416,7 +4416,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.previewResults[0].pomodoroAdjust?.deltaMinutes, 25)
     }
 
-    func testNamedEnsureNextMoveKeepsDraftAndUsesEnsureNextAction() async throws {
+    func testTaskTypeRetypeMoveKeepsDraftAndUsesEnsureNextAction() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -4428,8 +4428,8 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
 
-        model.plainDraft = "@file+goog-exit#coding"
-        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#coding".utf8.count)
+        model.plainDraft = "@file+goog-exit#fix"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#fix".utf8.count)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
@@ -4438,13 +4438,15 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.previewResult?.kind, "task_toggle")
         XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
         XCTAssertEqual(model.previewResult?.pomodoroLinkAction, "moved")
-        XCTAssertEqual(model.previewResult?.pomodoroName, "CODING")
+        XCTAssertEqual(model.previewResult?.pomodoroName, "FIX")
+        XCTAssertEqual(model.previewResult?.taskTheme?.action, "set")
+        XCTAssertEqual(model.previewResult?.taskTheme?.theme?.name, "FIX")
         XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
         XCTAssertEqual(model.primaryActionTitle, "Ensure Next")
         XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and moved")
         XCTAssertEqual(
             model.togglePresentation?.relocationText,
-            "Moved LATER \u{2192} CODING"
+            "Moved LATER \u{2192} FIX"
         )
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
 
@@ -4454,13 +4456,13 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.lastSuccess?.toggleBehavior, "ensure_next")
         XCTAssertEqual(model.lastSuccess?.pomodoroLinkAction, "moved")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit#coding"))
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit#coding"))
-        XCTAssertTrue(record.contains("argv=capture --format json --refuse-override -- @file+goog-exit#coding"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit#fix"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit#fix"))
+        XCTAssertTrue(record.contains("argv=capture --format json --refuse-override -- @file+goog-exit#fix"))
         XCTAssertFalse(record.contains(" -- @file+goog-exit!\n"))
     }
 
-    func testNamedEnsureNextAlreadyAtNameIsANoOpAndStillEnsureNext() async throws {
+    func testTaskTypeKeptWhenAlreadySetIsANoOpAndStillEnsureNext() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -4470,8 +4472,8 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
 
-        model.plainDraft = "@file+goog-exit#already"
-        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#already".utf8.count)
+        model.plainDraft = "@file+goog-exit#build"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#build".utf8.count)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
@@ -4483,13 +4485,13 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.togglePresentation?.notificationTitle, "Already Next")
         XCTAssertEqual(
             model.togglePresentation?.relocationText,
-            "Already in CODING; no Pomodoro changes"
+            "Already in BUILD; no Pomodoro changes"
         )
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == false)
         XCTAssertNil(model.togglePresentation?.removedLinksText)
     }
 
-    func testNamedEnsureNextCreationAnnouncesCreatedDestination() async throws {
+    func testTaskTypeRefusedShowsPreviewError() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -4499,23 +4501,16 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
 
-        model.plainDraft = "@file+goog-exit#fresh"
-        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#fresh".utf8.count)
+        model.plainDraft = "@file+goog-exit#nope"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#nope".utf8.count)
         await waitUntil {
-            if case .ready = model.previewState { return true }
+            if case .failed = model.previewState { return true }
             return false
         }
 
-        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
-        XCTAssertEqual(model.previewResult?.createsPomodoro, true)
-        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
-        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and created")
-        XCTAssertEqual(
-            model.togglePresentation?.relocationText,
-            "Moved LATER \u{2192} FRESH (created FRESH)"
-        )
-        XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
-        XCTAssertTrue(model.togglePresentation?.voiceOverAnnouncement.contains("created FRESH") == true)
+        XCTAssertNil(model.previewResult)
+        XCTAssertNil(model.togglePresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
     }
 
     func testPrimaryActionTitleDefaultsToCaptureWithoutAToggleAndForABatch() {

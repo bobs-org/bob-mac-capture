@@ -171,18 +171,18 @@ final class CaptureEditorHighlightTests: XCTestCase {
     }
 
     func testTaskTypeNameTintLeavesSigilTertiary() throws {
-        let draft = "Fix it t:fix"
+        let draft = "Fix it #fix"
         let theme = CapturePomodoroThemeRef(
             key: "fix",
             name: "FIX",
             hue: .blue,
             hueSource: "config",
             configured: true,
-            start: 9,
-            end: 12
+            start: 8,
+            end: 11
         )
         let spans = [
-            CaptureSpan(start: 7, end: 12, kind: "task_type", themes: [theme])
+            CaptureSpan(start: 7, end: 11, kind: "task_type", themes: [theme])
         ]
         var text = AttributedString(draft)
         let parse = Self.parse(draft: draft, spans: spans)
@@ -199,23 +199,23 @@ final class CaptureEditorHighlightTests: XCTestCase {
             }
             return NSColor(color) == tertiary
         })
-        XCTAssertTrue(sigil.contains("t:"))
+        XCTAssertTrue(sigil.contains("#"))
         XCTAssertFalse(sigil.contains("fix"))
     }
 
     func testTaskTypeUnicodeOffsetsPaintNameOnly() throws {
-        let draft = "Fix 🧰 it t:fix"
+        let draft = "Fix 🧰 it #fix"
         let theme = CapturePomodoroThemeRef(
             key: "fix",
             name: "FIX",
             hue: .blue,
             hueSource: "config",
             configured: true,
-            start: 14,
-            end: 17
+            start: 13,
+            end: 16
         )
         let spans = [
-            CaptureSpan(start: 12, end: 17, kind: "task_type", themes: [theme])
+            CaptureSpan(start: 12, end: 16, kind: "task_type", themes: [theme])
         ]
         var text = AttributedString(draft)
         let parse = Self.parse(draft: draft, spans: spans)
@@ -228,18 +228,18 @@ final class CaptureEditorHighlightTests: XCTestCase {
     }
 
     func testUnknownTaskTypeDashedWhenCaretLeavesName() throws {
-        let draft = "Fix it t:nope"
+        let draft = "Fix it #nope"
         let theme = CapturePomodoroThemeRef(
             key: "nope",
             name: "NOPE",
             hueSource: "unconfigured",
             known: false,
             configured: false,
-            start: 9,
-            end: 13
+            start: 8,
+            end: 12
         )
         let spans = [
-            CaptureSpan(start: 7, end: 13, kind: "task_type", themes: [theme])
+            CaptureSpan(start: 7, end: 12, kind: "task_type", themes: [theme])
         ]
         var text = AttributedString(draft)
         let parse = Self.parse(draft: draft, spans: spans)
@@ -255,18 +255,18 @@ final class CaptureEditorHighlightTests: XCTestCase {
     }
 
     func testUnknownTaskTypeHasNoMarkWhileCaretIsInTheName() throws {
-        let draft = "Fix it t:nope"
+        let draft = "Fix it #nope"
         let theme = CapturePomodoroThemeRef(
             key: "nope",
             name: "NOPE",
             hueSource: "unconfigured",
             known: false,
             configured: false,
-            start: 9,
-            end: 13
+            start: 8,
+            end: 12
         )
         let spans = [
-            CaptureSpan(start: 7, end: 13, kind: "task_type", themes: [theme])
+            CaptureSpan(start: 7, end: 12, kind: "task_type", themes: [theme])
         ]
         var text = AttributedString(draft)
         let parse = Self.parse(draft: draft, spans: spans)
@@ -281,7 +281,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
     }
 
     func testMalformedTaskTypeThemeRangeIsSkipped() throws {
-        let draft = "t:fix"
+        let draft = "#fix"
         let theme = CapturePomodoroThemeRef(
             key: "fix",
             name: "FIX",
@@ -292,7 +292,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
             end: 2
         )
         let spans = [
-            CaptureSpan(start: 0, end: 5, kind: "task_type", themes: [theme])
+            CaptureSpan(start: 0, end: 4, kind: "task_type", themes: [theme])
         ]
         var text = AttributedString(draft)
         let parse = Self.parse(draft: draft, spans: spans)

@@ -70,11 +70,11 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   partial grammar view. Bob's `wikilink_task_delimiter` span paints `((` and `))` with
   the same delimiter color as Obsidian wikilinks. Any span that carries `themes` paints Bob's hue tint on each
   name sub-range (UTF-8 offsets, with malformed ranges skipped). A `task_type` span
-  paints `t:` and quotes in tertiary label color and the type name in normal
+  paints `#` and quotes in tertiary label color and the type name in normal
   foreground over the tint; an unconfigured name stays neutral while the caret is
-  in it, then takes the dashed orange underline. Typing `t:` at either edge of a
-  line, including a bare `t:` and a child `- t:`, opens the `task_type` menu after
-  the usual 50 ms debounce. Every span kind — capture markers and the five Obsidian wikilink
+  in it, then takes the dashed orange underline. Typing `#` plus a letter at either
+  edge of a line, including a child `- #f`, opens the `task_type` menu after
+  the usual 50 ms debounce. A bare `#` stays the Pomodoro note and opens no menu. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
@@ -200,18 +200,18 @@ bullets prefixed by exactly two ASCII spaces become nested authored children und
 nearest preceding first-level authored child.
 A marker (`@route`,
 `@route+block-id` alone to ensure Next and relocate an existing Task Link,
-`@route+block-id#pomodoro` alone to ensure Next onto a named Pomodoro,
+`@route+block-id#type` alone to ensure Next and retype to `#type`,
 `@route+block-id!` alone for the explicit two-way task-toggle item,
 `@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
-ALL-CAPS section bullets, `@route^block-id` for an ordinary task with an authored block
-ID, `@route^block-id+#pomodoro` for a project note (with ` :id` / ` ^id` tokens
+ALL-CAPS section bullets once body text exists, `@route^block-id` for an ordinary task with an authored block
+ID, `@route^block-id#type` to type the new task, `@route^block-id+#pomodoro` for a project note (with ` :id` / ` ^id` tokens
 on its task bullets naming and optionally linking project tasks),
 `s:<N>`, `$<N>`, `%`, …) at the end of any valid line configures that item even
 when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
 their route side; only the `+` family's right-hand side offers existing tasks, `#` after
-a resolved `@route+block-id` offers Pomodoro names while the item has no body text and
+a resolved `@route+block-id` offers task types while the item has no body text and
 task sections once it does, and the `^` family's authored ID opens the New ID picker.
 A project note's ` :id` bullet becomes a Next task linked into the Pomodoro and its
 ` ^id` bullet a named task; the preview names each linked task and the notification
@@ -337,17 +337,17 @@ dimmed with `Type the Work Log entry for task 1` and keeps
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link (dropping own-prerequisite Blocked edges the same way
 the `@route:block-id` link does; a refused drop stays unlinked and the preview
-shows Bob's not-linked sentence), `@route+block-id#pomodoro` does the
-same onto a named Pomodoro (creating the named future Pomodoro if needed),
-`@route+block-id!` is the explicit link-presence toggle: it links an unlinked
+shows Bob's not-linked sentence), `@route+block-id#type` retypes to `#type`
+and ensures Next, `@route+block-id!` is the explicit link-presence toggle: it links an unlinked
 task (Ready and a task Blocked only by its own prerequisites rise to Next after
 those prerequisites are dropped; other Blocked tasks stay unlinked and the
 preview shows why; Next and In Progress keep their lane)
 and unlinks a linked task without touching the lane, and `@route+block-id` with
 body text nests beneath the task. `@route+block-id#section` nests under that task's
 matching section bullet once body text is present; the same `#` position opens the
-Pomodoro-name popup while the item is still marker-only, including the
-create-future-Pomodoro row and **Name Pomodoro** prompt. The app labels Ensure Next
+task-type menu while the item is still marker-only, with refused names shown
+dimmed and Return a no-op. Named Pomodoros are reached with the whole-item
+`^route:id#name` link instead. The app labels Ensure Next
 versus Set Next/Open from Bob's returned `toggle_behavior`, never by parsing `#` or `!`. The `@route+` parent-task picker (and the vault-wide `+` picker) plus Add block ID prompt are still how a task
 without a block ID becomes selectable. The app does not duplicate those grammar rules; it
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and

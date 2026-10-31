@@ -23,17 +23,17 @@ final class CaptureTaskTypeTests: XCTestCase {
             response.candidates.map(\.origin),
             Array(repeating: "configured", count: 6)
         )
-        let write = try XCTUnwrap(response.candidates.last)
-        XCTAssertEqual(write.effect, "keep")
-        XCTAssertTrue(write.current)
-        XCTAssertTrue(write.inherited)
-        XCTAssertEqual(write.suggestionLabel, "from mac_inbox")
+        let build = try XCTUnwrap(response.candidates.first)
+        XCTAssertEqual(build.effect, "keep")
+        XCTAssertTrue(build.current)
+        XCTAssertTrue(build.inherited)
+        XCTAssertEqual(build.suggestionLabel, "from dev")
         XCTAssertEqual(response.themeSuggestion?.source, "note")
-        XCTAssertEqual(response.themeSuggestion?.theme.name, "WRITE")
+        XCTAssertEqual(response.themeSuggestion?.theme.name, "BUILD")
     }
 
     func testExistingCurrentCompletionDecodesCurrentKeepAndInheritedClear() throws {
-        let response = try decodeCompletion("task-type-complete-existing-current.json")
+        let response = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
         XCTAssertEqual(response.subject, "existing")
         XCTAssertEqual(response.themeSuggestion?.source, "task")
         XCTAssertEqual(response.themeSuggestion?.theme.name, "FIX")
@@ -53,7 +53,7 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(typed.name, "FIXS")
         XCTAssertEqual(typed.similarTo, ["FIX"])
         XCTAssertEqual(typed.effect, "set")
-        XCTAssertNil(typed.refused)
+        XCTAssertEqual(typed.refused, "type_not_configured")
         XCTAssertEqual(typed.themes.first?.configured, false)
     }
 
@@ -77,7 +77,7 @@ final class CaptureTaskTypeTests: XCTestCase {
                 """
                 {"ok":true,"schema_version":1,"cursor":0,
                  "replacement":{"start":0,"end":2},"context":"task_type",
-                 "candidates":[{"replacement":"t:fix","name":"FIX"}]}
+                 "candidates":[{"replacement":"#fix","name":"FIX"}]}
                 """.utf8
             )
         )
@@ -95,9 +95,10 @@ final class CaptureTaskTypeTests: XCTestCase {
     func testParseEmptyAndLiteralAndUnicodeAndMidline() throws {
         let empty = try decodeParse("task-type-parse-empty.json")
         XCTAssertEqual(empty.needs, ["task_type"])
-        XCTAssertEqual(empty.spans.map(\.kind), ["task_type"])
-        XCTAssertEqual(empty.spans.first?.start, 0)
-        XCTAssertEqual(empty.spans.first?.end, 2)
+        XCTAssertTrue(empty.spans.contains(where: { $0.kind == "task_type" }))
+        let emptyType = try XCTUnwrap(empty.spans.first(where: { $0.kind == "task_type" }))
+        XCTAssertEqual(emptyType.start, 11)
+        XCTAssertEqual(emptyType.end, 12)
 
         let literal = try decodeParse("task-type-parse-literal.json")
         let literalSpan = try XCTUnwrap(literal.spans.first(where: { $0.kind == "task_type" }))
@@ -197,7 +198,7 @@ final class CaptureTaskTypeTests: XCTestCase {
 
     func testTypeMarkerInsideTaskWikilinkOwnsTheCaret() throws {
         let parsed = try decodeParse("task-type-parse-wikilink-coexist.json")
-        XCTAssertEqual(parsed.input, "Follow up ((foo t:")
+        XCTAssertEqual(parsed.input, "Follow up ((foo #f")
         XCTAssertTrue(parsed.spans.contains(where: { $0.kind == "wikilink_task_delimiter" }))
         let typeSpan = try XCTUnwrap(parsed.spans.first(where: { $0.kind == "task_type" }))
         XCTAssertEqual(typeSpan.start, 16)
@@ -208,7 +209,7 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(typeComplete.replacement.start, 16)
         XCTAssertEqual(typeComplete.replacement.end, 18)
         XCTAssertTrue(
-            typeComplete.candidates.contains(where: { $0.replacement.hasPrefix("t:") }))
+            typeComplete.candidates.contains(where: { $0.replacement.hasPrefix("#") }))
 
         let query = try decodeCompletion("task-type-complete-wikilink-query.json")
         XCTAssertEqual(query.context, "wikilink_task")
@@ -265,7 +266,7 @@ final class CaptureTaskTypeTests: XCTestCase {
     }
 
     func testFooterSetClearKeepAndRefused() throws {
-        let existing = try decodeCompletion("task-type-complete-existing-current.json")
+        let existing = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
         let current = try XCTUnwrap(existing.candidates.first(where: \.current))
         XCTAssertEqual(
             CaptureTaskTypeMenuPresentation.footer(
@@ -289,7 +290,7 @@ final class CaptureTaskTypeTests: XCTestCase {
         )
 
         let refused = CaptureCompletionCandidate(
-            replacement: "t:fixs", name: "FIXS", origin: "typed",
+            replacement: "#fixs", name: "FIXS", origin: "typed",
             effect: "set", refused: "type_not_configured")
         XCTAssertEqual(
             CaptureTaskTypeMenuPresentation.footer(
@@ -304,10 +305,11 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(menu.rows.map(\.name), empty.candidates.map { $0.name ?? "" })
         XCTAssertEqual(
             menu.selectedFooter,
-            "this task becomes BUILD · mac_inbox suggests WRITE"
+            "stays BUILD · from dev"
         )
+        let build = try XCTUnwrap(menu.rows.first)
+        XCTAssertTrue(build.badges.contains("from dev"))
         let write = try XCTUnwrap(menu.rows.last)
-        XCTAssertTrue(write.badges.contains("from mac_inbox"))
         XCTAssertEqual(write.usageCaption, "never used")
 
         let todayRow = try XCTUnwrap(menu.rows.first(where: { $0.name == "BUILD" }))
@@ -325,7 +327,7 @@ final class CaptureTaskTypeTests: XCTestCase {
                 context: "task_type",
                 candidates: [
                     CaptureCompletionCandidate(
-                        replacement: "t:\"DEEP WORK\" ",
+                        replacement: "#\"DEEP WORK\"",
                         name: "DEEP WORK",
                         themes: [
                             CapturePomodoroThemeRef(
@@ -354,7 +356,7 @@ final class CaptureTaskTypeTests: XCTestCase {
 
     func testPinnedExemptHiddenAndCurrentBadges() {
         let pinned = CaptureCompletionCandidate(
-            replacement: "t:fix ",
+            replacement: "#fix ",
             name: "FIX",
             themes: [
                 CapturePomodoroThemeRef(
@@ -367,7 +369,7 @@ final class CaptureTaskTypeTests: XCTestCase {
             effect: "keep"
         )
         let hidden = CaptureCompletionCandidate(
-            replacement: "t:write ",
+            replacement: "#write ",
             name: "WRITE",
             themes: [
                 CapturePomodoroThemeRef(
@@ -418,7 +420,7 @@ final class CaptureTaskTypeTests: XCTestCase {
         )
 
         let hidden = CaptureCompletionCandidate(
-            replacement: "t:write ",
+            replacement: "#write ",
             name: "WRITE",
             themes: [
                 CapturePomodoroThemeRef(key: "write", name: "WRITE", configured: true)
@@ -436,12 +438,12 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertTrue(
             isTypedTaskTypeRow(
                 CaptureCompletionCandidate(
-                    replacement: "t:fixs", name: "FIXS", origin: "typed")))
+                    replacement: "#fixs", name: "FIXS", origin: "typed")))
     }
 
     func testRowContentUsesTaskTypeCategory() {
         let candidate = CaptureCompletionCandidate(
-            replacement: "t:fix ", name: "FIX", origin: "configured", effect: "set")
+            replacement: "#fix ", name: "FIX", origin: "configured", effect: "set")
         let content = completionRowContent(
             for: candidate, context: "task_type", query: "fi")
         XCTAssertEqual(content.category, .taskType)
@@ -536,6 +538,53 @@ final class CaptureTaskTypeTests: XCTestCase {
         let link = try XCTUnwrap(CapturePomodoroLinkPresentation(capture: capture))
         XCTAssertEqual(link.typeRelocationLine, "moved under FIX")
         XCTAssertTrue(link.previewAccessibilitySummary.contains("moved under FIX"))
+    }
+
+    func testLeadingChildSecondLineAndAttachedFixtures() throws {
+        let leading = try decodeParse("task-type-parse-leading.json")
+        XCTAssertEqual(leading.input, "#fix Fix it")
+        XCTAssertTrue(leading.spans.contains(where: { $0.kind == "task_type" }))
+
+        let child = try decodeParse("task-type-parse-child.json")
+        XCTAssertTrue(child.spans.contains(where: { $0.kind == "task_type" }))
+        let childComplete = try decodeCompletion("task-type-complete-child.json")
+        XCTAssertEqual(childComplete.context, "task_type")
+        XCTAssertEqual(childComplete.query, "fi")
+
+        let secondLine = try decodeCompletion("task-type-complete-second-line.json")
+        XCTAssertEqual(secondLine.context, "task_type")
+        XCTAssertEqual(secondLine.query, "fi")
+
+        let leadingComplete = try decodeCompletion("task-type-complete-leading.json")
+        XCTAssertEqual(leadingComplete.context, "task_type")
+        XCTAssertEqual(leadingComplete.query, "f")
+
+        let attachedNew = try decodeParse("task-type-parse-attached-new.json")
+        let attachedSpan = try XCTUnwrap(attachedNew.spans.first(where: { $0.kind == "task_type" }))
+        XCTAssertEqual(attachedSpan.start, 11)
+        XCTAssertEqual(attachedSpan.end, 15)
+
+        let attachedToggle = try decodeParse("task-type-parse-attached-toggle.json")
+        XCTAssertEqual(attachedToggle.mode, "task_toggle")
+        XCTAssertTrue(attachedToggle.spans.contains(where: { $0.kind == "task_type" }))
+
+        let attachedComplete = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
+        XCTAssertEqual(attachedComplete.context, "task_type")
+        XCTAssertEqual(attachedComplete.subject, "existing")
+        XCTAssertEqual(attachedComplete.query, "")
+    }
+
+    func testPomodoroNoteHasNoCompletionAndRetiredIsProse() throws {
+        let note = try decodeParse("task-type-parse-pomodoro-note.json")
+        XCTAssertEqual(note.mode, "pomodoro_note")
+        XCTAssertFalse(note.spans.contains(where: { $0.kind == "task_type" }))
+        let noteComplete = try decodeCompletion("task-type-complete-pomodoro-note.json")
+        XCTAssertNil(noteComplete.context)
+        XCTAssertTrue(noteComplete.candidates.isEmpty)
+
+        let retired = try decodeParse("task-type-parse-retired.json")
+        XCTAssertEqual(retired.input, "Fix it t:fix")
+        XCTAssertFalse(retired.spans.contains(where: { $0.kind == "task_type" }))
     }
 
     // MARK: - Helpers
