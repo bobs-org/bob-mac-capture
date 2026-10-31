@@ -277,6 +277,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// changes the text view's selection away from `caret`, so the pairing invalidates
     /// itself without this controller having to observe every other input path.
     private var verticalMovementGoal: (column: Int, caret: NSRange)?
+    private var editorLeaderAnchor: (selection: NSRange, text: String)?
+    var beep: () -> Void = { NSSound.beep() }
     private var latestContentMetrics: CapturePanelContentMetrics?
     private var appliedContentHeight: CGFloat?
     private var pendingRecenter = false
@@ -416,6 +418,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         updateTitlebarSafeAreaInset()
         updateAgendaBudget()
         applyLatestContentMetricsIfPossible()
+    }
+
+    func windowDidResignKey(_: Notification) {
+        model.clearEditorLeader()
+        editorLeaderAnchor = nil
     }
 
     /// Receives rendered SwiftUI metrics and caches them before trying to apply them to
@@ -891,6 +898,35 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
         textView.setSelectedRange(edit.resultingSelection)
         textView.scrollRangeToVisible(edit.resultingSelection)
+        return true
+    }
+
+    /// Ctrl-G U: toggle the case of the physical line(s) the selection touches
+    /// through `NSTextView` so undo, IME, and accessibility stay AppKit-owned.
+    /// Returns `true` whenever an editable text view holds focus, including a
+    /// no-op, so `u` never types.
+    static func toggleLineCaseInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+        guard !textView.hasMarkedText(),
+            let edit = CaptureLineCaseToggle.edit(
+                in: textView.string,
+                selectedRange: textView.selectedRange()
+            )
+        else {
+            return true
+        }
+
+        model.dismissCompletion()
+        textView.breakUndoCoalescing()
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        textView.scrollRangeToVisible(edit.resultingSelection)
+        textView.breakUndoCoalescing()
         return true
     }
 
@@ -1580,6 +1616,32 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 verticalMovementGoal = nil
             }
             return inserted
+        case .armEditorLeader:
+            guard let textView = Self.editableTextView(panel?.firstResponder),
+                !model.isSubmitting,
+                !model.editorInputLocked
+            else {
+                return false
+            }
+            editorLeaderAnchor = (selection: textView.selectedRange(), text: textView.string)
+            model.armEditorLeader()
+            return true
+        case .cancelEditorLeader:
+            return true
+        case .rejectEditorLeaderKey:
+            beep()
+            return true
+        case .toggleLineCase:
+            let textView = Self.editableTextView(panel?.firstResponder)
+            let before = textView?.string
+            let consumed = Self.toggleLineCaseInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+            if consumed, textView?.string != before {
+                verticalMovementGoal = nil
+            }
+            return consumed
         case .deleteToBeginningOfLineOrPreviousLine:
             return Self.deleteToBeginningOfLineInEditableTextView(
                 firstResponder: panel?.firstResponder,
@@ -1886,6 +1948,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         defer { CaptureSignpost.end(token) }
         CaptureSignpost.event("panel-dismiss")
         model.prepareForDismissal()
+        editorLeaderAnchor = nil
         panel?.orderOut(nil)
     }
 
@@ -1908,10 +1971,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func routeKeyDown(_ event: NSEvent) -> NSEvent? {
+    func routeKeyDown(_ event: NSEvent) -> NSEvent? {
         model.clearOpenHintReveal()
         repairPromptFieldFocusIfOrphaned()
         repairPickerFilterFocusIfNeeded()
+        let editorLeaderPending = takeEditorLeader()
         guard let command = keyRouter.command(
             for: event,
             context: CaptureKeyRoutingContext(
@@ -1955,7 +2019,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys,
                 taskIDPromptCyclesSuggestions: model.taskIDPromptCyclesSuggestions,
                 closeTaskCommaArmed: model.closeTaskCommaArmed,
-                editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
+                editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
+                editorLeaderPending: editorLeaderPending
             )
         ) else {
             // A focused similar-task row owns its strip keys. Any other
@@ -1969,6 +2034,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
 
         return perform(command) ? nil : event
+    }
+
+    private func takeEditorLeader() -> Bool {
+        let pending = model.editorLeaderPending
+        let anchor = editorLeaderAnchor
+        model.clearEditorLeader()
+        editorLeaderAnchor = nil
+        guard pending,
+            let anchor,
+            let textView = Self.editableTextView(panel?.firstResponder),
+            textView.selectedRange() == anchor.selection,
+            textView.string == anchor.text
+        else {
+            return false
+        }
+        return true
     }
 
     private func resignPullInFilterIfFocused() {

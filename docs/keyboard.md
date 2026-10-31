@@ -81,6 +81,7 @@ as Command-Y L does.
 | Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-G, U | Toggle the current physical line to uppercase, or to lowercase when it is already all uppercase. A multi-line selection uses one direction for every touched line. The caret or selection stays on the same characters, and Command-Z restores the line | Same toggle, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-E | Move to the end of the current physical line; when the caret is already there, move to the end of the next line, stopping on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-J | Move the caret to the next physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
@@ -288,6 +289,15 @@ untouched. Ctrl-U deletes from the caret to the beginning of the current physica
 and when the caret is already at that start -- where there is nothing left to delete --
 it removes the previous line entirely, so repeated presses walk up the draft line by line
 and stop on the first line.
+Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
+toggles the current physical line's case (uppercase unless the span is already all
+uppercase, then lowercase), Escape, Ctrl-[, or a second Control-G cancels silently,
+and any other key beeps and is swallowed so it cannot also act. Holding Control-G
+stays armed. A click, hiding the panel, or losing key focus drops the leader, and
+the footer reads `⌃G · U toggle line case · esc cancel` while it waits. A selection
+that spans lines uses one direction for every touched physical line, without changing
+line terminators. The toggle does not know capture syntax (`x1` becomes `X1`); Bob's
+live parse re-reads the result.
 Backspace on an empty `- ` row removes it in one action instead of requiring two ordinary
 backspaces. All five shortcuts act on the native text view directly, so undo, IME
 composition, and accessibility behave exactly as they do for any other edit, and Bob's

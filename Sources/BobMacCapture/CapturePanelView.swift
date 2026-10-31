@@ -1095,9 +1095,16 @@ private struct CapturePanelFooter: View {
     @ObservedObject var model: CapturePanelModel
     @AccessibilityFocusState private var statusIsFocused: Bool
 
+    private var statusLine: String {
+        if model.editorLeaderPending {
+            return CapturePanelModel.editorLeaderStatusHint
+        }
+        return model.statusText.isEmpty ? "Ready" : model.statusText
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(model.statusText.isEmpty ? "Ready" : model.statusText)
+            Text(statusLine)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
                 .accessibilityFocused($statusIsFocused)

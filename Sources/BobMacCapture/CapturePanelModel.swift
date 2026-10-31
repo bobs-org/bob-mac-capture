@@ -528,6 +528,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var pickerChip: CapturePickerChipState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
     @Published private(set) var editorInputLocked = false
+    /// True while Control-G is waiting for its one follow-up key.
+    @Published private(set) var editorLeaderPending = false
+    static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
     /// `CapturePanelLayout.panelMaximumContentHeight`.
@@ -1090,6 +1093,10 @@ final class CapturePanelModel: ObservableObject {
     func setCloseCommaProvenanceForTests(_ provenance: CaptureCloseTaskCommaProvenance) {
         closeCommaProvenance = provenance
         lastProvenanceDraft = plainDraft
+    }
+
+    func setEditorInputLockedForTests(_ locked: Bool) {
+        editorInputLocked = locked
     }
 
     /// Requests an immediate close-list assist parse of whatever draft
@@ -3784,6 +3791,15 @@ final class CapturePanelModel: ObservableObject {
         agendaExpanded = []
         invalidateRewrite()
         invalidateTodayPomodoroGoto()
+        clearEditorLeader()
+    }
+
+    func armEditorLeader() {
+        editorLeaderPending = true
+    }
+
+    func clearEditorLeader() {
+        editorLeaderPending = false
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {

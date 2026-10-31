@@ -1271,6 +1271,142 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterArmsEditorLeaderOnControlG() {
+        let router = CaptureKeyCommandRouter()
+        let controlG = keyEvent(keyCode: 5, modifiers: .control, characters: "\u{7}")
+
+        XCTAssertEqual(router.command(for: controlG), .armEditorLeader)
+        XCTAssertEqual(
+            router.command(for: controlG, completionVisible: true),
+            .armEditorLeader
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(editorHasMarkedText: true)
+            )
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 5, characters: "g")))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 5, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 5, modifiers: [.control, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 5, modifiers: [.control, .command])))
+
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(pickerVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(templateShelfVisible: true, templateEntryCount: 1)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(taskIDPromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(relationLabelPromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(pullInChoiceVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(inboxRouteChoiceVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(similarRowFocused: true)
+            )
+        )
+    }
+
+    func testKeyRouterEditorLeaderFollowUps() {
+        let router = CaptureKeyCommandRouter()
+        let pending = CaptureKeyRoutingContext(editorLeaderPending: true)
+        let controlG = keyEvent(keyCode: 5, modifiers: .control, characters: "\u{7}")
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 32, characters: "u"), context: pending),
+            .toggleLineCase
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 32, modifiers: .shift, characters: "U"),
+                context: pending
+            ),
+            .toggleLineCase
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 53), context: pending),
+            .cancelEditorLeader
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 33, modifiers: .control, characters: "\u{1B}"),
+                context: pending
+            ),
+            .cancelEditorLeader
+        )
+        XCTAssertEqual(router.command(for: controlG, context: pending), .cancelEditorLeader)
+        XCTAssertEqual(
+            router.command(
+                for: controlG,
+                context: CaptureKeyRoutingContext(keyIsRepeat: true, editorLeaderPending: true)
+            ),
+            .armEditorLeader
+        )
+
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 32, modifiers: .control, characters: "\u{15}"),
+                context: pending
+            ),
+            .rejectEditorLeaderKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 7, characters: "x"), context: pending),
+            .rejectEditorLeaderKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, characters: "\r"), context: pending),
+            .rejectEditorLeaderKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(editorLeaderPending: true)
+            ),
+            .switchPanel
+        )
+    }
+
     func testKeyRouterMapsControlShiftVerticalCaretMovement() {
         let router = CaptureKeyCommandRouter()
 

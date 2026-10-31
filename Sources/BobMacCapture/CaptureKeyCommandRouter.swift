@@ -97,6 +97,10 @@ enum CaptureKeyCommand: Equatable {
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
     case switchPanel
+    case armEditorLeader
+    case cancelEditorLeader
+    case toggleLineCase
+    case rejectEditorLeaderKey
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -136,6 +140,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptCyclesSuggestions = false
     var closeTaskCommaArmed = false
     var editorHasMarkedText = false
+    var editorLeaderPending = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -176,6 +181,7 @@ struct CaptureKeyCommandRouter {
         static let t: UInt16 = 17
         static let c: UInt16 = 8
         static let d: UInt16 = 2
+        static let g: UInt16 = 5
         static let h: UInt16 = 4
         static let r: UInt16 = 15
         static let e: UInt16 = 14
@@ -261,6 +267,14 @@ struct CaptureKeyCommandRouter {
             return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
+        if context.editorLeaderPending {
+            return editorLeaderCommand(
+                for: event,
+                modifiers: modifiers,
+                isRepeat: context.keyIsRepeat || event.isARepeat
+            )
+        }
+
         if event.keyCode == KeyCode.d,
            modifiers == .control,
            context.completionHasSelectedHistoryTheme
@@ -296,6 +310,10 @@ struct CaptureKeyCommandRouter {
 
         if event.keyCode == KeyCode.t, modifiers == .control {
             return .toggleTemplateShelf
+        }
+
+        if event.keyCode == KeyCode.g, modifiers == .control {
+            return context.editorHasMarkedText ? nil : .armEditorLeader
         }
 
         if event.keyCode == KeyCode.backslash, modifiers == .command {
@@ -490,6 +508,34 @@ struct CaptureKeyCommandRouter {
 
     func command(for event: NSEvent, completionVisible: Bool) -> CaptureKeyCommand? {
         command(for: event, context: CaptureKeyRoutingContext(completionVisible: completionVisible))
+    }
+
+    private static let editorLeaderBindings: [String: CaptureKeyCommand] = [
+        "u": .toggleLineCase,
+    ]
+
+    private func editorLeaderCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool
+    ) -> CaptureKeyCommand {
+        if event.keyCode == KeyCode.g, modifiers == .control {
+            return isRepeat ? .armEditorLeader : .cancelEditorLeader
+        }
+        if event.keyCode == KeyCode.escape {
+            return .cancelEditorLeader
+        }
+        if event.keyCode == KeyCode.leftBracket, modifiers == .control {
+            return .cancelEditorLeader
+        }
+        if modifiers.intersection([.command, .control, .option]).isEmpty,
+            let characters = event.characters,
+            characters.unicodeScalars.count == 1,
+            let command = Self.editorLeaderBindings[characters.lowercased()]
+        {
+            return command
+        }
+        return .rejectEditorLeaderKey
     }
 
     /// ⌘1–⌘5 by key code or by `charactersIgnoringModifiers`, in the
