@@ -72,6 +72,10 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         offerRow?.offer?.blockIDNeeded == true
     }
 
+    var isNewProjectOffer: Bool {
+        offerRow?.trigger == "project_created"
+    }
+
     /// Presentation-only meta fragments for offer rows. Unlike `detailText`,
     /// this never includes the recovered "Ready · not pulled in" caption.
     var metaDetails: [String] {
@@ -87,7 +91,7 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
                 if group != "project_finished" {
                     details.append("project finished")
                 }
-            } else {
+            } else if trigger != "project_created" {
                 details.append("trigger: \(trigger)")
             }
         }
@@ -107,7 +111,10 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
             }
             if offerRow.trigger == "project_empty" {
                 details.append("project finished")
-            } else if let trigger = offerRow.trigger, !trigger.isEmpty {
+            } else if let trigger = offerRow.trigger,
+                      !trigger.isEmpty,
+                      trigger != "project_created"
+            {
                 details.append("trigger: \(trigger)")
             }
             return details.isEmpty ? nil : details.joined(separator: " · ")
@@ -155,12 +162,19 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         Self.key(group: group, project: project)
     }
 
+    var isNewProject: Bool {
+        let offers = rows.compactMap(\.offerRow)
+        return group == "project" && !offers.isEmpty
+            && offers.allSatisfy { $0.trigger == "project_created" }
+    }
+
     var title: String {
         switch group {
         case "hand_off":
             return "Hand-offs"
         case "project":
-            return project.map { "Project \(Self.projectLabel($0))" } ?? "Project"
+            let label = project.map(Self.projectLabel) ?? ""
+            return label.isEmpty ? "Project" : "Project \(label)"
         case "project_finished":
             return "Project finished"
         default:
@@ -168,8 +182,12 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         }
     }
 
-    private static func projectLabel(_ path: String) -> String {
+    static func projectLabel(_ path: String) -> String {
         URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+    }
+
+    static func projectFileName(_ path: String) -> String {
+        URL(fileURLWithPath: path).lastPathComponent
     }
 
     static func key(group: String, project: String?) -> String {
@@ -270,8 +288,25 @@ struct CapturePullInChoiceState: Equatable {
         return ordered
     }
 
+    var isNewProjectPrompt: Bool {
+        let offers = rows.compactMap(\.offerRow)
+        return !offers.isEmpty && offers.allSatisfy { $0.trigger == "project_created" }
+    }
+
+    var promptStatusText: String {
+        isNewProjectPrompt ? "Choose tasks to pull in" : "Choose successor offers"
+    }
+
     /// "Unblocked by X" / "Unblocked by X and N more" / nil.
     var contextText: String? {
+        if isNewProjectPrompt {
+            if let cause = rows.first(where: \.isNewProjectOffer)?.offerRow?.unblockedBy.first,
+               !cause.text.isEmpty
+            {
+                return "New project · \(SuccessorRows.truncate(cause.text))"
+            }
+            return "New project"
+        }
         let all = causes
         guard let first = all.first, !first.text.isEmpty else {
             return nil
@@ -285,7 +320,7 @@ struct CapturePullInChoiceState: Equatable {
 
     /// True when rows should show their own "from ‹cause›" suffix.
     var showsRowCauses: Bool {
-        causes.count > 1
+        !isNewProjectPrompt && causes.count > 1
     }
 
     /// "3 offers" / "1 offer" / "1 of 3" while filtering.

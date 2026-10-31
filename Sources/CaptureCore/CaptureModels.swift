@@ -2764,9 +2764,9 @@ public struct CaptureProjectTaskLink: Codable, Equatable, Sendable {
 }
 
 /// The additive `project_note` object on a `project_note` capture result:
-/// the new note's identity plus the Task Links written into the Pomodoro.
-/// `task_links` is always present on newer Bob and may be empty; older Bob
-/// binaries omit the whole object and decode as nil.
+/// the new note's identity, any Task Links written into the Pomodoro, and
+/// (for the offer form) the successor rows Bob offers for an explicit pick.
+/// Older Bob binaries omit the whole object and decode as nil.
 public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
     public let basename: String
     public let parentRoute: String
@@ -2774,6 +2774,10 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
     public let tasks: Int
     public let sections: [String]
     public let taskLinks: [CaptureProjectTaskLink]
+    /// `"offer"` only for `@route:id@`; absent means the create form.
+    public let form: String?
+    /// Open task offers from the new project; absent on the create form.
+    public let successors: [TaskCompleteUnblocked]
 
     public init(
         basename: String,
@@ -2781,7 +2785,9 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         parentLink: String = "",
         tasks: Int = 0,
         sections: [String] = [],
-        taskLinks: [CaptureProjectTaskLink] = []
+        taskLinks: [CaptureProjectTaskLink] = [],
+        form: String? = nil,
+        successors: [TaskCompleteUnblocked] = []
     ) {
         self.basename = basename
         self.parentRoute = parentRoute
@@ -2789,6 +2795,8 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         self.tasks = tasks
         self.sections = sections
         self.taskLinks = taskLinks
+        self.form = form
+        self.successors = successors
     }
 
     public init(from decoder: Decoder) throws {
@@ -2803,6 +2811,12 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
                 [CaptureProjectTaskLink].self,
                 forKey: .taskLinks
             ) ?? []
+        form = (try? container.decodeIfPresent(String.self, forKey: .form)) ?? nil
+        successors =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .successors
+            )) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2812,6 +2826,8 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         case tasks
         case sections
         case taskLinks = "task_links"
+        case form
+        case successors
     }
 }
 

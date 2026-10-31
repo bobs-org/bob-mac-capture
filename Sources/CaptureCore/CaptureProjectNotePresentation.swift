@@ -1,10 +1,10 @@
 import Foundation
 
-/// Pure presentation model for a `project_note` capture result that wrote Task
-/// Links (`kind == "project_note"` with a non-empty `project_note.task_links`),
-/// built once from `CaptureCommandSuccess` so the SwiftUI/AppKit layer never
-/// branches on project-note JSON fields itself. Works equally for a dry-run
-/// live preview and a committed capture.
+/// Pure presentation model for the explicit Task Links from a `project_note`
+/// capture. Picked project successors stay in the Pull-In presentation so the
+/// same task is not shown as both linked and pulled in. Built once from
+/// `CaptureCommandSuccess` so the SwiftUI/AppKit layer never branches on
+/// project-note JSON fields itself.
 ///
 /// The preview's only source of truth is Bob's resolved fields — the
 /// `project_note.task_links` rows plus the top-level `pomodoro_name` and
@@ -38,22 +38,68 @@ public struct CaptureProjectNotePresentation: Equatable, Sendable {
     public let previewAccessibilitySummary: String
 
     public init?(capture: CaptureCommandSuccess) {
-        guard let note = capture.projectNote, !note.taskLinks.isEmpty else {
+        guard let note = capture.projectNote else {
+            return nil
+        }
+        let pickedOfferIDs = Set(
+            note.successors.compactMap { row -> String? in
+                guard row.offer?.selected == true else {
+                    return nil
+                }
+                return row.blockID
+            }
+        )
+        let linkedTasks = note.taskLinks.filter { !pickedOfferIDs.contains($0.blockID) }
+        guard !linkedTasks.isEmpty else {
             return nil
         }
         let destination = capture.pomodoroName ?? "today's Pomodoro"
         destinationLabel = destination
         createdPomodoro = capture.createsPomodoro ?? false
-        let count = note.taskLinks.count
+        let count = linkedTasks.count
         let noun = count == 1 ? "task" : "tasks"
         let createdSuffix = createdPomodoro ? " (new)" : ""
         headerText = "Links \(count) \(noun) into \(destination)\(createdSuffix)"
-        linkedTasks = note.taskLinks.map {
+        let displayedTasks = linkedTasks.map {
             LinkedTaskRow(text: $0.text, blockID: $0.blockID)
         }
+        self.linkedTasks = displayedTasks
         notificationDetail = "Linked \(count) \(noun) into \(destination)"
         previewAccessibilitySummary =
-            ([headerText] + linkedTasks.map { "\($0.text), ^\($0.blockID)" })
+            ([headerText] + displayedTasks.map { "\($0.text), ^\($0.blockID)" })
             .joined(separator: ", ")
+    }
+}
+
+/// Presentation for the new-project context and its offered task rows. The
+/// source remains Bob's `project_note.successors`; the client only supplies
+/// concise wording and never derives which tasks can be offered.
+public struct CaptureProjectNoteSuccessorPresentation: Equatable, Sendable {
+    public let projectName: String
+    public let successors: [TaskCompleteUnblocked]
+    public let contextText: String
+    public let showsNoOpenTasksMessage: Bool
+    public let previewAccessibilitySummary: String
+
+    public init?(capture: CaptureCommandSuccess) {
+        guard let note = capture.projectNote, note.form == "offer" else {
+            return nil
+        }
+        projectName = note.basename
+        successors = note.successors
+        contextText = "New project \(note.basename)"
+        showsNoOpenTasksMessage = note.successors.isEmpty && capture.linkGuard == nil
+        if showsNoOpenTasksMessage {
+            previewAccessibilitySummary = "\(contextText), no open tasks to offer"
+        } else if note.successors.isEmpty {
+            previewAccessibilitySummary = contextText
+        } else {
+            let count = note.successors.count
+            let noun = count == 1 ? "task" : "tasks"
+            previewAccessibilitySummary =
+                ([contextText, "Offers \(count) \(noun), press Return to choose what to pull in"]
+                    + note.successors.map(\.text))
+                    .joined(separator: ", ")
+        }
     }
 }

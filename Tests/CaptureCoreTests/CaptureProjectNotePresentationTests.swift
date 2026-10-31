@@ -6,7 +6,10 @@ final class CaptureProjectNotePresentationTests: XCTestCase {
     private func projectNoteSuccess(
         taskLinks: [CaptureProjectTaskLink],
         pomodoroName: String? = "ADMIN",
-        createsPomodoro: Bool? = true
+        createsPomodoro: Bool? = true,
+        form: String? = nil,
+        successors: [TaskCompleteUnblocked] = [],
+        linkGuard: CaptureLinkGuard? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -31,8 +34,11 @@ final class CaptureProjectNotePresentationTests: XCTestCase {
                 parentLink: "[[cash]]",
                 tasks: 3,
                 sections: ["Future Work"],
-                taskLinks: taskLinks
-            )
+                taskLinks: taskLinks,
+                form: form,
+                successors: successors
+            ),
+            linkGuard: linkGuard
         )
     }
 
@@ -150,5 +156,94 @@ final class CaptureProjectNotePresentationTests: XCTestCase {
 
         let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: success))
         XCTAssertEqual(presentation.headerText, "Links 2 tasks into ADMIN (new)")
+    }
+
+    func testOfferFixtureDecodesProjectSuccessors() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(
+            contentsOf: fixtures.appendingPathComponent("project-note-successors.json")
+        )
+        let success = try JSONDecoder().decode(CaptureCommandSuccess.self, from: data)
+
+        let note = try XCTUnwrap(success.projectNote)
+        XCTAssertEqual(note.form, "offer")
+        XCTAssertEqual(note.successors.count, 2)
+        XCTAssertEqual(
+            note.successors.map(\.trigger),
+            ["project_created", "project_created"] as [String?]
+        )
+        XCTAssertTrue(note.successors.allSatisfy { $0.offer?.selected == false })
+
+        let presentation = try XCTUnwrap(CaptureProjectNoteSuccessorPresentation(capture: success))
+        XCTAssertEqual(presentation.contextText, "New project cash_goog_exit.md")
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("Draft the memo"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("Offers 2 tasks"))
+    }
+
+    func testEmptyProjectOffersShowMessageOnlyWithoutLinkGuard() throws {
+        let empty = try XCTUnwrap(
+            CaptureProjectNoteSuccessorPresentation(
+                capture: projectNoteSuccess(taskLinks: [], form: "offer")
+            )
+        )
+        XCTAssertTrue(empty.showsNoOpenTasksMessage)
+        XCTAssertTrue(empty.previewAccessibilitySummary.contains("no open tasks to offer"))
+
+        let guarded = try XCTUnwrap(
+            CaptureProjectNoteSuccessorPresentation(
+                capture: projectNoteSuccess(
+                    taskLinks: [],
+                    form: "offer",
+                    linkGuard: CaptureLinkGuard(reasons: ["project_schedule"])
+                )
+            )
+        )
+        XCTAssertFalse(guarded.showsNoOpenTasksMessage)
+        XCTAssertEqual(guarded.previewAccessibilitySummary, "New project cash_goog_exit.md")
+    }
+
+    func testPickedSuccessorsDoNotRepeatInProjectTaskLinkSummary() throws {
+        let picked = TaskCompleteUnblocked(
+            notePath: "cash_goog_exit.md",
+            blockID: "draft-memo",
+            text: "Draft the memo",
+            offer: TaskCompleteOffer(key: "opaque:offer", group: "project", selected: true),
+            trigger: "project_created"
+        )
+        let success = projectNoteSuccess(
+            taskLinks: [
+                link("call-bank", text: "Call the bank"),
+                link("draft-memo", text: "Draft the memo"),
+            ]
+        )
+        let withOffer = CaptureCommandSuccess(
+            ok: success.ok,
+            dryRun: success.dryRun,
+            routed: success.routed,
+            route: success.route,
+            routeLabel: success.routeLabel,
+            relativeTarget: success.relativeTarget,
+            target: success.target,
+            text: success.text,
+            taskLine: success.taskLine,
+            kind: success.kind,
+            created: success.created,
+            placement: success.placement,
+            pomodoroName: success.pomodoroName,
+            createsPomodoro: success.createsPomodoro,
+            projectNote: CaptureProjectNoteSummary(
+                basename: "cash_goog_exit.md",
+                taskLinks: success.projectNote?.taskLinks ?? [],
+                form: "offer",
+                successors: [picked]
+            )
+        )
+
+        let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: withOffer))
+        XCTAssertEqual(presentation.headerText, "Links 1 task into ADMIN (new)")
+        XCTAssertEqual(presentation.linkedTasks.map(\.blockID), ["call-bank"])
     }
 }

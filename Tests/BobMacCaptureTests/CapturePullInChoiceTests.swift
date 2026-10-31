@@ -377,14 +377,28 @@ final class CapturePullInChoiceTests: XCTestCase {
             ["trigger: manual"])
         XCTAssertEqual(
             row(n: 4, group: "hand_off", trigger: nil, hideRemoved: false).metaDetails, [])
+        let newProject = row(
+            n: 5,
+            group: "project",
+            trigger: "project_created",
+            hideRemoved: false
+        )
+        XCTAssertEqual(newProject.metaDetails, [])
+        XCTAssertFalse(newProject.detailText?.contains("trigger: project_created") == true)
     }
 
     func testContextTextCoversOneThreeAndNoCauses() {
         func causedOffer(
-            n: Int, notePath: String, blockID: String, text: String
+            n: Int,
+            notePath: String,
+            blockID: String,
+            text: String,
+            group: String = "hand_off",
+            project: String? = nil,
+            trigger: String? = nil
         ) -> TaskCompleteUnblocked {
             TaskCompleteUnblocked(
-                notePath: "sase.md",
+                notePath: project ?? "sase.md",
                 blockID: "task-\(n)",
                 line: n,
                 text: "Task \(n)",
@@ -399,9 +413,11 @@ final class CapturePullInChoiceTests: XCTestCase {
                 offer: TaskCompleteOffer(
                     key: "key-\(n)",
                     n: n,
-                    group: "hand_off",
+                    group: group,
+                    project: project,
                     destination: TaskCompleteOfferDestination(dayFile: "20261013.md")
-                )
+                ),
+                trigger: trigger
             )
         }
         let one = choiceState(offers: [
@@ -426,6 +442,50 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(three.causes.count, 3)
         XCTAssertEqual(three.contextText, "Unblocked by First cause and 2 more")
         XCTAssertTrue(three.showsRowCauses)
+
+        let projectRows = choiceState(offers: [
+            causedOffer(
+                n: 1,
+                notePath: "cash_goog_exit.md",
+                blockID: "prj",
+                text: "Finish the exit packet",
+                group: "project",
+                project: "cash_goog_exit.md",
+                trigger: "project_created"
+            ),
+            causedOffer(
+                n: 2,
+                notePath: "cash_goog_exit.md",
+                blockID: "prj",
+                text: "Finish the exit packet",
+                group: "project",
+                project: "cash_goog_exit.md",
+                trigger: "project_created"
+            ),
+        ])
+        XCTAssertTrue(projectRows.isNewProjectPrompt)
+        XCTAssertEqual(projectRows.promptStatusText, "Choose tasks to pull in")
+        XCTAssertEqual(projectRows.contextText, "New project · Finish the exit packet")
+        XCTAssertFalse(projectRows.showsRowCauses)
+        XCTAssertEqual(projectRows.sections.first?.title, "Project cash_goog_exit")
+        XCTAssertTrue(projectRows.sections.first?.isNewProject == true)
+
+        let mixed = choiceState(offers: [
+            causedOffer(
+                n: 1,
+                notePath: "cash_goog_exit.md",
+                blockID: "prj",
+                text: "Finish the exit packet",
+                group: "project",
+                project: "cash_goog_exit.md",
+                trigger: "project_created"
+            ),
+            causedOffer(n: 2, notePath: "sase.md", blockID: "root", text: "Fix the CLI"),
+        ])
+        XCTAssertFalse(mixed.isNewProjectPrompt)
+        XCTAssertEqual(mixed.promptStatusText, "Choose successor offers")
+        XCTAssertEqual(mixed.contextText, "Unblocked by Finish the exit packet and 1 more")
+        XCTAssertTrue(mixed.showsRowCauses)
 
         let none = choiceState(offers: offers(count: 2))
         XCTAssertTrue(none.causes.isEmpty)

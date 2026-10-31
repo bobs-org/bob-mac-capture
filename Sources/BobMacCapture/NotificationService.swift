@@ -806,7 +806,8 @@ final class NotificationService: NSObject, ObservableObject {
             }
             return "\ntype \(name)"
         }()
-        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)\(projectNote)\(typeSuffix)"
+        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)"
+            + "\(projectNote)\(typeSuffix)"
     }
 
     nonisolated private static func startedSuffix(for capture: CaptureCommandSuccess) -> String {
@@ -831,9 +832,18 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {
         let count = captures.reduce(into: 0) { total, capture in
-            let completionCount = capture.taskComplete?.unblocked.filter { $0.offer?.selected == true }.count ?? 0
-            let closeCount = capture.pomodoroClose?.unblocked.filter { $0.offer?.selected == true }.count ?? 0
-            total += completionCount + closeCount
+            let rows = (capture.taskComplete?.unblocked ?? [])
+                + (capture.pomodoroClose?.unblocked ?? [])
+            var selectedKeys = Set<String>()
+            var unkeyedSelectedCount = 0
+            for row in rows where row.offer?.selected == true {
+                if let key = row.offer?.key, !key.isEmpty {
+                    selectedKeys.insert(key)
+                } else {
+                    unkeyedSelectedCount += 1
+                }
+            }
+            total += selectedKeys.count + unkeyedSelectedCount
         }
         guard count > 0 else { return "" }
         return "Pulled in \(count) successor offer\(count == 1 ? "" : "s")"

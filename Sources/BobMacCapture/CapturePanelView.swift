@@ -3578,6 +3578,9 @@ struct PreviewPane: View {
         if let close = success.pomodoroClose {
             pullInPreviewSummary(for: close.unblocked)
         }
+        if let project = CaptureProjectNoteSuccessorPresentation(capture: success) {
+            projectNoteSuccessorsPreview(for: project)
+        }
         if let ref = CaptureRefPresentation(capture: success) {
             refPreviewItem(
                 ref,
@@ -3660,7 +3663,10 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder
-    private func pullInPreviewSummary(for items: [TaskCompleteUnblocked]) -> some View {
+    private func pullInPreviewSummary(
+        for items: [TaskCompleteUnblocked],
+        showsInvitation: Bool = true
+    ) -> some View {
         let offers = items.filter { $0.offer?.key.isEmpty == false }
         if !offers.isEmpty {
             let rows = offers.map { item in
@@ -3716,14 +3722,58 @@ struct PreviewPane: View {
                         }
                     }
                 }
-                Text("↩ choose what to pull in")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Press Return to choose what to pull in")
+                if showsInvitation {
+                    Text("↩ choose what to pull in")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Press Return to choose what to pull in")
+                }
             }
             .padding(.leading, 20)
             .accessibilityElement(children: .combine)
         }
+    }
+
+    @ViewBuilder
+    private func projectNoteSuccessorsPreview(
+        for presentation: CaptureProjectNoteSuccessorPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "folder.badge.plus")
+                    .foregroundStyle(.brown)
+                    .accessibilityHidden(true)
+                Text(presentation.contextText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if presentation.successors.isEmpty {
+                if presentation.showsNoOpenTasksMessage {
+                    Text("No open tasks to offer")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                let count = presentation.successors.count
+                let noun = count == 1 ? "task" : "tasks"
+                HStack(spacing: 6) {
+                    Text("Offers \(count) \(noun)")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 4)
+                    Text("↩ choose what to pull in")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Offers \(count) \(noun). Press Return to choose what to pull in")
+                pullInPreviewSummary(for: presentation.successors, showsInvitation: false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.previewAccessibilitySummary)
     }
 
     @ViewBuilder

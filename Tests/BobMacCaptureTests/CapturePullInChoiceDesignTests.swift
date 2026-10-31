@@ -126,7 +126,14 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
             model.installPullInChoiceForPreviews(
                 offers: [
                     cardOffer(n: 1, text: "Book flights"),
-                    cardOffer(n: 2, text: "Ship the outcome", group: "project", project: projectPath),
+                    cardOffer(
+                        n: 2,
+                        text: "Ship the outcome",
+                        group: "project",
+                        project: projectPath,
+                        cause: "Create the project",
+                        trigger: "project_created"
+                    ),
                     cardOffer(
                         n: 3,
                         text: "Retire the old flow",
@@ -223,6 +230,7 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         group: String = "hand_off",
         project: String? = nil,
         cause: String? = nil,
+        trigger: String? = nil,
         blockIDNeeded: Bool = false,
         hideRemoved: Bool = false
     ) -> TaskCompleteUnblocked {
@@ -252,6 +260,7 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
                 ),
                 blockIDNeeded: blockIDNeeded
             ),
+            trigger: trigger,
             hideRemoved: hideRemoved
         )
     }

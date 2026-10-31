@@ -29,6 +29,32 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testProjectNoteOfferFixtureOpensNewProjectChoiceUnmarked() async throws {
+        let record = temporaryRecordURL()
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("project-note-successors.json")
+        )
+        model.plainDraft = "Finish the exit packet @cash:goog-exit@"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.markedKeys.isEmpty)
+        XCTAssertTrue(choice.isNewProjectPrompt)
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in")
+        XCTAssertEqual(choice.selectableKeys.count, 2)
+        XCTAssertEqual(
+            choice.contextText,
+            "New project · Finish the exit packet!"
+        )
+        XCTAssertEqual(choice.sections.first?.title, "Project cash_goog_exit")
+        XCTAssertEqual(model.statusText, "Choose tasks to pull in")
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
     func testMarkedSubsetDispatchesOpaqueKeysOnceAndKeepsOpenAfterIntent() async throws {
         let record = temporaryRecordURL()
         let model = makeModel(record: record, stdout: successResponse())
@@ -208,6 +234,14 @@ final class CapturePullInChoiceModelTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func fixtureText(_ name: String) throws -> String {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        return try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
     }
 
     private func temporaryRecordURL() -> URL {

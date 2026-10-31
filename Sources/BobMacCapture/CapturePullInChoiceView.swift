@@ -186,7 +186,7 @@ struct CapturePullInChoiceCard: View {
         .focusable()
         .focusEffectDisabled()
         .onAppear {
-            postAnnouncement("Choose successor offers, \(choice.countText)")
+            postAnnouncement("\(choice.promptStatusText), \(choice.countText)")
         }
         .onChange(of: choice.highlightedKey) { _, key in
             guard let key,
@@ -229,10 +229,10 @@ struct CapturePullInChoiceCard: View {
     private var pullInFilterBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                Image(systemName: "lock.open.fill")
-                    .foregroundStyle(.green)
+                Image(systemName: choice.isNewProjectPrompt ? "folder.badge.plus" : "lock.open.fill")
+                    .foregroundStyle(choice.isNewProjectPrompt ? Color.brown : Color.green)
                     .accessibilityHidden(true)
-                Text("Successors")
+                Text(choice.isNewProjectPrompt ? "New project" : "Successors")
                     .font(.caption.weight(.semibold))
             }
             .padding(.horizontal, 8)
@@ -273,9 +273,11 @@ struct CapturePullInChoiceCard: View {
     private var pullInContextLine: some View {
         HStack(spacing: 6) {
             if let context = choice.contextText {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .accessibilityHidden(true)
+                if !choice.isNewProjectPrompt {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityHidden(true)
+                }
                 Text(context)
                     .font(.caption)
                     .foregroundStyle(.primary)
@@ -527,7 +529,7 @@ struct CapturePullInSectionHeader: View {
         case "hand_off":
             return "arrow.turn.down.right"
         case "project":
-            return "folder"
+            return section.isNewProject ? "folder.badge.plus" : "folder"
         case "project_finished":
             return "checkmark.circle"
         default:
@@ -536,7 +538,10 @@ struct CapturePullInSectionHeader: View {
     }
 
     private var glyphColor: Color {
-        section.group == "project_finished" ? .green : .secondary
+        if section.isNewProject {
+            return .brown
+        }
+        return section.group == "project_finished" ? .green : .secondary
     }
 }
 

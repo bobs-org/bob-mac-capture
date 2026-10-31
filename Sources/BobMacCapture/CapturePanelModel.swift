@@ -2575,7 +2575,7 @@ final class CapturePanelModel: ObservableObject {
         editorInputLocked = true
         completionResponse = nil
         pickerChip = nil
-        statusText = "Choose successor offers"
+        statusText = pullInChoice?.promptStatusText ?? "Choose successor offers"
         requestFocus(.pullInOfferList)
         return true
     }
@@ -2903,7 +2903,7 @@ final class CapturePanelModel: ObservableObject {
             self.pullInChoice = pullInChoice
             editorInputLocked = true
             requestFocus(.pullInOfferList)
-            announceStatus("Choose successor offers")
+            announceStatus(pullInChoice.promptStatusText)
         } else {
             clearEditorInputLockIfFree()
             requestFocus(.editor)
@@ -11692,6 +11692,9 @@ final class CapturePanelModel: ObservableObject {
             if let close = capture.pomodoroClose {
                 offers.append(contentsOf: close.unblocked)
                 stillBlocked.append(contentsOf: close.stillBlocked)
+            }
+            if let projectNote = capture.projectNote, projectNote.form == "offer" {
+                offers.append(contentsOf: projectNote.successors)
             }
             // Complete-label commits offer successors exactly like `!`:
             // the close carries the same `task_complete` offers.

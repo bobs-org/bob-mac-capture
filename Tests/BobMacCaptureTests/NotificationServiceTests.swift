@@ -1563,6 +1563,51 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.body.components(separatedBy: "Pulled in 2 successor offers").count - 1, 1)
     }
 
+    func testProjectOfferNotificationDoesNotDoubleCountPickedTaskLinks() {
+        let picked = TaskCompleteUnblocked(
+            notePath: "cash_goog_exit.md",
+            blockID: "draft-memo",
+            text: "Draft the memo",
+            offer: TaskCompleteOffer(
+                key: "opaque:project-offer",
+                n: 1,
+                group: "project",
+                project: "cash_goog_exit.md",
+                selected: true
+            ),
+            trigger: "project_created"
+        )
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "project_note",
+                routeLabel: "cash_goog_exit.md",
+                target: "/tmp/bob/cash_goog_exit.md",
+                text: "Finish the exit packet",
+                projectNote: CaptureProjectNoteSummary(
+                    basename: "cash_goog_exit.md",
+                    taskLinks: [
+                        CaptureProjectTaskLink(
+                            blockID: "call-bank",
+                            text: "Call the bank",
+                            taskLine: "- [*] Call the bank ^call-bank"
+                        ),
+                        CaptureProjectTaskLink(
+                            blockID: "draft-memo",
+                            text: "Draft the memo",
+                            taskLine: "- [*] Draft the memo ^draft-memo"
+                        ),
+                    ],
+                    form: "offer",
+                    successors: [picked]
+                )
+            ),
+        ])
+
+        XCTAssertTrue(content.body.contains("Linked 1 task into today's Pomodoro"))
+        XCTAssertFalse(content.body.contains("Pulled in 1 successor offer"))
+        XCTAssertFalse(content.body.contains("Linked 2 tasks"))
+    }
+
     func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {
         let success = try closeSuccessFixture("task-complete-successors.json")
         let content = NotificationService.successContent(captures: [success])

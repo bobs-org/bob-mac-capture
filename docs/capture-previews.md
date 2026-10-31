@@ -364,9 +364,11 @@ Queueing can be turned off per draft with `bob capture -R/--no-ref`. The queued 
 
 ## Successor offers
 
-When a current Bob preview reports successor offers for `!` completion or `x` close,
-Return opens a grouped choice card before the capture is written. Nothing is marked
-initially, including a single offer. Return is Pull In: it chooses marked offers or,
+When a current Bob preview reports successor offers for `!` completion, `x` close, or
+an `@route:id@` project capture, Return opens a grouped choice card before the capture
+is written. Project offers show a `New project` capsule with a `folder.badge.plus`
+glyph, the new project's `^prj` task in the context line, and a preview row for the
+offered tasks. Nothing is marked initially, including a single offer. Return is Pull In: it chooses marked offers or,
 when none are marked, the highlighted offer. Up/Down or Control-N/Control-P moves the
 highlight, including from the filter. Space marks or unmarks the highlighted offer
 whenever the filter is empty or unfocused, including immediately after the card opens.

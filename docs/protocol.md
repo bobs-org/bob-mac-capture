@@ -71,6 +71,10 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   ` ^id` project-task tokens (`project_task_block_id` completion context with
   intent `new`, `project_task_link_marker` / `project_task_block_id` parse
   spans, and the additive `project_note.task_links` capture object).
+  The offer form adds `project_note.form: "offer"` and
+  `project_note.successors`, reusing Bob's successor-offer rows and opaque keys for the
+  Pull-In card. A picked row may also appear in `project_note.task_links`; the app
+  reports it once as a pulled-in successor.
   The block-ID `project_note` completion intent now comes from either separator
   followed by the seal, with no new intent value, because an older Mac would read
   an unknown intent as `link`.
@@ -390,7 +394,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Template spans, `@@template:` | Template rows, shelf, preview capsule | Ordinary drafts keep working; refuse before writing | Upgrade `bob` for templates |
 | `override`, guard flags | Orange banner; guarded commit; choice card | Plain start; retry without the flag is remembered | Upgrade `bob` for overrides |
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |
-| Successor offers | Grouped Pull-In choice card | Single legacy wording | Upgrade `bob` for offers |
+| `task_complete.unblocked`, `pomodoro_close.unblocked`, `project_note.successors` | Grouped Pull-In choice card; project offers show a New project context and task preview rows | Single legacy wording | Upgrade `bob` for offers |
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
 | `sub_bullet_depths`, `global_destination`, `items` | Exact children; one shared-scope line | Depth 1; per-item targets | Upgrade `bob` for shared scope |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
