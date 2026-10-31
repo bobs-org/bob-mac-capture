@@ -158,16 +158,19 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   recorded pre-absorption draft; moving the caret or editing the draft clears
   that recovery. This gesture needs a bob build that implements
   `start_template`; with an older bob, the third `@` remains literal.
-  Typing `^` immediately after a complete `@route:id`, or `:` immediately after
-  `@route^id`, uses that same rewrite lane. Bob decides whether the marker is
-  eligible; the app forwards the post-key draft and caret. A matching reply
-  consumes the new character, swaps the separator, and leaves the caret after
-  the unchanged ID so the keys can be repeated without moving backward. The
-  new key must sit against the ID, and only those two plain forms toggle —
-  space, suffixes (`#name`, `+`, `=`), `@@`, `@!`, and other marker families
-  type through. Undo restores the literal post-key draft. When Bob leaves the key
-  alone (for example `@route:` or `@route^` with no ID yet, or a whole-item `^`), the
-  keystroke behaves like ordinary typing, and its picker or completion opens as before.
+  Typing `^` immediately after a complete `@route:id`, `:` after `@route^id`,
+  or `+` after `@route:id` uses that same rewrite lane. After `@route+block-id`,
+  typing `:` or `^` switches to the corresponding `@route:id` or `@route^id`
+  form. Bob decides whether the marker is eligible; the app forwards the post-key
+  draft and caret. A matching reply consumes the new character, switches the
+  separator, and leaves the caret after the unchanged ID so the keys can be
+  repeated without moving backward. The new key must sit against the ID, and
+  suffixes already inside the marker (`#name`, `+`, `=`), `@@`, `@!`, and other
+  marker families type through. Typing `+` after `@route^block-id` stays literal
+  so the project-note form remains available. Undo after a successful rewrite
+  restores the literal post-key draft. When Bob leaves a key alone (for example
+  `@route:` or `@route^` with no ID yet, or a whole-item `^`), the keystroke
+  behaves like ordinary typing, and its picker or completion opens as before.
   This gesture needs a bob build that implements `switch_block_id_separator`.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the

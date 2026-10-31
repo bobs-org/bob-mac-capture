@@ -1865,6 +1865,38 @@ JSON
 "edits":[{"range":{"start":8,"end":17},"replacement":"@file^id"}],
 "summary":"Changed @file:id to @file^id"}
 JSON
+    elif [[ "${draft}" == "Do work @file:id+" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file+id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file+id"}],
+"summary":"Changed @file:id to @file+id"}
+JSON
+    elif [[ "${draft}" == "@file:id+" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@file+id","changed":true,"cursor":8,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":0,"end":9},"replacement":"@file+id"}],
+"summary":"Changed @file:id to @file+id"}
+JSON
+    elif [[ "${draft}" == "Do work @file+id^" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file^id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file^id"}],
+"summary":"Changed @file+id to @file^id"}
+JSON
+    elif [[ "${draft}" == "Do work @file+id:" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file:id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file:id"}],
+"summary":"Changed @file+id to @file:id"}
+JSON
     elif [[ "${draft}" == "Do work @file^id:" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"

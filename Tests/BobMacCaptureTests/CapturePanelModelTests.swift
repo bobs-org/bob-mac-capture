@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import Combine
 import Foundation
@@ -5664,7 +5665,30 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.completionResponse?.context == "route" }
         XCTAssertEqual(model.completionResponse?.candidates.first?.route, "cash")
 
-        model.plainDraft = "Call bank @Ca+"
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = model.plainDraft
+        let end = (textView.string as NSString).length
+        textView.setSelectedRange(NSRange(location: end, length: 0))
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "+",
+                charactersIgnoringModifiers: "+",
+                isARepeat: false,
+                keyCode: 24
+            )!,
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        textView.insertText("+", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
         model.editorTextDidChange(cursorUTF8Offset: nil)
 
         XCTAssertEqual(model.plainDraft, "Call bank @cash+")
@@ -5672,6 +5696,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         await waitUntil { model.completionResponse?.context == "task" }
         let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-rewrite"))
         XCTAssertTrue(
             record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash+")
         )

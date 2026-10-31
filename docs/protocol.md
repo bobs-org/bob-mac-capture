@@ -13,7 +13,8 @@ Capabilities are detected per response, never pinned to release numbers: unknown
 
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite` (including
-  `switch_block_id_separator` and `start_template`), `capture-complete --all-tasks`,
+  `switch_block_id_separator` for `^`, `:`, and `+`, and `start_template`),
+  `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
   and `pulls_forward` candidate fields), the `task_goto` completion context for a
@@ -339,7 +340,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` / `@@route+block-id` declarations | Unmarked items route to the declaration | Ordinary draft capture; bare markers report the local `bob` error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` toggle the separator; `|` attaches to an eligible relation token; `@@@` at the start of a draft or end of any line starts a template | With an older bob, the third `@` types literally for both template-start forms; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for relation-label attachment and template start |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` / `+` switch eligible block-ID separators; `|` attaches to an eligible relation token; `@@@` at the start of a draft or end of any line starts a template | With an older bob, `+` types literally; the third `@` types literally for both template-start forms; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+`, relation-label attachment, and template start |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |

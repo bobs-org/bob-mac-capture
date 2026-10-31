@@ -34,7 +34,8 @@ private struct CaptureRewriteProvenance: Equatable {
     let outputCursorUTF8Offset: Int
 }
 
-/// One-shot expected buffer after a native `:`/`^`, `|`, or template-start `@` insertion.
+/// One-shot expected buffer after native `:`/`^`/`+`, `|`, or template-start `@`
+/// insertion.
 /// Cleared on consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
 /// an accepted toggle supersedes that analysis, while any other outcome completes
@@ -1925,9 +1926,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a rewrite-lane
-    /// separator gesture (`:`, `^`, or `|`) or the template-start `@`. The character still
-    /// inserts natively; `editorTextDidChange` consumes this only when the
-    /// resulting buffer matches.
+    /// separator gesture (`:`, `^`, `+`, or `|`) or template-start `@`. The
+    /// character still inserts natively; `editorTextDidChange` consumes this
+    /// only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         var rewriteSource: CaptureRewriteSource?
         if typed == "@" {
@@ -1975,7 +1976,7 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
         } else {
-            guard typed == ":" || typed == "^" || typed == "|",
+            guard typed == ":" || typed == "^" || typed == "+" || typed == "|",
                   selectedRange.length == 0,
                   selectedRange.location >= 0
             else {
@@ -2078,6 +2079,7 @@ final class CapturePanelModel: ObservableObject {
         noteAgendaFirstKeystroke()
 
         if commitRouteCompletionOnPlus(draft: draft) {
+            pendingSeparatorToggleIntent = nil
             return
         }
 
