@@ -339,7 +339,7 @@ final class CapturePickerDesignTests: XCTestCase {
             context: "project_task_block_id",
             replacement: CaptureRange(start: 45, end: 45),
             filter: "draft",
-            draft: "Finish it @cash^goog-exit+\n- Draft the memo :"
+            draft: "Finish it @cash^goog-exit@\n- Draft the memo :"
         )
 
         guard case .blockID(let context) = model.picker?.source else {
@@ -584,7 +584,7 @@ final class CapturePickerDesignTests: XCTestCase {
                 context: "task_block_id",
                 replacement: CaptureRange(start: 11, end: 18),
                 filter: "retreat",
-                draft: "Plan @sase^retreat+"
+                draft: "Plan @sase^retreat@"
             ),
             BlockIDRenderState(
                 name: "blockid-note-missing",
@@ -1139,7 +1139,7 @@ final class CapturePickerDesignTests: XCTestCase {
         )
     }
 
-    /// Project-note field for `Plan @sase^retreat+`.
+    /// Project-note field for `Plan @sase^retreat@`.
     private static var projectNoteField: CaptureBlockIDField {
         CaptureBlockIDField(
             route: "sase",

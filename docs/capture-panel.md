@@ -118,6 +118,20 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   `template_field` uses the same slot hue, selected by `field % 6` from orange, teal,
   pink, green, purple, and brown. Template diagnostics underline their typed ranges in
   red; ordinary drafts keep their existing highlighting.
+- A sealed project-note marker paints as one manila chip, a folder tab sitting in the
+  sentence. Bob adds a `project_note` value (`create` or `offer`) to every span of the
+  marker (route, separator, block ID, `@` seal, and any placeholder standing in for a
+  missing piece), and the app lays a soft brown wash behind each of them. The spans are
+  contiguous, so the wash reads as one chip; the `#name` after the seal is a separate
+  span and keeps its own theme-tinted pill. Inside the chip the route keeps the route
+  blue, while the new note's name (the block ID), the separator, and the seal are brown
+  for the create form `@route^id@`. In the offer form `@route:id@` the name stays brown
+  and the `:` and `@` go green, the Pull-In card's "will be linked" color, to say a
+  choice card follows. The wash is about 16% brown and rises to about 26% under Increase
+  Contrast. An older bob sends no modifier, so no chip appears and the seal paints
+  brown with no wash; a modifier value this app does not know still gets the wash but
+  recolors nothing. Typing the `@` seal right after `@route^id` or `@route:id` opens no
+  picker or completion and is never sent to `capture-rewrite`.
 
 The agenda UI behind the store above is described in [Idle agenda](idle-agenda.md).
 
@@ -159,15 +173,19 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   that recovery. This gesture needs a bob build that implements
   `start_template`; with an older bob, the third `@` remains literal.
   Typing `^` immediately after a complete `@route:id`, `:` after `@route^id`,
-  or `+` after `@route:id` uses that same rewrite lane. After `@route+block-id`,
+  or `+` after `@route:id` or `@route^id` uses that same rewrite lane. After `@route+block-id`,
   typing `:` or `^` switches to the corresponding `@route:id` or `@route^id`
   form. Bob decides whether the marker is eligible; the app forwards the post-key
   draft and caret. A matching reply consumes the new character, switches the
   separator, and leaves the caret after the unchanged ID so the keys can be
   repeated without moving backward. The new key must sit against the ID, and
   suffixes already inside the marker (`#name`, `+`, `=`), `@@`, `@!`, and other
-  marker families type through. Typing `+` after `@route^block-id` stays literal
-  so the project-note form remains available. Undo after a successful rewrite
+  marker families type through. A project note is sealed with `@` instead of `+`
+  (`@route^block-id@`), so `+` toggles after `@route^block-id` like it does after
+  every other separator. After a sealed marker, `:` after `@route^block-id@` and `^`
+  after `@route:block-id@` use the same lane to switch between the two project forms
+  (an older bob leaves them literal), while the same separator or `+` after a seal
+  stays literal and `@` itself is never a rewrite key. Undo after a successful rewrite
   restores the literal post-key draft. When Bob leaves a key alone (for example
   `@route:` or `@route^` with no ID yet, or a whole-item `^`), the keystroke
   behaves like ordinary typing, and its picker or completion opens as before.
@@ -208,8 +226,9 @@ A marker (`@route`,
 `@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
 ALL-CAPS section bullets once body text exists, `@route^block-id` for an ordinary task with an authored block
-ID, `@route^block-id#type` to type the new task, `@route^block-id+#pomodoro` for a project note (with ` :id` / ` ^id` tokens
-on its task bullets naming and optionally linking project tasks),
+ID, `@route^block-id#type` to type the new task, `@route^block-id@#pomodoro` for a project note (with ` :id` / ` ^id` tokens
+on its task bullets naming and optionally linking project tasks), `@route:block-id@#pomodoro` for a project note whose
+open tasks you then pick from to link,
 `s:<N>`, `$<N>`, `%`, …) at the end of any valid line configures that item even
 when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
@@ -219,8 +238,9 @@ task sections once it does, and the `^` family's authored ID opens the New ID pi
 A project note's ` :id` bullet becomes a Next task linked into the Pomodoro and its
 ` ^id` bullet a named task; the preview names each linked task and the notification
 reports "Linked N tasks into …". The retired
-`@route::block-id` and `@route:block-id+` spellings are parse diagnostics from
-`bob capture-parse`, not supported interactive forms.
+`@route::block-id`, `@route^block-id+`, and `@route:block-id+` spellings are parse
+diagnostics from `bob capture-parse` (the `+` forms teach the `@` seal), not supported
+interactive forms.
 
 ```text
 Prepare the launch review

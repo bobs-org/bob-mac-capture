@@ -55,6 +55,25 @@ public struct BlockIDPickerContext: Equatable, Sendable {
         return "\(route).md"
     }
 
+    /// Follow-up keystrokes taught after the first insert. A `^` ID takes `@`
+    /// to seal a project note (with `@#name` picking its Pomodoro). A `:` ID on
+    /// an item with text (a new Next task) takes `#name`, `=`, or the same `@`
+    /// seal, which also lets the user pick which of the project's tasks to link.
+    /// A bare `:` link takes `#name` or `=`. Project notes and project-task IDs
+    /// need no follow-up.
+    public var teachingLine: String? {
+        if intent == .projectNote || scope == .projectTask {
+            return nil
+        }
+        if marker == "^" {
+            return "Then type @ for a project note (@#name picks its Pomodoro)"
+        }
+        if intent == .new {
+            return "Then type #name, = to start, or @ for a project note whose tasks you pick"
+        }
+        return "Then type #name or = to start"
+    }
+
     /// Marker token naming the position (`@sase:` / `@sase^`, or the bare
     /// ` :` / ` ^` project-task sigil with no `@route`).
     public var scopeToken: String {
@@ -272,6 +291,15 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .parentTask(let context):
             return context.scopeToken
         }
+    }
+
+    /// True for the Block ID picker over a sealed project note's ID. The filter
+    /// bar tints its "Project note" caption brown to match the editor chip.
+    public var isProjectNoteScope: Bool {
+        if case .blockID(let context) = self {
+            return context.intent == .projectNote
+        }
+        return false
     }
 
     /// Scope-token caption (`Active Tasks`, `Tasks`, `New ID`) shown in the

@@ -1200,7 +1200,14 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "interactive_placeholder"), .interactivePlaceholder)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_explicit_toggle"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_force_next"), .explicitToggle)
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_note_marker"), .explicitToggle)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "project_note_marker"),
+            .projectNoteSeal
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "project_note_offer_marker"),
+            .projectNoteOfferSeal
+        )
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_task_link_marker"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_start"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_adjust"), .pomodoroStart)
@@ -1239,6 +1246,141 @@ final class CompletionRowContentTests: XCTestCase {
         // unrecognized kind.
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "now_tag"), .neutral)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
+    }
+
+    func testProjectNoteSpansPaintTheManilaChipPalette() {
+        func span(_ kind: String, _ modifier: String?) -> CaptureSpan {
+            CaptureSpan(start: 0, end: 1, kind: kind, projectNote: modifier)
+        }
+
+        // Create form: blue route, brown name, brown separator and seal.
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("task_block_id_route", "create")),
+            .route
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("project_note_separator", "create")),
+            .projectNoteSeal
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("task_block_id", "create")),
+            .projectNoteName
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("project_note_marker", "create")),
+            .projectNoteSeal
+        )
+
+        // Offer form: the same route and name, but the `:` and `@` go green.
+        XCTAssertEqual(captureSemanticCategory(forSpan: span("pomodoro_route", "offer")), .route)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("project_note_separator", "offer")),
+            .projectNoteOfferSeal
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("pomodoro_block_id", "offer")),
+            .projectNoteName
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: span("project_note_offer_marker", "offer")),
+            .projectNoteOfferSeal
+        )
+
+        // The Pomodoro name never carries the modifier and keeps its own color.
+        XCTAssertEqual(captureSemanticCategory(forSpan: span("pomodoro_name", nil)), .section)
+    }
+
+    func testProjectNoteModifierOnOrdinaryBlockIDsIsAbsent() {
+        // Without the modifier a block ID is the ordinary indigo ID, even for
+        // the kinds that carry the name inside a project-note marker.
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: CaptureSpan(start: 0, end: 1, kind: "task_block_id")),
+            .blockID
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 0, end: 1, kind: "pomodoro_block_id")
+            ),
+            .blockID
+        )
+        // A separator span with no modifier cannot say which form it seals.
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 0, end: 1, kind: "project_note_separator")
+            ),
+            .neutral
+        )
+    }
+
+    func testUnknownProjectNoteModifierGetsNoRecoloringAndUnknownKindsStayNeutral() {
+        // A modifier newer than this app still gets the wash (the editor washes
+        // any non-nil modifier) but recolors nothing: the block ID stays an
+        // ordinary indigo ID and the separator stays neutral.
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 0, end: 1, kind: "task_block_id", projectNote: "future")
+            ),
+            .blockID
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(
+                    start: 0, end: 1, kind: "project_note_separator", projectNote: "future"
+                )
+            ),
+            .neutral
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(
+                    start: 0, end: 1, kind: "task_block_id_route", projectNote: "future"
+                )
+            ),
+            .route
+        )
+        // A span kind this app does not know stays neutral whatever it carries.
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(
+                    start: 0, end: 1, kind: "project_note_future_kind", projectNote: "create"
+                )
+            ),
+            .neutral
+        )
+    }
+
+    func testProjectNoteSpanModifierDecodesTolerantly() throws {
+        let create = try JSONDecoder().decode(
+            CaptureSpan.self,
+            from: Data(
+                #"{"start":25,"end":26,"kind":"project_note_marker","project_note":"create"}"#
+                    .utf8
+            )
+        )
+        XCTAssertEqual(create.projectNote, "create")
+        XCTAssertEqual(captureSemanticCategory(forSpan: create), .projectNoteSeal)
+
+        let offer = try JSONDecoder().decode(
+            CaptureSpan.self,
+            from: Data(
+                #"{"start":25,"end":26,"kind":"project_note_offer_marker","project_note":"offer"}"#
+                    .utf8
+            )
+        )
+        XCTAssertEqual(offer.projectNote, "offer")
+
+        // Older bob omits the key; a malformed value never fails the whole span.
+        let older = try JSONDecoder().decode(
+            CaptureSpan.self,
+            from: Data(#"{"start":25,"end":26,"kind":"project_note_marker"}"#.utf8)
+        )
+        XCTAssertNil(older.projectNote)
+        let malformed = try JSONDecoder().decode(
+            CaptureSpan.self,
+            from: Data(#"{"start":25,"end":26,"kind":"project_note_marker","project_note":7}"#.utf8)
+        )
+        XCTAssertNil(malformed.projectNote)
+        XCTAssertEqual(malformed.kind, "project_note_marker")
     }
 
     func testNamedStartSpansReadAsTwoTones() {

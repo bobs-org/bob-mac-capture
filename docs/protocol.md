@@ -59,11 +59,21 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   the additive `created_pomodoro` capture summary for new and "again"
   sessions),
   plus Pomodoro close `x` and its additive `pomodoro_close` capture summary,
-  plus the project-note `@route^block-id+#pomodoro` marker (the retired
-  `@route:block-id+` spelling is a parse diagnostic), the trailing ` :id` /
+  plus the project-note `@route^block-id@#pomodoro` marker (the retired
+  `@route^block-id+` and `@route:block-id+` spellings are parse diagnostics),
+  with the `@` seal reported as a `project_note_marker` span, the separator as a
+  `project_note_separator` span, and an additive `project_note` span modifier
+  (`create` or `offer`) on every span of the marker, which paints the manila chip
+  (an older bob sends no modifier or separator span, so the seal paints brown with
+  no wash, and a modifier value this app does not know washes without recoloring),
+  the offer form `@route:block-id@#pomodoro` (`project_note_offer_marker` seal
+  span, modifier `offer`), the trailing ` :id` /
   ` ^id` project-task tokens (`project_task_block_id` completion context with
   intent `new`, `project_task_link_marker` / `project_task_block_id` parse
   spans, and the additive `project_note.task_links` capture object).
+  The block-ID `project_note` completion intent now comes from either separator
+  followed by the seal, with no new intent value, because an older Mac would read
+  an unknown intent as `link`.
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
@@ -340,7 +350,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` / `@@route+block-id` declarations | Unmarked items route to the declaration | Ordinary draft capture; bare markers report the local `bob` error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` / `+` switch eligible block-ID separators; `|` attaches to an eligible relation token; `@@@` at the start of a draft or end of any line starts a template | With an older bob, `+` types literally; the third `@` types literally for both template-start forms; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+`, relation-label attachment, and template start |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token; `@@@` at the start of a draft or end of any line starts a template | With an older bob, `+` types literally; the third `@` types literally for both template-start forms; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+`, relation-label attachment, and template start |
+| `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |

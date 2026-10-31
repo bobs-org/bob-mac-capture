@@ -125,6 +125,241 @@ final class CaptureEditorHighlightTests: XCTestCase {
         XCTAssertEqual(painted, ["duplicate of"])
     }
 
+    func testCreateFormProjectNoteMarkerWearsOneManilaChip() throws {
+        let draft = "Finish it @cash^goog-exit@#admin"
+        let spans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route", projectNote: "create"),
+            CaptureSpan(start: 15, end: 16, kind: "project_note_separator", projectNote: "create"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id", projectNote: "create"),
+            CaptureSpan(start: 25, end: 26, kind: "project_note_marker", projectNote: "create"),
+            CaptureSpan(start: 27, end: 32, kind: "pomodoro_name"),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        // One contiguous chip over the whole marker; the `#` and the Pomodoro
+        // name after it stay unwashed so `#admin` reads as a separate object.
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }).joined(),
+            "@cash^goog-exit@"
+        )
+        let wash = CaptureEditorPalette.projectNoteWash(increaseContrast: false)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor == wash }).joined(),
+            "@cash^goog-exit@"
+        )
+        let route = NSColor(CaptureEditorPalette.color(for: .route))
+        let brown = NSColor(CaptureEditorPalette.color(for: .projectNoteName))
+        XCTAssertNotEqual(route, brown)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == route } ?? false
+            }),
+            ["@cash"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == brown } ?? false
+            }).joined(),
+            "^goog-exit@"
+        )
+        XCTAssertEqual(
+            NSColor(CaptureEditorPalette.color(for: .projectNoteSeal)),
+            brown
+        )
+    }
+
+    func testOfferFormProjectNoteMarkerKeepsBrownNameAndGreenSeals() throws {
+        let draft = "Finish it @cash:goog-exit@#admin"
+        let spans = [
+            CaptureSpan(start: 10, end: 15, kind: "pomodoro_route", projectNote: "offer"),
+            CaptureSpan(start: 15, end: 16, kind: "project_note_separator", projectNote: "offer"),
+            CaptureSpan(start: 16, end: 25, kind: "pomodoro_block_id", projectNote: "offer"),
+            CaptureSpan(
+                start: 25,
+                end: 26,
+                kind: "project_note_offer_marker",
+                projectNote: "offer"
+            ),
+            CaptureSpan(start: 27, end: 32, kind: "pomodoro_name"),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }).joined(),
+            "@cash:goog-exit@"
+        )
+        let green = NSColor(CaptureEditorPalette.color(for: .projectNoteOfferSeal))
+        let brown = NSColor(CaptureEditorPalette.color(for: .projectNoteName))
+        XCTAssertNotEqual(green, brown)
+        // The `:` and `@` go green ("will be linked"); the name stays brown.
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == green } ?? false
+            }),
+            [":", "@"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == brown } ?? false
+            }),
+            ["goog-exit"]
+        )
+    }
+
+    func testProjectNoteChipDoesNotWashThemeNameAndKeepsItsTint() throws {
+        let draft = "Finish it @cash^goog-exit@#admin"
+        let theme = CapturePomodoroThemeRef(
+            key: "admin",
+            name: "admin",
+            hue: .orange,
+            hueSource: "hash",
+            start: 27,
+            end: 32
+        )
+        let spans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route", projectNote: "create"),
+            CaptureSpan(start: 15, end: 16, kind: "project_note_separator", projectNote: "create"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id", projectNote: "create"),
+            CaptureSpan(start: 25, end: 26, kind: "project_note_marker", projectNote: "create"),
+            CaptureSpan(start: 27, end: 32, kind: "pomodoro_name", themes: [theme]),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        // The theme pill is its own tint, not the manila wash.
+        let wash = CaptureEditorPalette.projectNoteWash(increaseContrast: false)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor == wash }).joined(),
+            "@cash^goog-exit@"
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: {
+                $0.backgroundColor != nil && $0.backgroundColor != wash
+            }),
+            ["admin"]
+        )
+    }
+
+    func testSpansWithoutProjectNoteModifierGetNoWash() throws {
+        // An older bob sends the seal span with no modifier: no chip. The
+        // kind-only seal color still applies; the ID stays an ordinary ID.
+        let draft = "Finish it @cash^goog-exit@"
+        let spans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id"),
+            CaptureSpan(start: 25, end: 26, kind: "project_note_marker"),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+        let seal = NSColor(CaptureEditorPalette.color(for: .projectNoteSeal))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == seal } ?? false
+            }),
+            ["@"]
+        )
+    }
+
+    func testUnknownProjectNoteModifierWashesWithoutRecoloring() throws {
+        let draft = "Finish it @cash^goog-exit@"
+        let spans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route", projectNote: "future"),
+            CaptureSpan(start: 15, end: 16, kind: "project_note_separator", projectNote: "future"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id", projectNote: "future"),
+            CaptureSpan(start: 25, end: 26, kind: "project_note_marker", projectNote: "future"),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }).joined(),
+            "@cash^goog-exit@"
+        )
+        let indigo = NSColor(CaptureEditorPalette.color(for: .blockID))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == indigo } ?? false
+            }),
+            ["goog-exit"]
+        )
+    }
+
+    func testIncreaseContrastRaisesTheManilaWash() {
+        XCTAssertNotEqual(
+            CaptureEditorPalette.projectNoteWash(increaseContrast: false),
+            CaptureEditorPalette.projectNoteWash(increaseContrast: true)
+        )
+    }
+
+    func testRepaintClearsTheChipWhenTheSealIsDeleted() throws {
+        // Typed text inherits attributes, so a repaint for a draft whose marker
+        // lost its seal must drop every background the chip left behind.
+        let sealed = "Finish it @cash^goog-exit@"
+        let sealedSpans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route", projectNote: "create"),
+            CaptureSpan(start: 15, end: 16, kind: "project_note_separator", projectNote: "create"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id", projectNote: "create"),
+            CaptureSpan(start: 25, end: 26, kind: "project_note_marker", projectNote: "create"),
+        ]
+        var text = AttributedString(sealed)
+        let sealedRanges = try XCTUnwrap(validatedSpanRanges(in: sealed, spans: sealedSpans))
+        CapturePanelModel.paintHighlighting(
+            &text,
+            parse: Self.parse(draft: sealed, spans: sealedSpans),
+            draft: sealed,
+            ranges: sealedRanges
+        )
+        XCTAssertFalse(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+
+        let bare = "Finish it @cash^goog-exit"
+        text = AttributedString(bare)
+        // Simulate the inherited wash on the new draft before the repaint.
+        try Self.setAttributes(on: &text, start: 10, end: 25) {
+            $0.backgroundColor = CaptureEditorPalette.projectNoteWash(increaseContrast: false)
+        }
+        let bareSpans = [
+            CaptureSpan(start: 10, end: 15, kind: "task_block_id_route"),
+            CaptureSpan(start: 16, end: 25, kind: "task_block_id"),
+        ]
+        let bareRanges = try XCTUnwrap(validatedSpanRanges(in: bare, spans: bareSpans))
+        CapturePanelModel.paintHighlighting(
+            &text,
+            parse: Self.parse(draft: bare, spans: bareSpans),
+            draft: bare,
+            ranges: bareRanges
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
     func testWhitespaceOnlyDraftClearsInheritedTint() throws {
         let model = CapturePanelModel()
         var text = AttributedString("  ")

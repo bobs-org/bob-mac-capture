@@ -61,6 +61,14 @@ enum CaptureEditorPalette {
         }
     }
 
+    /// The soft manila wash behind every span of a sealed project-note marker
+    /// (`@cash^goog-exit@`, `@cash:goog-exit@`). The spans are contiguous across
+    /// the marker, so the per-span washes read as one chip. Increase Contrast
+    /// raises the alpha so the chip survives the stronger system contrast.
+    static func projectNoteWash(increaseContrast: Bool) -> Color {
+        Color(nsColor: .systemBrown).opacity(increaseContrast ? 0.26 : 0.16)
+    }
+
     static func color(for category: CaptureSemanticCategory) -> Color {
         switch category {
         case .route:
@@ -89,6 +97,13 @@ enum CaptureEditorPalette {
             return .secondary
         case .explicitToggle:
             return .yellow
+        case .projectNoteName, .projectNoteSeal:
+            // Brown reads as a manila folder: a new project note. It is the
+            // one system hue the editor has not already given a role.
+            return .brown
+        case .projectNoteOfferSeal:
+            // The Pull-In card's "will be linked" green: a choice card follows.
+            return .green
         case .blockedTaskSigil:
             return .teal
         case .relationSigil:

@@ -1,5 +1,6 @@
 import AppKit
 import CaptureCore
+import SwiftUI
 import XCTest
 
 @testable import BobMacCapture
@@ -369,7 +370,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
     }
 
-    func testPlusAfterCaretProjectNoteMarkerStaysLiteral() async throws {
+    func testPlusAfterCaretIDSwitchesToSubBulletInOneUndoStep() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -378,15 +379,105 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         wireNativeApply(model, textView: textView)
 
         typeSeparator("+", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        await waitUntil {
+            textView.string == "Do work @file+id"
+                && model.statusText == "Changed @file^id to @file+id"
+        }
 
-        XCTAssertEqual(model.plainDraft, "Do work @file^id+")
-        XCTAssertEqual(textView.string, "Do work @file^id+")
-        XCTAssertNotEqual(model.statusText, "Changed @file^id to @file+id")
+        XCTAssertEqual(model.plainDraft, "Do work @file+id")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 16, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.picker)
         let record = try String(contentsOf: recordURL)
         let expectedArgv =
             "argv=capture-rewrite --cursor 17 --format json -- " + "Do work @file^id+"
         XCTAssertTrue(record.contains(expectedArgv))
+
+        // The swap is its own native undo step: one Undo restores the literal
+        // post-key draft, and the restored text asks Bob for nothing more.
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Do work @file^id+")
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(textView.string, "Do work @file^id+")
+        let afterUndo = try String(contentsOf: recordURL)
+        XCTAssertEqual(afterUndo.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+    }
+
+    func testColonKeySwitchesSealedCaretMarkerThroughNativeInsert() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Do work @file^id@")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(":", into: textView, model: model)
+        await waitUntil {
+            textView.string == "Do work @file:id@"
+                && model.statusText == "Changed @file^id@ to @file:id@"
+        }
+
+        XCTAssertEqual(model.plainDraft, "Do work @file:id@")
+        // The caret lands after the seal, where Bob put it.
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 17, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 17)
+        XCTAssertNil(model.picker)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 18 --format json -- Do work @file^id@:")
+        )
+    }
+
+    func testCaretKeySwitchesSealedColonMarkerThroughNativeInsert() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Do work @file:id@")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("^", into: textView, model: model)
+        await waitUntil {
+            textView.string == "Do work @file^id@"
+                && model.statusText == "Changed @file:id@ to @file^id@"
+        }
+
+        XCTAssertEqual(model.plainDraft, "Do work @file^id@")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 17, length: 0))
+        XCTAssertNil(model.picker)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 18 --format json -- Do work @file:id@^")
+        )
+    }
+
+    func testSealKeyAfterCaretIDOpensNothingAndSkipsRewrite() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Do work @file^id")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("@", into: textView, model: model)
+        // Wait for bob's parse of the sealed draft to paint the manila chip.
+        await waitUntil {
+            model.attributedDraft.runs.contains { $0.attributes.backgroundColor != nil }
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(model.plainDraft, "Do work @file^id@")
+        XCTAssertEqual(textView.string, "Do work @file^id@")
+        XCTAssertNil(model.picker)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("argv=capture-rewrite"))
+        XCTAssertFalse(record.contains("argv=capture-complete"))
     }
 
     func testPlusToggleUndoRestoresLiteralPostKeyDraftOnce() async throws {

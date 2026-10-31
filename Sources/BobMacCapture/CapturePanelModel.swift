@@ -707,6 +707,10 @@ final class CapturePanelModel: ObservableObject {
     /// its wash on every close path; the wash never touches `plainDraft`,
     /// the selection, undo, or `editorTextDidChange`.
     var pickerMarkerHighlight: CaptureRange?
+    /// The validated spans of the latest highlight paint, so closing a picker
+    /// over a sealed project-note marker can put its manila wash back after the
+    /// picker's accent wash comes off.
+    private var paintedSpanRanges: (draft: String, ranges: [ValidatedCaptureSpan])?
 
     /// Numbered Task Link count of the running Pomodoro, derived from
     /// the agenda store's snapshot (or its plain-lane fallback on an old
@@ -5657,6 +5661,13 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
+        // The picker's accent wash replaced the project-note chip on a sealed
+        // marker; put the manila wash back under the same range. Resolved
+        // before the transform: `plainDraft` reads `attributedDraft`, which the
+        // transform holds for writing.
+        let chipRanges = paintedSpanRanges.flatMap { painted in
+            painted.draft == draftSnapshot ? painted.ranges : nil
+        }
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
             guard let lower = AttributedString.Index(stringRange.lowerBound, within: text),
@@ -5665,8 +5676,33 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             text[lower..<upper].backgroundColor = nil
+            if let chipRanges {
+                Self.paintProjectNoteWash(&text, ranges: chipRanges, within: stringRange)
+            }
         }
         isApplyingProgrammaticDraft = false
+    }
+
+    /// Washes each project-note span that overlaps `bounds`. Used to restore
+    /// the chip after a picker's marker wash is removed; the full paint in
+    /// `paintHighlighting` washes the same spans inline.
+    static func paintProjectNoteWash(
+        _ text: inout AttributedString,
+        ranges: [ValidatedCaptureSpan],
+        within bounds: Range<String.Index>
+    ) {
+        let wash = CaptureEditorPalette.projectNoteWash(
+            increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
+        for item in ranges where item.span.projectNote != nil {
+            guard item.range.overlaps(bounds),
+                  let lower = AttributedString.Index(item.range.lowerBound, within: text),
+                  let upper = AttributedString.Index(item.range.upperBound, within: text)
+            else {
+                continue
+            }
+            text[lower..<upper].backgroundColor = wash
+        }
     }
 
     func updatePickerFilter(_ text: String) {
@@ -13220,6 +13256,7 @@ final class CapturePanelModel: ObservableObject {
         guard plainDraft == draft else {
             return
         }
+        paintedSpanRanges = (draft: draft, ranges: ranges)
         var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
@@ -13268,6 +13305,15 @@ final class CapturePanelModel: ObservableObject {
 
             let category = captureSemanticCategory(forSpan: item.span)
             text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
+            if item.span.projectNote != nil {
+                // Every span of a sealed project-note marker, whatever the
+                // modifier says, carries the manila wash. Spans are
+                // contiguous, so the per-span washes read as one chip; the
+                // `#name` pill after the seal is a separate span.
+                text[lower..<upper].backgroundColor = CaptureEditorPalette.projectNoteWash(
+                    increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                )
+            }
             if category.isUnderlined {
                 text[lower..<upper].underlineStyle = .single
             }

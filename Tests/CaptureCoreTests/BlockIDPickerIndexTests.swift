@@ -502,6 +502,97 @@ final class BlockIDPickerIndexTests: XCTestCase {
         XCTAssertTrue(status.isProjectNote)
     }
 
+    func testProjectNoteColonMarkerNamesTheChoiceThatFollows() throws {
+        // `@route:id@` (the offer form) ends in a choice card, so the New ID
+        // strip says what follows the name. The `^` form keeps its short copy.
+        let offer = blockField(
+            intent: .projectNote,
+            marker: ":",
+            route: "cash",
+            relativeTarget: "cash.md",
+            body: "Finish the packet"
+        )
+        let offerRow = try XCTUnwrap(
+            linkIndex(field: offer).presentation(filter: "goog-exit").row(id: "new:goog-exit")
+        )
+        XCTAssertTrue(
+            offerRow.detail.summary.contains(
+                "Names the new project note, then choose which tasks to link"
+            )
+        )
+
+        let create = blockField(
+            intent: .projectNote,
+            marker: "^",
+            route: "cash",
+            relativeTarget: "cash.md",
+            body: "Finish the packet"
+        )
+        let createRow = try XCTUnwrap(
+            linkIndex(field: create).presentation(filter: "goog-exit").row(id: "new:goog-exit")
+        )
+        XCTAssertTrue(createRow.detail.summary.contains("Names the new project note ·"))
+        XCTAssertFalse(createRow.detail.summary.contains("choose which tasks"))
+    }
+
+    func testBlockIDTeachingLinesNameTheAtSeal() {
+        func context(
+            intent: CaptureBlockIDIntent,
+            marker: String,
+            scope: CaptureBlockIDScope = .note
+        ) -> BlockIDPickerContext {
+            BlockIDPickerContext(
+                field: blockField(intent: intent, marker: marker, body: "Fix it"),
+                route: "notes",
+                marker: marker,
+                intent: intent,
+                rules: nil,
+                scope: scope
+            )
+        }
+
+        XCTAssertEqual(
+            context(intent: .new, marker: "^").teachingLine,
+            "Then type @ for a project note (@#name picks its Pomodoro)"
+        )
+        // A `:` ID on an item with text is a new Next task: it also takes the
+        // `@` seal, whose project then offers its tasks.
+        XCTAssertEqual(
+            context(intent: .new, marker: ":").teachingLine,
+            "Then type #name, = to start, or @ for a project note whose tasks you pick"
+        )
+        // A bare `:` link has no body to name a project from.
+        XCTAssertEqual(
+            context(intent: .link, marker: ":").teachingLine,
+            "Then type #name or = to start"
+        )
+        // A sealed project note and a project task need no follow-up.
+        XCTAssertNil(context(intent: .projectNote, marker: "^").teachingLine)
+        XCTAssertNil(context(intent: .projectNote, marker: ":").teachingLine)
+        XCTAssertNil(context(intent: .new, marker: ":", scope: .projectTask).teachingLine)
+        XCTAssertFalse(context(intent: .new, marker: "^").teachingLine?.contains("+") ?? false)
+    }
+
+    func testProjectNoteScopeIsOnlyTheSealedBlockIDPicker() {
+        func source(_ intent: CaptureBlockIDIntent) -> CapturePickerSource {
+            .blockID(
+                BlockIDPickerContext(
+                    field: blockField(intent: intent, marker: "^"),
+                    route: "notes",
+                    marker: "^",
+                    intent: intent,
+                    rules: nil
+                )
+            )
+        }
+
+        XCTAssertTrue(source(.projectNote).isProjectNoteScope)
+        XCTAssertEqual(source(.projectNote).scopeCaption, "Project note")
+        XCTAssertFalse(source(.new).isProjectNoteScope)
+        XCTAssertFalse(source(.link).isProjectNoteScope)
+        XCTAssertFalse(CapturePickerSource.activeTask.isProjectNoteScope)
+    }
+
     func testProjectTaskScopeDropsRouteAndNamesLinkedOutcome() throws {
         let response = try fixtureResponse("block-id-project-task.json")
         let field = try XCTUnwrap(response.blockID)

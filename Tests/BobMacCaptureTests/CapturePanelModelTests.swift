@@ -1700,7 +1700,7 @@ final class CapturePanelModelTests: XCTestCase {
             ),
             debounceNanoseconds: 5_000_000
         )
-        model.plainDraft = "Finish it @cash^goog-exit+\n- Draft the memo :"
+        model.plainDraft = "Finish it @cash^goog-exit@\n- Draft the memo :"
         model.editorTextDidChange(cursorUTF8Offset: 45)
         await waitUntil { model.pickerVisible }
 
@@ -1728,7 +1728,7 @@ final class CapturePanelModelTests: XCTestCase {
             ),
             debounceNanoseconds: 5_000_000
         )
-        model.plainDraft = "Finish it @cash^goog-exit+\n- Draft the memo :"
+        model.plainDraft = "Finish it @cash^goog-exit@\n- Draft the memo :"
         model.editorTextDidChange(cursorUTF8Offset: 45)
         await waitUntil { model.pickerVisible }
 
@@ -1738,7 +1738,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(
             model.plainDraft,
-            "Finish it @cash^goog-exit+\n- Draft the memo :draft-memo"
+            "Finish it @cash^goog-exit@\n- Draft the memo :draft-memo"
         )
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.statusText, "Inserted :draft-memo")
@@ -1782,6 +1782,30 @@ final class CapturePanelModelTests: XCTestCase {
         model.updatePickerFilter("new-id ")
 
         XCTAssertEqual(model.plainDraft, "Follow up @file^new-id ")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 23)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+    }
+
+    func testBlockIDNewIDSealTypeThroughSealsTheProjectNote() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        // `@` is outside Bob's ID grammar, so it commits the ID and types the
+        // seal into the editor, exactly as `+` used to.
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id@")
+
+        XCTAssertEqual(model.plainDraft, "Follow up @file^new-id@")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 23)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertFalse(model.editorInputLocked)

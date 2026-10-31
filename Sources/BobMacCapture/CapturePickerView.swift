@@ -392,6 +392,12 @@ private struct CapturePickerFilterBar: View {
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
                 Text(source.scopeCaption)
                     .font(.caption.weight(.semibold))
+                    // A sealed project note's caption shares the editor chip's brown.
+                    .foregroundStyle(
+                        source.isProjectNoteScope
+                            ? CaptureEditorPalette.color(for: .projectNoteName)
+                            : Color.primary
+                    )
                 if case .blockID = source, let line = model.picker?.scopeLineNumber {
                     Text("· line \(line)")
                         .font(.caption)
@@ -1000,9 +1006,9 @@ private struct CapturePickerDetailStrip: View {
     }
 
     /// Follow-up keystrokes taught after the first insert, per source. A `:`
-    /// ID takes `#name` or `=`; a `^` ID takes `+` for a project note (with
-    /// `+#name` picking its Pomodoro). Project notes and project-task IDs
-    /// need no follow-up.
+    /// ID takes `#name` or `=`; a `^` ID takes `@` for a project note (with
+    /// `@#name` picking its Pomodoro). Project notes and project-task IDs
+    /// need no follow-up. The Block ID lines live on `BlockIDPickerContext`.
     private func teachingLine(for source: CapturePickerSource) -> String? {
         switch source {
         case .activeTask:
@@ -1020,13 +1026,7 @@ private struct CapturePickerDetailStrip: View {
         case .wikilinkTask(_):
             return nil
         case .blockID(let context):
-            if context.intent == .projectNote || context.scope == .projectTask {
-                return nil
-            }
-            if context.marker == "^" {
-                return "Then type + for a project note (+#name picks its Pomodoro)"
-            }
-            return "Then type #name or = to start"
+            return context.teachingLine
         case .parentTask:
             return nil
         }

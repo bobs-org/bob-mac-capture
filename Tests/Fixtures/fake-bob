@@ -1615,16 +1615,50 @@ JSON
 ],
 "diagnostics":[]}
 JSON
-    elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
+    elif [[ "${draft}" == $'Finish it @cash^goog-exit@\n- Draft the memo :' ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Finish it","mode":"incomplete","route":"cash","block_id":"goog-exit","needs":["block_id"],
 "spans":[
-  {"start":10,"end":15,"kind":"task_block_id_route"},
-  {"start":16,"end":25,"kind":"task_block_id"},
-  {"start":25,"end":26,"kind":"project_note_marker"},
+  {"start":10,"end":15,"kind":"task_block_id_route","project_note":"create"},
+  {"start":15,"end":16,"kind":"project_note_separator","project_note":"create"},
+  {"start":16,"end":25,"kind":"task_block_id","project_note":"create"},
+  {"start":25,"end":26,"kind":"project_note_marker","project_note":"create"},
   {"start":44,"end":45,"kind":"interactive_placeholder"}
+],
+"diagnostics":[]}
+JSON
+    elif [[ "${draft}" == "Do work @file^id@" ]]; then
+      # Real bob output: typing the `@` seal right after a caret ID reports a
+      # non-completion seal span and no needs, so no picker or route list opens.
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"Do work","mode":"project_note","route":"file","block_id":"id","needs":[],
+"spans":[
+  {"start":8,"end":13,"kind":"task_block_id_route","project_note":"create"},
+  {"start":13,"end":14,"kind":"project_note_separator","project_note":"create"},
+  {"start":14,"end":16,"kind":"task_block_id","project_note":"create"},
+  {"start":16,"end":17,"kind":"project_note_marker","project_note":"create"}
+],
+"diagnostics":[]}
+JSON
+    elif [[ "${draft}" == "Finish it @cash:goog-exit@#admin" ]]; then
+      # The offer form, hand-authored from the span table in the project-note
+      # seals plan (bob's `@route:id@` grammar); mac_offer_card re-checks it
+      # against real bob. The seal is `project_note_offer_marker`, the Pomodoro
+      # name carries no `project_note` modifier, and `#` stays unspanned.
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"Finish it","mode":"pomodoro_project_note","route":"cash","section":"admin","block_id":"goog-exit","needs":[],
+"spans":[
+  {"start":10,"end":15,"kind":"pomodoro_route","project_note":"offer"},
+  {"start":15,"end":16,"kind":"project_note_separator","project_note":"offer"},
+  {"start":16,"end":25,"kind":"pomodoro_block_id","project_note":"offer"},
+  {"start":25,"end":26,"kind":"project_note_offer_marker","project_note":"offer"},
+  {"start":27,"end":32,"kind":"pomodoro_name"}
 ],
 "diagnostics":[]}
 JSON
@@ -1872,6 +1906,36 @@ JSON
 ,"text":"Do work @file+id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
 "edits":[{"range":{"start":8,"end":17},"replacement":"@file+id"}],
 "summary":"Changed @file:id to @file+id"}
+JSON
+    elif [[ "${draft}" == "Do work @file^id+" ]]; then
+      # Real bob output: `+` after a caret ID switches to a sub-bullet, like
+      # every other separator (the project-note marker is `@file^id@` now).
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file+id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file+id"}],
+"summary":"Changed @file^id to @file+id"}
+JSON
+    elif [[ "${draft}" == "Do work @file^id@:" ]]; then
+      # Sealed toggle, hand-authored from the offer_form contract: `:` typed
+      # right after `@r^id@` gives `@r:id@`. `bob` has no such rewrite until
+      # that phase lands; mac_offer_card re-checks the reply against real bob.
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file:id@","changed":true,"cursor":17,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":18},"replacement":"@file:id@"}],
+"summary":"Changed @file^id@ to @file:id@"}
+JSON
+    elif [[ "${draft}" == "Do work @file:id@^" ]]; then
+      # Sealed toggle, hand-authored from the offer_form contract (see above).
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file^id@","changed":true,"cursor":17,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":18},"replacement":"@file^id@"}],
+"summary":"Changed @file:id@ to @file^id@"}
 JSON
     elif [[ "${draft}" == "@file:id+" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
@@ -3789,7 +3853,7 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-created.json"
     elif [[ "${draft}" == "=#plan" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-again.json"
-    elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
+    elif [[ "${draft}" == $'Finish it @cash^goog-exit@\n- Draft the memo :' ]]; then
       cat <<JSON
 {
   "ok": true,

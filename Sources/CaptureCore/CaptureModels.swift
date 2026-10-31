@@ -800,6 +800,13 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// Never set alongside `cancelsSource`: one label carries at most one
     /// close effect.
     public let completesSource: Bool
+    /// Additive `project_note` modifier (`"create"` or `"offer"`) that Bob puts
+    /// on every span of a sealed project-note marker: route, separator, block
+    /// ID, seal, and any placeholder standing in for a missing piece. Bob omits
+    /// it on every other span, and older Bob omits it entirely; both decode as
+    /// nil. A value this client does not know still decodes, so the marker
+    /// keeps its wash even when the modifier is newer than the app.
+    public let projectNote: String?
 
     public init(
         start: Int,
@@ -808,7 +815,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         field: Int? = nil,
         themes: [CapturePomodoroThemeRef] = [],
         cancelsSource: Bool = false,
-        completesSource: Bool = false
+        completesSource: Bool = false,
+        projectNote: String? = nil
     ) {
         self.start = start
         self.end = end
@@ -817,6 +825,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.themes = themes
         self.cancelsSource = cancelsSource
         self.completesSource = completesSource
+        self.projectNote = projectNote
     }
 
     public init(from decoder: Decoder) throws {
@@ -832,6 +841,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
             )) ?? []
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
         completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
+        projectNote = (try? container.decodeIfPresent(String.self, forKey: .projectNote)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -842,6 +852,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case themes
         case cancelsSource = "cancels_source"
         case completesSource = "completes_source"
+        case projectNote = "project_note"
     }
 }
 

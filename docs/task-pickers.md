@@ -181,7 +181,7 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   list. Bob decides the intent and the app presents it: a marker-only `@route:` item
   gets a Link picker that browses the note's linkable tasks grouped by the note's own
   headings; every new-ID position (`@route^`, `@route:` on an item with text, either
-  marker followed by the project-note `+`, or a project-task ` :` / ` ^` token) gets a New ID composer with Bob's
+  marker followed by the project-note `@` seal, or a project-task ` :` / ` ^` token) gets a New ID composer with Bob's
   suggestions from the task text, live availability against every ID already in the
   note, a one-key "next free" alternative when an ID is taken, and similar existing
   IDs for naming consistency. Bob supplies one snapshot (intent, candidates, every
@@ -203,7 +203,7 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   `Inserted @route:id`, and runs an `.edit` analysis without completion;
   Command-accept also captures, and a missing selection announces why instead of
   inserting. In the New ID composer the field only ever holds ID characters: typing a
-  character outside Bob's allowed set (space, `#`, `=`, `+`, `.`, …) at the end of the
+  character outside Bob's allowed set (space, `#`, `=`, `@`, `+`, `.`, …) at the end of the
   field commits the typed ID and keeps typing that character in the editor, so `#`
   after a commit opens `task_type` completion naturally. The Link picker keeps
   `^`'s semantics: spaces separate fuzzy tokens. Backspace on an empty field deletes
@@ -268,7 +268,8 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
 
 - The Block ID Picker reuses that card with per-mode anatomy. The scope token
   names the marker (`@sase:`, `@sase^`) with a Tasks, New ID, or Project note
-  caption, plus `· line N` on multi-line drafts; a Project task session shows
+  caption (the Project note caption is brown, matching the manila chip the editor
+  paints over a sealed marker), plus `· line N` on multi-line drafts; a Project task session shows
   the bare ` :` / ` ^` sigil with a Linked task / Task ID caption and no
   `@route`. Placeholders read
   "Filter sase.md tasks, or type a new ID" (Link) and "Type a new ID for
@@ -291,10 +292,16 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   the bare `:id` / `^id`. The detail strip names the
   outcome per row kind — linked task, new task in `▣ sase.md` (or New Next
   task linked into today's Pomodoro, or the new project note, or for a Project
-  task the Next task linked into today's Pomodoro / Task in `▣ cash_goog_exit.md`),
+  task the Next task linked into today's Pomodoro / Task in `▣ cash_goog_exit.md`;
+  a project note on the `:` marker reads "Names the new project note, then choose
+  which tasks to link"),
   plus `↩ inserts @sase:id` (`↩ inserts :draft-memo` for a Project task) — and
-  after the first insert teaches `#name` or `=` (`:` IDs) or `+` for a project
-  note (`+#name` picks its Pomodoro; `^` IDs), tracked separately per source.
+  after the first insert teaches, tracked separately per source:
+  - a `^` ID: "Then type @ for a project note (@#name picks its Pomodoro)";
+  - a `:` ID on an item with text: "Then type #name, = to start, or @ for a project
+    note whose tasks you pick";
+  - a bare `:` link: "Then type #name or = to start".
+
   Project notes and Project tasks teach no follow-up.
   Empty states cover no linkable tasks, a missing note, no matches, and the
   empty composer. While any picker is open, the marker token being completed

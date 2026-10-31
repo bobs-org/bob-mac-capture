@@ -777,7 +777,11 @@ public struct BlockIDPickerIndex: Sendable {
         if let field {
             title = field.body.isEmpty ? "New task" : "“\(field.body)”"
             if field.intent == .projectNote {
-                outcome = "Names the new project note"
+                // The offer form (`@route:id@`) ends in a choice card, so the
+                // strip says what follows the name.
+                outcome = field.marker == ":"
+                    ? "Names the new project note, then choose which tasks to link"
+                    : "Names the new project note"
             } else if isProjectTask {
                 if field.marker == ":" {
                     outcome = "Next task in ▣ \(noteTarget()), linked into today's Pomodoro"

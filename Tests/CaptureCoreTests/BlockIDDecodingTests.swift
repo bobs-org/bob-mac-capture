@@ -17,14 +17,14 @@ import XCTest
 ///   bob capture-complete -b VAULT -c 10 -f json -- '@notes:rea'
 ///   bob capture-complete -b VAULT -c 22 -f json -- 'Fix flaky test @notes^'
 ///   bob capture-complete -b VAULT -c 22 -f json -- 'Fix flaky test @notes:'
-///   bob capture-complete -b VAULT -c 8 -f json -- '@notes^x+'
+///   bob capture-complete -b VAULT -c 8 -f json -- '@notes^x@'
 ///   bob capture-complete -b VAULT -c 9 -f json -- '@missing:'
 ///
 /// `block-id-project-task.json` was generated the same way against a vault
-/// holding `cash.md` (`type: [[area]]`) with a `Finish it @cash^goog-exit+`
+/// holding `cash.md` (`type: [[area]]`) with a `Finish it @cash^goog-exit@`
 /// project note whose first bullet ends with a lone `:`:
 ///
-///   bob capture-complete -b VAULT -c 45 -f json -- 'Finish it @cash^goog-exit+
+///   bob capture-complete -b VAULT -c 45 -f json -- 'Finish it @cash^goog-exit@
 ///   - Draft the memo :'
 final class BlockIDDecodingTests: XCTestCase {
     private func fixtureResponse(_ name: String) throws -> CaptureCompletionResponse {

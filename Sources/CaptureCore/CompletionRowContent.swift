@@ -17,6 +17,15 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case wikilinkAlias
     case interactivePlaceholder
     case explicitToggle
+    /// The route-and-ID half of a sealed project-note marker
+    /// (`@cash^goog-exit@`): the new project note's name. Brown, like a
+    /// manila folder.
+    case projectNoteName
+    /// The separator and `@` seal of the create form (`@route^id@`).
+    case projectNoteSeal
+    /// The separator and `@` seal of the offer form (`@route:id@`). Green,
+    /// the Pull-In card's "will be linked" color: a choice card follows.
+    case projectNoteOfferSeal
     case blockedTaskSigil
     case relationSigil
     case relationLabel
@@ -120,9 +129,16 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .wikilinkAlias
     case "interactive_placeholder":
         return .interactivePlaceholder
-    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_note_marker",
-         "project_task_link_marker":
+    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_task_link_marker":
         return .explicitToggle
+    case "project_note_marker":
+        // The `@` seal of the create form (`@route^id@`). The separator span
+        // (`project_note_separator`) takes its color from the `project_note`
+        // modifier, so `captureSemanticCategory(forSpan:)` owns it.
+        return .projectNoteSeal
+    case "project_note_offer_marker":
+        // The `@` seal of the offer form (`@route:id@`).
+        return .projectNoteOfferSeal
     case "pomodoro_start":
         return .pomodoroStart
     case "pomodoro_adjust":
@@ -193,6 +209,19 @@ public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanti
         return .relationCompleteLabel
     case "relation_label" where span.cancelsSource:
         return .relationCancelLabel
+    case "task_block_id", "pomodoro_block_id", "project_note_separator":
+        // Inside a sealed project-note marker the block ID is the new note's
+        // name and the separator follows the form: the create form seals brown,
+        // the offer form shares the green of its closing `@`. A span with no
+        // modifier, or one this app does not know, keeps its kind-only color.
+        let isOffer = span.projectNote == "offer"
+        guard isOffer || span.projectNote == "create" else {
+            return captureSemanticCategory(forSpanKind: span.kind)
+        }
+        if span.kind == "project_note_separator" {
+            return isOffer ? .projectNoteOfferSeal : .projectNoteSeal
+        }
+        return .projectNoteName
     default:
         return captureSemanticCategory(forSpanKind: span.kind)
     }
