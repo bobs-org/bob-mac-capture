@@ -321,11 +321,13 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
 
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `task_type` completion for the task
-  toggle retype, and once the item has body text it opens `task_section` completion for that
-  task's ALL-CAPS section bullets. A trailing `#` opens Bob's `task_type` completion when the draft is an incomplete task-type marker; `@route#` stays note-section completion. Typing `#` immediately after a
+  toggle retype, and once the item has body text it opens `drawer` completion for that
+  task's drawers (its ALL-CAPS child bullets), unselected, with Recent drawers and a New
+  drawer row (see [Drawer menu](capture-panel.md#drawer-menu)). A bare `#` at an item edge opens Bob's
+  `task_type` completion, also unselected; `@route#` stays note-section completion. Typing `#` immediately after a
   resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion
   for today's open Pomodoros. Colon-Pomodoro (`@route:id#name`) selects or creates a
-  named Pomodoro; plus-sub-bullet (`@route+id#section`) keeps its task-section selector
+  named Pomodoro; plus-sub-bullet (`@route+id#drawer`) keeps its drawer selector
   as soon as body text exists. For
   blank-line-separated drafts, completion still sends the complete draft as one argv
   value; Bob scopes the answer to the item or declaration containing the UTF-8 cursor and

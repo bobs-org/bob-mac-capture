@@ -7,11 +7,11 @@ final class CaptureGrammarGateTests: XCTestCase {
         XCTAssertFalse(CaptureGrammarGate.isCompatible(nil))
         XCTAssertFalse(CaptureGrammarGate.isCompatible(0))
         XCTAssertFalse(CaptureGrammarGate.isCompatible(1))
+        XCTAssertFalse(CaptureGrammarGate.isCompatible(2), "grammar 2 predates drawers")
     }
 
     func testMinimumAndHigherRevisionsAreCompatible() {
-        XCTAssertEqual(CaptureGrammarGate.minimumRevision, 2)
-        XCTAssertTrue(CaptureGrammarGate.isCompatible(2))
+        XCTAssertEqual(CaptureGrammarGate.minimumRevision, 3)
         XCTAssertTrue(CaptureGrammarGate.isCompatible(3))
         XCTAssertTrue(CaptureGrammarGate.isCompatible(4))
     }

@@ -146,60 +146,74 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.primaryMatchRange, 0..<3)
     }
 
-    func testTaskSectionContextShowsTitleParentTaskAndItemCountBadges() {
+    func testDrawerContextShowsTitleAndBobDetailNotASwiftCount() {
         let candidate = CaptureCompletionCandidate(
             replacement: "requirements",
+            detail: "3 notes",
             title: "REQUIREMENTS",
             blockID: "bar",
             text: "Parent task",
-            childCount: 2
+            group: "task",
+            entryCount: 3,
+            consequence: "Adds after \"fast disk\" in REQUIREMENTS"
         )
 
-        let content = completionRowContent(for: candidate, context: "task_section", query: "req")
+        let content = completionRowContent(for: candidate, context: "drawer", query: "req")
 
         XCTAssertEqual(content.category, .section)
-        XCTAssertEqual(content.symbolName, "list.bullet.rectangle")
-        XCTAssertEqual(content.contextLabel, "Task Section")
+        XCTAssertEqual(content.symbolName, "tray.full")
+        XCTAssertEqual(content.contextLabel, "Drawer")
         XCTAssertEqual(content.primaryText, "REQUIREMENTS")
-        XCTAssertEqual(content.secondaryText, "Parent task")
-        XCTAssertEqual(content.badges, ["^bar", "2 items"])
+        XCTAssertEqual(content.secondaryText, "3 notes")
+        XCTAssertEqual(content.badges, [])
         XCTAssertEqual(content.primaryMatchRange, 0..<3)
-        XCTAssertEqual(content.accessibilityHint, "Nests the capture under this task section.")
         XCTAssertEqual(
-            content.accessibilityLabel,
-            "Task Section, REQUIREMENTS, Parent task, ^bar, 2 items"
+            content.accessibilityHint,
+            "Adds after \"fast disk\" in REQUIREMENTS"
         )
+        XCTAssertFalse(content.isDisabled)
     }
 
-    func testTaskSectionContextEmptySectionUsesEmptyBadge() {
+    func testDrawerContextWithoutDetailShowsNoCountAtAll() {
         let candidate = CaptureCompletionCandidate(
             replacement: "requirements",
             title: "REQUIREMENTS",
             blockID: "bar",
             text: "Parent task",
-            childCount: 0
+            entryCount: 0
         )
 
-        let content = completionRowContent(for: candidate, context: "task_section", query: "")
+        let content = completionRowContent(for: candidate, context: "drawer", query: "")
 
-        XCTAssertEqual(content.badges, ["^bar", "Empty"])
+        XCTAssertNil(content.secondaryText)
+        XCTAssertEqual(content.badges, [])
         XCTAssertNil(content.primaryMatchRange)
+        XCTAssertEqual(content.accessibilityHint, "Files the capture in this drawer.")
     }
 
-    func testTaskSectionContextShowsMultiWordTitle() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "future-work",
-            title: "FUTURE WORK",
-            blockID: "bar",
-            text: "Parent task",
-            childCount: 1
+    func testDrawerContextMarksNewAndRefusedRows() {
+        let create = CaptureCompletionCandidate(
+            replacement: "#perf-budget",
+            title: "PERF BUDGET",
+            group: "new",
+            creates: true
+        )
+        let refused = CaptureCompletionCandidate(
+            replacement: "#tasks",
+            title: "TASKS",
+            group: "new",
+            refused: "TASKS is reserved",
+            creates: true
         )
 
-        let content = completionRowContent(for: candidate, context: "task_section", query: "future")
+        let createContent = completionRowContent(for: create, context: "drawer", query: "perf")
+        let refusedContent = completionRowContent(for: refused, context: "drawer", query: "tasks")
 
-        XCTAssertEqual(content.primaryText, "FUTURE WORK")
-        XCTAssertEqual(content.primaryMatchRange, 0..<6)
-        XCTAssertEqual(content.badges, ["^bar", "1 items"])
+        XCTAssertEqual(createContent.symbolName, "plus.square.dashed")
+        XCTAssertEqual(createContent.badges, ["New"])
+        XCTAssertFalse(createContent.isDisabled)
+        XCTAssertEqual(refusedContent.secondaryText, "TASKS is reserved")
+        XCTAssertTrue(refusedContent.isDisabled)
     }
 
     func testTaskContextShowsTextSectionStatusAndBlockBadges() {
@@ -1193,7 +1207,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_section"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "drawer"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
@@ -1407,6 +1421,11 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
     }
 
+    func testDrawerSpanTakesTheSectionColorFamilyAndTheRetiredSpanIsNeutral() {
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "drawer"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_section"), .neutral)
+    }
+
     func testCompletionContextParsesAllWireValuesAndRejectsUnknown() {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "route"), .route)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "section"), .section)
@@ -1415,7 +1434,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_start_name"), .pomodoroStartName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
-        XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "drawer"), .drawer)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_to"), .relationTo)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_from"), .relationFrom)

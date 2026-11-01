@@ -90,6 +90,32 @@ final class CaptureCompletionMenuTests: XCTestCase {
         )
     }
 
+    func testDrawerMenuHonorsNoneAndOtherwiseSelectsTheBestFirstRow() {
+        let rows = [
+            CaptureCompletionCandidate(replacement: "#requirements", title: "REQUIREMENTS"),
+            CaptureCompletionCandidate(replacement: "#future-work", title: "FUTURE WORK"),
+        ]
+        let empty = CaptureCompletionResponse(
+            ok: true,
+            cursor: 29,
+            replacement: CaptureRange(start: 29, end: 29),
+            context: "drawer",
+            candidates: rows,
+            initialSelection: "none"
+        )
+        XCTAssertNil(CaptureCompletionMenu.initialSelectedIndex(for: empty, queryIsEmpty: true))
+
+        let typed = CaptureCompletionResponse(
+            ok: true,
+            cursor: 32,
+            replacement: CaptureRange(start: 29, end: 32),
+            context: "drawer",
+            candidates: rows
+        )
+        XCTAssertEqual(
+            CaptureCompletionMenu.initialSelectedIndex(for: typed, queryIsEmpty: false), 0)
+    }
+
     func testUnselectedFooterHintMatchesTheParentMenuCopy() {
         XCTAssertEqual(
             CaptureCompletionMenu.unselectedFooterHint,

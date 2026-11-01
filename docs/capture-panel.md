@@ -135,7 +135,7 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
 
 - A missing or lower `grammar` on `capture-parse` disables Capture and shows
   "Update bob to use drawers and % directives" without changing the draft.
-  Grammar 2 or later captures. Recheck Bob or a new executable identity
+  Grammar 3 or later captures (grammar 2 predates drawers). Recheck Bob or a new executable identity
   drops the previous evidence until a matching parse lands. A parse that
   has not yet arrived keeps Capture disabled without that message.
 - Bob may send `initial_selection: "none"` on any completion context. The
@@ -148,7 +148,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
 - A bare `%` opens the CAPTURE AS menu from Bob's `directive` need: token,
   name, summary, and detail in Bob's wording, with one teal tint family
   on every `%` span. A bare `#` opens the Task type menu the same way,
-  with nothing selected until a key highlights a row.
+  with nothing selected until a key highlights a row, and `@route+id#` opens the
+  [Drawer menu](#drawer-menu) unselected too.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
@@ -223,20 +224,21 @@ bullets prefixed by exactly two ASCII spaces become nested authored children und
 nearest preceding first-level authored child.
 A marker (`@route`,
 `@route+block-id` alone to ensure Next and relocate an existing Task Link,
-`@route+block-id#type` alone to ensure Next and retype to `#type`,
+`@route+block-id #type` (a separate token) alone to ensure Next and retype to `#type`,
 `@route+block-id!` alone for the explicit two-way task-toggle item,
 `@route+block-id` with body text for an
-existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
-ALL-CAPS section bullets once body text exists, `@route^block-id` for an ordinary task with an authored block
-ID, `@route^block-id#type` to type the new task, `@route^block-id@#pomodoro` for a project note (with ` :id` / ` ^id` tokens
+existing-task sub-bullet, `@route+block-id#drawer` to file under one of that task's
+drawers (its ALL-CAPS child bullets) once body text exists, creating the drawer when it is
+missing, `@route^block-id` for an ordinary task with an authored block
+ID, `@route^block-id #type` to type the new task, `@route^block-id@#pomodoro` for a project note (with ` :id` / ` ^id` tokens
 on its task bullets naming and optionally linking project tasks), `@route:block-id@#pomodoro` for a project note whose
 open tasks you then pick from to link,
 `s:<N>`, `$<N>`, `%`, …) at the end of any valid line configures that item even
 when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
 their route side; only the `+` family's right-hand side offers existing tasks, `#` after
-a resolved `@route+block-id` offers task types while the item has no body text and
-task sections once it does, and the `^` family's authored ID opens the New ID picker.
+a resolved `@route+block-id` offers drawers once the item has body text (the
+[Drawer menu](#drawer-menu)), and the `^` family's authored ID opens the New ID picker.
 A project note's ` :id` bullet becomes a Next task linked into the Pomodoro and its
 ` ^id` bullet a named task; the preview names each linked task and the notification
 reports "Linked N tasks into …". The retired
@@ -363,21 +365,63 @@ dimmed with `Type the Work Log entry for task 1` and keeps
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link (dropping own-prerequisite Blocked edges the same way
 the `@route:block-id` link does; a refused drop stays unlinked and the preview
-shows Bob's not-linked sentence), `@route+block-id#type` retypes to `#type`
+shows Bob's not-linked sentence), `@route+block-id #type` retypes to `#type`
 and ensures Next, `@route+block-id!` is the explicit link-presence toggle: it links an unlinked
 task (Ready and a task Blocked only by its own prerequisites rise to Next after
 those prerequisites are dropped; other Blocked tasks stay unlinked and the
 preview shows why; Next and In Progress keep their lane)
 and unlinks a linked task without touching the lane, and `@route+block-id` with
-body text nests beneath the task. `@route+block-id#section` nests under that task's
-matching section bullet once body text is present; the same `#` position opens the
-task-type menu while the item is still marker-only, with refused names shown
-dimmed and Return a no-op. Named Pomodoros are reached with the whole-item
+body text nests beneath the task. `@route+block-id#drawer` files the bullet in the drawer
+Bob matches by exact title (creating it when missing) once body text is present; a
+free-standing `#` at an item edge opens the task-type menu instead, with refused names
+shown dimmed and Return a no-op. Named Pomodoros are reached with the whole-item
 `^route:id#name` link instead. The app labels Ensure Next
 versus Set Next/Open from Bob's returned `toggle_behavior`, never by parsing `#` or `!`. The `@route+` parent-task picker (and the vault-wide `+` picker) plus Add block ID prompt are still how a task
 without a block ID becomes selectable. The app does not duplicate those grammar rules; it
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and
 submits the original draft text.
+
+## Drawer menu
+
+A glued `#` after a resolved `@route+block-id`, once the item has body text, names a
+**drawer**: a direct child bullet of the task whose whole text is an ALL-CAPS title
+(`REQUIREMENTS`, `FUTURE WORK`), with its notes nested beneath. Typing `Text @foo+bar#`
+opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare-`#` menus:
+
+```text
+╭─ DRAWER · ^bar Upgrade Postgres (foo) ─────────────────────╮
+│ ON THIS TASK                                                │
+│   REQUIREMENTS                                    3 notes   │
+│   FUTURE WORK                                     1 note    │
+│ RECENT                                                      │
+│   MOTIVATION                  used in 12 notes · 3 days ago │
+│   ACCEPTANCE                  used in 4 notes · last week   │
+├─────────────────────────────────────────────────────────────┤
+│ Adds after "2 GB RAM" in REQUIREMENTS                       │
+╰─────────────────────────────────────────────────────────────╯
+```
+
+- **Groups.** *On this task* lists the task's own drawers in document order. *Recent*
+  lists drawers used in other notes; choosing one creates it on this task. The headers
+  reuse the Pomodoro-name menu's style.
+- **New drawer.** Typing a name that matches no drawer adds one create row,
+  `＋ New drawer PERF BUDGET`, with a dashed outline. A row Bob refuses (a reserved name, a
+  near-duplicate of a drawer used elsewhere) is dimmed with Bob's reason, and **Return** on
+  it does nothing.
+- **Footer.** The footer shows Bob's one-line consequence for the selected row, such as
+  `Adds after "2 GB RAM" in REQUIREMENTS`, or the key hint when nothing is selected.
+- **Counts and ages** (`3 notes`, `used in 12 notes · 3 days ago`) are Bob's `detail`
+  text. The app counts nothing itself.
+- **Keys.** The same as the other unselected menus: **Return** submits the draft
+  unchanged (Bob refuses an incomplete marker in the preview), **Tab**, **↓**, and
+  **Ctrl-N** select the first row, typing preselects the best row, and **Escape** closes the
+  menu. Accepting a row splices Bob's `replacement` and `cursor_after`.
+- **Highlighting.** The `#NAME` drawer span uses the section color family.
+- **No target.** When the task cannot be resolved, Bob returns a warning and no rows, so
+  no menu opens.
+
+The [live preview](capture-previews.md#drawer-captures) shows where the bullet lands and
+whether the drawer is new.
 
 ## Live Preview and Clipboard Semantics
 

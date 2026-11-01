@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"grammar":2,"input":"jot idea %","body":"jot idea","mode":"incomplete","route":null,"section":null,"block_id":null,"needs":["directive"],"spans":[{"start":9,"end":10,"kind":"directive"}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":3,"input":"jot idea %","body":"jot idea","mode":"incomplete","route":null,"section":null,"block_id":null,"needs":["directive"],"spans":[{"start":9,"end":10,"kind":"directive"}],"diagnostics":[]}

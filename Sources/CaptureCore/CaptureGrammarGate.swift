@@ -1,10 +1,10 @@
 import Foundation
 
 /// Capture-language revision the Mac requires before it will submit.
-/// `mac-directives` needs grammar 2 (`%` directives); a later drawers
-/// phase raises this to 3. `schema_version` stays 1.
+/// Grammar 2 added `%` directives; grammar 3 added glued `#drawer` capture
+/// and retired attached `#type` on `+id`/`^id`. `schema_version` stays 1.
 public enum CaptureGrammarGate: Sendable {
-    public static let minimumRevision = 2
+    public static let minimumRevision = 3
 
     /// Exact copy shown when `capture-parse` grammar is missing or too low.
     public static let blockedMessage = "Update bob to use drawers and % directives"

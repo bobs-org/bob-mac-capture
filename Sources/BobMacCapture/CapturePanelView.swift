@@ -46,6 +46,18 @@ enum CapturePanelLayout {
         let rows = min(max(rowCount, 1), taskTypeVisibleRows)
         return 12 + taskTypeHeaderHeight + CGFloat(rows) * taskTypeRowHeight + taskTypeFooterHeight
     }
+    static let drawerVisibleRows = 8
+    static let drawerRowHeight: CGFloat = 28
+    static let drawerHeaderHeight: CGFloat = 22
+    static let drawerGroupHeaderHeight: CGFloat = 20
+    static let drawerFooterHeight: CGFloat = 28
+    /// Viewport for the `drawer` menu: padding, header, one header per titled
+    /// group, up to `drawerVisibleRows` rows, and the footer.
+    static func drawerViewportHeight(rowCount: Int, groupHeaderCount: Int) -> CGFloat {
+        let rows = min(max(rowCount, 1), drawerVisibleRows)
+        return 12 + drawerHeaderHeight + CGFloat(groupHeaderCount) * drawerGroupHeaderHeight
+            + CGFloat(rows) * drawerRowHeight + drawerFooterHeight
+    }
     static let stashVisibleRows = 5
     static let stashListPadding: CGFloat = 6
     static let stashRowSpacing: CGFloat = 2
@@ -399,6 +411,12 @@ struct CapturePanelView: View {
         if model.completionResponse?.context == "task_type" {
             return CapturePanelLayout.taskTypeViewportHeight(
                 rowCount: model.completionResponse?.candidates.count ?? 0
+            )
+        }
+        if let drawer = model.drawerMenuPresentation() {
+            return CapturePanelLayout.drawerViewportHeight(
+                rowCount: drawer.rows.count,
+                groupHeaderCount: drawer.groups.filter { $0.title != nil }.count
             )
         }
         return CapturePanelLayout.completionViewportHeight
@@ -2992,6 +3010,14 @@ private struct CompletionList: View {
                             model.selectedCompletionIndex = index
                             model.acceptSelectedCompletion()
                         }
+                    } else if let drawer = model.drawerMenuPresentation() {
+                        CaptureDrawerMenuView(
+                            presentation: drawer,
+                            selectedIndex: model.selectedCompletionIndex
+                        ) { index in
+                            model.selectedCompletionIndex = index
+                            model.acceptSelectedCompletion()
+                        }
                     } else if model.completionResponse?.context == "directive" {
                         Text(CaptureCompletionMenu.directiveTitle)
                             .font(.caption2.weight(.semibold))
@@ -3010,8 +3036,10 @@ private struct CompletionList: View {
                             .accessibilityAddTraits(.isHeader)
                     }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
-                    // context. Task-section rows stay a plain ungrouped list.
-                    if model.taskTypeMenuPresentation() != nil {
+                    // context. The `task_type` and `drawer` menus paint their own rows.
+                    if model.taskTypeMenuPresentation() != nil
+                        || model.drawerMenuPresentation() != nil
+                    {
                         EmptyView()
                     } else if model.completionResponse?.context == "task" {
                         taskGroup(title: "Ready to use", rows: taskRows(requiresBlockID: false))
@@ -3033,6 +3061,7 @@ private struct CompletionList: View {
                 }
                 .padding(6)
                 if model.taskTypeMenuPresentation() == nil,
+                    model.drawerMenuPresentation() == nil,
                     model.completionResponse?.context == "directive"
                         || model.selectedCompletionIndex == nil
                 {
@@ -3070,6 +3099,9 @@ private struct CompletionList: View {
 
     private var listAccessibilityLabel: String {
         if let presentation = model.taskTypeMenuPresentation() {
+            return presentation.listAccessibilityLabel
+        }
+        if let presentation = model.drawerMenuPresentation() {
             return presentation.listAccessibilityLabel
         }
         guard let candidates = model.completionResponse?.candidates, !candidates.isEmpty else {
@@ -4765,6 +4797,21 @@ struct PreviewPane: View {
                 .fontWeight(.semibold)
             Text(subBullet.headerDetail)
                 .foregroundStyle(.secondary)
+            if subBullet.createsDrawer {
+                Text(CaptureSubBulletPresentation.newDrawerBadge)
+                    .font(.caption2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                CaptureEditorPalette.color(for: .priority).opacity(0.7),
+                                style: StrokeStyle(lineWidth: 0.7, dash: [3, 2])
+                            )
+                    )
+                    .foregroundStyle(CaptureEditorPalette.color(for: .priority))
+                    .accessibilityHidden(true)
+            }
             if isLocalOverride {
                 Text("local override")
                     .foregroundStyle(.secondary)

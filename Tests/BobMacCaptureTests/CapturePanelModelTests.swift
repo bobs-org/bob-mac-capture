@@ -6225,7 +6225,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(context.isNewIDMode)
     }
 
-    func testHashAfterResolvedSubBulletOpensTaskSectionCompletion() async throws {
+    func testHashAfterResolvedSubBulletOpensDrawerCompletion() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -6239,15 +6239,18 @@ final class CapturePanelModelTests: XCTestCase {
         let draft = "Postgres 17 minimum @foo+bar#"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { model.completionResponse?.context == "task_section" }
+        await waitUntil { model.completionResponse?.context == "drawer" }
 
         XCTAssertTrue(model.completionVisible)
-        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 29, end: 29))
-        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
+        // The replacement covers the glued `#` and the name.
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 28, end: 29))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "#requirements")
         XCTAssertEqual(model.completionResponse?.candidates.first?.title, "REQUIREMENTS")
-        XCTAssertEqual(model.completionResponse?.candidates.first?.text, "Parent task")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.text, "Upgrade Postgres")
         XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "bar")
-        XCTAssertEqual(model.completionResponse?.candidates.first?.childCount, 2)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.entryCount, 3)
+        XCTAssertEqual(model.completionResponse?.target?.blockID, "bar")
+        XCTAssertNil(model.selectedCompletionIndex, "the empty-query drawer menu opens unselected")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains(
@@ -6256,7 +6259,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
-    func testTypedSubBulletSectionKeepsTaskSectionCompletionOpen() async throws {
+    func testTypedSubBulletDrawerKeepsDrawerCompletionOpenAndPreselectsTheBestRow() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -6265,14 +6268,15 @@ final class CapturePanelModelTests: XCTestCase {
         let draft = "Postgres 17 minimum @foo+bar#req"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { model.completionResponse?.context == "task_section" }
+        await waitUntil { model.completionResponse?.context == "drawer" }
 
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 29, end: 32))
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
+        XCTAssertEqual(model.selectedCompletionIndex, 0, "typing preselects the best row")
     }
 
-    func testBareTrailingHashOpensTaskTypeNotTaskSectionCompletion() async throws {
+    func testBareTrailingHashOpensTaskTypeNotDrawerCompletion() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -6319,7 +6323,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
-    func testAcceptingTaskSectionCandidateInsertsSlugAndLandsCaret() async throws {
+    func testAcceptingDrawerCandidateInsertsSlugAndLandsCaret() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -6328,8 +6332,9 @@ final class CapturePanelModelTests: XCTestCase {
         let draft = "Postgres 17 minimum @foo+bar#"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { model.completionResponse?.context == "task_section" }
+        await waitUntil { model.completionResponse?.context == "drawer" }
 
+        // Tab on the unselected menu takes the first row.
         model.acceptSelectedCompletion()
 
         let accepted = "Postgres 17 minimum @foo+bar#requirements"

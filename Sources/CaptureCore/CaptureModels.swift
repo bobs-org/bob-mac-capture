@@ -210,8 +210,8 @@ public struct CaptureParseTemplate: Codable, Equatable {
 public struct CaptureParseResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
-    /// Top-level capture-language revision. Bob reports `grammar: 2` or later for
-    /// `%` directives; a Bob that predates the field omits it. Decoding keeps a missing
+    /// Top-level capture-language revision. Bob reports `grammar: 3` or later for
+    /// glued `#drawer` capture (2 added `%` directives); a Bob that predates the field omits it. Decoding keeps a missing
     /// or mistyped value as nil, never a guessed revision, so the compatibility gate can
     /// tell "older than grammar" from "grammar 1".
     public let grammar: Int?
@@ -3658,7 +3658,13 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     public let pomodoroLinkPlacement: String?
     public let parentLine: Int?
     public let parentText: String?
+    /// Legacy mirror of the drawer title; kept so a Bob that predates the
+    /// per-item `drawer` object still names the drawer. `drawer` wins.
     public let parentSection: String?
+    /// Additive per-item drawer a sub-bullet landed in, with `created` true
+    /// when the commit adds the drawer's header line. Omitted for plain
+    /// `@route+id` children and by older Bob.
+    public let drawer: CaptureDrawerSummary?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
     // Additive: only present when `kind == "task_toggle"`. Bob always populates every
@@ -3816,6 +3822,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         parentLine: Int? = nil,
         parentText: String? = nil,
         parentSection: String? = nil,
+        drawer: CaptureDrawerSummary? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
         toggleDirection: String? = nil,
@@ -3895,6 +3902,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.parentLine = parentLine
         self.parentText = parentText
         self.parentSection = parentSection
+        self.drawer = drawer
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
         self.toggleDirection = toggleDirection
@@ -3978,6 +3986,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         parentLine = try container.decodeIfPresent(Int.self, forKey: .parentLine)
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
         parentSection = try container.decodeIfPresent(String.self, forKey: .parentSection)
+        drawer = (try? container.decodeIfPresent(CaptureDrawerSummary.self, forKey: .drawer)) ?? nil
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
         toggleDirection = try container.decodeIfPresent(String.self, forKey: .toggleDirection)
@@ -4179,6 +4188,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case parentLine = "parent_line"
         case parentText = "parent_text"
         case parentSection = "parent_section"
+        case drawer
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
         case toggleDirection = "toggle_direction"
@@ -6695,6 +6705,10 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// Additive `task_type` subject: `new` or `existing`. Older Bob omits
     /// it; missing decodes as nil so other contexts stay unchanged.
     public let subject: String?
+    /// Additive `drawer` target: the task whose drawers the menu lists. Present
+    /// on every `drawer` response, with or without rows, so the header can name
+    /// the task. Older Bob and every other context omit it.
+    public let target: CaptureDrawerTarget?
 
     /// Whether Bob asked for this menu to open with no selected row. Any other value,
     /// including a future one this client does not know, keeps the default selection.
@@ -6721,7 +6735,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         relationCancel: CaptureCompletionRelationCancel? = nil,
         relationComplete: CaptureCompletionRelationComplete? = nil,
         themeSuggestion: CaptureThemeSuggestion? = nil,
-        subject: String? = nil
+        subject: String? = nil,
+        target: CaptureDrawerTarget? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -6744,6 +6759,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.relationComplete = relationComplete
         self.themeSuggestion = themeSuggestion
         self.subject = subject
+        self.target = target
     }
 
     public init(from decoder: Decoder) throws {
@@ -6784,6 +6800,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
                 forKey: .themeSuggestion
             )) ?? nil
         subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
+        target = (try? container.decodeIfPresent(CaptureDrawerTarget.self, forKey: .target)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6808,8 +6825,64 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case relationComplete = "relation_complete"
         case themeSuggestion = "theme_suggestion"
         case subject
+        case target
     }
 
+}
+
+/// The task a `drawer` completion menu lists drawers for. `route` is Bob's
+/// route label (`foo.md`), `blockID` is nil when the task has no ID, and
+/// `text` is the task description (empty when the task did not resolve).
+public struct CaptureDrawerTarget: Codable, Equatable, Sendable {
+    public let route: String
+    public let blockID: String?
+    public let text: String
+
+    public init(route: String, blockID: String? = nil, text: String = "") {
+        self.route = route
+        self.blockID = blockID
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        route = try container.decode(String.self, forKey: .route)
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? nil
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case route
+        case blockID = "block_id"
+        case text
+    }
+}
+
+/// The drawer a sub-bullet capture lands in, from Bob's per-item `drawer`
+/// object. `created` is true when the commit adds the drawer's header line.
+public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
+    public let title: String
+    public let key: String
+    public let created: Bool
+
+    public init(title: String, key: String = "", created: Bool = false) {
+        self.title = title
+        self.key = key.isEmpty ? title : key
+        self.created = created
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? title
+        created = (try? container.decodeIfPresent(Bool.self, forKey: .created)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case key
+        case created
+    }
 }
 
 /// The cancel consequence of the `relation_label` token under the cursor.
@@ -7950,8 +8023,24 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     /// and every other context omit it.
     public let effect: String?
     /// Additive `task_type` refusal: `type_not_configured` when the typed
-    /// row is refused. Warn-policy rows and older Bob omit it.
+    /// row is refused. Warn-policy rows and older Bob omit it. On a `drawer`
+    /// row it is Bob's one-line reason the commit would refuse (a reserved
+    /// name, a near-duplicate of a drawer used elsewhere).
     public let refused: String?
+    /// Additive `drawer` task row: how many entries the drawer already holds.
+    public let entryCount: Int?
+    /// Additive `drawer` Recent row: distinct notes that use the drawer key.
+    public let noteCount: Int?
+    /// Additive `drawer` Recent row: Unix seconds of the newest use. Bob turns
+    /// it into `detail`; the app never formats it.
+    public let lastSeen: Int?
+    /// Additive `drawer` row: true when accepting creates the drawer (Recent
+    /// and New rows). Omitted when false.
+    public let creates: Bool
+    /// Additive `drawer` row: Bob-authored consequence of choosing this row,
+    /// such as `Adds after "2 GB RAM" in REQUIREMENTS`. The menu footer
+    /// shows it for the selected row.
+    public let consequence: String?
 
     public var id: String {
         [
@@ -7971,6 +8060,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
             line.map(String.init),
             timeRange,
             createsPomodoro ? "create" : nil,
+            creates ? "creates" : nil,
         ]
         .compactMap { $0 }
         .joined(separator: "\u{1f}")
@@ -8055,7 +8145,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         current: Bool = false,
         inherited: Bool = false,
         effect: String? = nil,
-        refused: String? = nil
+        refused: String? = nil,
+        entryCount: Int? = nil,
+        noteCount: Int? = nil,
+        lastSeen: Int? = nil,
+        creates: Bool = false,
+        consequence: String? = nil
     ) {
         self.replacement = replacement
         self.token = token
@@ -8136,6 +8231,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.inherited = inherited
         self.effect = effect
         self.refused = refused
+        self.entryCount = entryCount
+        self.noteCount = noteCount
+        self.lastSeen = lastSeen
+        self.creates = creates
+        self.consequence = consequence
     }
 
     public init(from decoder: Decoder) throws {
@@ -8224,6 +8324,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         inherited = (try? container.decodeIfPresent(Bool.self, forKey: .inherited)) ?? false
         effect = (try? container.decodeIfPresent(String.self, forKey: .effect)) ?? nil
         refused = (try? container.decodeIfPresent(String.self, forKey: .refused)) ?? nil
+        entryCount = (try? container.decodeIfPresent(Int.self, forKey: .entryCount)) ?? nil
+        noteCount = (try? container.decodeIfPresent(Int.self, forKey: .noteCount)) ?? nil
+        lastSeen = (try? container.decodeIfPresent(Int.self, forKey: .lastSeen)) ?? nil
+        creates = (try? container.decodeIfPresent(Bool.self, forKey: .creates)) ?? false
+        consequence = (try? container.decodeIfPresent(String.self, forKey: .consequence)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8306,6 +8411,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case inherited
         case effect
         case refused
+        case entryCount = "entry_count"
+        case noteCount = "note_count"
+        case lastSeen = "last_seen"
+        case creates
+        case consequence
     }
 }
 

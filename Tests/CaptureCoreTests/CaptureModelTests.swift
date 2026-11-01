@@ -1772,26 +1772,45 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertFalse(candidate.themes[1].known)
     }
 
-    func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
+    func testCompletionResponseDecodesDrawerRowsAndTarget() throws {
         let data = Data(
             """
             {
               "ok": true,
               "schema_version": 1,
+              "grammar": 3,
               "cursor": 29,
               "replacement": { "start": 29, "end": 29 },
-              "context": "task_section",
+              "context": "drawer",
+              "initial_selection": "none",
+              "target": { "route": "foo.md", "block_id": "bar", "text": "Upgrade Postgres" },
               "candidates": [
                 {
-                  "replacement": "requirements",
+                  "replacement": "#requirements",
                   "title": "REQUIREMENTS",
+                  "key": "REQUIREMENTS",
                   "slug": "requirements",
                   "route": "foo",
                   "block_id": "bar",
-                  "text": "Parent task",
+                  "text": "Upgrade Postgres",
                   "line": 4,
-                  "child_count": 2,
-                  "cursor_after": 41
+                  "entry_count": 3,
+                  "group": "task",
+                  "detail": "3 notes",
+                  "creates": false,
+                  "consequence": "Adds after \\"fast disk\\" in REQUIREMENTS",
+                  "cursor_after": 42
+                },
+                {
+                  "replacement": "#motivation",
+                  "title": "MOTIVATION",
+                  "key": "MOTIVATION",
+                  "group": "recent",
+                  "note_count": 12,
+                  "last_seen": 1793275200,
+                  "detail": "used in 12 notes · 3 days ago",
+                  "creates": true,
+                  "refused": "near-duplicate of MOTIVATIONS"
                 }
               ]
             }
@@ -1800,15 +1819,72 @@ final class CaptureModelTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
 
-        XCTAssertEqual(decoded.context, "task_section")
+        XCTAssertEqual(decoded.context, "drawer")
+        XCTAssertTrue(decoded.opensWithoutSelection)
         XCTAssertEqual(decoded.replacement, CaptureRange(start: 29, end: 29))
-        XCTAssertEqual(decoded.candidates.first?.replacement, "requirements")
-        XCTAssertEqual(decoded.candidates.first?.title, "REQUIREMENTS")
-        XCTAssertEqual(decoded.candidates.first?.route, "foo")
-        XCTAssertEqual(decoded.candidates.first?.blockID, "bar")
-        XCTAssertEqual(decoded.candidates.first?.text, "Parent task")
-        XCTAssertEqual(decoded.candidates.first?.childCount, 2)
-        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 41)
+        XCTAssertEqual(
+            decoded.target,
+            CaptureDrawerTarget(route: "foo.md", blockID: "bar", text: "Upgrade Postgres")
+        )
+        let task = try XCTUnwrap(decoded.candidates.first)
+        XCTAssertEqual(task.replacement, "#requirements")
+        XCTAssertEqual(task.title, "REQUIREMENTS")
+        XCTAssertEqual(task.key, "REQUIREMENTS")
+        XCTAssertEqual(task.route, "foo")
+        XCTAssertEqual(task.blockID, "bar")
+        XCTAssertEqual(task.entryCount, 3)
+        XCTAssertEqual(task.group, "task")
+        XCTAssertEqual(task.detail, "3 notes")
+        XCTAssertFalse(task.creates)
+        XCTAssertEqual(task.consequence, "Adds after \"fast disk\" in REQUIREMENTS")
+        XCTAssertEqual(task.cursorAfter, 42)
+        XCTAssertNil(task.refused)
+
+        let recent = decoded.candidates[1]
+        XCTAssertEqual(recent.group, "recent")
+        XCTAssertEqual(recent.noteCount, 12)
+        XCTAssertEqual(recent.lastSeen, 1_793_275_200)
+        XCTAssertTrue(recent.creates)
+        XCTAssertEqual(recent.refused, "near-duplicate of MOTIVATIONS")
+        XCTAssertNil(recent.entryCount)
+        XCTAssertNotEqual(task.id, recent.id)
+    }
+
+    func testDrawerTargetAndRowFieldsAreOptionalForOlderBob() throws {
+        let data = Data(
+            """
+            {"ok":true,"schema_version":1,"cursor":0,"replacement":{"start":0,"end":0},
+             "context":"drawer","candidates":[{"replacement":"requirements","title":"REQUIREMENTS"}]}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertNil(decoded.target)
+        XCTAssertFalse(decoded.opensWithoutSelection)
+        let row = try XCTUnwrap(decoded.candidates.first)
+        XCTAssertNil(row.group)
+        XCTAssertNil(row.entryCount)
+        XCTAssertNil(row.consequence)
+        XCTAssertFalse(row.creates)
+    }
+
+    func testCaptureSuccessDecodesDrawerObjectAndKeepsLegacyParentSection() throws {
+        let created = try decodeBlockFixture("drawer-contract-capture-new-retype.json")
+        XCTAssertEqual(
+            created.drawer,
+            CaptureDrawerSummary(title: "PERF BUDGET", key: "PERF BUDGET", created: true)
+        )
+        XCTAssertEqual(created.parentSection, "PERF BUDGET")
+        XCTAssertEqual(created.taskTheme?.theme?.name, "FIX")
+
+        let legacy = try decodeBlockFixture("drawer-capture-new.json")
+        XCTAssertNil(legacy.drawer, "this Bob sends only the parent_section mirror")
+        XCTAssertEqual(legacy.parentSection, "PERF BUDGET")
+
+        let plain = try decodeBlockFixture("drawer-capture-plain-child.json")
+        XCTAssertNil(plain.drawer)
+        XCTAssertNil(plain.parentSection)
     }
 
     func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {

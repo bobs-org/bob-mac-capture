@@ -1,7 +1,8 @@
 import Foundation
 
 /// Shared unselected-menu copy and selection rules for every completion
-/// context. Drawer menus reuse the same no-selection mechanism later.
+/// context. The `%`, bare-`#`, and `@note+id#` drawer menus all open through
+/// this one no-selection mechanism.
 public enum CaptureCompletionMenu: Sendable {
     /// Footer shown when Bob opened a menu with `initial_selection: none`
     /// and the user has not highlighted a row.

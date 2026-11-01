@@ -68,7 +68,9 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
          "global_route", "task_toggle_route",
          "active_task_route":
         return .route
-    case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
+    case "section", "drawer", "pomodoro_name", "task_toggle_pomodoro_name":
+        // A `drawer` span (`#NAME` glued after `@route+id`) takes the section
+        // color family: it names a place inside the destination.
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
          "task_toggle_block_id", "active_task_block_id",
@@ -233,7 +235,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case pomodoroName
     case pomodoroStartName
     case task
-    case taskSection
+    case drawer
     case activeTask
     case taskLink
     case taskGoto
@@ -261,7 +263,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "pomodoro_name": self = .pomodoroName
         case "pomodoro_start_name": self = .pomodoroStartName
         case "task": self = .task
-        case "task_section": self = .taskSection
+        case "drawer": self = .drawer
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
         case "task_goto": self = .taskGoto
@@ -494,18 +496,28 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts this section heading."
 
-    case .taskSection:
-        category = .section
-        symbolName = "list.bullet.rectangle"
-        contextLabel = "Task Section"
+    case .drawer:
+        // The panel paints `drawer` menus with `CaptureDrawerMenuView`; this
+        // row backs the generic list label and any host that falls back to it.
+        // Counts and ages are Bob's `detail`, never a Swift tally.
+        let isNew = candidate.group == "new"
+        category = isNew ? .priority : .section
+        symbolName = isNew ? "plus.square.dashed" : "tray.full"
+        contextLabel = "Drawer"
         primaryText = candidate.title ?? candidate.replacement
-        secondaryText = candidate.text
-        if let blockID = candidate.blockID {
-            badges.append("^\(blockID)")
+        if let reason = candidate.refused, !reason.isEmpty {
+            secondaryText = reason
+        } else if let detail = candidate.detail, !detail.isEmpty {
+            secondaryText = detail
         }
-        let childCount = candidate.childCount ?? 0
-        badges.append(childCount == 0 ? "Empty" : "\(childCount) items")
-        accessibilityHint = "Nests the capture under this task section."
+        if isNew {
+            badges.append("New")
+        }
+        if let consequence = candidate.consequence, !consequence.isEmpty {
+            accessibilityHint = consequence
+        } else {
+            accessibilityHint = "Files the capture in this drawer."
+        }
 
     case .pomodoroBlockID, .taskBlockID, .projectTaskBlockID, .task, .taskParent:
         let needsBlockID = context == .task && candidate.requiresBlockID

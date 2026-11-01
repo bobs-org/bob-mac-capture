@@ -54,7 +54,7 @@ What is stored on disk, what stays in memory, and what diagnostic logs omit:
   response and the visible row content. They are never logged, written to
   `UserDefaults`, or included in a notification, signpost, or Diagnostics entry — the
   same guarantee the draft itself gets.
-- `@route+` task completion metadata, task-section titles, and a user-authored block ID
+- `@route+` task completion metadata, drawer titles and counts, and a user-authored block ID
   are sent only to the local `bob` subprocess. The app never opens or rewrites Markdown
   notes directly; Bob performs the vault write through `capture-task-id`, and the app
   updates the draft only after Bob confirms success.

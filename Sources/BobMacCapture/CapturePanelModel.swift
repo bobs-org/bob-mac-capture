@@ -10091,13 +10091,13 @@ final class CapturePanelModel: ObservableObject {
         relationCapabilityAcknowledgedDraft = nil
     }
 
-    /// Test seam: pretends the current draft already parsed as grammar 2
+    /// Test seam: pretends the current draft already parsed at the minimum grammar
     /// for this process client so submit tests that skip analysis can run.
     func installCompatibleCaptureGrammarForTests() {
         installCaptureGrammarForTests(CaptureGrammarGate.minimumRevision)
     }
 
-    /// Test seam for missing (`nil`), 1, 2, and 3 grammar cases.
+    /// Test seam for missing (`nil`) and numeric grammar cases.
     func installCaptureGrammarForTests(_ grammar: Int?) {
         lastAppliedParseDraft = plainDraft
         lastAppliedParseGeneration = analysisGeneration
@@ -10247,6 +10247,20 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// The `@route+id#` drawer menu, or nil for every other context. The
+    /// selection index is the completion list's own, so an unselected open
+    /// (`initial_selection: none`) shows the key hint in the footer.
+    func drawerMenuPresentation() -> CaptureDrawerMenuPresentation? {
+        guard let completionResponse, completionResponse.context == "drawer" else {
+            return nil
+        }
+        return CaptureDrawerMenuPresentation(
+            response: completionResponse,
+            selectedIndex: selectedCompletionIndex,
+            query: completionQueryText()
+        )
+    }
+
     func taskTypeMenuPresentation() -> CaptureTaskTypeMenuPresentation? {
         guard let completionResponse, completionResponse.context == "task_type" else {
             return nil
@@ -10359,7 +10373,13 @@ final class CapturePanelModel: ObservableObject {
         else {
             return ""
         }
-        return String(plainDraft[range])
+        let typed = String(plainDraft[range])
+        if completionResponse.context == "drawer" {
+            // A drawer replacement may cover the glued `#` (and a literal's
+            // opening quote); neither is part of the name being matched.
+            return CaptureDrawerMenuPresentation.queryText(fromTyped: typed)
+        }
+        return typed
     }
 
     private func presentTaskIDPrompt(
@@ -13660,7 +13680,7 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let completionNeeds = Set([
-            "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
+            "route", "section", "pomodoro_id", "pomodoro_name", "task", "drawer",
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
             "dependency_target", "task_complete", "wikilink_task", "block_id", "task_type",
@@ -13699,7 +13719,7 @@ final class CapturePanelModel: ObservableObject {
             "pomodoro_name",
             "sub_bullet_route",
             "sub_bullet_block_id",
-            "sub_bullet_section",
+            "drawer",
             "task_toggle_route",
             "task_toggle_block_id",
             "task_toggle_pomodoro_name",

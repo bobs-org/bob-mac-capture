@@ -70,6 +70,66 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         )
     }
 
+    func testRealBobDrawerCaptureNamesTheDrawerFromTheLegacyMirror() throws {
+        let existing = try XCTUnwrap(
+            CaptureSubBulletPresentation(
+                capture: try successFixture("drawer-capture-existing.json")))
+        XCTAssertEqual(existing.drawerTitle, "REQUIREMENTS")
+        XCTAssertFalse(existing.createsDrawer)
+        XCTAssertEqual(existing.headerDetail, "under ^bar › REQUIREMENTS")
+
+        // This Bob names a created drawer only through `parent_section`, so no
+        // capsule appears until it sends the `drawer` object.
+        let created = try XCTUnwrap(
+            CaptureSubBulletPresentation(
+                capture: try successFixture("drawer-capture-new.json")))
+        XCTAssertEqual(created.drawerTitle, "PERF BUDGET")
+        XCTAssertFalse(created.createsDrawer)
+    }
+
+    func testNewDrawerObjectAddsTheCapsuleAndTheRetypeRowTravelsWithIt() throws {
+        let success = try successFixture("drawer-contract-capture-new-retype.json")
+        let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
+
+        XCTAssertEqual(presented.drawerTitle, "PERF BUDGET")
+        XCTAssertTrue(presented.createsDrawer)
+        XCTAssertEqual(presented.headerDetail, "under ^bar › PERF BUDGET")
+        XCTAssertEqual(CaptureSubBulletPresentation.newDrawerBadge, "new drawer")
+        XCTAssertEqual(
+            presented.accessibilityText,
+            "Sub-bullet under ^bar, in new drawer PERF BUDGET"
+        )
+        // The same item carries the `Type` row the preview renders beneath the header.
+        let change = try XCTUnwrap(success.taskTheme)
+        XCTAssertEqual(change.action, "set")
+        XCTAssertEqual(change.theme?.name, "FIX")
+        XCTAssertNotNil(CaptureTaskThemePresentation.line(for: change, isDryRun: success.dryRun))
+    }
+
+    func testDrawerObjectWinsOverTheLegacyMirror() {
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "foo",
+            routeLabel: "foo.md",
+            relativeTarget: "foo.md",
+            target: "/tmp/vault/foo.md",
+            text: "note",
+            taskLine: "- note",
+            kind: "sub_bullet",
+            created: "2026-10-30",
+            placement: "inserted",
+            blockID: "bar",
+            parentSection: "OLD NAME",
+            drawer: CaptureDrawerSummary(title: "Q&A", key: "Q&A", created: true)
+        )
+        let presented = CaptureSubBulletPresentation(capture: success)
+
+        XCTAssertEqual(presented?.drawerTitle, "Q&A")
+        XCTAssertEqual(presented?.createsDrawer, true)
+    }
+
     func testParentWithoutBlockIDFallsBackToTask() throws {
         let presented = try XCTUnwrap(
             CaptureSubBulletPresentation(capture: subBullet(blockID: nil))

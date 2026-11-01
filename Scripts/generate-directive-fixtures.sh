@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Generate truthful grammar-2 directive and clipboard fixtures from a real Bob.
+# Generate truthful grammar-3 directive and clipboard fixtures from a real Bob.
 #
 #   BOB_BIN=/path/to/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
 #     Scripts/generate-directive-fixtures.sh
 #
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
-# checkout must contain the grammar-2 directive work (commit b290d833) with a clean
+# checkout must contain the grammar-3 drawer work (commit e660c8d8) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies the
-# binary reports `grammar >= 2`, then persists, from one isolated vault, config, cache,
+# binary reports `grammar >= 3`, then persists, from one isolated vault, config, cache,
 # state, HOME, and pinned clock:
 #
 #   directive-parse-*.json      bob capture-parse
@@ -28,7 +28,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
 cli_dir="${BOB_CLI_DIR:-}"
-prerequisite_commit="b290d833"
+prerequisite_commit="e660c8d8"
 if [[ -z "$bob_bin" || ! -x "$bob_bin" ]]; then
   echo "Set BOB_BIN to a bob binary built from BOB_CLI_DIR (for example its target/debug/bob)." >&2
   exit 1
@@ -38,7 +38,7 @@ if [[ -z "$cli_dir" ]] || ! git -C "$cli_dir" rev-parse --git-dir >/dev/null 2>&
   exit 1
 fi
 if ! git -C "$cli_dir" merge-base --is-ancestor "$prerequisite_commit" HEAD; then
-  echo "BOB_CLI_DIR does not contain the grammar-2 prerequisite $prerequisite_commit." >&2
+  echo "BOB_CLI_DIR does not contain the grammar-3 prerequisite $prerequisite_commit." >&2
   exit 1
 fi
 if [[ -n "$(git -C "$cli_dir" status --porcelain)" ]]; then
@@ -148,8 +148,8 @@ import pathlib
 import sys
 
 grammar = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar")
-if not isinstance(grammar, int) or grammar < 2:
-    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 2")
+if not isinstance(grammar, int) or grammar < 3:
+    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 3")
 PY
 
 manifest="$scratch_root/manifest.md"
@@ -474,7 +474,7 @@ def disabled(name):
 for path in sorted(fixtures.glob("directive-*.json")) + sorted(fixtures.glob("clip-*.json")):
     reply = json.loads(path.read_text())
     if path.name.startswith(("directive-parse-", "directive-complete-")):
-        assert reply["ok"] is True and reply["grammar"] >= 2, path.name
+        assert reply["ok"] is True and reply["grammar"] >= 3, path.name
 
 # Parse.
 assert load("directive-parse-bare-percent.json")["needs"] == ["directive"]
@@ -632,7 +632,7 @@ BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \\
 \`\`\`
 
 Generated with \`${version_line}\` built from bob-cli revision \`${cli_revision}\`
-(grammar revision 2, \`schema_version\` 1). The script refuses a binary that reports a
+(grammar revision 3, \`schema_version\` 1). The script refuses a binary that reports a
 lower grammar, a bob-cli checkout without \`${prerequisite_commit}\`, or a dirty checkout.
 
 Inputs are fully isolated: a scratch vault (\`dev.md\` and \`mac_inbox.md\` areas plus a

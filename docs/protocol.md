@@ -25,7 +25,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`,
   and top-level `query`), the same descriptor on scoped `@route+` `task` responses,
   `parent_replacement` on `capture-task-id` for vault-wide ID-less picks,
-  `task_section` completion for
+  `drawer` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
   task-toggle `@route+block-id#`, the `task_block_id` completion context for the
   `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
@@ -95,7 +95,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   deployed to the vault with `bob plugins sync`.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
-  flow, the task-section popup, and the task-toggle footer/preview report the local Bob
+  flow, the drawer menu, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that returns scoped
   `@route+` `task` completion without the additive `picker` descriptor keeps the
   inline parent-task list; vault-wide `+` and `parent_replacement` need a Bob that
@@ -360,7 +360,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |
-| `pomodoro_name`, `task_section` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |
+| `pomodoro_name` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |
 | `creates_pomodoro` | Explicit Create row | Captures without the explicit row (decoded false) | Upgrade `bob` to see it |
 | `pomodoro_start` / `pomodoro_adjust` / `pomodoro_shift` | Session, adjust, and shift rows | Omitted rows; malformed suffixes surface `bob`'s diagnostic | Upgrade `bob` for `=` / `+N` / `++N` |
 | `pomodoro_close` with `log` entries | Close card with typed Work Log | Standard card; no close preview | Upgrade `bob` before `x` |
@@ -373,7 +373,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` / `type X · <source>` (`kept`) line in new-task, link, toggle, and relationship previews, VoiceOver summaries, and notifications (`type FIX` on set/kept) | No type line | Upgrade `bob` for type writes |
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
 | `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | No task-type menu or refusal details | Upgrade `bob` for `#` completion |
-| `grammar` ≥ 2 on `capture-parse` | Capture with `%` directives; bare `#` / `%` menus open with no selected row | Capture disabled; "Update bob to use drawers and % directives"; the draft stays | Upgrade `bob` for `%` directives |
+| `grammar` ≥ 3 on `capture-parse` | Capture with `%` directives and glued `#drawer`; bare `#` / `%` and `@route+id#` menus open with no selected row | Capture disabled; "Update bob to use drawers and % directives"; the draft stays | Upgrade `bob` for drawers and `%` directives |
+| `drawer` completion context, `target`, candidate `group` / `detail` / `entry_count` / `note_count` / `last_seen` / `creates` / `refused` / `consequence` | Drawer menu: On this task and Recent groups, a New drawer row, Bob's `detail` counts, dimmed refused rows (Return is a no-op), and Bob's `consequence` as the footer for the selected row | Older bob omits the context (grammar 3 is required to capture at all); fields Bob omits render nothing, so a Bob without `consequence` shows the key hint and one without `detail` shows no counts | Upgrade `bob` for the full menu |
+| `drawer` object on a sub-bullet capture item (`title`, `key`, `created`) | `new drawer` capsule beside the item header and the drawer title in summaries | Header names the drawer from `parent_section` only; no capsule | Upgrade `bob` for the capsule |
 | `directive` completion context, `initial_selection: none` | `%` menu with Bob's token, name, summary, and detail; Return captures as typed; Tab takes the first row | Older bob omits the context, so `%` stays ordinary text; omitted `initial_selection` keeps first-row selection | Upgrade `bob` for `%` menus |
 | `type` on `pomodoro_link_destination` | ` · <label>` suffix on the ledger and day-file destination rows (`Linked under CHORE · default type`) | Destination rows without the label | Upgrade `bob` for typed placement |
 | `theme_suggestion` on `ref today`, `suggested` + `suggestion_label` on rows | Suggested row preselected with reason in `rowMeta`; synthetic `New X Pomodoro` row first when `create`; Return on a suggested non-default row sends its entry | Default row selected; Return sends `.automatic`; no synthetic row | Upgrade `bob` for suggestions |

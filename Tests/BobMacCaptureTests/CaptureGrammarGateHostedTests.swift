@@ -4,7 +4,7 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Grammar ≥ 2 gate: missing/1 block capture and keep the draft; 2/3
+/// Grammar ≥ 3 gate: missing/1/2 block capture and keep the draft; 3/4
 /// submit; a pending parse stays quiet; Recheck Bob invalidates evidence.
 @MainActor
 final class CaptureGrammarGateHostedTests: XCTestCase {
@@ -38,7 +38,22 @@ final class CaptureGrammarGateHostedTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
     }
 
-    func testGrammarTwoAllowsSubmit() async throws {
+    func testGrammarTwoBlocksSubmitAndKeepsTheDraft() throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = try makeModel(recordURL: recordURL)
+        model.plainDraft = "Inbox task"
+        model.installCaptureGrammarForTests(2)
+
+        XCTAssertEqual(model.captureGrammarWarning, CaptureGrammarGate.blockedMessage)
+        XCTAssertFalse(model.primaryActionEnabled)
+        model.submit(openAfterCapture: false)
+        XCTAssertEqual(model.plainDraft, "Inbox task")
+        XCTAssertEqual(model.statusText, CaptureGrammarGate.blockedMessage)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
+    }
+
+    func testMinimumGrammarAllowsSubmit() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = try makeModel(recordURL: recordURL)
@@ -130,7 +145,7 @@ final class CaptureGrammarGateHostedTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_DELAY_SECONDS": "0.25",
-                "FAKE_BOB_PARSE_GRAMMAR": "1",
+                "FAKE_BOB_PARSE_GRAMMAR": "2",
             ]
         )
         model.plainDraft = draft
@@ -141,15 +156,15 @@ final class CaptureGrammarGateHostedTests: XCTestCase {
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_PARSE_GRAMMAR": "2",
+                "FAKE_BOB_PARSE_GRAMMAR": "3",
             ]
         )
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { model.latestParse?.grammar == 2 }
+        await waitUntil { model.latestParse?.grammar == 3 }
         try await Task.sleep(nanoseconds: 400_000_000)
 
-        XCTAssertEqual(model.latestParse?.grammar, 2)
+        XCTAssertEqual(model.latestParse?.grammar, 3)
         XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertNil(model.captureGrammarWarning)
         XCTAssertEqual(model.plainDraft, draft)

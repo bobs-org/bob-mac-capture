@@ -66,6 +66,15 @@ Each `%c` item renders its own Clip card beneath its preview card, built only fr
   placeholder. Clip lines never enter a task block: the task-block dedup keeps matching
   them through the item's verbatim `previewBlockLines`.
 
+## Drawer captures
+
+A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the header
+`Sub-bullet under ^bar › REQUIREMENTS` above the task card showing where it landed. When
+Bob's per-item `drawer` object reports `created`, the header adds a dashed **new drawer**
+capsule. A separate `#type` on the same item retypes the task in the same transaction, so
+Bob's `Type` row renders beneath the header beside the capsule. A Bob that sends only
+`parent_section` names the drawer without the capsule.
+
 ## Batch drafts and authored children
 
 The additive `sub_bullets` field on `capture` output is the exact rendered authored

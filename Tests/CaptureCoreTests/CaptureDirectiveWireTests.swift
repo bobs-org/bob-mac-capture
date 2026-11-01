@@ -3,7 +3,7 @@ import XCTest
 
 @testable import CaptureCore
 
-/// Decodes the current grammar-2 wire, using fixtures that
+/// Decodes the current grammar-3 wire, using fixtures that
 /// `Scripts/generate-directive-fixtures.sh` captures from a real Bob (see
 /// `Tests/Fixtures/directive-fixtures-README.md`).
 final class CaptureDirectiveWireTests: XCTestCase {
@@ -42,13 +42,13 @@ final class CaptureDirectiveWireTests: XCTestCase {
         XCTAssertNil(try grammar(#","grammar":"2""#))
     }
 
-    func testRealBobFixturesReportGrammarTwo() throws {
+    func testRealBobFixturesReportGrammarThree() throws {
         let parse = try parseFixture("directive-parse-clip.json")
-        XCTAssertEqual(parse.grammar, 2)
+        XCTAssertEqual(parse.grammar, 3)
         XCTAssertEqual(parse.schemaVersion, 1)
 
         let complete = try completionFixture("directive-complete-bare.json")
-        XCTAssertEqual(complete.grammar, 2)
+        XCTAssertEqual(complete.grammar, 3)
         XCTAssertEqual(complete.schemaVersion, 1)
     }
 

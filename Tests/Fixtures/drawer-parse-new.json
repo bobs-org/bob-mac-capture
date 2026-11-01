@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":3,"input":"Postgres 17 minimum @foo+bar#perf-budget","body":"Postgres 17 minimum","mode":"sub_bullet","route":"foo","section":"perf-budget","block_id":"bar","needs":[],"spans":[{"start":20,"end":24,"kind":"sub_bullet_route"},{"start":25,"end":28,"kind":"sub_bullet_block_id"},{"start":29,"end":40,"kind":"drawer"}],"diagnostics":[]}

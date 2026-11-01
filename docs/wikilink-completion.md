@@ -26,11 +26,11 @@ decodes and presents it.
   closing `]]`, mid-heading, or wherever the candidate specifies.
 
 Each completion row shows a compact SF Symbol and context label for what will be
-inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Task Section
+inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Drawer
 rows), a primary line with restrained emphasis on the part of the text
 that matched what you typed, and a secondary line with the canonical vault-relative
 path, parent task, or `route:block-id` plus small badges — `Alias`, a heading level
-like `H2`, a short block preview, `^block-id`, `Add ID`, `N items`, or `Empty`.
+like `H2`, a short block preview, `^block-id`, `Add ID`, `N links`, or `Empty`.
 ## Task wikilinks (`((`)
 
 Typing `((` anywhere free text is allowed in a capture draft — task text,
@@ -79,7 +79,8 @@ Reading tasks (`task_kind` `ref`) draw the `book` symbol in the `^`, `:`,
 `^` active tasks no longer use this list; they open the [Active Task Picker](task-pickers.md).
 `@route+` task suggestions are grouped as
 **Ready to use** followed by **Needs block ID**, preserving Bob's order inside each
-group; task-section rows stay a plain ungrouped list. Long paths truncate from the
+group; `drawer` rows are painted by their own menu (On this task, Recent, and a New
+drawer row). Long paths truncate from the
 middle, keeping the filename intact rather than the leading directory. The selected
 row's accent-tinted fill uses each result's own semantic color (matching the editor's
 highlight palette) and increases its opacity automatically under Increase Contrast.
