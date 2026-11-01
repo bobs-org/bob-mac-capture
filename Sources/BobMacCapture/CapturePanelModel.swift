@@ -134,7 +134,7 @@ struct CaptureTaskIDPromptState: Equatable {
     let candidate: CaptureCompletionCandidate
     let draftSnapshot: String
     let replacementRange: CaptureRange
-    let selectedCompletionIndex: Int
+    let selectedCompletionIndex: Int?
     var authoredID: String
     var isSaving: Bool
     var errorMessage: String?
@@ -200,7 +200,7 @@ struct CapturePomodoroNamePromptState: Equatable {
     let candidate: CaptureCompletionCandidate
     let draftSnapshot: String
     let replacementRange: CaptureRange
-    let selectedCompletionIndex: Int
+    let selectedCompletionIndex: Int?
     var authoredName: String
     var suggestions: [CapturePomodoroTheme]
     var suggestionQuery: String?
@@ -404,7 +404,7 @@ final class CapturePanelModel: ObservableObject {
     /// Bob's additive template parse object for the current draft, if any.
     @Published var parsedTemplate: CaptureParseTemplate?
     @Published var completionResponse: CaptureCompletionResponse?
-    @Published var selectedCompletionIndex = 0
+    @Published var selectedCompletionIndex: Int?
     /// True while the visible inline completion list is the File-under
     /// parent picker for a bare-URL reference draft (a synthesized route
     /// list, not a server completion). The view headers it `File under`;
@@ -435,6 +435,9 @@ final class CapturePanelModel: ObservableObject {
     /// code (`plan_theme_cap_exceeded`); nil for every other error and when
     /// there is no error. Cleared together with `errorMessage`.
     @Published var errorCode: String?
+    /// Shown when `capture-parse` grammar is missing or below 2. Capture
+    /// stays disabled and the draft is kept.
+    @Published var captureGrammarWarning: String?
     /// Calm capability warning when the draft contains `~` but the latest
     /// parse for this draft lacks `relation_grammar` (an older Bob would
     /// capture the sigil literally). Nil when the draft has no `~` or Bob
@@ -530,6 +533,10 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             invalidateAnalysis()
+            lastAppliedParseDraft = nil
+            lastAppliedParseGrammar = nil
+            lastAppliedParseClientIdentity = nil
+            captureGrammarWarning = nil
             cancelSimilarTasks(clear: true)
             previewPullInSnapshot = nil
             inboxRouteChoice = nil
@@ -600,6 +607,13 @@ final class CapturePanelModel: ObservableObject {
     private var rememberedSelectedTemplateID: String?
     private var lastAppliedParseDraft: String?
     private var lastAppliedParseItemCount: Int?
+    /// Latest parse's `grammar` for `lastAppliedParseDraft`. Nil until a
+    /// parse lands or when that parse omitted the field.
+    private var lastAppliedParseGrammar: Int?
+    /// Process-client identity that produced `lastAppliedParseDraft`. A
+    /// Recheck Bob / client replacement clears it so a stale parse cannot
+    /// authorize capture.
+    private var lastAppliedParseClientIdentity: String?
     /// Latest parse's `relation_grammar` for `lastAppliedParseDraft` (nil
     /// when the Bob predates relations or no parse has landed yet).
     private var lastRelationGrammar: Int?
@@ -1480,11 +1494,22 @@ final class CapturePanelModel: ObservableObject {
 
     var selectedCompletion: CaptureCompletionCandidate? {
         guard let candidates = completionResponse?.candidates,
-              candidates.indices.contains(selectedCompletionIndex)
+              let index = selectedCompletionIndex,
+              candidates.indices.contains(index)
         else {
             return nil
         }
-        return candidates[selectedCompletionIndex]
+        return candidates[index]
+    }
+
+    var captureGrammarAllowsSubmit: Bool {
+        guard let processClient,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseClientIdentity == processClient.identityToken
+        else {
+            return false
+        }
+        return CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
     }
 
     var livePreviewUsesLiteralClipboard: Bool {
@@ -1643,6 +1668,7 @@ final class CapturePanelModel: ObservableObject {
             && !inlinePromptVisible
             && !pickerVisible
             && !isClosePending
+            && captureGrammarAllowsSubmit
     }
 
     /// Plan used by the footer chip: the stored preview plan, else a
@@ -2236,6 +2262,17 @@ final class CapturePanelModel: ObservableObject {
         guard let processClient else {
             errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
             errorCode = nil
+            return
+        }
+        if !captureGrammarAllowsSubmit {
+            let knownIncompatible =
+                lastAppliedParseDraft == plainDraft
+                && lastAppliedParseClientIdentity == processClient.identityToken
+                && !CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
+            if knownIncompatible {
+                captureGrammarWarning = CaptureGrammarGate.blockedMessage
+                statusText = CaptureGrammarGate.blockedMessage
+            }
             return
         }
 
@@ -3670,7 +3707,7 @@ final class CapturePanelModel: ObservableObject {
         lastSuccess = nil
         lastSuccessResults = []
         lastSuccessGlobalDestination = nil
-        selectedCompletionIndex = 0
+        selectedCompletionIndex = nil
     }
 
     func prepareForDismissal() {
@@ -3714,6 +3751,9 @@ final class CapturePanelModel: ObservableObject {
         parsedTemplate = nil
         lastAppliedParseDraft = nil
         lastAppliedParseItemCount = nil
+        lastAppliedParseGrammar = nil
+        lastAppliedParseClientIdentity = nil
+        captureGrammarWarning = nil
         similarTasksParseItems = []
         similarTasksFolded = false
         completionResponse = nil
@@ -3818,7 +3858,7 @@ final class CapturePanelModel: ObservableObject {
         }
         completionResponse = nil
         completionDraftSnapshot = nil
-        selectedCompletionIndex = 0
+        selectedCompletionIndex = nil
         fileUnderActive = false
     }
 
@@ -4540,7 +4580,8 @@ final class CapturePanelModel: ObservableObject {
             range: range,
             restoreCursor: restoreCursor,
             query: query,
-            snapshotIsPartial: snapshotIsPartial
+            snapshotIsPartial: snapshotIsPartial,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -4556,16 +4597,10 @@ final class CapturePanelModel: ObservableObject {
         clearPickerInterruption(trigger: trigger)
         completionResponse = completion.candidates.isEmpty ? nil : completion
         completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
-        selectedCompletionIndex = 0
-        // Task-theme suggestion: in `pomodoro_name` with an empty query the
-        // initial selection is the first `suggested` row Bob preselected;
-        // otherwise it stays 0 and PT7 ranking wins.
-        if completion.context == "pomodoro_name",
-           completionQueryText().isEmpty,
-           let suggested = completion.candidates.firstIndex(where: \.suggested)
-        {
-            selectedCompletionIndex = suggested
-        }
+        selectedCompletionIndex = CaptureCompletionMenu.initialSelectedIndex(
+            for: completion,
+            queryIsEmpty: completionQueryText().isEmpty
+        )
         // A fresh server or cached completion is never the File-under list:
         // only the File-under opener sets the header back below.
         fileUnderActive = false
@@ -4662,7 +4697,8 @@ final class CapturePanelModel: ObservableObject {
                     range: r,
                     restoreCursor: cursor,
                     query: query,
-                    snapshotIsPartial: false
+                    snapshotIsPartial: false,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -4679,7 +4715,8 @@ final class CapturePanelModel: ObservableObject {
                 range: r,
                 restoreCursor: cursor,
                 query: query,
-                snapshotIsPartial: true
+                snapshotIsPartial: true,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -4692,7 +4729,8 @@ final class CapturePanelModel: ObservableObject {
             range: r,
             restoreCursor: cursor,
             query: query,
-            snapshotIsPartial: false
+            snapshotIsPartial: false,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -4749,7 +4787,8 @@ final class CapturePanelModel: ObservableObject {
                     range: r,
                     restoreCursor: cursor,
                     query: query,
-                    snapshotIsPartial: false
+                    snapshotIsPartial: false,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -4765,7 +4804,8 @@ final class CapturePanelModel: ObservableObject {
                 range: r,
                 restoreCursor: cursor,
                 query: query,
-                snapshotIsPartial: true
+                snapshotIsPartial: true,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -4778,7 +4818,8 @@ final class CapturePanelModel: ObservableObject {
             range: r,
             restoreCursor: cursor,
             query: query,
-            snapshotIsPartial: false
+            snapshotIsPartial: false,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -4925,7 +4966,8 @@ final class CapturePanelModel: ObservableObject {
             range: range,
             restoreCursor: restoreCursor,
             query: query,
-            snapshotIsPartial: snapshotIsPartial
+            snapshotIsPartial: snapshotIsPartial,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -5031,7 +5073,8 @@ final class CapturePanelModel: ObservableObject {
                     restoreCursor: cursor,
                     query: query,
                     snapshotIsPartial: false,
-                    dependencyOwner: snapshot.owner
+                    dependencyOwner: snapshot.owner,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -5048,7 +5091,8 @@ final class CapturePanelModel: ObservableObject {
                 restoreCursor: cursor,
                 query: query,
                 snapshotIsPartial: true,
-                dependencyOwner: completion.owner
+                dependencyOwner: completion.owner,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -5062,7 +5106,8 @@ final class CapturePanelModel: ObservableObject {
             restoreCursor: cursor,
             query: query,
             snapshotIsPartial: false,
-            dependencyOwner: completion.owner
+            dependencyOwner: completion.owner,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -5151,7 +5196,8 @@ final class CapturePanelModel: ObservableObject {
                     restoreCursor: restoreCursor,
                     query: keptFilter,
                     snapshotIsPartial: false,
-                    dependencyOwner: snapshot.owner
+                    dependencyOwner: snapshot.owner,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -5169,7 +5215,8 @@ final class CapturePanelModel: ObservableObject {
             restoreCursor: restoreCursor,
             query: keptFilter,
             snapshotIsPartial: cursor > r.start + sigilBytes,
-            dependencyOwner: completion.owner
+            dependencyOwner: completion.owner,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -5224,7 +5271,8 @@ final class CapturePanelModel: ObservableObject {
                     restoreCursor: cursor,
                     query: query,
                     snapshotIsPartial: false,
-                    taskCompleteContinuationKeys: snapshot.picker?.actionContinuationKeys ?? []
+                    taskCompleteContinuationKeys: snapshot.picker?.actionContinuationKeys ?? [],
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -5241,7 +5289,8 @@ final class CapturePanelModel: ObservableObject {
                 restoreCursor: cursor,
                 query: query,
                 snapshotIsPartial: true,
-                taskCompleteContinuationKeys: continuationKeys
+                taskCompleteContinuationKeys: continuationKeys,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -5255,7 +5304,8 @@ final class CapturePanelModel: ObservableObject {
             restoreCursor: cursor,
             query: query,
             snapshotIsPartial: false,
-            taskCompleteContinuationKeys: continuationKeys
+            taskCompleteContinuationKeys: continuationKeys,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -5330,7 +5380,8 @@ final class CapturePanelModel: ObservableObject {
                     range: r,
                     restoreCursor: cursor,
                     query: query,
-                    snapshotIsPartial: false
+                    snapshotIsPartial: false,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -5346,7 +5397,8 @@ final class CapturePanelModel: ObservableObject {
                 range: r,
                 restoreCursor: cursor,
                 query: query,
-                snapshotIsPartial: true
+                snapshotIsPartial: true,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -5359,7 +5411,8 @@ final class CapturePanelModel: ObservableObject {
             range: r,
             restoreCursor: cursor,
             query: query,
-            snapshotIsPartial: false
+            snapshotIsPartial: false,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -5408,7 +5461,8 @@ final class CapturePanelModel: ObservableObject {
         query: String,
         snapshotIsPartial: Bool,
         dependencyOwner: DependencyOwner? = nil,
-        taskCompleteContinuationKeys: [String] = []
+        taskCompleteContinuationKeys: [String] = [],
+        opensWithoutSelection: Bool = false
     ) {
         let presentation = index.presentation(filter: query)
         pickerIndex = index
@@ -5430,7 +5484,9 @@ final class CapturePanelModel: ObservableObject {
             candidates: candidates,
             warnings: warnings,
             filterText: query,
-            selectedRowID: CapturePickerNavigation.first(in: presentation.orderedRowIDs),
+            selectedRowID: opensWithoutSelection
+                ? nil
+                : CapturePickerNavigation.first(in: presentation.orderedRowIDs),
             visibleRowBudget: presentation.visibleRowBudget,
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLine,
@@ -5720,10 +5776,18 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func selectNextPickerRow() {
+        if picker?.selectedRowID == nil {
+            selectFirstPickerRow()
+            return
+        }
         movePickerSelection { CapturePickerNavigation.next(after: $0, in: $1) }
     }
 
     func selectPreviousPickerRow() {
+        if picker?.selectedRowID == nil {
+            selectLastPickerRow()
+            return
+        }
         movePickerSelection { CapturePickerNavigation.previous(before: $0, in: $1) }
     }
 
@@ -5782,8 +5846,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func acceptSelectedPickerRow(followUp: CaptureTaskLinkFollowUp) {
-        guard let selectedRowID = picker?.selectedRowID else {
-            // An empty-list accept is a no-op.
+        let selectedRowID = picker?.selectedRowID
+            ?? CapturePickerNavigation.first(in: pickerPresentation?.orderedRowIDs ?? [])
+        guard let selectedRowID else {
             return
         }
         acceptPickerRow(id: selectedRowID, followUp: followUp)
@@ -7112,14 +7177,22 @@ final class CapturePanelModel: ObservableObject {
         guard let count = completionResponse?.candidates.count, count > 0 else {
             return
         }
-        selectedCompletionIndex = (selectedCompletionIndex + 1) % count
+        if let index = selectedCompletionIndex {
+            selectedCompletionIndex = (index + 1) % count
+        } else {
+            selectedCompletionIndex = 0
+        }
     }
 
     func selectPreviousCompletion() {
         guard let count = completionResponse?.candidates.count, count > 0 else {
             return
         }
-        selectedCompletionIndex = (selectedCompletionIndex + count - 1) % count
+        if let index = selectedCompletionIndex {
+            selectedCompletionIndex = (index + count - 1) % count
+        } else {
+            selectedCompletionIndex = count - 1
+        }
     }
 
     func acceptSelectedCompletionThenSubmitAndOpen() {
@@ -7136,8 +7209,15 @@ final class CapturePanelModel: ObservableObject {
 
     @discardableResult
     func acceptSelectedCompletion() -> Bool {
-        guard let completionResponse,
-              let candidate = selectedCompletion,
+        guard let completionResponse else {
+            statusText = "Completion range is stale"
+            dismissCompletion()
+            return false
+        }
+        if selectedCompletionIndex == nil {
+            selectedCompletionIndex = completionResponse.candidates.isEmpty ? nil : 0
+        }
+        guard let candidate = selectedCompletion,
               let range = stringRange(in: plainDraft, byteRange: completionResponse.replacement)
         else {
             statusText = "Completion range is stale"
@@ -7145,7 +7225,7 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
 
-        if completionResponse.context == "task_type", candidate.refused != nil {
+        if CaptureCompletionMenu.isDisabled(candidate) {
             return true
         }
 
@@ -9897,6 +9977,8 @@ final class CapturePanelModel: ObservableObject {
     func installRelationCapabilityForPreviews(draft: String, hasGrammar: Bool) {
         plainDraft = draft
         lastAppliedParseDraft = draft
+        lastAppliedParseGrammar = CaptureGrammarGate.minimumRevision
+        lastAppliedParseClientIdentity = processClient?.identityToken
         lastRelationGrammar = hasGrammar ? 1 : nil
         if draft.contains("~") && !hasGrammar {
             relationCapabilityWarning =
@@ -9905,6 +9987,20 @@ final class CapturePanelModel: ObservableObject {
             relationCapabilityWarning = nil
         }
         relationCapabilityAcknowledgedDraft = nil
+    }
+
+    /// Test seam: pretends the current draft already parsed as grammar 2
+    /// for this process client so submit tests that skip analysis can run.
+    func installCompatibleCaptureGrammarForTests() {
+        installCaptureGrammarForTests(CaptureGrammarGate.minimumRevision)
+    }
+
+    /// Test seam for missing (`nil`), 1, 2, and 3 grammar cases.
+    func installCaptureGrammarForTests(_ grammar: Int?) {
+        lastAppliedParseDraft = plainDraft
+        lastAppliedParseGrammar = grammar
+        lastAppliedParseClientIdentity = processClient?.identityToken
+        refreshCaptureGrammarGate()
     }
 
     func submitTaskIDPrompt() {
@@ -10120,11 +10216,12 @@ final class CapturePanelModel: ObservableObject {
 
     private var selectedHistoryThemeCandidate: CaptureCompletionCandidate? {
         guard let completionResponse,
-              completionResponse.candidates.indices.contains(selectedCompletionIndex)
+              let index = selectedCompletionIndex,
+              completionResponse.candidates.indices.contains(index)
         else {
             return nil
         }
-        let candidate = completionResponse.candidates[selectedCompletionIndex]
+        let candidate = completionResponse.candidates[index]
         let hideableOrigin: Bool
         switch completionResponse.context {
         case "pomodoro_name", "pomodoro_start_name":
@@ -11782,6 +11879,23 @@ final class CapturePanelModel: ObservableObject {
             suppressEditorCallbacks: suppressSelectionCallbacks
         )
         isApplyingProgrammaticDraft = false
+        refreshCaptureGrammarGate()
+    }
+
+    private func refreshCaptureGrammarGate() {
+        guard hasDraft else {
+            captureGrammarWarning = nil
+            return
+        }
+        let identityMatches =
+            processClient.map { $0.identityToken == lastAppliedParseClientIdentity } ?? false
+        let parseMatchesCurrentDraft =
+            lastAppliedParseDraft == plainDraft && identityMatches
+        if parseMatchesCurrentDraft, !CaptureGrammarGate.isCompatible(lastAppliedParseGrammar) {
+            captureGrammarWarning = CaptureGrammarGate.blockedMessage
+        } else {
+            captureGrammarWarning = nil
+        }
     }
 
     /// `completionGate` holds this analysis's completion request until that task
@@ -13022,6 +13136,8 @@ final class CapturePanelModel: ObservableObject {
         latestParse = parse
         parsedTemplate = parse.template
         lastAppliedParseDraft = draft
+        lastAppliedParseGrammar = parse.grammar
+        lastAppliedParseClientIdentity = processClient?.identityToken
         lastAppliedParseItemCount = parse.items.isEmpty
           ? (draft.isEmpty ? 0 : 1)
           : parse.items.count
@@ -13035,6 +13151,7 @@ final class CapturePanelModel: ObservableObject {
             }
         }
         lastRelationGrammar = parse.relationGrammar
+        refreshCaptureGrammarGate()
         if draft.contains("~") && parse.relationGrammar == nil {
             relationCapabilityWarning =
                 "This bob predates ~ links; ~ text would be captured literally · update bob"
@@ -13228,6 +13345,7 @@ final class CapturePanelModel: ObservableObject {
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
             "dependency_target", "task_complete", "wikilink_task", "block_id", "task_type",
+            "directive",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -13298,6 +13416,7 @@ final class CapturePanelModel: ObservableObject {
             "pomodoro_start_drop",
             "task_type",
             "task_type_marker",
+            "directive",
         ])
 
         return parse.spans.contains { span in

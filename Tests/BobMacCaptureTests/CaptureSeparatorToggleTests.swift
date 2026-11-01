@@ -649,6 +649,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let submitView = makeTextView("Do work @file:id")
         wireNativeApply(submitModel, textView: submitView)
         typeSeparator("^", into: submitView, model: submitModel)
+        submitModel.installCompatibleCaptureGrammarForTests()
         submitModel.submit(openAfterCapture: false)
         try await Task.sleep(nanoseconds: 400_000_000)
         XCTAssertNotEqual(submitModel.statusText, "Changed @file:id to @file^id")

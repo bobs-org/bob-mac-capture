@@ -315,6 +315,7 @@ final class CaptureTaskCompletePanelTests: XCTestCase {
     func testRefusalFixtureSurfacesBobError() async throws {
         let model = try liveModel()
         model.plainDraft = "!sase:cx"
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { model.errorMessage != nil || model.statusText == "Capture failed" }
         let message = model.errorMessage ?? model.statusText

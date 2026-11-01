@@ -133,6 +133,22 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
 
 ## Inline completion
 
+- A missing or lower `grammar` on `capture-parse` disables Capture and shows
+  "Update bob to use drawers and % directives" without changing the draft.
+  Grammar 2 or later captures. Recheck Bob or a new executable identity
+  drops the previous evidence until a matching parse lands. A parse that
+  has not yet arrived keeps Capture disabled without that message.
+- Bob may send `initial_selection: "none"` on any completion context. The
+  menu then opens with no highlighted row. Return captures the draft as
+  typed; Tab takes the first row; Down / Ctrl-N select the first row
+  without inserting; Escape closes the menu. A disabled row consumes Tab,
+  Return, and click without editing. The footer shows Bob's selected-row
+  summary, or `⇥ take the first · type a letter · ⏎ capture as typed`
+  when nothing is selected. File-under still opens on its first row.
+- A bare `%` opens the CAPTURE AS menu from Bob's `directive` need: token,
+  name, summary, and detail in Bob's wording, with one teal tint family
+  on every `%` span. A bare `#` opens the Task type menu the same way,
+  with nothing selected until a key highlights a row.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and

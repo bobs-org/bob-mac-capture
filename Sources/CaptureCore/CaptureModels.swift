@@ -264,7 +264,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     public init(
         ok: Bool,
         schemaVersion: Int,
-        grammar: Int? = nil,
+        grammar: Int? = 2,
         input: String,
         body: String,
         mode: String,

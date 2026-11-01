@@ -299,6 +299,17 @@ final class CaptureTaskTypeTests: XCTestCase {
         )
     }
 
+    func testUnselectedMenuShowsTheStaticKeyHint() throws {
+        let empty = try decodeCompletion("task-type-complete-empty.json")
+        let menu = CaptureTaskTypeMenuPresentation(
+            response: empty, selectedIndex: nil, today: today)
+        XCTAssertEqual(
+            menu.selectedFooter,
+            CaptureCompletionMenu.unselectedFooterHint
+        )
+        XCTAssertNil(menu.hideKeycap)
+    }
+
     func testRowsPreserveOrderBadgesUsageAndQuotedQuery() throws {
         let empty = try decodeCompletion("task-type-complete-empty.json")
         let menu = CaptureTaskTypeMenuPresentation(response: empty, today: today)

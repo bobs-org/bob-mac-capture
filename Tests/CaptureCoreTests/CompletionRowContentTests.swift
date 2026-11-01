@@ -38,6 +38,53 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
+    func testDirectiveRowShowsTokenNameSummaryDetailAndDisabledReason() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            token: "%l",
+            summary: "Queue this URL with companion audio",
+            detail: "No `highlights.listen_command` is configured.",
+            name: "Listen",
+            disabledReason: "Configure `highlights.listen_command` to enable companion audio."
+        )
+
+        let content = completionRowContent(for: candidate, context: "directive", query: "")
+
+        XCTAssertEqual(content.category, .directive)
+        XCTAssertEqual(content.symbolName, "percent")
+        XCTAssertEqual(content.contextLabel, CaptureCompletionMenu.directiveTitle)
+        XCTAssertEqual(content.primaryText, "%l  Listen")
+        XCTAssertEqual(content.secondaryText, "Queue this URL with companion audio")
+        XCTAssertEqual(content.detailText, "No `highlights.listen_command` is configured.")
+        XCTAssertEqual(
+            content.badges,
+            ["Configure `highlights.listen_command` to enable companion audio."]
+        )
+        XCTAssertTrue(content.isDisabled)
+    }
+
+    func testEnabledDirectiveRowOmitsDisabledStyling() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "%c",
+            token: "%c",
+            summary: "Paste clipboard content",
+            detail: "Add a count, such as `%c3`, to paste the last three clips.",
+            cursorAfter: 11,
+            name: "Clip"
+        )
+
+        let content = completionRowContent(for: candidate, context: "directive", query: "")
+
+        XCTAssertEqual(content.primaryText, "%c  Clip")
+        XCTAssertEqual(content.secondaryText, "Paste clipboard content")
+        XCTAssertEqual(
+            content.detailText,
+            "Add a count, such as `%c3`, to paste the last three clips."
+        )
+        XCTAssertEqual(content.badges, [])
+        XCTAssertFalse(content.isDisabled)
+    }
+
     func testDirectiveAndTemplateSlotSpansMapToSemanticCategories() {
         XCTAssertEqual(
             captureSemanticCategory(

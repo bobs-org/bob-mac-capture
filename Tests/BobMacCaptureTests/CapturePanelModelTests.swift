@@ -30,6 +30,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Call bank @Cash"
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -48,6 +49,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -63,6 +65,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = nestedMultilineDraft()
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -91,6 +94,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "First item @Cash\n\nSecond item @notes#Ideas"
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -151,6 +155,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -176,6 +181,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -206,6 +212,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -236,6 +243,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -269,6 +277,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
         model.captureSuccessNotifier = { _, _, plan in successPlans.append(plan) }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -290,6 +299,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.captureOpenFailureNotifier = { openFailure = $0 }
         model.noteOpener = { _, completion in completion(NSError(domain: "test.open", code: 1, userInfo: [NSLocalizedDescriptionKey: "sandbox denied"])) }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -318,6 +328,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.acceptSelectedCompletionThenSubmitAndOpen()
         await waitUntil { !model.isSubmitting }
 
@@ -345,6 +356,7 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
 
+        model.installCompatibleCaptureGrammarForTests()
         model.acceptSelectedCompletionThenSubmitAndOpen()
 
         XCTAssertTrue(model.taskIDPromptVisible)
@@ -365,6 +377,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -388,6 +401,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -431,6 +445,7 @@ final class CapturePanelModelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -458,6 +473,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -480,6 +496,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -495,6 +512,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         XCTAssertEqual(dismissCount, 0)
@@ -508,6 +526,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Call bank @Cash"
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         XCTAssertNotNil(model.destinationSummary)
@@ -531,6 +550,7 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         model.plainDraft = "private captured text"
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -622,6 +642,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and moved")
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -661,6 +682,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.togglePresentation?.notificationTitle, "Set Next")
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -2313,6 +2335,7 @@ final class CapturePanelModelTests: XCTestCase {
             "Would close CAPTURE · 1 started · 3 Work Log entries"
         )
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -2481,6 +2504,7 @@ final class CapturePanelModelTests: XCTestCase {
                 testCase.pullInSupported,
                 "\(draft): preview capability must match the independent fixture expectation"
             )
+            model.installCompatibleCaptureGrammarForTests()
             model.submit(openAfterCapture: false)
             await waitUntil { !model.isSubmitting }
             let record = try String(contentsOf: recordURL)
@@ -2533,6 +2557,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Type a task number after , — Close is disabled")
         XCTAssertEqual(model.primaryActionTitle, "Close")
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
@@ -2972,6 +2997,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.primaryActionTitle, "Start")
 
         // The real draft is never submitted: submit explains why and stops.
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         XCTAssertEqual(model.statusText, "Type a task number after ~ — Start is disabled")
@@ -3021,6 +3047,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.primaryActionTitle, "Close")
 
         // The real draft is never submitted: submit explains why and stops.
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         XCTAssertEqual(model.statusText, "Type a task number after , — Close is disabled")
@@ -3069,6 +3096,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(model.primaryActionTitle, "Close")
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
@@ -3190,6 +3218,7 @@ final class CapturePanelModelTests: XCTestCase {
             "Would start CAPTURE 0945-1010 (25m) at line 4"
         )
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3270,6 +3299,7 @@ final class CapturePanelModelTests: XCTestCase {
             "Would restart CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
         )
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3305,6 +3335,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "="
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3329,6 +3360,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "="
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3359,6 +3391,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "="
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         await waitUntil {
@@ -3376,6 +3409,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
         XCTAssertNil(model.errorCode)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3423,6 +3457,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         let stale = "=#bugs"
         model.plainDraft = stale
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -3479,6 +3514,7 @@ final class CapturePanelModelTests: XCTestCase {
         // A batch never names a single-item action.
         XCTAssertEqual(model.primaryActionTitle, "Capture")
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -4093,6 +4129,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(presentation.sessionText, "0930-0945 (15m)")
         XCTAssertEqual(presentation.destinationText, "sase.md · line 12")
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -4155,6 +4192,7 @@ final class CapturePanelModelTests: XCTestCase {
             "Would adjust FOCUS 0900-0930 (30m) to 0900-0955 (55m), +25m at line 3"
         )
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -4279,6 +4317,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.shiftPresentation?.sessionText, "0900-0925 → 0915-0940 (25m), 15m later")
         XCTAssertEqual(model.primaryActionTitle, "Shift")
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -4450,6 +4489,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -4908,6 +4948,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Call bank @Cash"
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         model.submit(openAfterCapture: false)
         model.submit(openAfterCapture: false)
@@ -4948,6 +4989,7 @@ final class CapturePanelModelTests: XCTestCase {
         let model = CapturePanelModel()
         model.plainDraft = "Call bank @Cash"
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         XCTAssertFalse(model.isSubmitting)
@@ -5372,6 +5414,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
 
         model.plainDraft = "Follow up @file^new-id"
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         XCTAssertEqual(model.lastSuccess?.kind, "task")
@@ -6204,6 +6247,7 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { !model.isPreviewing }
         XCTAssertEqual(model.previewResults.map(\.text), ["Plan café", "File follow-up"])
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         XCTAssertEqual(model.plainDraft, "")
@@ -7171,6 +7215,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.panelDismisser = { dismissCount += 1 }
         model.plainDraft = assignedDraft
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 

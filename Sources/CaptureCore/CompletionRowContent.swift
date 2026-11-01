@@ -249,6 +249,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case wikilinkHeading
     case wikilinkBlock
     case wikilinkTask
+    case directive
 
     public init?(rawContext: String?) {
         switch rawContext {
@@ -276,6 +277,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
         case "wikilink_task": self = .wikilinkTask
+        case "directive": self = .directive
         default: return nil
         }
     }
@@ -306,6 +308,11 @@ public struct CompletionRowContent: Equatable, Sendable {
     public let suggestedFromHue: PomodoroHomeHue?
     public let accessibilityLabel: String
     public let accessibilityHint: String
+    /// Third line for Bob-authored directive `detail`. Nil on every other row.
+    public let detailText: String?
+    /// Dimmed rows whose acceptance is a no-op (Bob's `disabled_reason` or
+    /// a refused typed task type).
+    public let isDisabled: Bool
 
     public init(
         category: CaptureSemanticCategory,
@@ -319,7 +326,9 @@ public struct CompletionRowContent: Equatable, Sendable {
         isHiddenThemeGhost: Bool = false,
         suggestedFromHue: PomodoroHomeHue? = nil,
         accessibilityLabel: String,
-        accessibilityHint: String
+        accessibilityHint: String,
+        detailText: String? = nil,
+        isDisabled: Bool = false
     ) {
         self.category = category
         self.symbolName = symbolName
@@ -333,6 +342,8 @@ public struct CompletionRowContent: Equatable, Sendable {
         self.suggestedFromHue = suggestedFromHue
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
+        self.detailText = detailText
+        self.isDisabled = isDisabled
     }
 }
 
@@ -453,6 +464,7 @@ public func completionRowContent(
     var secondaryText: String?
     var badges: [String] = []
     let accessibilityHint: String
+    var detailText: String?
 
     switch context {
     case .route:
@@ -963,6 +975,20 @@ public func completionRowContent(
             accessibilityHint = "Sets this task type."
         }
 
+    case .directive:
+        category = .directive
+        symbolName = "percent"
+        contextLabel = CaptureCompletionMenu.directiveTitle
+        let token = candidate.token ?? "%"
+        let name = candidate.name ?? candidate.replacement
+        primaryText = "\(token)  \(name)"
+        secondaryText = candidate.summary
+        detailText = candidate.detail
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        }
+        accessibilityHint = candidate.summary ?? "Inserts this directive."
+
     case nil:
         category = .neutral
         symbolName = "text.cursor"
@@ -1077,7 +1103,9 @@ public func completionRowContent(
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: isHiddenThemeGhost
             ? "Type hidden from Recent. Press Control+D to undo."
-            : accessibilityHint
+            : accessibilityHint,
+        detailText: detailText,
+        isDisabled: CaptureCompletionMenu.isDisabled(candidate)
     )
 }
 

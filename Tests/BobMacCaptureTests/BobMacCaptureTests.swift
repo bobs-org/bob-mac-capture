@@ -619,6 +619,52 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterUnselectedCompletionSubmitsAndTabTakesTheFirstRow() {
+        let router = CaptureKeyCommandRouter()
+        let unselected = CaptureKeyRoutingContext(
+            completionVisible: true,
+            completionHasSelection: false
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: unselected), .submit)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: unselected),
+            .submitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: unselected),
+            .submitAndOpen
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: unselected), .acceptCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: unselected), .nextCompletion)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: unselected),
+            .nextCompletion
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: unselected), .previousCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: unselected), .escape)
+    }
+
+    func testKeyRouterUnselectedPickerSubmitsAndTabTakesTheFirstRow() {
+        let router = CaptureKeyCommandRouter()
+        let unselected = CaptureKeyRoutingContext(
+            pickerHasSelection: false,
+            pickerVisible: true
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: unselected), .submit)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: unselected),
+            .submitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: unselected),
+            .submitAndOpen
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: unselected), .acceptPickerRow)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: unselected), .nextPickerRow)
+    }
+
     func testKeyRouterIsolatesTaskIDPromptCommands() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(

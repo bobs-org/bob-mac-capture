@@ -15,6 +15,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.preview()
         try await waitUntil { !model.isPreviewing }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         XCTAssertTrue(model.inboxRouteChoiceVisible)
@@ -47,6 +48,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "@mac_inbox:route-task\n\n@gkeep_inbox:gkeep-task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         XCTAssertTrue(model.inboxRouteChoiceVisible)
@@ -89,6 +91,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         try await waitUntil { !model.isPreviewing }
         XCTAssertEqual(model.previewInboxRoute?.candidateCount, 0)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         try await waitUntil { model.inboxRouteChoiceVisible }
 
@@ -111,6 +114,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "ordinary capture"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         try await waitUntil { !model.isSubmitting }
 
@@ -127,6 +131,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "@mac_inbox:route-task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         model.selectInboxRouteDestination("health.md")
         model.confirmInboxRouteChoice()
@@ -150,6 +155,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "@mac_inbox:route-task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         model.selectInboxRouteDestination("health.md")
         model.confirmInboxRouteChoice()
@@ -175,6 +181,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "!dev:prereq\n\n@mac_inbox:route-task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         XCTAssertTrue(model.pullInChoiceVisible)
@@ -205,6 +212,7 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         model.plainDraft = "!dev:prereq\n\n@mac_inbox:route-task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         let selectedOffer = try XCTUnwrap(model.pullInChoice?.effectiveSelectionKeys.first)
         model.confirmPullInChoice()

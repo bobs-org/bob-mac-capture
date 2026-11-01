@@ -406,6 +406,7 @@ final class CaptureRelationPanelTests: XCTestCase {
             "This bob predates ~ links; ~ text would be captured literally · update bob"
         )
         // First submit only shows the warning; it must not dispatch.
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertEqual(
             model.relationCapabilityWarning,

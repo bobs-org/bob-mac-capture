@@ -114,6 +114,7 @@ final class CaptureOpenHintTests: XCTestCase {
         await waitForOpenHint(model)
         XCTAssertTrue(model.openHintRevealed)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         XCTAssertFalse(model.openHintRevealed)
 

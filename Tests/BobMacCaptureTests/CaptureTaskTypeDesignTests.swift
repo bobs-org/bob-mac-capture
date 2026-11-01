@@ -48,11 +48,20 @@ final class CaptureTaskTypeDesignTests: XCTestCase {
                 outcome: "move_to", from: "BUILD", to: "FIX")
         )
 
+        let unselectedMenu = CaptureTaskTypeMenuPresentation(
+            response: empty, selectedIndex: nil, today: "2026-10-30")
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(
                 CaptureTaskTypeMenuView(
                     presentation: menu, selectedIndex: 0, onSelect: { _ in }),
                 name: "capture-task-type-menu",
+                width: 520,
+                appearance: appearance
+            )
+            try RenderFixtureWriter.write(
+                CaptureTaskTypeMenuView(
+                    presentation: unselectedMenu, selectedIndex: nil, onSelect: { _ in }),
+                name: "capture-task-type-menu-unselected",
                 width: 520,
                 appearance: appearance
             )

@@ -173,6 +173,7 @@ final class CaptureRelatedLaneTests: XCTestCase {
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertTrue(model.similarTasks.pending)
         let start = Date()
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         let elapsed = Date().timeIntervalSince(start)

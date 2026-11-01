@@ -315,6 +315,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertEqual(model.templateOrigin, Self.threeTemplates[0].id)
         XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
@@ -497,6 +498,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             model.templateOrigin = Self.threeTemplates[0].id
             model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
 
+            model.installCompatibleCaptureGrammarForTests()
             model.submit(openAfterCapture: false)
             await waitUntil { !model.isSubmitting }
 

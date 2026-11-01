@@ -107,6 +107,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var similarRowsVisible = false
     var similarRowFocused = false
     var completionVisible = false
+    /// Defaults true so omitted flags keep selected-row Return/Tab behavior.
+    var completionHasSelection = true
     var completionHasSelectedHistoryTheme = false
     var completionThemeVisibilityWriteInFlight = false
     var stashPickerVisible = false
@@ -129,6 +131,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var pullInFilterIsEmpty = true
     var inboxRouteChoiceVisible = false
     var keyIsRepeat = false
+    /// Defaults true so omitted flags keep selected-row picker Return/Tab.
+    var pickerHasSelection = true
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
@@ -328,15 +332,21 @@ struct CaptureKeyCommandRouter {
         case KeyCode.return, KeyCode.keypadEnter:
             let keys = Self.strippedReturnModifiers(modifiers)
             if keys.contains(.command) {
-                return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
+                if context.completionVisible, context.completionHasSelection {
+                    return .acceptCompletionThenSubmitAndOpen
+                }
+                return .submitAndOpen
             }
             if keys == .control {
-                return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
+                if context.completionVisible, context.completionHasSelection {
+                    return .acceptCompletionThenSubmitAndOpen
+                }
+                return .submitAndOpen
             }
             if keys.contains(.shift) || keys.contains(.option) {
                 return .insertNewline
             }
-            if context.completionVisible {
+            if context.completionVisible, context.completionHasSelection {
                 return .acceptCompletion
             }
             return .submit
@@ -730,9 +740,12 @@ struct CaptureKeyCommandRouter {
         case KeyCode.return, KeyCode.keypadEnter:
             let keys = Self.strippedReturnModifiers(modifiers)
             if keys.contains(.command) {
-                return .acceptPickerRowAndSubmit
+                return context.pickerHasSelection ? .acceptPickerRowAndSubmit : .submitAndOpen
             }
             if keys == .control {
+                if !context.pickerHasSelection {
+                    return .submitAndOpen
+                }
                 return context.pickerSourceIsTaskGoto ? .acceptPickerRow : .acceptPickerRowAndSubmitAndOpen
             }
             if keys.contains(.control) {
@@ -753,7 +766,10 @@ struct CaptureKeyCommandRouter {
             if keys.contains(.option) {
                 return .consumeKey
             }
-            return keys.isEmpty ? .acceptPickerRow : nil
+            if keys.isEmpty {
+                return context.pickerHasSelection ? .acceptPickerRow : .submit
+            }
+            return nil
         case KeyCode.tab:
             if modifiers.isEmpty {
                 return .acceptPickerRow

@@ -42,6 +42,79 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil { model.completionResponse?.context == "task_type" }
         XCTAssertEqual(model.completionResponse?.query, "")
+        XCTAssertNil(model.selectedCompletionIndex)
+        XCTAssertEqual(
+            model.taskTypeMenuPresentation()?.selectedFooter,
+            CaptureCompletionMenu.unselectedFooterHint
+        )
+    }
+
+    func testUnselectedMenuTabTakesTheFirstRow() async throws {
+        let model = try makeModel()
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+        XCTAssertNil(model.selectedCompletionIndex)
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, "jot idea #build ")
+        XCTAssertNil(model.completionResponse)
+    }
+
+    func testUnselectedMenuDownSelectsTheFirstRowWithoutInserting() async throws {
+        let model = try makeModel()
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+
+        model.selectNextCompletion()
+        XCTAssertEqual(model.selectedCompletionIndex, 0)
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.completionResponse?.context, "task_type")
+    }
+
+    func testUnselectedMenuUpSelectsTheLastRow() async throws {
+        let model = try makeModel()
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+
+        model.selectPreviousCompletion()
+        XCTAssertEqual(model.selectedCompletionIndex, 2)
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
+    func testUnselectedMenuEscapeClosesWithoutChangingTheDraft() async throws {
+        let model = try makeModel()
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+
+        model.dismissCompletion()
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.selectedCompletionIndex)
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
+    func testTypingAfterAnUnselectedMenuRanksAFreshSelection() async throws {
+        let model = try makeModel()
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+        XCTAssertNil(model.selectedCompletionIndex)
+
+        let typed = "jot idea #f"
+        model.plainDraft = typed
+        model.editorTextDidChange(cursorUTF8Offset: typed.utf8.count)
+        await waitUntil { model.completionResponse?.query == "f" }
+        XCTAssertEqual(model.completionResponse?.context, "task_type")
+        XCTAssertEqual(model.selectedCompletionIndex, 0)
+        XCTAssertFalse(model.completionResponse?.opensWithoutSelection == true)
     }
 
     func testAcceptReplacesWholeTokenAndPlacesCursor() {

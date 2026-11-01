@@ -13,6 +13,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.preview()
         try await waitUntil { !model.isPreviewing }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.pullInChoiceVisible)
         XCTAssertFalse(model.isSubmitting)
@@ -39,6 +40,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.preview()
         try await waitUntil { !model.isPreviewing }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
 
         let choice = try XCTUnwrap(model.pullInChoice)
@@ -148,6 +150,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.plainDraft = "complete task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.pullInChoiceVisible)
 
@@ -200,6 +203,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.plainDraft = "complete task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.pullInChoiceVisible)
         model.updatePullInChoiceFilter("no matching offer")
@@ -234,6 +238,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.plainDraft = "complete task"
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.pullInChoiceVisible)
 
@@ -267,6 +272,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertFalse(model.pullInChoiceVisible)
         XCTAssertNil(model.errorMessage)
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         try await waitUntil { model.pullInChoiceVisible }
 
@@ -310,6 +316,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.plainDraft = Self.projectOfferDraft
         model.preview()
         try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.pullInChoiceVisible)
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)

@@ -635,6 +635,7 @@ struct CapturePanelView: View {
             || model.previewState != .idle
             || model.agendaVisible
             || model.relationCapabilityWarning != nil
+            || model.captureGrammarWarning != nil
             || model.inboxRouteChoiceVisible
             || model.pullInChoiceVisible
     }
@@ -853,6 +854,7 @@ struct CapturePanelView: View {
                     .id(AuxiliarySection.preview)
             }
             relationCapabilityNotice
+            captureGrammarNotice
         }
     }
 
@@ -860,6 +862,17 @@ struct CapturePanelView: View {
     private var relationCapabilityNotice: some View {
         if let warning = model.relationCapabilityWarning {
             Label(warning, systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(warning)
+        }
+    }
+
+    @ViewBuilder
+    private var captureGrammarNotice: some View {
+        if let warning = model.captureGrammarWarning {
+            Label(warning, systemImage: "exclamationmark.triangle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2979,6 +2992,14 @@ private struct CompletionList: View {
                             model.selectedCompletionIndex = index
                             model.acceptSelectedCompletion()
                         }
+                    } else if model.completionResponse?.context == "directive" {
+                        Text(CaptureCompletionMenu.directiveTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 4)
+                            .accessibilityAddTraits(.isHeader)
                     } else if model.fileUnderActive {
                         Text("File under")
                             .font(.caption2.weight(.semibold))
@@ -3011,9 +3032,17 @@ private struct CompletionList: View {
                     }
                 }
                 .padding(6)
+                if model.taskTypeMenuPresentation() == nil,
+                    model.completionResponse?.context == "directive"
+                        || model.selectedCompletionIndex == nil
+                {
+                    completionFooter
+                }
             }
             .onChange(of: model.selectedCompletionIndex) { _, index in
-                proxy.scrollTo(index, anchor: .center)
+                if let index {
+                    proxy.scrollTo(index, anchor: .center)
+                }
             }
         }
         .background(.regularMaterial)
@@ -3021,6 +3050,22 @@ private struct CompletionList: View {
         .shadow(radius: 12, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(listAccessibilityLabel)
+    }
+
+    private var completionFooter: some View {
+        let text: String = {
+            if let selected = model.selectedCompletion {
+                return selected.summary ?? CaptureCompletionMenu.unselectedFooterHint
+            }
+            return CaptureCompletionMenu.unselectedFooterHint
+        }()
+        return Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(text)
     }
 
     private var listAccessibilityLabel: String {
@@ -3162,11 +3207,17 @@ private struct CompletionRow: View {
                         }
                     }
                 }
+                if let detail = content.detailText, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer(minLength: 8)
         }
-        .opacity(content.isHiddenThemeGhost ? 0.58 : 1)
+        .opacity(content.isHiddenThemeGhost || content.isDisabled ? 0.58 : 1)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(selectionFill)

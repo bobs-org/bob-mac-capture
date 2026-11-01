@@ -6,7 +6,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct CaptureTaskTypeMenuView: View {
     let presentation: CaptureTaskTypeMenuPresentation
-    let selectedIndex: Int
+    let selectedIndex: Int?
     let onSelect: (Int) -> Void
 
     var body: some View {

@@ -51,7 +51,7 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
 
     public init(
         response: CaptureCompletionResponse,
-        selectedIndex: Int = 0,
+        selectedIndex: Int? = 0,
         temporarilyHiddenThemeKey: String? = nil,
         today: String
     ) {
@@ -71,11 +71,17 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
                 today: today
             )
         }
-        let selected =
-            response.candidates.indices.contains(selectedIndex)
-            ? response.candidates[selectedIndex] : nil
-        selectedFooter = selected.map {
-            Self.footer(for: $0, subject: response.subject, suggestion: suggestion)
+        let selected: CaptureCompletionCandidate?
+        if let selectedIndex, response.candidates.indices.contains(selectedIndex) {
+            selected = response.candidates[selectedIndex]
+        } else {
+            selected = nil
+        }
+        if let selected {
+            selectedFooter = Self.footer(
+                for: selected, subject: response.subject, suggestion: suggestion)
+        } else {
+            selectedFooter = CaptureCompletionMenu.unselectedFooterHint
         }
         if let selected,
             selected.origin == "configured" || selected.origin == "history"

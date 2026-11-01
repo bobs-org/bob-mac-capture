@@ -2,6 +2,23 @@
 set -euo pipefail
 fixtures_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+# capture-parse JSON from fixtures and inline bodies may omit `grammar`.
+# Inject 2 unless FAKE_BOB_PARSE_GRAMMAR=omit (missing) or a number (1/2/3).
+# A fixture that already has `grammar` keeps its value.
+inject_parse_grammar() {
+  python3 -c '
+import json, os, sys
+raw = sys.stdin.read()
+obj = json.loads(raw)
+if "grammar" not in obj:
+    spec = os.environ.get("FAKE_BOB_PARSE_GRAMMAR", "2")
+    if spec != "omit":
+        obj["grammar"] = int(spec)
+json.dump(obj, sys.stdout, separators=(",", ":"))
+print()
+'
+}
+
 release_record_lock() {
   if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
     local record_lock_path="${FAKE_BOB_RECORD_PATH}.lock"
@@ -205,37 +222,43 @@ case "${command}" in
   capture-parse)
     draft="${*: -1}"
     if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
-      cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
+      if [[ "${FAKE_BOB_PARSE_FIXTURE}" == *old-bob* ]]; then
+        cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
+      else
+        cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}" | inject_parse_grammar
+      fi
       exit 0
     elif [[ "${draft}" == "Follow up ((" ]]; then
-      cat "${fixtures_dir}/capture-parse-wikilink-task-open.json"
+      cat "${fixtures_dir}/capture-parse-wikilink-task-open.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up ((s" ]]; then
-      cat "${fixtures_dir}/capture-parse-wikilink-task-query.json"
+      cat "${fixtures_dir}/capture-parse-wikilink-task-query.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up [[mac_inbox#^inbox-plain]]" ]]; then
-      cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json"
+      cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json" | inject_parse_grammar
     elif [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
       # Hosted tests inject this for `#` drafts. The name ThemeRef covers
       # only the type name; `#` stays on the whole-token task_type span.
       if [[ "${draft}" == "#f" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"#f","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":2,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":1,"end":2}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#f` needs a task: add the task text (`Fix the parser #f`) or target one (`^sase:fix-x #f`)","range":[0,2]}]}
+{"ok":true,"schema_version":1,"grammar":2,"input":"#f","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":2,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":1,"end":2}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#f` needs a task: add the task text (`Fix the parser #f`) or target one (`^sase:fix-x #f`)","range":[0,2]}]}
 JSON
       elif [[ "${draft}" == "#fix" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"#fix","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":4,"kind":"task_type","themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":1,"end":4}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#fix` needs a task: add the task text (`Fix the parser #fix`) or target one (`^sase:fix-x #fix`)","range":[0,4]}]}
+{"ok":true,"schema_version":1,"grammar":2,"input":"#fix","text":"","mode":"task","needs":["task"],"spans":[{"start":0,"end":4,"kind":"task_type","themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true,"start":1,"end":4}]}],"diagnostics":[{"severity":"error","code":"type_marker_needs_task","message":"`#fix` needs a task: add the task text (`Fix the parser #fix`) or target one (`^sase:fix-x #fix`)","range":[0,4]}]}
 JSON
       elif [[ "${draft}" == "Fix the parser #f" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"Fix the parser #f","text":"Fix the parser","mode":"task","needs":[],"spans":[{"start":15,"end":17,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":16,"end":17}]}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":2,"input":"Fix the parser #f","text":"Fix the parser","mode":"task","needs":[],"spans":[{"start":15,"end":17,"kind":"task_type","themes":[{"key":"f","name":"F","hue":null,"hue_source":"unconfigured","known":false,"configured":false,"start":16,"end":17}]}],"diagnostics":[]}
 JSON
       elif [[ "${draft}" == "Ask about #fix today" ]]; then
         cat <<JSON
-{"ok":true,"schema_version":1,"input":"Ask about #fix today","text":"Ask about #fix today","mode":"task","needs":[],"spans":[],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":2,"input":"Ask about #fix today","text":"Ask about #fix today","mode":"task","needs":[],"spans":[],"diagnostics":[]}
 JSON
       elif [[ "${draft}" == "jot idea #" ]]; then
-        cat "${fixtures_dir}/task-type-parse-incomplete-marker.json"
+        cat "${fixtures_dir}/task-type-parse-incomplete-marker.json" | inject_parse_grammar
+      elif [[ "${draft}" == "jot idea %" ]]; then
+        cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
       else
-        printf '{"ok":true,"schema_version":1,"input":'
+        printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
         json_string "${draft}"
         printf ',"text":'
         json_string "${draft}"
@@ -244,126 +267,126 @@ JSON
       exit 0
     # A bare @@ is the current incomplete global route declaration.
     elif [[ "${draft}" == "@@" ]]; then
-      cat "${fixtures_dir}/directive-parse-global-route-bare.json"
+      cat "${fixtures_dir}/directive-parse-global-route-bare.json" | inject_parse_grammar
     elif [[ "${draft}" == "${template_one_row_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-template-one-row.json"
+      cat "${fixtures_dir}/directive-parse-template-one-row.json" | inject_parse_grammar
     elif [[ "${draft}" == "${template_example_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-template-example.json"
+      cat "${fixtures_dir}/directive-parse-template-example.json" | inject_parse_grammar
     elif [[ "${draft}" == "${template_no_rows_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-template-no-rows.json"
+      cat "${fixtures_dir}/directive-parse-template-no-rows.json" | inject_parse_grammar
     elif [[ "${draft}" == "${template_arity_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-template-arity-error.json"
+      cat "${fixtures_dir}/directive-parse-template-arity-error.json" | inject_parse_grammar
     elif [[ "${draft}" == "=x2!1" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-retired.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-retired.json" | inject_parse_grammar
     elif [[ "${draft}" == "@r:id=*" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-link-retired-alias.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-link-retired-alias.json" | inject_parse_grammar
     elif [[ "${draft}" == "x" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-session.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-session.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-one.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-one.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1,3!2" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-select.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-select.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1," ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-incomplete.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-incomplete.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1,1" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-invalid.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-invalid.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1~2" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-drop.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-drop.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-all-short.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-all-short.json" | inject_parse_grammar
     elif [[ "${draft}" == "x!" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-complete-all-short.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-complete-all-short.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*2" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-two.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-two.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*!2" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-all-complete-two.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-all-complete-two.json" | inject_parse_grammar
     elif [[ "${draft}" == "x!2*" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-complete-two-park-all.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-complete-two-park-all.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*1" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-one.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-one.json" | inject_parse_grammar
     elif [[ "${draft}" == "x!1" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-complete-one.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-complete-one.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*1," ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-incomplete-list.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-incomplete-list.json" | inject_parse_grammar
     elif [[ "${draft}" == "x1*" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-incomplete.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-incomplete.json" | inject_parse_grammar
     elif [[ "${draft}" == "x*abc" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-park-invalid.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-park-invalid.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_draft}" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-log.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_dangling_draft}" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-log-incomplete.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log-incomplete.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_chain_draft}" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-log-chain.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log-chain.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_positional_draft}" ]]; then
       # Unnumbered bullets under `x3,4` resolve lexically (real `bob
       # capture-parse` output): indices 3 and 4, no `log_index` spans.
-      cat "${fixtures_dir}/pomodoro-close-parse-log-positional.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log-positional.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_unresolved_draft}" ]]; then
       # Unnumbered bullets under plain `x` stay unresolved (real `bob
       # capture-parse` output): `log` entries with no `index` key.
-      cat "${fixtures_dir}/pomodoro-close-parse-log-unresolved.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log-unresolved.json" | inject_parse_grammar
     elif [[ "${draft}" == "${close_log_mixed_draft}" ]]; then
       # A numbered bullet after an unnumbered one (real `bob
       # capture-parse` output): an `invalid_pomodoro_close` diagnostic.
-      cat "${fixtures_dir}/pomodoro-close-parse-log-mixed.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-log-mixed.json" | inject_parse_grammar
     elif [[ "${draft}" == "=" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-parse.json"
+      cat "${fixtures_dir}/pomodoro-start-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "=3" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-parse-counted.json"
+      cat "${fixtures_dir}/pomodoro-start-parse-counted.json" | inject_parse_grammar
     elif [[ "${draft}" == "=3 more" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-parse-near-miss.json"
+      cat "${fixtures_dir}/pomodoro-start-parse-near-miss.json" | inject_parse_grammar
     elif [[ "${draft}" == "=~2" ]]; then
       # Whole-item start with a `~<K>` drop list (real `bob capture-parse`
       # output): `pomodoro_start` mode with a `drop` spec and a
       # `pomodoro_start_drop` span.
-      cat "${fixtures_dir}/pomodoro-start-drop-parse.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "=3#bugs~1" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-drop-parse-named.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-named.json" | inject_parse_grammar
     elif [[ "${draft}" == "=~" ]]; then
       # Dangling `~`: `incomplete` needing `pomodoro_start_task` with an
       # `interactive_placeholder` span (real `bob capture-parse` output).
-      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete.json" | inject_parse_grammar
     elif [[ "${draft}" == "=~2," ]]; then
-      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete-comma.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete-comma.json" | inject_parse_grammar
     elif [[ "${draft}" == "=~0" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-drop-parse-invalid.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-invalid.json" | inject_parse_grammar
     elif [[ "${draft}" == "x =~2" ]]; then
       # Session chain: per-token close/start items with the drop part on the
       # start item (real `bob capture-parse` output).
-      cat "${fixtures_dir}/pomodoro-start-drop-parse-chain.json"
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-chain.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#" ]]; then
       # Named-start incomplete: calm picker state with a `pomodoro_start`
       # spec (real `bob capture-parse` output).
-      cat "${fixtures_dir}/pomodoro-start-named-parse-incomplete.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-incomplete.json" | inject_parse_grammar
     elif [[ "${draft}" == "=3#" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-counted.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-counted.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#de" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-query.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-query.json" | inject_parse_grammar
     elif [[ "${draft}" == "=3#bugs" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#deep-work" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-existing.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-existing.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#review" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-created.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-created.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#plan" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-again.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-again.json" | inject_parse_grammar
     elif [[ "${draft}" == "=#deep work" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-near-miss.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-near-miss.json" | inject_parse_grammar
     elif [[ "${draft}" == "x =#bugs" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json" | inject_parse_grammar
     elif [[ "${draft}" == "x =#de" ]]; then
-      cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json"
+      cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json" | inject_parse_grammar
     elif [[ "${draft}" == "==" || "${draft}" == "==#bugs" || "${draft}" == "==#" || "${draft}" == "==3#" ]]; then
       # Claimed `==` is a teaching error (real `bob capture-parse` output).
-      cat "${fixtures_dir}/pomodoro-start-override-parse-retired.json"
+      cat "${fixtures_dir}/pomodoro-start-override-parse-retired.json" | inject_parse_grammar
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
-      cat "${fixtures_dir}/pomodoro-close-parse-link.json"
+      cat "${fixtures_dir}/pomodoro-close-parse-link.json" | inject_parse_grammar
     elif [[ "${draft}" == *"[[AI"* ]]; then
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))
       end=$((start + 2))
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       printf ',"body":'
       json_string "${draft}"
@@ -373,6 +396,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@",
   "body": "",
   "mode": "incomplete",
@@ -388,6 +412,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@fi",
   "body": "@fi",
   "mode": "task",
@@ -401,6 +426,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+",
   "body": "",
   "mode": "incomplete",
@@ -418,6 +444,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+goog-exit",
   "body": "",
   "mode": "task_toggle",
@@ -436,6 +463,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+goog-exit!",
   "body": "",
   "mode": "task_toggle",
@@ -455,6 +483,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+goog-exit#fix",
   "body": "",
   "mode": "task_toggle",
@@ -474,6 +503,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+goog-exit#build",
   "body": "",
   "mode": "task_toggle",
@@ -493,6 +523,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file+goog-exit#nope",
   "body": "",
   "mode": "task_toggle",
@@ -508,7 +539,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"ma","needs":[],
@@ -516,7 +547,7 @@ JSON
 "global_destination":{"range":{"start":0,"end":4},"route":"ma","needs":[]}}
 JSON
     elif [[ "${draft}" == "${global_task_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"foo","needs":[],
@@ -530,7 +561,7 @@ JSON
 "global_destination":{"range":{"start":0,"end":5},"route":"foo","needs":[]}}
 JSON
     elif [[ "${draft}" == "${global_mixed_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"foo","needs":[],
@@ -548,6 +579,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "idea @ma",
   "body": "idea",
   "mode": "task",
@@ -564,6 +596,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "idea @mac_inbox",
   "body": "idea",
   "mode": "task",
@@ -582,6 +615,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "idea @mac_inboxx",
   "body": "idea",
   "mode": "task",
@@ -598,6 +632,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "idea @ma^new-id",
   "body": "idea",
   "mode": "task",
@@ -616,6 +651,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "idea @mac_inbox^new-id",
   "body": "idea",
   "mode": "task",
@@ -634,6 +670,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Call bank @Ca",
   "body": "Call bank",
   "mode": "task",
@@ -650,6 +687,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Call bank @Cash",
   "body": "Call bank",
   "mode": "task",
@@ -666,6 +704,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "${draft}",
   "body": "Call bank",
   "mode": "incomplete",
@@ -683,6 +722,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Add note @de",
   "body": "Add note",
   "mode": "task",
@@ -699,6 +739,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Add note @design+",
   "body": "Add note",
   "mode": "incomplete",
@@ -716,6 +757,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "note @",
   "body": "note",
   "mode": "task",
@@ -731,6 +773,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Add context @file+parent-id",
   "body": "Add context",
   "mode": "sub_bullet",
@@ -749,6 +792,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Follow up @file^new-id",
   "body": "Follow up",
   "mode": "task",
@@ -767,6 +811,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Do work @Dev^new-id",
   "body": "Do work",
   "mode": "task",
@@ -785,6 +830,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "note @Cash+goog",
   "body": "note",
   "mode": "sub_bullet",
@@ -799,7 +845,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "${multiline_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
       printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
@@ -812,7 +858,7 @@ JSON
         block_id="new-id"
         second_range_end=45
       fi
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       printf ',"body":"Plan café","mode":"task","route":"cash","needs":[],'
       printf '"spans":[{"start":33,"end":38,"kind":"sub_bullet_route"},{"start":39,"end":%s,"kind":"sub_bullet_block_id"}],' "${second_range_end}"
@@ -824,7 +870,7 @@ JSON
       printf '"body":"File follow-up","mode":"sub_bullet","route":"file","block_id":"%s","needs":[]}' "${block_id}"
       printf ']}\n'
     elif [[ "${draft}" == "${batch_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First item","mode":"task","route":"cash","needs":[],"spans":[],"diagnostics":[],
@@ -840,6 +886,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Postgres 17 minimum @foo+bar#",
   "body": "Postgres 17 minimum",
   "mode": "incomplete",
@@ -859,6 +906,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Postgres 17 minimum @foo+bar#req",
   "body": "Postgres 17 minimum",
   "mode": "sub_bullet",
@@ -879,6 +927,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Postgres 17 minimum @foo+bar#requirements",
   "body": "Postgres 17 minimum",
   "mode": "sub_bullet",
@@ -910,11 +959,14 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "jot idea %" ]]; then
+      cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
     elif [[ "${draft}" == "jot idea @foo#" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "jot idea @foo#",
   "body": "jot idea",
   "mode": "bullet",
@@ -932,6 +984,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Write outline @sase:outline=3",
   "body": "Write outline",
   "mode": "pomodoro_task",
@@ -952,6 +1005,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Do work @sase:outline#deep=-2",
   "body": "Do work",
   "mode": "pomodoro_task",
@@ -974,6 +1028,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Do work @sase:outline=abc",
   "body": "Do work",
   "mode": "task",
@@ -994,6 +1049,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "+5",
   "body": "+5",
   "mode": "pomodoro_adjust",
@@ -1013,6 +1069,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "-2",
   "body": "-2",
   "mode": "pomodoro_adjust",
@@ -1028,12 +1085,13 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "++3" ]]; then
-      cat "${fixtures_dir}/pomodoro-shift-parse-session.json"
+      cat "${fixtures_dir}/pomodoro-shift-parse-session.json" | inject_parse_grammar
     elif [[ "${draft}" == "--" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "--",
   "body": "--",
   "mode": "pomodoro_shift",
@@ -1049,12 +1107,13 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "-" ]]; then
-      cat "${fixtures_dir}/pomodoro-shift-parse-adjust.json"
+      cat "${fixtures_dir}/pomodoro-shift-parse-adjust.json" | inject_parse_grammar
     elif [[ "${draft}" == "+0" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "+0",
   "body": "+0",
   "mode": "pomodoro_adjust",
@@ -1080,6 +1139,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "+5\n\njot idea\n",
   "body": "+5",
   "mode": "pomodoro_adjust",
@@ -1126,6 +1186,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "^",
   "body": "",
   "mode": "incomplete",
@@ -1144,6 +1205,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "${draft}",
   "body": "",
   "mode": "incomplete",
@@ -1162,6 +1224,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "^zzz",
   "body": "",
   "mode": "incomplete",
@@ -1176,14 +1239,15 @@ JSON
 }
 JSON
     elif [[ "${draft}" == ":" ]]; then
-      cat "${fixtures_dir}/task-link-parse-colon.json"
+      cat "${fixtures_dir}/task-link-parse-colon.json" | inject_parse_grammar
     elif [[ "${draft}" == "/" ]]; then
-      cat "${fixtures_dir}/task-goto-parse-slash.json"
+      cat "${fixtures_dir}/task-goto-parse-slash.json" | inject_parse_grammar
     elif [[ "${draft}" == "/dee" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "/dee",
   "body": "",
   "mode": "incomplete",
@@ -1198,22 +1262,23 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "+" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-plus.json"
+      cat "${fixtures_dir}/parent-task-parse-plus.json" | inject_parse_grammar
     elif [[ "${draft}" == "+bank" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-bank.json"
+      cat "${fixtures_dir}/parent-task-parse-bank.json" | inject_parse_grammar
     elif [[ "${draft}" == "Called the bank +" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-prose.json"
+      cat "${fixtures_dir}/parent-task-parse-prose.json" | inject_parse_grammar
     elif [[ "${draft}" == "@cash+" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-cash.json"
+      cat "${fixtures_dir}/parent-task-parse-cash.json" | inject_parse_grammar
     elif [[ "${draft}" == "@cash+goog-exit" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-scoped-exact.json"
+      cat "${fixtures_dir}/parent-task-parse-scoped-exact.json" | inject_parse_grammar
     elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
-      cat "${fixtures_dir}/parent-task-parse-later.json"
+      cat "${fixtures_dir}/parent-task-parse-later.json" | inject_parse_grammar
     elif [[ "${draft}" == "+2" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "+2",
   "body": "+2",
   "mode": "pomodoro_adjust",
@@ -1233,6 +1298,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "++",
   "body": "++",
   "mode": "pomodoro_shift",
@@ -1248,71 +1314,71 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "&" ]]; then
-      cat "${fixtures_dir}/task-dependency-parse-amp.json"
+      cat "${fixtures_dir}/task-dependency-parse-amp.json" | inject_parse_grammar
     elif [[ "${draft}" == "@body+excercise &" ]]; then
-      cat "${fixtures_dir}/task-dependency-parse-body-amp.json"
+      cat "${fixtures_dir}/task-dependency-parse-body-amp.json" | inject_parse_grammar
     elif [[ "${draft}" == "^body:excercise *" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-caret-star.json"
+      cat "${fixtures_dir}/blocked-task-parse-caret-star.json" | inject_parse_grammar
     elif [[ "${draft}" == "Buy milk &" ]]; then
-      cat "${fixtures_dir}/task-dependency-parse-buy-milk.json"
+      cat "${fixtures_dir}/task-dependency-parse-buy-milk.json" | inject_parse_grammar
     elif [[ "${draft}" == "&foo:bar " ]]; then
-      cat "${fixtures_dir}/task-dependency-parse-target.json"
+      cat "${fixtures_dir}/task-dependency-parse-target.json" | inject_parse_grammar
     elif [[ "${draft}" == "*job:cleanup " ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-target.json"
+      cat "${fixtures_dir}/blocked-task-parse-target.json" | inject_parse_grammar
     elif [[ "${draft}" == "&foo:bar *job:cleanup " ]]; then
-      cat "${fixtures_dir}/task-dependency-parse-both-target.json"
+      cat "${fixtures_dir}/task-dependency-parse-both-target.json" | inject_parse_grammar
     elif [[ "${draft}" == "&foo:bar +" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-relate-amp.json"
+      cat "${fixtures_dir}/parent-task-parse-relate-amp.json" | inject_parse_grammar
     elif [[ "${draft}" == "*job:cleanup +" ]]; then
-      cat "${fixtures_dir}/parent-task-parse-relate-star.json"
+      cat "${fixtures_dir}/parent-task-parse-relate-star.json" | inject_parse_grammar
     elif [[ "${draft}" == "Ask Kelly *" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-need.json"
+      cat "${fixtures_dir}/blocked-task-parse-need.json" | inject_parse_grammar
     elif [[ "${draft}" == "Ask Kelly *job:cleanup" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse.json"
+      cat "${fixtures_dir}/blocked-task-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "Ask Kelly *job:pack" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-new.json"
+      cat "${fixtures_dir}/blocked-task-parse-new.json" | inject_parse_grammar
     elif [[ "${draft}" == "Keep notes *job:cleanup" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-notes-kept.json"
+      cat "${fixtures_dir}/blocked-task-parse-notes-kept.json" | inject_parse_grammar
     elif [[ "${draft}" == "Ship work *release:prj" ]]; then
-      cat "${fixtures_dir}/blocked-task-parse-project.json"
+      cat "${fixtures_dir}/blocked-task-parse-project.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~" ]]; then
-      cat "${fixtures_dir}/relation-parse-need.json"
+      cat "${fixtures_dir}/relation-parse-need.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~~" ]]; then
-      cat "${fixtures_dir}/relation-parse-from-need.json"
+      cat "${fixtures_dir}/relation-parse-from-need.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~~tar" ]]; then
-      cat "${fixtures_dir}/relation-parse-from-need.json"
+      cat "${fixtures_dir}/relation-parse-from-need.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~tasks:target" ]]; then
-      cat "${fixtures_dir}/relation-parse-complete.json"
+      cat "${fixtures_dir}/relation-parse-complete.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~tasks:target|" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-to.json"
+      cat "${fixtures_dir}/relation-label-parse-to.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~~tasks:source" ]]; then
-      cat "${fixtures_dir}/relation-parse-from-complete.json"
+      cat "${fixtures_dir}/relation-parse-from-complete.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~~tasks:source|" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-from.json"
+      cat "${fixtures_dir}/relation-label-parse-from.json" | inject_parse_grammar
     elif [[ "${draft}" == "New task ~tasks:target| @work" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-work.json"
+      cat "${fixtures_dir}/relation-label-parse-work.json" | inject_parse_grammar
     elif [[ "${draft}" == "~tasks:target| Fix it" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-leading.json"
+      cat "${fixtures_dir}/relation-label-parse-leading.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~tasks:target| &tasks:source" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-dep.json"
+      cat "${fixtures_dir}/relation-label-parse-dep.json" | inject_parse_grammar
     elif [[ "${draft}" == 'Fix ~"My Note":target|' ]]; then
-      cat "${fixtures_dir}/relation-label-parse-quoted.json"
+      cat "${fixtures_dir}/relation-label-parse-quoted.json" | inject_parse_grammar
     elif [[ "${draft}" == "Hi 🧪 ~tasks:target|" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-nonascii.json"
+      cat "${fixtures_dir}/relation-label-parse-nonascii.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix ~~tasks:source|" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-trailing-from.json"
+      cat "${fixtures_dir}/relation-label-parse-trailing-from.json" | inject_parse_grammar
     elif [[ "${draft}" == "~~tasks:source| Fix it" ]]; then
-      cat "${fixtures_dir}/relation-label-parse-leading-from.json"
+      cat "${fixtures_dir}/relation-label-parse-leading-from.json" | inject_parse_grammar
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
-      cat "${fixtures_dir}/relation-parse-owner.json"
+      cat "${fixtures_dir}/relation-parse-owner.json" | inject_parse_grammar
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~tasks:target|follow" ]]; then
-      cat "${fixtures_dir}/relation-parse-label.json"
+      cat "${fixtures_dir}/relation-parse-label.json" | inject_parse_grammar
     elif [[ "${draft}" == "~tasks:target New task +" ]]; then
-      cat "${fixtures_dir}/relation-parse-parent.json"
+      cat "${fixtures_dir}/relation-parse-parent.json" | inject_parse_grammar
     elif [[ "${draft}" == "!" ]]; then
       # A bare `!` is a Complete picker query (real `bob capture-parse`
       # output): incomplete mode with a `task_complete` need.
-      cat "${fixtures_dir}/task-complete-parse-bang.json"
+      cat "${fixtures_dir}/task-complete-parse-bang.json" | inject_parse_grammar
     elif [[ "${draft}" == *$'\n\n!' ]]; then
       # Shift-Return chaining: the first item is already a complete `!`
       # token and the trailing `!` is a fresh Complete picker query (real
@@ -1350,6 +1416,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "${esc_input}",
   "body": "",
   "mode": "task_complete",
@@ -1370,12 +1437,13 @@ JSON
     elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
       # Batch draft with `:` on the second item (real `bob capture-parse`
       # output).
-      cat "${fixtures_dir}/task-link-parse-buymilk.json"
+      cat "${fixtures_dir}/task-link-parse-buymilk.json" | inject_parse_grammar
     elif [[ "${draft}" == ":dee" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": ":dee",
   "body": "",
   "mode": "incomplete",
@@ -1394,6 +1462,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "^sase:deep-fix",
   "body": "",
   "mode": "pomodoro_link",
@@ -1413,6 +1482,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "^sase:deep-fix extra words",
   "body": "^sase:deep-fix extra words",
   "mode": "pomodoro_link",
@@ -1439,6 +1509,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file:",
   "body": "",
   "mode": "incomplete",
@@ -1457,6 +1528,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@old:",
   "body": "",
   "mode": "incomplete",
@@ -1475,6 +1547,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file:rea",
   "body": "",
   "mode": "incomplete",
@@ -1493,6 +1566,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "@file:ready",
   "body": "",
   "mode": "pomodoro_link",
@@ -1511,6 +1585,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Follow up @file^",
   "body": "Follow up",
   "mode": "incomplete",
@@ -1529,6 +1604,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Follow up @file:",
   "body": "Follow up",
   "mode": "incomplete",
@@ -1543,7 +1619,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == $'Parent\n- child @file^' ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"child","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
@@ -1554,7 +1630,7 @@ JSON
 "diagnostics":[]}
 JSON
     elif [[ "${draft}" == $'First @cash\n\nSecond @file^' ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Second","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
@@ -1565,7 +1641,7 @@ JSON
 "diagnostics":[]}
 JSON
     elif [[ "${draft}" == $'Finish it @cash^goog-exit@\n- Draft the memo :' ]]; then
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Finish it","mode":"incomplete","route":"cash","block_id":"goog-exit","needs":["block_id"],
@@ -1581,7 +1657,7 @@ JSON
     elif [[ "${draft}" == "Do work @file^id@" ]]; then
       # Real bob output: typing the `@` seal right after a caret ID reports a
       # non-completion seal span and no needs, so no picker or route list opens.
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Do work","mode":"project_note","route":"file","block_id":"id","needs":[],
@@ -1596,12 +1672,13 @@ JSON
     elif [[ "${draft}" == "Finish it @cash:goog-exit@#admin" ]]; then
       # Real bob output, generated by Scripts/generate-project-note-offer-fixtures.sh:
       # the offer marker spans plus the `pomodoro_name.themes` metadata.
-      cat "${fixtures_dir}/capture-parse-project-note-offer.json"
+      cat "${fixtures_dir}/capture-parse-project-note-offer.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up @file:new-id#" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Follow up @file:new-id#",
   "body": "Follow up",
   "mode": "task",
@@ -1621,6 +1698,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "Follow up @file^new-id ",
   "body": "Follow up",
   "mode": "task",
@@ -1639,6 +1717,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "!sase:fix-flaky",
   "body": "",
   "mode": "task_complete",
@@ -1659,6 +1738,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "!sase:mv1",
   "body": "",
   "mode": "task_complete",
@@ -1679,6 +1759,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
+  "grammar": 2,
   "input": "!sase:big-task",
   "body": "",
   "mode": "task_complete",
@@ -1695,41 +1776,43 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "${ref_listen_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-listen-url.json"
+      cat "${fixtures_dir}/directive-parse-listen-url.json" | inject_parse_grammar
     elif [[ "${draft}" == "${ref_listen_route_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-listen-route.json"
+      cat "${fixtures_dir}/directive-parse-listen-route.json" | inject_parse_grammar
     elif [[ "${draft}" == "${ref_listen_mixed_draft}" ]]; then
-      cat "${fixtures_dir}/directive-parse-listen-mixed.json"
+      cat "${fixtures_dir}/directive-parse-listen-mixed.json" | inject_parse_grammar
     elif [[ "${draft}" == "${ref_draft}" ]]; then
       # A bare link parses as `ref` with one `ref_url` span (real `bob
       # capture-parse` output).
-      cat "${fixtures_dir}/capture-parse-ref.json"
+      cat "${fixtures_dir}/capture-parse-ref.json" | inject_parse_grammar
     elif [[ "${draft}" == "${ref_explicit_draft}" ]]; then
       # A bare link plus one route parses as `ref` with an explicit
       # `ref_parent` and the ordinary `route` span (real `bob
       # capture-parse` output).
-      cat "${fixtures_dir}/capture-parse-ref-explicit.json"
+      cat "${fixtures_dir}/capture-parse-ref-explicit.json" | inject_parse_grammar
     elif [[ "${draft}" == "${ref_alias_draft}" ]]; then
       # The lexical alias token is preserved in `ref_parent`; `bob capture`
       # resolves it to the canonical route (real `bob capture-parse`
       # output).
-      cat "${fixtures_dir}/capture-parse-ref-alias.json"
+      cat "${fixtures_dir}/capture-parse-ref-alias.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up (("* ]]; then
       # `((query` is a capture-complete field. Advertise `wikilink_task` so
       # the app requests completion and skips the doomed live dry-run, same
       # as `!` / `task_complete`.
       draft_bytes=$(printf '%s' "${draft}" | wc -c)
-      printf '{"ok":true,"schema_version":1,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar":2,"input":'
       json_string "${draft}"
       printf ',"body":'
       json_string "${draft}"
       printf ',"mode":"task","needs":["wikilink_task"],"spans":[{"start":10,"end":%s,"kind":"interactive_placeholder"}],"diagnostics":[]}\n' "${draft_bytes}"
     else
-      printf '{"ok":true,"schema_version":1,"input":'
-      json_string "${draft}"
-      printf ',"body":'
-      json_string "${draft}"
-      printf ',"mode":"task","needs":[],"spans":[],"diagnostics":[]}\n'
+      {
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"body":'
+        json_string "${draft}"
+        printf ',"mode":"task","needs":[],"spans":[],"diagnostics":[]}\n'
+      } | inject_parse_grammar
     fi
     ;;
   capture-rewrite)
@@ -2031,11 +2114,18 @@ JSON
         cat <<JSON
 {"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"fix","candidates":[{"replacement":"#fix","cursor_after":${end},"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]}]}
 JSON
+      elif [[ -z "${query}" ]]; then
+        cat <<JSON
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","initial_selection":"none","subject":"${subject}","query":"","theme_suggestion":{"theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true},"source":"note","label":"from dev","from":{"path":"dev.md","stem":"dev","kind":"area","hue":"yellow","chain":["dev.md"]}},"candidates":[{"replacement":"#build ","cursor_after":$((start + 7)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"#fix ","cursor_after":$((start + 5)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"#write ","cursor_after":$((start + 7)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
+JSON
       else
         cat <<JSON
-{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"","theme_suggestion":{"theme":{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true},"source":"note","label":"from dev","from":{"path":"dev.md","stem":"dev","kind":"area","hue":"yellow","chain":["dev.md"]}},"candidates":[{"replacement":"#build ","cursor_after":$((start + 7)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"#fix ","cursor_after":$((start + 5)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"#write ","cursor_after":$((start + 7)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
+{"ok":true,"schema_version":1,"cursor":${cursor},"replacement":{"start":${start},"end":${end}},"context":"task_type","subject":"${subject}","query":"${query}","candidates":[{"replacement":"#build ","cursor_after":$((start + 7)),"name":"BUILD","key":"build","origin":"configured","effect":"keep","current":true,"inherited":true,"last_used":"2026-10-30","days_used":1,"suggestion_label":"from dev","themes":[{"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","configured":true}]},{"replacement":"#fix ","cursor_after":$((start + 5)),"name":"FIX","key":"fix","origin":"configured","effect":"set","hidden":false,"last_used":"2026-10-21","days_used":3,"themes":[{"key":"fix","name":"FIX","hue":"blue","hue_source":"config","configured":true}]},{"replacement":"#write ","cursor_after":$((start + 7)),"name":"WRITE","key":"write","origin":"history","effect":"set","hidden":true,"themes":[{"key":"write","name":"WRITE","hue":"magenta","hue_source":"config","configured":true}]}]}
 JSON
       fi
+      exit 0
+    elif [[ "${draft}" == "jot idea %" || "${draft}" == "%" ]]; then
+      cat "${fixtures_dir}/directive-complete-bare.json"
       exit 0
     elif [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then
       # FAKE_BOB_RELATION_LABEL_EXTRA appends one raw candidate row, so a

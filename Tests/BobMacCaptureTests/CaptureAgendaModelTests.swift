@@ -625,6 +625,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
         typeDraft(model, "")
         assertIdleAgendaVisible(model)
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         assertIdleAgendaVisible(model)
@@ -647,6 +648,7 @@ final class CaptureAgendaModelTests: XCTestCase {
         )
         var dismissed = 0
         model.panelDismisser = { dismissed += 1 }
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         XCTAssertTrue(model.isSubmitting)
 

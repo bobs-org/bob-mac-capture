@@ -69,6 +69,7 @@ final class CaptureRefPanelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
@@ -86,6 +87,7 @@ final class CaptureRefPanelTests: XCTestCase {
             completion(nil)
         }
 
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
