@@ -3992,11 +3992,16 @@ JSON
        && -n "${FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE:-}" \
        && -n "${FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE:-}" ]]; then
       sequence_file="${FAKE_BOB_RECORD_PATH}.dry-run-count"
+      sequence_lock="${sequence_file}.lock"
+      while ! ln -s "$$" "${sequence_lock}" 2>/dev/null; do
+        sleep 0.01
+      done
       sequence_count=0
       if [[ -f "${sequence_file}" ]]; then
         read -r sequence_count < "${sequence_file}"
       fi
       printf '%s\n' "$((sequence_count + 1))" > "${sequence_file}"
+      rm -f "${sequence_lock}"
       sequence_fixture="${FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE}"
       if [[ "${sequence_count}" == "0" ]]; then
         sequence_fixture="${FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE}"

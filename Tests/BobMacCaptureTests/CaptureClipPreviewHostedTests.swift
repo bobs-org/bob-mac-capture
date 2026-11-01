@@ -331,7 +331,7 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         model.fireClipboardPollForTests()
         guard await waitUntil(condition: {
             self.previewCallCount(recordURL) >= 3
-                && model.previewResults.first?.clip?.entries.count == 3
+                && model.previewResults.first?.clip?.entries.first?.lines == ["\t- newest"]
         }) else {
             return
         }

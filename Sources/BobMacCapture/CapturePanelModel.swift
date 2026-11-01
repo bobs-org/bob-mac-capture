@@ -1716,8 +1716,11 @@ final class CapturePanelModel: ObservableObject {
         CaptureOpenHintPresentation(plan: previewOpenHintPlan)
     }
 
+    /// Visibility is independent of Capture enablement: the chip stays on
+    /// while this draft has no preview yet, and while the open plan is
+    /// non-empty. The chip button is disabled until Capture is enabled.
     var openHintChipVisible: Bool {
-        primaryActionEnabled && openHintPresentation.isAvailable
+        hasDraft && openHintPresentation.isAvailable
     }
 
     static func isControlHeldAlone(_ flags: NSEvent.ModifierFlags) -> Bool {
@@ -1860,6 +1863,9 @@ final class CapturePanelModel: ObservableObject {
         self.processClient = processClient
         if changed {
             cancelPendingExplicitSubmit()
+            // Recheck Bob is not an editor echo of the last splice: drop the
+            // suppression so the re-parse below actually runs.
+            suppressedCompletionAcceptanceDraft = nil
             // An old count or assist parse must never re-arm the assist
             // after Bob becomes unavailable or the executable/vault changes.
             // The agenda store owns recounting; it clears and repopulates

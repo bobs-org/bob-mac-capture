@@ -361,14 +361,14 @@ final class CapturePanelModelTests: XCTestCase {
         )
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
-        await waitUntil { model.latestParse?.input == "Call cash" }
+        await waitUntil { model.latestParse?.input == "Call @cash" }
         await waitUntil { model.statusText == CaptureGrammarGate.blockedMessage }
 
-        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertEqual(model.plainDraft, "Call @cash")
         XCTAssertFalse(model.isSubmitting)
         XCTAssertFalse(
             (try? String(contentsOf: recordURL, encoding: .utf8))?
-                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+                .contains("argv=capture --format json --refuse-override -- Call @cash") ?? false
         )
     }
 
@@ -401,11 +401,11 @@ final class CapturePanelModelTests: XCTestCase {
             return false
         }
 
-        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertEqual(model.plainDraft, "Call @cash")
         XCTAssertFalse(model.isSubmitting)
         XCTAssertFalse(
             (try? String(contentsOf: recordURL, encoding: .utf8))?
-                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+                .contains("argv=capture --format json --refuse-override -- Call @cash") ?? false
         )
     }
 
@@ -475,14 +475,14 @@ final class CapturePanelModelTests: XCTestCase {
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
         model.prepareForRetainedClose()
-        await waitUntil { model.latestParse?.input == "Call cash" }
+        await waitUntil { model.latestParse?.input == "Call @cash" }
 
         XCTAssertFalse(model.panelVisible)
-        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertEqual(model.plainDraft, "Call @cash")
         XCTAssertFalse(model.isSubmitting)
         XCTAssertFalse(
             (try? String(contentsOf: recordURL, encoding: .utf8))?
-                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+                .contains("argv=capture --format json --refuse-override -- Call @cash") ?? false
         )
     }
 
@@ -512,25 +512,27 @@ final class CapturePanelModelTests: XCTestCase {
         )
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_RECORD_PATH": newRecordURL.path,
-            ]
+        model.setProcessClient(
+            BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": newRecordURL.path,
+                ]
+            )
         )
         await waitUntil {
-            model.latestParse?.input == "Call cash"
+            model.latestParse?.input == "Call @cash"
                 && model.latestParse?.grammar == CaptureGrammarGate.minimumRevision
         }
 
-        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertEqual(model.plainDraft, "Call @cash")
         XCTAssertFalse(model.isSubmitting)
         for recordURL in [oldRecordURL, newRecordURL] {
             XCTAssertFalse(
                 (try? String(contentsOf: recordURL, encoding: .utf8))?
-                    .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+                    .contains("argv=capture --format json --refuse-override -- Call @cash") ?? false
             )
         }
     }
@@ -559,12 +561,12 @@ final class CapturePanelModelTests: XCTestCase {
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
         model.submit(openAfterCapture: false)
-        await waitUntil { model.latestParse?.input == "Call cash" }
+        await waitUntil { model.latestParse?.input == "Call @cash" }
 
         XCTAssertFalse(model.isSubmitting)
         XCTAssertFalse(
             (try? String(contentsOf: recordURL, encoding: .utf8))?
-                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+                .contains("argv=capture --format json --refuse-override -- Call @cash") ?? false
         )
     }
 

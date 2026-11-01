@@ -255,6 +255,8 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         await waitUntil {
             shelf.templates.first?.id == "a132f04b26f3"
                 && !shelf.templates.contains(where: { $0.id == "3e96cbec7865" })
+                && (try? String(contentsOf: recordURL, encoding: .utf8))?
+                    .contains("argv=capture-templates delete 3e96cbec7865") == true
         }
 
         XCTAssertEqual(model.templateShelfCount, 2)
@@ -627,7 +629,10 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         refusalModel.plainDraft = "Buy milk"
         refusalModel.saveTemplateFromKeyboard()
         await waitUntil { !refusalModel.isSavingTemplate }
-        XCTAssertEqual(refusalModel.statusText, "only `%t` drafts can be saved as templates")
+        XCTAssertEqual(
+            refusalModel.statusText,
+            "add `%t` to the draft's first item to save it as a template"
+        )
 
         let shelf = SavedTemplateShelf()
         let recordURL = temporaryURL("capture-template-double-save-record")

@@ -501,10 +501,10 @@ editor, and reports only "Canceled draft stash cleared". Lowercase `d` does noth
 
 ## Open chip
 
-When Capture is enabled, the footer shows a **⌃↩ Open** chip just before the primary
-button whenever the live preview's open plan is non-empty, and also while this draft
-still has no preview. A queued link whose plan is empty hides the chip. Clicking it
-captures and opens Bob's reported notes. Hold Control alone (no other modifier, no
+The footer shows a **⌃↩ Open** chip just before the primary button whenever the live
+preview's open plan is non-empty, and also while this draft still has no preview. A
+queued link whose plan is empty hides the chip. The chip is disabled until Capture is
+enabled. Clicking it captures and opens Bob's reported notes. Hold Control alone (no other modifier, no
 key) for 400 ms to tint the chip and fade in a destinations capsule above the footer's
 trailing edge — "Opens in Obsidian", then up to four rows with a note or calendar
 glyph, label, and optional `line N`, then `+N more`. The capsule uses the completion

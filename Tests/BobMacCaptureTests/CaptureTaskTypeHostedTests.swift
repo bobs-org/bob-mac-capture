@@ -58,7 +58,7 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         XCTAssertNil(model.selectedCompletionIndex)
 
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "jot idea #build ")
+        XCTAssertEqual(model.plainDraft, "jot idea #build")
         XCTAssertNil(model.completionResponse)
     }
 
@@ -83,7 +83,8 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         await waitUntil { model.completionResponse?.context == "task_type" }
 
         model.selectPreviousCompletion()
-        XCTAssertEqual(model.selectedCompletionIndex, 2)
+        let lastIndex = try XCTUnwrap(model.completionResponse).candidates.count - 1
+        XCTAssertEqual(model.selectedCompletionIndex, lastIndex)
         XCTAssertEqual(model.plainDraft, draft)
     }
 

@@ -20,7 +20,11 @@ final class CaptureSavedTemplateShelfTests: XCTestCase {
         XCTAssertEqual(shelf.count, 3)
         XCTAssertEqual(shelf.capacity, 36)
         XCTAssertTrue(shelf.saving)
-        XCTAssertEqual(shelf.templates[0].fieldCount, 3)
+        XCTAssertEqual(shelf.templates.map(\.fieldCount), [1, 2, 3])
+        XCTAssertEqual(
+            shelf.templates.map(\.id),
+            ["3e96cbec7865", "a132f04b26f3", "1a5b06a8bf68"]
+        )
 
         shelf.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
