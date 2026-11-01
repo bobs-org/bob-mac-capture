@@ -33,7 +33,7 @@ final class CaptureTaskTypeTests: XCTestCase {
     }
 
     func testExistingCurrentCompletionDecodesCurrentKeepAndInheritedClear() throws {
-        let response = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
+        let response = try decodeCompletion("task-type-complete-existing-empty.json")
         XCTAssertEqual(response.subject, "existing")
         XCTAssertEqual(response.themeSuggestion?.source, "task")
         XCTAssertEqual(response.themeSuggestion?.theme.name, "FIX")
@@ -97,8 +97,8 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(empty.needs, ["task_type"])
         XCTAssertTrue(empty.spans.contains(where: { $0.kind == "task_type" }))
         let emptyType = try XCTUnwrap(empty.spans.first(where: { $0.kind == "task_type" }))
-        XCTAssertEqual(emptyType.start, 11)
-        XCTAssertEqual(emptyType.end, 12)
+        XCTAssertEqual(emptyType.start, 0)
+        XCTAssertEqual(emptyType.end, 1)
 
         let literal = try decodeParse("task-type-parse-literal.json")
         let literalSpan = try XCTUnwrap(literal.spans.first(where: { $0.kind == "task_type" }))
@@ -266,7 +266,7 @@ final class CaptureTaskTypeTests: XCTestCase {
     }
 
     func testFooterSetClearKeepAndRefused() throws {
-        let existing = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
+        let existing = try decodeCompletion("task-type-complete-existing-empty.json")
         let current = try XCTUnwrap(existing.candidates.first(where: \.current))
         XCTAssertEqual(
             CaptureTaskTypeMenuPresentation.footer(
@@ -551,7 +551,7 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertTrue(link.previewAccessibilitySummary.contains("moved under FIX"))
     }
 
-    func testLeadingChildSecondLineAndAttachedFixtures() throws {
+    func testLeadingChildSecondLineAndSeparateMarkerFixtures() throws {
         let leading = try decodeParse("task-type-parse-leading.json")
         XCTAssertEqual(leading.input, "#fix Fix it")
         XCTAssertTrue(leading.spans.contains(where: { $0.kind == "task_type" }))
@@ -570,19 +570,32 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(leadingComplete.context, "task_type")
         XCTAssertEqual(leadingComplete.query, "f")
 
-        let attachedNew = try decodeParse("task-type-parse-attached-new.json")
-        let attachedSpan = try XCTUnwrap(attachedNew.spans.first(where: { $0.kind == "task_type" }))
-        XCTAssertEqual(attachedSpan.start, 11)
-        XCTAssertEqual(attachedSpan.end, 15)
+        let separateNew = try decodeParse("task-type-parse-separate-new.json")
+        XCTAssertEqual(separateNew.input, "Fix the parser @dev^parser #fix")
+        XCTAssertTrue(separateNew.spans.contains(where: { $0.kind == "task_type" }))
 
-        let attachedToggle = try decodeParse("task-type-parse-attached-toggle.json")
-        XCTAssertEqual(attachedToggle.mode, "task_toggle")
-        XCTAssertTrue(attachedToggle.spans.contains(where: { $0.kind == "task_type" }))
+        let separateExisting = try decodeParse("task-type-parse-separate-existing.json")
+        XCTAssertEqual(separateExisting.input, "@dev+current #fix")
+        XCTAssertTrue(separateExisting.spans.contains(where: { $0.kind == "task_type" }))
 
-        let attachedComplete = try decodeCompletion("task-type-complete-attached-toggle-empty.json")
-        XCTAssertEqual(attachedComplete.context, "task_type")
-        XCTAssertEqual(attachedComplete.subject, "existing")
-        XCTAssertEqual(attachedComplete.query, "")
+        let separateChild = try decodeParse("task-type-parse-separate-child.json")
+        XCTAssertEqual(separateChild.mode, "sub_bullet")
+        XCTAssertTrue(separateChild.spans.contains(where: { $0.kind == "task_type" }))
+
+        let separateDrawerChild = try decodeParse("task-type-parse-separate-drawer-child.json")
+        XCTAssertEqual(separateDrawerChild.mode, "sub_bullet")
+        XCTAssertTrue(separateDrawerChild.spans.contains(where: { $0.kind == "drawer" }))
+        XCTAssertTrue(separateDrawerChild.spans.contains(where: { $0.kind == "task_type" }))
+
+        let separateComplete = try decodeCompletion(
+            "task-type-complete-separate-drawer-child.json")
+        XCTAssertEqual(separateComplete.context, "task_type")
+        XCTAssertEqual(separateComplete.subject, "existing")
+        XCTAssertEqual(separateComplete.query, "fix")
+
+        let r3 = try decodeParse("task-type-parse-r3-refusal.json")
+        XCTAssertTrue(
+            r3.diagnostics.contains { $0.message.contains("a new task has no drawers") })
     }
 
     func testBareHashIsAnIncompleteTaskTypeAndRetiredIsProse() throws {

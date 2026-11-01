@@ -3658,12 +3658,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     public let pomodoroLinkPlacement: String?
     public let parentLine: Int?
     public let parentText: String?
-    /// Legacy mirror of the drawer title; kept so a Bob that predates the
-    /// per-item `drawer` object still names the drawer. `drawer` wins.
-    public let parentSection: String?
     /// Additive per-item drawer a sub-bullet landed in, with `created` true
-    /// when the commit adds the drawer's header line. Omitted for plain
-    /// `@route+id` children and by older Bob.
+    /// when the commit adds the drawer's header line. Null for plain
+    /// `@route+id` children and absent from older Bob.
     public let drawer: CaptureDrawerSummary?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
@@ -3821,7 +3818,6 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         pomodoroLinkPlacement: String? = nil,
         parentLine: Int? = nil,
         parentText: String? = nil,
-        parentSection: String? = nil,
         drawer: CaptureDrawerSummary? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
@@ -3901,7 +3897,6 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.pomodoroLinkPlacement = pomodoroLinkPlacement
         self.parentLine = parentLine
         self.parentText = parentText
-        self.parentSection = parentSection
         self.drawer = drawer
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
@@ -3985,7 +3980,6 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             String.self, forKey: .pomodoroLinkPlacement)
         parentLine = try container.decodeIfPresent(Int.self, forKey: .parentLine)
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
-        parentSection = try container.decodeIfPresent(String.self, forKey: .parentSection)
         drawer = (try? container.decodeIfPresent(CaptureDrawerSummary.self, forKey: .drawer)) ?? nil
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
@@ -4187,7 +4181,6 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case pomodoroLinkPlacement = "pomodoro_link_placement"
         case parentLine = "parent_line"
         case parentText = "parent_text"
-        case parentSection = "parent_section"
         case drawer
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"

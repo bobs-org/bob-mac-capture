@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":3,"input":"@dev^parser#fix","body":"","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[{"severity":"error","code":"invalid_project_note_marker","message":"a new task has no drawers: type it with a separate `#fix` (`Fix the parser @sase^parser #fix`)","range":[0,15]}]}

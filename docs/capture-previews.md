@@ -72,8 +72,8 @@ A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the hea
 `Sub-bullet under ^bar › REQUIREMENTS` above the task card showing where it landed. When
 Bob's per-item `drawer` object reports `created`, the header adds a dashed **new drawer**
 capsule. A separate `#type` on the same item retypes the task in the same transaction, so
-Bob's `Type` row renders beneath the header beside the capsule. A Bob that sends only
-`parent_section` names the drawer without the capsule.
+Bob's `Type` row renders beneath the header beside the capsule. An older Bob response
+without a `drawer` object leaves out the drawer-specific header detail and capsule.
 
 ## Batch drafts and authored children
 

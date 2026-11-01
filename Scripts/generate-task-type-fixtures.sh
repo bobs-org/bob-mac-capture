@@ -13,12 +13,13 @@
 #   daily note 2026/20261030.md plus yesterday's DEEP WORK history
 #   BOB_NOW=2026-10-30 09:00:00
 #
-# Fixtures cover leading/trailing/child/attached parse, prefix and literal
+# Fixtures cover leading/trailing/child parse, prefix and literal
 # names, configured/hidden-exact/history-only/typed-unknown completion,
 # new and existing subjects, set/cleared/kept captures, all five
 # relocation outcomes, a Task Wikilink coexistence case, the incomplete
 # `jot idea #` task type, bare-to-typed and leading/trailing/child menu
-# requests, and the retired `t:` prose case. Commit
+# requests, separate type markers beside child captures, the R3 refusal for
+# a glued marker after `^`, and the retired `t:` prose case. Commit
 # operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +30,7 @@ if [[ -z "$bob_bin" || ! -x "$bob_bin" ]]; then
 fi
 scratch_root="$(mktemp -d /tmp/bob-task-type-fixture-vault.XXXXXX)"
 trap 'rm -rf -- "$scratch_root"' EXIT
+stable_root="/tmp/bob-task-type-fixture-vault"
 vault="$scratch_root/vault"
 config="$scratch_root/config.yml"
 cache="$scratch_root/cache"
@@ -36,6 +38,7 @@ fixtures="$repo_root/Tests/Fixtures"
 day_file="$vault/2026/20261030.md"
 NOW="2026-10-30 09:00:00"
 mkdir -p "$vault/.obsidian/plugins/obsidian-tasks-plugin" "$vault/2026" "$cache"
+rm -f "$fixtures"/task-type-parse-attached*.json "$fixtures"/task-type-complete-attached*.json
 cat > "$vault/.obsidian/plugins/obsidian-tasks-plugin/data.json" <<'JSON'
 {
   "globalFilter": "#task",
@@ -72,6 +75,8 @@ task_type: BUILD
 
 ## Tasks
 - [ ] #task Current fix [type:: FIX] ^current
+    - REQUIREMENTS
+        - current contract
 - [ ] #task Inherited type ^inherited
 MD
 cat > "$vault/sase.md" <<'MD'
@@ -148,13 +153,29 @@ assert_json() {
   fi
 }
 
+persist() {
+  python3 - "$1" "$fixtures/$2" "$scratch_root" "$stable_root" <<'PY'
+import json
+import pathlib
+import sys
+
+source, destination, scratch_root, stable_root = sys.argv[1:]
+text = pathlib.Path(source).read_text()
+for prefix in ("/private" + scratch_root, scratch_root):
+    text = text.replace(prefix, stable_root)
+json.loads(text)
+pathlib.Path(destination).write_text(text)
+PY
+}
+
 complete() {
   local draft="$1"
   local cursor
   cursor="$(printf '%s' "$draft" | wc -c)"
   local out="$2"
   "$bob_bin" capture-complete -b "$vault" --cursor "$cursor" --format json -- "$draft" \
-    > "$fixtures/$out"
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
   assert_json "$out"
 }
 
@@ -163,7 +184,8 @@ complete_at() {
   local cursor="$2"
   local out="$3"
   "$bob_bin" capture-complete -b "$vault" --cursor "$cursor" --format json -- "$draft" \
-    > "$fixtures/$out"
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
   assert_json "$out"
 }
 
@@ -171,37 +193,42 @@ parse() {
   local draft="$1"
   local out="$2"
   # capture-parse takes no --bob-dir; BOB_DIR supplies the vault catalog.
-  "$bob_bin" capture-parse --format json -- "$draft" > "$fixtures/$out"
+  "$bob_bin" capture-parse --format json -- "$draft" > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
   assert_json "$out"
 }
 
 capture_dry() {
   local out="$1"
   shift
-  if ! "$bob_bin" capture -b "$vault" --no-clip --format json -d -- "$@" > "$fixtures/$out"
+  if ! "$bob_bin" capture -b "$vault" --no-clip --format json -d -- "$@" \
+    > "$scratch_root/raw.json"
   then
     echo "capture dry-run failed for $out:" >&2
-    cat "$fixtures/$out" >&2
+    cat "$scratch_root/raw.json" >&2
     exit 1
   fi
+  persist "$scratch_root/raw.json" "$out"
   assert_json "$out"
 }
 
 capture_commit() {
   local out="$1"
   shift
-  if ! "$bob_bin" capture -b "$vault" --no-clip --format json -- "$@" > "$fixtures/$out"
+  if ! "$bob_bin" capture -b "$vault" --no-clip --format json -- "$@" \
+    > "$scratch_root/raw.json"
   then
     echo "capture commit failed for $out:" >&2
-    cat "$fixtures/$out" >&2
+    cat "$scratch_root/raw.json" >&2
     exit 1
   fi
+  persist "$scratch_root/raw.json" "$out"
   assert_json "$out"
 }
 
-# Parse: edges, child, literals, refused, prose, routed, attached,
+# Parse: edges, child, literals, refused, prose, routed,
 # incomplete task type, wikilink coexistence, retired `t:` (prose).
-parse '@dev^parser#' task-type-parse-empty.json
+parse '#' task-type-parse-empty.json
 parse '#fix Fix it' task-type-parse-leading.json
 parse 'Fix it #fix' task-type-parse-trailing.json
 parse '#f' task-type-parse-leading-short.json
@@ -216,30 +243,33 @@ parse 'Ask about #fix today' task-type-parse-midline.json
 parse '@dev #f' task-type-parse-routed-empty.json
 parse '@dev:current #f' task-type-parse-existing.json
 parse 'Follow up ((foo #f' task-type-parse-wikilink-coexist.json
-parse '@dev^parser#' task-type-parse-attached-new-empty.json
-parse '@dev^parser#fix' task-type-parse-attached-new.json
-parse '@dev+current#' task-type-parse-attached-toggle-empty.json
-parse '@dev+current#fix' task-type-parse-attached-toggle.json
+parse 'Fix the parser @dev^parser #fix' task-type-parse-separate-new.json
+parse '@dev+current #fix' task-type-parse-separate-existing.json
+parse 'note @dev+current #fix' task-type-parse-separate-child.json
+parse 'note @dev+current#requirements #fix' task-type-parse-separate-drawer-child.json
+parse '@dev^parser#fix' task-type-parse-r3-refusal.json
 parse 'jot idea #' task-type-parse-incomplete-marker.json
 parse 'Fix it t:fix' task-type-parse-retired.json
 
-# Completion: empty attached, leading/trailing, prefix, refused, new/existing
+# Completion: empty, leading/trailing, prefix, refused, new/existing
 # subjects, child/second-line, adjacent route, wikilink, and incomplete marker.
-complete '@dev^parser#' task-type-complete-empty.json
+complete 'Fix the parser @dev^parser #' task-type-complete-empty.json
 complete '@dev #f' task-type-complete-new.json
 complete 'Fix it #fix' task-type-complete-prefix.json
 complete 'Fix it #fixs' task-type-complete-typed-unknown.json
 complete '@dev:current #f' task-type-complete-existing-current.json
 complete '@dev:inherited #f' task-type-complete-existing-inherited.json
+complete '@dev+current #' task-type-complete-existing-empty.json
 complete $'Parent task\n- check the lexer #fi' task-type-complete-child.json
 complete $'Parent task\n #fi' task-type-complete-second-line.json
 complete_at '@de #fix' 3 task-type-complete-adjacent-route.json
 complete 'Follow up ((foo #f' task-type-complete-wikilink-coexist.json
 complete_at 'Follow up ((foo #f' 14 task-type-complete-wikilink-query.json
 complete 'jot idea #' task-type-complete-incomplete-marker.json
-complete '@dev+current#' task-type-complete-attached-toggle-empty.json
-complete '@dev^parser#fix' task-type-complete-attached-new.json
-complete '@dev+current#fix' task-type-complete-attached-toggle.json
+complete 'Fix the parser @dev^parser #fix' task-type-complete-separate-new.json
+complete '@dev+current #fix' task-type-complete-separate-existing.json
+complete 'note @dev+current #fix' task-type-complete-separate-child.json
+complete 'note @dev+current#requirements #fix' task-type-complete-separate-drawer-child.json
 complete '#f' task-type-complete-leading.json
 complete '#fix Fix it' task-type-complete-leading-full.json
 complete 'Fix the parser #f' task-type-complete-trailing-prefix.json
@@ -248,7 +278,7 @@ complete_at '#fix Fix it' 4 task-type-complete-leading-prefix.json
 
 # Hidden-exact: hide FIX from Recent, then complete empty vs exact.
 "$bob_bin" themes hide FIX --via fixture --format json >/dev/null
-complete '@dev^parser#' task-type-complete-empty-hidden.json
+complete 'Fix the parser @dev^parser #' task-type-complete-empty-hidden.json
 complete '#fix' task-type-complete-hidden-exact.json
 "$bob_bin" themes unhide FIX --via fixture --format json >/dev/null
 
@@ -258,8 +288,9 @@ plan:
   default_type: BUILD
   max_themes: 30
 EOF
+history_draft='Fix the parser @dev^parser #'
 BOB_CONFIG_FILE="$scratch_root/config-history.yml" \
-  "$bob_bin" capture-complete -b "$vault" --cursor 12 --format json -- '@dev^parser#' \
+  "$bob_bin" capture-complete -b "$vault" --cursor "${#history_draft}" --format json -- "$history_draft" \
   > "$fixtures/task-type-complete-history.json"
 assert_json task-type-complete-history.json
 

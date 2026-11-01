@@ -1869,22 +1869,16 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertFalse(row.creates)
     }
 
-    func testCaptureSuccessDecodesDrawerObjectAndKeepsLegacyParentSection() throws {
-        let created = try decodeBlockFixture("drawer-contract-capture-new-retype.json")
+    func testCaptureSuccessDecodesDrawerObject() throws {
+        let created = try decodeBlockFixture("drawer-capture-new-retype.json")
         XCTAssertEqual(
             created.drawer,
             CaptureDrawerSummary(title: "PERF BUDGET", key: "PERF BUDGET", created: true)
         )
-        XCTAssertEqual(created.parentSection, "PERF BUDGET")
         XCTAssertEqual(created.taskTheme?.theme?.name, "FIX")
-
-        let legacy = try decodeBlockFixture("drawer-capture-new.json")
-        XCTAssertNil(legacy.drawer, "this Bob sends only the parent_section mirror")
-        XCTAssertEqual(legacy.parentSection, "PERF BUDGET")
 
         let plain = try decodeBlockFixture("drawer-capture-plain-child.json")
         XCTAssertNil(plain.drawer)
-        XCTAssertNil(plain.parentSection)
     }
 
     func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
@@ -3792,7 +3786,6 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(block.lines[3].before)
         // Per-item parent fields decode alongside the batch blocks.
         XCTAssertEqual(success.parentText, "Port capture to PIW sase-core")
-        XCTAssertNil(success.parentSection)
         XCTAssertEqual(success.parentStatusSymbol, "/")
         XCTAssertEqual(success.parentStatusName, "In Progress")
     }
@@ -3800,7 +3793,7 @@ final class CaptureModelTests: XCTestCase {
     func testTaskBlocksDecodeSectionFixture() throws {
         let success = try decodeBlockFixture("sub-bullet-section-task-block.json")
 
-        XCTAssertEqual(success.parentSection, "REQUIREMENTS")
+        XCTAssertEqual(success.drawer?.title, "REQUIREMENTS")
         let block = try XCTUnwrap(success.taskBlocks.first)
         XCTAssertEqual(block.relativeTarget, "foo.md")
         XCTAssertEqual(block.blockID, "bar")

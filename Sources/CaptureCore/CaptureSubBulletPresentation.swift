@@ -14,8 +14,7 @@ public struct CaptureSubBulletPresentation: Equatable, Sendable {
     /// `"under ^capture"`, `"under ^capture › REQUIREMENTS"`, or
     /// `"under task"`, following the compact item header.
     public let headerDetail: String
-    /// The drawer the bullet lands in, from Bob's per-item `drawer` object or,
-    /// on a Bob that predates it, the legacy `parent_section` mirror.
+    /// The drawer the bullet lands in, from Bob's per-item `drawer` object.
     public let drawerTitle: String?
     /// True when Bob says the commit creates the drawer; the header then shows a
     /// `new drawer` capsule after `headerDetail`.
@@ -37,8 +36,7 @@ public struct CaptureSubBulletPresentation: Equatable, Sendable {
         } else {
             parentLabel = "task"
         }
-        let title = capture.drawer?.title ?? capture.parentSection
-        if let drawer = title, !drawer.isEmpty {
+        if let drawer = capture.drawer?.title, !drawer.isEmpty {
             let created = capture.drawer?.created ?? false
             drawerTitle = drawer
             createsDrawer = created

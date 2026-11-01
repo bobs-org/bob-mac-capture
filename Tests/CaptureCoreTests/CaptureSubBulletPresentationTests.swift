@@ -28,7 +28,6 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
 
     private func subBullet(
         blockID: String? = "capture",
-        parentSection: String? = nil,
         kind: String = "sub_bullet"
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
@@ -44,8 +43,7 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
             kind: kind,
             created: "2026-10-02",
             placement: "appended",
-            blockID: blockID,
-            parentSection: parentSection
+            blockID: blockID
         )
     }
 
@@ -58,7 +56,7 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         XCTAssertEqual(presented.accessibilityText, "Sub-bullet under ^capture")
     }
 
-    func testSectionSubBulletNamesItsSection() throws {
+    func testDrawerSubBulletNamesItsDrawer() throws {
         let success = try successFixture("sub-bullet-section-task-block.json")
         let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
 
@@ -70,7 +68,7 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         )
     }
 
-    func testRealBobDrawerCaptureNamesTheDrawerFromTheLegacyMirror() throws {
+    func testRealBobDrawerCaptureNamesExistingAndNewDrawers() throws {
         let existing = try XCTUnwrap(
             CaptureSubBulletPresentation(
                 capture: try successFixture("drawer-capture-existing.json")))
@@ -78,17 +76,15 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         XCTAssertFalse(existing.createsDrawer)
         XCTAssertEqual(existing.headerDetail, "under ^bar › REQUIREMENTS")
 
-        // This Bob names a created drawer only through `parent_section`, so no
-        // capsule appears until it sends the `drawer` object.
         let created = try XCTUnwrap(
             CaptureSubBulletPresentation(
                 capture: try successFixture("drawer-capture-new.json")))
         XCTAssertEqual(created.drawerTitle, "PERF BUDGET")
-        XCTAssertFalse(created.createsDrawer)
+        XCTAssertTrue(created.createsDrawer)
     }
 
     func testNewDrawerObjectAddsTheCapsuleAndTheRetypeRowTravelsWithIt() throws {
-        let success = try successFixture("drawer-contract-capture-new-retype.json")
+        let success = try successFixture("drawer-capture-new-retype.json")
         let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
 
         XCTAssertEqual(presented.drawerTitle, "PERF BUDGET")
@@ -106,7 +102,7 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         XCTAssertNotNil(CaptureTaskThemePresentation.line(for: change, isDryRun: success.dryRun))
     }
 
-    func testDrawerObjectWinsOverTheLegacyMirror() {
+    func testDrawerObjectProvidesTitleAndCreationState() {
         let success = CaptureCommandSuccess(
             ok: true,
             dryRun: true,
@@ -121,7 +117,6 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
             created: "2026-10-30",
             placement: "inserted",
             blockID: "bar",
-            parentSection: "OLD NAME",
             drawer: CaptureDrawerSummary(title: "Q&A", key: "Q&A", created: true)
         )
         let presented = CaptureSubBulletPresentation(capture: success)

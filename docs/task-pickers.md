@@ -333,6 +333,10 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   value; Bob scopes the answer to the item or declaration containing the UTF-8 cursor and
   returns replacement ranges in draft-global byte offsets. See "Wikilink completion" in [Wikilink completion](wikilink-completion.md) for the Obsidian-specific contract and row presentation.
 
+A separate `#type` after a body-bearing `@route+id` child capture retypes that existing
+task in the same transaction. This applies to plain children and drawer entries; the
+drawer preview shows the type change alongside its drawer details.
+
 ### Tasks without block IDs
 
 In the item-local `@route+` task context, Bob may return open tasks that still lack block IDs.

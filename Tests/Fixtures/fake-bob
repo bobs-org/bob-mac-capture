@@ -262,6 +262,16 @@ case "${command}" in
         cat "${fixtures_dir}/task-type-parse-incomplete-marker.json" | inject_parse_grammar
       elif [[ "${draft}" == $'Parent task\n- check the lexer #fi' ]]; then
         cat "${fixtures_dir}/task-type-parse-child.json" | inject_parse_grammar
+      elif [[ "${draft}" == "Fix the parser @dev^parser #fix" ]]; then
+        cat "${fixtures_dir}/task-type-parse-separate-new.json" | inject_parse_grammar
+      elif [[ "${draft}" == "@dev+current #fix" ]]; then
+        cat "${fixtures_dir}/task-type-parse-separate-existing.json" | inject_parse_grammar
+      elif [[ "${draft}" == "note @dev+current #fix" ]]; then
+        cat "${fixtures_dir}/task-type-parse-separate-child.json" | inject_parse_grammar
+      elif [[ "${draft}" == "note @dev+current#requirements #fix" ]]; then
+        cat "${fixtures_dir}/task-type-parse-separate-drawer-child.json" | inject_parse_grammar
+      elif [[ "${draft}" == "@dev^parser#fix" ]]; then
+        cat "${fixtures_dir}/task-type-parse-r3-refusal.json" | inject_parse_grammar
       elif [[ "${draft}" == "jot idea %" ]]; then
         cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
       else
@@ -2017,7 +2027,13 @@ JSON
         "#fix Fix it") task_type_fixture="task-type-complete-leading-full.json" ;;
         "Fix the parser #f") task_type_fixture="task-type-complete-trailing-prefix.json" ;;
         "Fix it #fix") task_type_fixture="task-type-complete-prefix.json" ;;
+        "Fix the parser @dev^parser #") task_type_fixture="task-type-complete-empty.json" ;;
+        "@dev+current #") task_type_fixture="task-type-complete-existing-empty.json" ;;
         $'Parent task\n- check the lexer #fi') task_type_fixture="task-type-complete-child.json" ;;
+        "Fix the parser @dev^parser #fix") task_type_fixture="task-type-complete-separate-new.json" ;;
+        "@dev+current #fix") task_type_fixture="task-type-complete-separate-existing.json" ;;
+        "note @dev+current #fix") task_type_fixture="task-type-complete-separate-child.json" ;;
+        "note @dev+current#requirements #fix") task_type_fixture="task-type-complete-separate-drawer-child.json" ;;
       esac
       if [[ -n "${task_type_fixture}" ]]; then
         cat "${fixtures_dir}/${task_type_fixture}"
@@ -2629,8 +2645,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#" ]]; then
-      # Synthetic contract reply: unselected open, On this task + Recent rows.
-      cat "${fixtures_dir}/drawer-contract-complete-empty.json"
+      cat "${fixtures_dir}/drawer-complete-empty.json"
     elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#req" ]]; then
       cat "${fixtures_dir}/drawer-complete-typed-match.json"
     elif [[ "${draft}" == "jot idea @foo#" ]]; then

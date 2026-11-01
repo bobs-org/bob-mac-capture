@@ -4,32 +4,25 @@ import XCTest
 @testable import CaptureCore
 
 /// The `drawer` menu: groups, Bob-authored counts and consequences, refusals,
-/// and the unselected open. `drawer-complete-*` fixtures are raw Bob output;
-/// `drawer-contract-*` fixtures overlay the plan fields this Bob does not emit
-/// yet (see `Tests/Fixtures/drawer-fixtures-README.md`).
+/// and the unselected open. `drawer-complete-*` fixtures are raw Bob output
+/// (see `Tests/Fixtures/drawer-fixtures-README.md`).
 final class CaptureDrawerMenuPresentationTests: XCTestCase {
     // MARK: - Real Bob output
 
-    func testRealBobTaskRowsGroupUnderOnThisTaskWithNoSwiftCounts() throws {
+    func testRawBobRowsAndCountsRenderWithoutSwiftInference() throws {
         let response = try completion("drawer-complete-empty.json")
         let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: nil)
 
         XCTAssertEqual(menu.headerCaption, "^bar Upgrade Postgres (foo)")
-        XCTAssertEqual(menu.groups.map(\.title), ["On this task"])
-        XCTAssertEqual(menu.rows.map(\.title), ["REQUIREMENTS", "FUTURE WORK"])
-        XCTAssertEqual(menu.rows.map(\.kind), [.task, .task])
-        // This Bob sends `group: "drawers"` and an empty `detail`; the app shows no
-        // count of its own where Bob supplied none.
-        XCTAssertEqual(menu.rows.map(\.detail), [nil, nil])
-        XCTAssertEqual(menu.rows.map(\.consequence), [nil, nil])
+        XCTAssertEqual(menu.groups.map(\.title), ["On this task", "Recent"])
+        XCTAssertEqual(
+            menu.rows.map(\.title),
+            ["REQUIREMENTS", "FUTURE WORK", "ACCEPTANCE", "MOTIVATION"])
+        XCTAssertEqual(menu.rows.map(\.kind), [.task, .task, .recent, .recent])
+        XCTAssertEqual(response.candidates.map(\.entryCount), [3, 1, 0, 0])
+        XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
+        XCTAssertEqual(menu.rows.map(\.creates), [false, false, true, true])
         XCTAssertEqual(menu.footer, CaptureCompletionMenu.unselectedFooterHint)
-    }
-
-    func testSelectedRowWithoutAConsequenceShowsTheSelectedKeyHint() throws {
-        let response = try completion("drawer-complete-empty.json")
-        let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: 0)
-
-        XCTAssertEqual(menu.footer, CaptureDrawerMenuPresentation.selectedFooterHint)
     }
 
     func testTypedQueryEmphasizesTheMatchedPrefix() throws {
@@ -37,8 +30,9 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
         let menu = CaptureDrawerMenuPresentation(
             response: response, selectedIndex: 0, query: "req")
 
-        XCTAssertEqual(menu.rows.map(\.title), ["REQUIREMENTS"])
+        XCTAssertEqual(menu.rows.map(\.title), ["REQUIREMENTS", "REQ"])
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
+        XCTAssertTrue(menu.rows[1].isRefused)
     }
 
     func testMissingTargetReturnsNoRowsAndStillNamesTheTask() throws {
@@ -51,18 +45,29 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
         XCTAssertFalse(response.warnings.isEmpty)
     }
 
-    func testPlainTaskHasNoDrawerRows() throws {
+    func testPlainTaskOffersRecentDrawers() throws {
         let response = try completion("drawer-complete-plain-task.json")
         let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: nil)
 
-        XCTAssertTrue(menu.rows.isEmpty)
-        XCTAssertEqual(menu.listAccessibilityLabel, "Drawer suggestions, 0 results")
+        XCTAssertEqual(menu.groups.map(\.title), ["Recent"])
+        XCTAssertEqual(menu.rows.map(\.title), ["ACCEPTANCE", "MOTIVATION", "REQUIREMENTS"])
+        XCTAssertEqual(menu.rows.map(\.kind), [.recent, .recent, .recent])
+        XCTAssertEqual(menu.listAccessibilityLabel, "Drawer suggestions, 3 results")
     }
 
-    // MARK: - Contract fixtures (synthetic overlays)
+    func testProjectTaskUsesH2DrawersAndBobConsequence() throws {
+        let response = try completion("drawer-complete-project-empty.json")
+        let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: 0)
+
+        XCTAssertEqual(response.target?.blockID, "prj")
+        XCTAssertEqual(Array(menu.rows.prefix(2).map(\.title)), ["Requirements", "Q&A"])
+        XCTAssertEqual(menu.rows.first?.consequence, "Adds to ## Requirements")
+    }
+
+    // MARK: - Full drawer contract
 
     func testEmptyQueryOpensWithOnThisTaskAndRecentGroupsAndNothingSelected() throws {
-        let response = try completion("drawer-contract-complete-empty.json")
+        let response = try completion("drawer-complete-empty.json")
         XCTAssertTrue(response.opensWithoutSelection)
         XCTAssertNil(
             CaptureCompletionMenu.initialSelectedIndex(for: response, queryIsEmpty: true))
@@ -73,14 +78,14 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.kind), [.task, .recent])
         XCTAssertEqual(
             menu.rows.map(\.title), ["REQUIREMENTS", "FUTURE WORK", "ACCEPTANCE", "MOTIVATION"])
-        XCTAssertEqual(menu.rows.map(\.detail).prefix(2), ["3 notes", "1 note"])
+        XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
         XCTAssertEqual(menu.rows[3].detail, "used in 3 notes · 3 days ago")
         XCTAssertEqual(menu.rows.map(\.creates), [false, false, true, true])
         XCTAssertEqual(menu.footer, CaptureCompletionMenu.unselectedFooterHint)
     }
 
     func testFooterShowsBobsConsequenceForTheSelectedRow() throws {
-        let response = try completion("drawer-contract-complete-empty.json")
+        let response = try completion("drawer-complete-empty.json")
 
         let task = CaptureDrawerMenuPresentation(response: response, selectedIndex: 0)
         XCTAssertEqual(task.footer, "Adds after \"fast disk\" in REQUIREMENTS")
@@ -90,7 +95,7 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
     }
 
     func testTypedQueryWithNoMatchOffersOnlyTheNewRow() throws {
-        let response = try completion("drawer-contract-complete-typed-new.json")
+        let response = try completion("drawer-complete-typed-none.json")
         XCTAssertFalse(response.opensWithoutSelection)
         XCTAssertEqual(
             CaptureCompletionMenu.initialSelectedIndex(for: response, queryIsEmpty: false), 0,
@@ -110,7 +115,7 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
     }
 
     func testTypedQueryPlacesTheMatchingRecentRowBeforeTheNewRow() throws {
-        let response = try completion("drawer-contract-complete-typed-recent.json")
+        let response = try completion("drawer-complete-typed-recent.json")
         let menu = CaptureDrawerMenuPresentation(
             response: response, selectedIndex: 0, query: "mot")
 
@@ -121,7 +126,7 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
     }
 
     func testRefusedRowShowsBobsReasonIsDisabledAndFooterRepeatsIt() throws {
-        let response = try completion("drawer-contract-complete-refused.json")
+        let response = try completion("drawer-complete-typed-reserved.json")
         let candidate = try XCTUnwrap(response.candidates.first)
         XCTAssertTrue(CaptureCompletionMenu.isDisabled(candidate), "Return on it is a no-op")
 
@@ -129,9 +134,9 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
         let row = try XCTUnwrap(menu.rows.first)
 
         XCTAssertTrue(row.isRefused)
-        XCTAssertEqual(row.refusal, "TASKS is reserved for the note's task list")
-        XCTAssertEqual(menu.footer, "TASKS is reserved for the note's task list")
-        XCTAssertTrue(row.accessibilityLabel.contains("unavailable: TASKS is reserved"))
+        XCTAssertEqual(row.refusal, "`TASKS` is managed by Bob; name the drawer something else")
+        XCTAssertEqual(menu.footer, "`TASKS` is managed by Bob; name the drawer something else")
+        XCTAssertTrue(row.accessibilityLabel.contains("unavailable: `TASKS` is managed by Bob"))
     }
 
     // MARK: - Pieces
@@ -170,7 +175,7 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
     }
 
     func testRowIndexIsTheCandidateIndexForSelection() throws {
-        let response = try completion("drawer-contract-complete-empty.json")
+        let response = try completion("drawer-complete-empty.json")
         let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: nil)
 
         XCTAssertEqual(menu.rows.map(\.index), [0, 1, 2, 3])

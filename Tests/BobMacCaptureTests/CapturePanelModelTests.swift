@@ -6273,8 +6273,8 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.completionResponse?.context == "drawer" }
 
         XCTAssertTrue(model.completionVisible)
-        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 29, end: 32))
-        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 28, end: 32))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "#requirements")
         XCTAssertEqual(model.selectedCompletionIndex, 0, "typing preselects the best row")
     }
 

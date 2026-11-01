@@ -7,8 +7,7 @@ import XCTest
 /// Hosted `@route+id#` drawer menu: unselected open on an empty query, best-row
 /// preselection on a typed one, the consequence footer, and the no-op on a
 /// refused row. Bob authors the rows; Swift only presents them. The empty-query
-/// menu is the synthetic `drawer-contract-complete-empty.json` overlay (see
-/// `Tests/Fixtures/drawer-fixtures-README.md`).
+/// menu is generated from raw Bob output (see `Tests/Fixtures/drawer-fixtures-README.md`).
 @MainActor
 final class CaptureDrawerMenuHostedTests: XCTestCase {
     func testEmptyQueryOpensTheDrawerMenuWithNothingSelected() async throws {
@@ -41,6 +40,18 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
     }
 
+    func testProjectTaskMenuUsesItsH2Drawers() throws {
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(contentsOf: fixtureURL("drawer-complete-project-empty.json"))
+        )
+
+        XCTAssertEqual(response.context, "drawer")
+        XCTAssertEqual(response.target?.blockID, "prj")
+        XCTAssertEqual(response.candidates.first?.title, "Requirements")
+        XCTAssertEqual(response.candidates.first?.consequence, "Adds to ## Requirements")
+    }
+
     func testNonDrawerContextsHaveNoDrawerPresentation() async throws {
         let model = try makeModel()
         XCTAssertNil(model.drawerMenuPresentation())
@@ -53,7 +64,7 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
 
     func testDownThenTabWalksTheRowsWithoutEditingUntilAccepted() throws {
         let model = CapturePanelModel()
-        try installDrawerMenu(on: model, fixture: "drawer-contract-complete-empty.json")
+        try installDrawerMenu(on: model, fixture: "drawer-complete-empty.json")
         XCTAssertNil(model.selectedCompletionIndex)
 
         model.selectNextCompletion()
@@ -69,7 +80,7 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
 
     func testFooterShowsBobsConsequenceForTheSelectedRowAndTheHintWhenNone() throws {
         let model = CapturePanelModel()
-        try installDrawerMenu(on: model, fixture: "drawer-contract-complete-empty.json")
+        try installDrawerMenu(on: model, fixture: "drawer-complete-empty.json")
 
         XCTAssertEqual(
             model.drawerMenuPresentation()?.footer, CaptureCompletionMenu.unselectedFooterHint)
@@ -87,7 +98,7 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
         let model = CapturePanelModel()
         try installDrawerMenu(
             on: model,
-            fixture: "drawer-contract-complete-refused.json",
+            fixture: "drawer-complete-typed-reserved.json",
             draft: "Postgres 17 minimum @foo+bar#tasks"
         )
 
@@ -97,14 +108,15 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
         XCTAssertEqual(model.completionResponse?.context, "drawer")
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(
-            model.drawerMenuPresentation()?.footer, "TASKS is reserved for the note's task list")
+            model.drawerMenuPresentation()?.footer,
+            "`TASKS` is managed by Bob; name the drawer something else")
     }
 
     func testAcceptingTheNewRowSplicesBobsReplacementAndCursor() throws {
         let model = CapturePanelModel()
         try installDrawerMenu(
             on: model,
-            fixture: "drawer-contract-complete-typed-new.json",
+            fixture: "drawer-complete-typed-none.json",
             draft: "Postgres 17 minimum @foo+bar#perf"
         )
         XCTAssertEqual(model.selectedCompletionIndex, 0)
@@ -119,7 +131,7 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
 
     func testEscapeClosesTheDrawerMenuAndKeepsTheDraft() throws {
         let model = CapturePanelModel()
-        try installDrawerMenu(on: model, fixture: "drawer-contract-complete-empty.json")
+        try installDrawerMenu(on: model, fixture: "drawer-complete-empty.json")
 
         model.dismissCompletion()
 

@@ -11,10 +11,14 @@ import XCTest
 final class CaptureTaskTypeHostedTests: XCTestCase {
     func testBareLeadingTrailingAndChildMarkersOpenTaskTypeMenu() async throws {
         let model = try makeModel()
-        for draft in ["#f", "#fix Fix it", "Fix the parser #f"] {
+        for (draft, query) in [("#f", "f"), ("#fix Fix it", "fix"), ("Fix the parser #f", "f")] {
             model.plainDraft = draft
             model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-            await waitUntil { model.completionResponse?.context == "task_type" }
+            await waitUntil {
+                model.completionResponse?.context == "task_type"
+                    && model.completionResponse?.query == query
+                    && model.completionResponse?.cursor == draft.utf8.count
+            }
             XCTAssertEqual(model.selectedCompletionIndex, 0, draft)
             XCTAssertNotNil(model.taskTypeMenuPresentation(), draft)
         }
@@ -22,8 +26,31 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         let child = "Parent task\n- check the lexer #fi"
         model.plainDraft = child
         model.editorTextDidChange(cursorUTF8Offset: child.utf8.count)
-        await waitUntil { model.completionResponse?.context == "task_type" }
+        await waitUntil {
+            model.completionResponse?.context == "task_type"
+                && model.completionResponse?.query == "fi"
+                && model.completionResponse?.cursor == child.utf8.count
+        }
         XCTAssertEqual(model.completionResponse?.query, "fi")
+    }
+
+    func testSeparateTypeMarkerAfterExistingTaskChildOpensExistingTypeMenu() async throws {
+        for draft in [
+            "note @dev+current #fix",
+            "note @dev+current#requirements #fix",
+        ] {
+            let model = try makeModel()
+            model.plainDraft = draft
+            model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+            await waitUntil {
+                model.completionResponse?.context == "task_type"
+                    && model.completionResponse?.subject == "existing"
+            }
+
+            XCTAssertEqual(model.completionResponse?.subject, "existing", draft)
+            XCTAssertEqual(model.completionResponse?.query, "fix", draft)
+            XCTAssertNotNil(model.taskTypeMenuPresentation(), draft)
+        }
     }
 
     func testMidlineProseDoesNotOpenTaskTypeMenu() async throws {
