@@ -1821,6 +1821,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.dismissCompletion()
             model.openTodayPomodoroInObsidian()
             return true
+        case .joinCalendarEvent:
+            model.dismissCompletion()
+            model.joinFocusCalendarEvent()
+            return true
         case .switchPanel:
             let switcher = panelSwitcher
             DispatchQueue.main.async {
@@ -2024,6 +2028,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys,
                 taskIDPromptCyclesSuggestions: model.taskIDPromptCyclesSuggestions,
                 closeTaskCommaArmed: model.closeTaskCommaArmed,
+                draftIsBlank: !model.hasDraft,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )

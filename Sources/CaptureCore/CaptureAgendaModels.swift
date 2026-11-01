@@ -18,6 +18,10 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     public let pomodoros: [CaptureAgendaPomodoro]
     public let warnings: [String]
     public let planBudget: CapturePlanBudget?
+    /// The additive calendar facts for the idle agenda's Calendar band
+    /// (`capture-pomodoros --tasks` `events`). Nil on an older bob, so
+    /// the band stays hidden.
+    public let events: CaptureAgendaEvents?
 
     public init(
         ok: Bool = false,
@@ -26,7 +30,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         completedSummary: CaptureAgendaCompletedSummary = CaptureAgendaCompletedSummary(),
         pomodoros: [CaptureAgendaPomodoro] = [],
         warnings: [String] = [],
-        planBudget: CapturePlanBudget? = nil
+        planBudget: CapturePlanBudget? = nil,
+        events: CaptureAgendaEvents? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -35,6 +40,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         self.pomodoros = pomodoros
         self.warnings = warnings
         self.planBudget = planBudget
+        self.events = events
     }
 
     public init(from decoder: Decoder) throws {
@@ -52,6 +58,10 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         ) ?? []
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
         planBudget = try container.decodeIfPresent(CapturePlanBudget.self, forKey: .planBudget)
+        events = try container.decodeIfPresent(
+            CaptureAgendaEvents.self,
+            forKey: .events
+        )
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -69,6 +79,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case pomodoros
         case warnings
         case planBudget = "plan_budget"
+        case events
     }
 }
 
@@ -77,21 +88,30 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
 public struct CaptureAgendaCompletedSummary: Decodable, Equatable, Sendable {
     public let count: Int
     public let minutes: Int
+    /// Closed untracked sessions in today's ledger. Older bob omits
+    /// the field; it decodes as 0.
+    public let untrackedCount: Int
 
-    public init(count: Int = 0, minutes: Int = 0) {
+    public init(count: Int = 0, minutes: Int = 0, untrackedCount: Int = 0) {
         self.count = count
         self.minutes = minutes
+        self.untrackedCount = untrackedCount
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         count = try container.decodeIfPresent(Int.self, forKey: .count) ?? 0
         minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+        untrackedCount = try container.decodeIfPresent(
+            Int.self,
+            forKey: .untrackedCount
+        ) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
         case count
         case minutes
+        case untrackedCount = "untracked_count"
     }
 }
 
@@ -111,6 +131,9 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let slug: String?
     public let selectable: Bool
     public let homes: CaptureAgendaHomes?
+    /// Whether the entry's session counts as tracked time. Nil on an
+    /// older bob, which predates untracked sessions.
+    public let tracked: Bool?
     /// Bob-owned theme refs for the entry name (`capture-pomodoros
     /// --tasks` `themes`). Older Bob omits the array; it decodes as
     /// empty and the agenda renders the plain name.
@@ -130,6 +153,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         slug: String? = nil,
         selectable: Bool = false,
         homes: CaptureAgendaHomes? = nil,
+        tracked: Bool? = nil,
         themes: [CapturePomodoroThemeRef] = []
     ) {
         self.line = line
@@ -145,6 +169,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.slug = slug
         self.selectable = selectable
         self.homes = homes
+        self.tracked = tracked
         self.themes = themes
     }
 
@@ -165,6 +190,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
         homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
+        tracked = try container.decodeIfPresent(Bool.self, forKey: .tracked)
         themes =
             (try? container.decodeIfPresent(
                 [CapturePomodoroThemeRef].self,
@@ -186,6 +212,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case slug
         case selectable
         case homes
+        case tracked
         case themes
     }
 }
@@ -209,6 +236,9 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
     public let linesTruncated: Int
     public let ledgerNotes: [CaptureAgendaLine]
     public let warning: String?
+    /// Event details when this Task Link targets today's Event Task.
+    /// Nil for ordinary tasks and on an older bob.
+    public let event: CaptureAgendaItemEvent?
 
     public init(
         index: Int? = nil,
@@ -227,7 +257,8 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         lines: [CaptureAgendaLine] = [],
         linesTruncated: Int = 0,
         ledgerNotes: [CaptureAgendaLine] = [],
-        warning: String? = nil
+        warning: String? = nil,
+        event: CaptureAgendaItemEvent? = nil
     ) {
         self.index = index
         self.ledgerLine = ledgerLine
@@ -246,6 +277,7 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         self.linesTruncated = linesTruncated
         self.ledgerNotes = ledgerNotes
         self.warning = warning
+        self.event = event
     }
 
     public init(from decoder: Decoder) throws {
@@ -273,6 +305,10 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
             forKey: .ledgerNotes
         ) ?? []
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
+        event = try container.decodeIfPresent(
+            CaptureAgendaItemEvent.self,
+            forKey: .event
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -293,6 +329,7 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         case linesTruncated = "lines_truncated"
         case ledgerNotes = "ledger_notes"
         case warning
+        case event
     }
 }
 
@@ -479,4 +516,402 @@ public enum CaptureAgendaMarker: Equatable, Sendable, Decodable {
 public enum CaptureAgendaFetch: Equatable, Sendable {
     case unchanged
     case changed(snapshot: CaptureAgendaSnapshot, bytes: Data)
+}
+
+/// Event details attached to a Task Link that targets today's Event
+/// Task (`capture-pomodoros --tasks` item `event`). Older bob omits
+/// the whole object.
+public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
+    public let timeRange: String?
+    public let startsAt: String?
+    public let endsAt: String?
+    public let untracked: Bool
+    public let title: String
+
+    public init(
+        timeRange: String? = nil,
+        startsAt: String? = nil,
+        endsAt: String? = nil,
+        untracked: Bool = false,
+        title: String = ""
+    ) {
+        self.timeRange = timeRange
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.untracked = untracked
+        self.title = title
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        startsAt = try container.decodeIfPresent(String.self, forKey: .startsAt)
+        endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt)
+        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timeRange = "time_range"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case untracked
+        case title
+    }
+}
+
+/// What an agenda event row describes: a real Event Task or a timed
+/// context line. Unknown strings decode to `.other`.
+public enum CaptureAgendaEventKind: Equatable, Sendable, Decodable {
+    case task
+    case timedContext
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "task":
+            self = .task
+        case "timed_context":
+            self = .timedContext
+        default:
+            self = .other(raw)
+        }
+    }
+}
+
+/// Where an agenda event row sits relative to now. Unknown strings
+/// decode to `.other`.
+public enum CaptureAgendaEventPhase: Equatable, Sendable, Decodable {
+    case ended
+    case running
+    case upcoming
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "ended":
+            self = .ended
+        case "running":
+            self = .running
+        case "upcoming":
+            self = .upcoming
+        default:
+            self = .other(raw)
+        }
+    }
+}
+
+/// The home attribution of one agenda event row, from the Event
+/// Task's root.
+public struct CaptureAgendaEventHome: Decodable, Equatable, Sendable {
+    public let label: String
+    public let hue: PomodoroHomeHue?
+
+    public init(label: String = "", hue: PomodoroHomeHue? = nil) {
+        self.label = label
+        self.hue = hue
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case label
+        case hue
+    }
+}
+
+/// The Pomodoro lineup entry linked from one agenda event row.
+public struct CaptureAgendaEventPomodoro: Decodable, Equatable, Sendable {
+    public let line: Int
+    public let role: CaptureAgendaRole
+    public let index: Int?
+
+    public init(line: Int = 0, role: CaptureAgendaRole = .open, index: Int? = nil) {
+        self.line = line
+        self.role = role
+        self.index = index
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        role = try container.decodeIfPresent(CaptureAgendaRole.self, forKey: .role) ?? .open
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case role
+        case index
+    }
+}
+
+/// One event in the agenda's `events` block: a timed calendar row.
+public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
+    public let line: Int
+    public let blockID: String?
+    public let kind: CaptureAgendaEventKind
+    public let qualifier: String?
+    public let title: String
+    public let timeRange: String?
+    public let startsAt: String?
+    public let endsAt: String?
+    public let durationMinutes: Int?
+    public let phase: CaptureAgendaEventPhase?
+    public let statusSymbol: String?
+    public let statusType: String?
+    public let untracked: Bool
+    public let root: String?
+    public let home: CaptureAgendaEventHome?
+    public let joinURL: String?
+    public let calendarURL: String?
+    public let location: String?
+    public let pomodoro: CaptureAgendaEventPomodoro?
+
+    public init(
+        line: Int = 0,
+        blockID: String? = nil,
+        kind: CaptureAgendaEventKind = .task,
+        qualifier: String? = nil,
+        title: String = "",
+        timeRange: String? = nil,
+        startsAt: String? = nil,
+        endsAt: String? = nil,
+        durationMinutes: Int? = nil,
+        phase: CaptureAgendaEventPhase? = nil,
+        statusSymbol: String? = nil,
+        statusType: String? = nil,
+        untracked: Bool = false,
+        root: String? = nil,
+        home: CaptureAgendaEventHome? = nil,
+        joinURL: String? = nil,
+        calendarURL: String? = nil,
+        location: String? = nil,
+        pomodoro: CaptureAgendaEventPomodoro? = nil
+    ) {
+        self.line = line
+        self.blockID = blockID
+        self.kind = kind
+        self.qualifier = qualifier
+        self.title = title
+        self.timeRange = timeRange
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.durationMinutes = durationMinutes
+        self.phase = phase
+        self.statusSymbol = statusSymbol
+        self.statusType = statusType
+        self.untracked = untracked
+        self.root = root
+        self.home = home
+        self.joinURL = joinURL
+        self.calendarURL = calendarURL
+        self.location = location
+        self.pomodoro = pomodoro
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        kind = try container.decodeIfPresent(
+            CaptureAgendaEventKind.self,
+            forKey: .kind
+        ) ?? .task
+        qualifier = try container.decodeIfPresent(String.self, forKey: .qualifier)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        startsAt = try container.decodeIfPresent(String.self, forKey: .startsAt)
+        endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt)
+        durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes)
+        phase = try container.decodeIfPresent(CaptureAgendaEventPhase.self, forKey: .phase)
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusType = try container.decodeIfPresent(String.self, forKey: .statusType)
+        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        root = try container.decodeIfPresent(String.self, forKey: .root)
+        home = try container.decodeIfPresent(CaptureAgendaEventHome.self, forKey: .home)
+        joinURL = try container.decodeIfPresent(String.self, forKey: .joinURL)
+        calendarURL = try container.decodeIfPresent(String.self, forKey: .calendarURL)
+        location = try container.decodeIfPresent(String.self, forKey: .location)
+        pomodoro = try container.decodeIfPresent(
+            CaptureAgendaEventPomodoro.self,
+            forKey: .pomodoro
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case blockID = "block_id"
+        case kind
+        case qualifier
+        case title
+        case timeRange = "time_range"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case durationMinutes = "duration_minutes"
+        case phase
+        case statusSymbol = "status_symbol"
+        case statusType = "status_type"
+        case untracked
+        case root
+        case home
+        case joinURL = "join_url"
+        case calendarURL = "calendar_url"
+        case location
+        case pomodoro
+    }
+}
+
+/// One all-day calendar context line for the band's all-day row.
+public struct CaptureAgendaAllDayContext: Decodable, Equatable, Sendable {
+    public let line: Int
+    public let title: String
+    public let qualifier: String?
+
+    public init(line: Int = 0, title: String = "", qualifier: String? = nil) {
+        self.line = line
+        self.title = title
+        self.qualifier = qualifier
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        qualifier = try container.decodeIfPresent(String.self, forKey: .qualifier)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case title
+        case qualifier
+    }
+}
+
+/// Free time before the focus event, with the default-Pomodoro fit hint.
+public struct CaptureAgendaEventGap: Decodable, Equatable, Sendable {
+    public let from: String
+    public let until: String
+    public let minutes: Int
+    public let fits: String?
+
+    public init(from: String = "", until: String = "", minutes: Int = 0, fits: String? = nil) {
+        self.from = from
+        self.until = until
+        self.minutes = minutes
+        self.fits = fits
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        from = try container.decodeIfPresent(String.self, forKey: .from) ?? ""
+        until = try container.decodeIfPresent(String.self, forKey: .until) ?? ""
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+        fits = try container.decodeIfPresent(String.self, forKey: .fits)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case from
+        case until
+        case minutes
+        case fits
+    }
+}
+
+/// The running Pomodoro collides with the focus event.
+public struct CaptureAgendaEventConflict: Decodable, Equatable, Sendable {
+    public let pomodoroLine: Int
+    public let event: Int
+    public let overlapMinutes: Int
+
+    public init(pomodoroLine: Int = 0, event: Int = 0, overlapMinutes: Int = 0) {
+        self.pomodoroLine = pomodoroLine
+        self.event = event
+        self.overlapMinutes = overlapMinutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
+        event = try container.decodeIfPresent(Int.self, forKey: .event) ?? 0
+        overlapMinutes = try container.decodeIfPresent(Int.self, forKey: .overlapMinutes) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pomodoroLine = "pomodoro_line"
+        case event
+        case overlapMinutes = "overlap_minutes"
+    }
+}
+
+/// Calendar facts and timing hints for the idle agenda's Calendar
+/// band. Every field is optional-or-empty safe: an older bob omits
+/// the whole block and the band stays hidden.
+public struct CaptureAgendaEvents: Decodable, Equatable, Sendable {
+    public let syncedAt: String?
+    public let allDay: [CaptureAgendaAllDayContext]
+    public let rows: [CaptureAgendaEventRow]
+    public let focus: Int?
+    public let gap: CaptureAgendaEventGap?
+    public let conflict: CaptureAgendaEventConflict?
+    public let startHint: String?
+    public let refreshAt: String?
+
+    public init(
+        syncedAt: String? = nil,
+        allDay: [CaptureAgendaAllDayContext] = [],
+        rows: [CaptureAgendaEventRow] = [],
+        focus: Int? = nil,
+        gap: CaptureAgendaEventGap? = nil,
+        conflict: CaptureAgendaEventConflict? = nil,
+        startHint: String? = nil,
+        refreshAt: String? = nil
+    ) {
+        self.syncedAt = syncedAt
+        self.allDay = allDay
+        self.rows = rows
+        self.focus = focus
+        self.gap = gap
+        self.conflict = conflict
+        self.startHint = startHint
+        self.refreshAt = refreshAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        syncedAt = try container.decodeIfPresent(String.self, forKey: .syncedAt)
+        allDay = try container.decodeIfPresent(
+            [CaptureAgendaAllDayContext].self,
+            forKey: .allDay
+        ) ?? []
+        rows = try container.decodeIfPresent(
+            [CaptureAgendaEventRow].self,
+            forKey: .rows
+        ) ?? []
+        focus = try container.decodeIfPresent(Int.self, forKey: .focus)
+        gap = try container.decodeIfPresent(CaptureAgendaEventGap.self, forKey: .gap)
+        conflict = try container.decodeIfPresent(
+            CaptureAgendaEventConflict.self,
+            forKey: .conflict
+        )
+        startHint = try container.decodeIfPresent(String.self, forKey: .startHint)
+        refreshAt = try container.decodeIfPresent(String.self, forKey: .refreshAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case syncedAt = "synced_at"
+        case allDay = "all_day"
+        case rows
+        case focus
+        case gap
+        case conflict
+        case startHint = "start_hint"
+        case refreshAt = "refresh_at"
+    }
 }

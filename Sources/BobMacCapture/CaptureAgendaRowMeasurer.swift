@@ -209,6 +209,13 @@ enum CaptureAgendaHeightResolver {
         if let state = presentation.stateRow {
             out.append((state, .later))
         }
+        // The Calendar band renders outside the Now card, so every row
+        // measures at the full rows width with the neutral role.
+        if let calendar = presentation.calendar {
+            for row in calendar.allRows {
+                out.append((row, .later))
+            }
+        }
         for group in presentation.groups {
             out.append((group.headerRow, group.role))
             for row in group.sessionNoteRows {

@@ -14,6 +14,7 @@ final class CaptureAgendaModelsTests: XCTestCase {
         "agenda-yesterday.json",
         "agenda-homes.json",
         "agenda-homes-legacy.json",
+        "agenda-events.json",
     ]
 
     private func fixture(_ name: String) throws -> Data {
@@ -272,6 +273,75 @@ final class CaptureAgendaModelsTests: XCTestCase {
         let missingNote = try decodeFixture("agenda-no-daily-note.json")
         XCTAssertFalse(missingNote.warnings.isEmpty)
         XCTAssertTrue(missingNote.pomodoros.isEmpty)
+    }
+
+    func testEventsBlockDecodesWithUntrackedAndTrackedFlags() throws {
+        let snapshot = try decodeFixture("agenda-events.json")
+
+        XCTAssertEqual(snapshot.completedSummary.untrackedCount, 1)
+        let events = try XCTUnwrap(snapshot.events)
+        XCTAssertEqual(events.syncedAt, "2026-08-28T08:02")
+        XCTAssertEqual(events.refreshAt, "2026-08-28T09:30")
+        XCTAssertEqual(events.focus, 0)
+        XCTAssertEqual(events.startHint, "=meet")
+        XCTAssertEqual(events.allDay.count, 1)
+        XCTAssertEqual(events.allDay[0].title, "School holiday")
+        XCTAssertEqual(events.rows.count, 3)
+
+        let standup = events.rows[0]
+        XCTAssertEqual(standup.kind, .task)
+        XCTAssertEqual(standup.phase, .upcoming)
+        XCTAssertFalse(standup.untracked)
+        XCTAssertEqual(standup.home?.label, "job")
+        XCTAssertEqual(standup.home?.hue, .green)
+        XCTAssertEqual(standup.joinURL, "https://meet.google.com/abc")
+        XCTAssertEqual(standup.pomodoro?.line, 13)
+        XCTAssertEqual(standup.pomodoro?.role, .next)
+
+        let lunch = events.rows[2]
+        XCTAssertTrue(lunch.untracked)
+        XCTAssertNil(lunch.home)
+        XCTAssertNil(lunch.joinURL)
+
+        let conflict = try XCTUnwrap(events.conflict)
+        XCTAssertEqual(conflict.pomodoroLine, 12)
+        XCTAssertEqual(conflict.event, 0)
+        XCTAssertEqual(conflict.overlapMinutes, 10)
+
+        let timeless = events.rows[1]
+        XCTAssertEqual(timeless.kind, .timedContext)
+        XCTAssertEqual(timeless.qualifier, "maybe")
+
+        let meet = snapshot.pomodoros.first(where: { $0.name == "MEET" })
+        let linked = try XCTUnwrap(meet?.items.first(where: { $0.event != nil }))
+        XCTAssertEqual(linked.event?.title, "Standup")
+        XCTAssertFalse(linked.event?.untracked ?? true)
+        let lunchItem = try XCTUnwrap(meet?.items.first(where: { $0.blockID == "lunch" }))
+        XCTAssertTrue(lunchItem.event?.untracked ?? false)
+
+        let untrackedEntry = snapshot.pomodoros.first(where: { $0.name == "UNTRACKED BREAK" })
+        XCTAssertEqual(untrackedEntry?.tracked, false)
+    }
+
+    func testOlderPayloadsDecodeWithoutEvents() throws {
+        let current = try decodeFixture("agenda-current.json")
+        XCTAssertNil(current.events)
+        XCTAssertEqual(current.completedSummary.untrackedCount, 0)
+        XCTAssertTrue(current.pomodoros.allSatisfy({ $0.tracked == nil }))
+        XCTAssertTrue(current.pomodoros.allSatisfy({ $0.items.allSatisfy({ $0.event == nil }) }))
+
+        let empty = try decodeFixture("agenda-empty.json")
+        XCTAssertNil(empty.events)
+    }
+
+    func testUnknownEventEnumsDecodeToOther() throws {
+        let raw =
+            "{\"line\": 7, \"kind\": \"holiday\", \"phase\": \"someday\","
+            + " \"title\": \"Mystery\", \"untracked\": false}"
+        let payload = Data(raw.utf8)
+        let row = try JSONDecoder().decode(CaptureAgendaEventRow.self, from: payload)
+        XCTAssertEqual(row.kind, .other("holiday"))
+        XCTAssertEqual(row.phase, .other("someday"))
     }
 
     func testLegacyPayloadWithoutTasksFieldsDecodesWithEmptyItems() throws {

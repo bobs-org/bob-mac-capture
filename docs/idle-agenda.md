@@ -46,6 +46,24 @@ including the next panel show.
   refresh keeps the last good agenda and marks the title row "Couldn't refresh". An
   older `bob` without `--tasks` hides the agenda and serves only the close-comma
   count until Recheck Bob or an executable change.
+- Calendar band. Between the Now groups and the Next/Later ones (right under the
+  title rows when nothing runs), the band summarizes today's calendar from bob's
+  additive `events` block; an older `bob` without it shows no band. The header names
+  the focus event ("Standup at 13:00 · in 38m") with the remaining count, total
+  minutes, and sync stamp ("4 left · 2h 30m · ↻ 08:02", with the weekday when the
+  stamp is from another day). Event rows show the time, a home-hue dot (hollow and
+  dashed for `#untracked` events, with a dashed "untracked" capsule), the title
+  (italic and dimmed for Maybe/free rows), a join button when the event carries one,
+  and a trailing countdown; the focus row also wears the `=meet`-style fit draft.
+  A quiet gap row ("38m free · =7 fits") precedes the focus, and a collision ("BOB
+  runs 10m into Standup") paints amber. The band folds `full → compact` (header
+  and focus row behind a `+N` chip) `→ oneRow` (header plus "then 1:1 13:30 · +2")
+  after the Later groups fold; ended rows stay hidden behind a "+M earlier" chip
+  until expanded. When every event has ended, one quiet row reads "Calendar clear
+  for the rest of the day". Command-J joins the focus event from an empty draft.
+  The band's countdowns tick every minute, and the store schedules one extra
+  refresh at the next event boundary while the agenda is visible. MEET group items
+  linked to an Event Task show a time chip instead of the bold span.
 - Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
   then collapse to one line per task, one row per Pomodoro, and finally into a Later
   name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`, `4 tasks`)

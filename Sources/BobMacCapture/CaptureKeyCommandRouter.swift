@@ -96,6 +96,7 @@ enum CaptureKeyCommand: Equatable {
     case flipRelationDirection
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
+    case joinCalendarEvent
     case switchPanel
     case armEditorLeader
     case cancelEditorLeader
@@ -143,6 +144,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerOperatorContinuationKeys: [String] = []
     var taskIDPromptCyclesSuggestions = false
     var closeTaskCommaArmed = false
+    var draftIsBlank = false
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -353,6 +355,11 @@ struct CaptureKeyCommandRouter {
         case KeyCode.o:
             return modifiers == [.control, .shift] ? .insertLineAbove : nil
         case KeyCode.j:
+            // Command-J is free: in an empty draft it joins the focus
+            // calendar event. Any other draft leaves the key to AppKit.
+            if modifiers == .command {
+                return context.draftIsBlank ? .joinCalendarEvent : nil
+            }
             if modifiers == .control {
                 return .insertBulletNewline
             }

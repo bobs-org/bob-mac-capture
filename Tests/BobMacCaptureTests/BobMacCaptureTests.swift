@@ -619,6 +619,22 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterJoinsCalendarEventFromBlankDraft() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 38, modifiers: .command),
+                context: CaptureKeyRoutingContext(draftIsBlank: true)
+            ),
+            .joinCalendarEvent
+        )
+        // A typed draft leaves Command-J to AppKit.
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .control)))
+    }
+
     func testKeyRouterUnselectedCompletionSubmitsAndTabTakesTheFirstRow() {
         let router = CaptureKeyCommandRouter()
         let unselected = CaptureKeyRoutingContext(

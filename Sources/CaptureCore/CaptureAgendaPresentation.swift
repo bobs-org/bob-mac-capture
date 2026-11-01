@@ -6,6 +6,10 @@ public enum CaptureAgendaUnitID: Hashable, Equatable, Sendable {
     case task(ledgerLine: Int)
     case group(entryLine: Int)
     case strip
+    /// The Calendar band as a whole: expanding pins it at full.
+    case calendar
+    /// The band's ended rows: expanding reveals them in the full fold.
+    case calendarEarlier
 }
 
 /// The kind of one rendered agenda row. Part of the row key, so a kind
@@ -30,6 +34,14 @@ public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
     case truncation
     case groupOneRow
     case strip
+    case calendarHeader
+    case calendarRail
+    case calendarAllDay
+    case calendarRow
+    case calendarGap
+    case calendarConflict
+    case calendarMore
+    case calendarClear
 }
 
 /// Cache key for a measured row: kind, display text, depth, line limit,
@@ -49,6 +61,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// Theme hues for a group header or one-row name, in component
     /// order. Part of the measure key so a hue change re-measures.
     public let themeHues: [PomodoroHomeHue?]
+    /// Calendar event facts for a `.calendarRow`: time text, join
+    /// URL, and countdown all affect measurement.
+    public let calendar: CaptureAgendaCalendarRowData?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -61,7 +76,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
-        themeHues: [PomodoroHomeHue?] = []
+        themeHues: [PomodoroHomeHue?] = [],
+        calendar: CaptureAgendaCalendarRowData? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -74,6 +90,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
         self.themeHues = themeHues
+        self.calendar = calendar
     }
 }
 
@@ -110,6 +127,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// Bob-owned theme refs for a group header or one-row name, in
     /// component order. Empty for every other row and on an older Bob.
     public let themeRefs: [CapturePomodoroThemeRef]
+    /// Calendar event facts for a `.calendarRow`. Nil for every other
+    /// kind: the view renders the row from these, never from JSON.
+    public let calendar: CaptureAgendaCalendarRowData?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -127,7 +147,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
-        themeRefs: [CapturePomodoroThemeRef] = []
+        themeRefs: [CapturePomodoroThemeRef] = [],
+        calendar: CaptureAgendaCalendarRowData? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -145,6 +166,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
         self.themeRefs = themeRefs
+        self.calendar = calendar
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -156,7 +178,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
-            themeHues: themeRefs.map(\.hue)
+            themeHues: themeRefs.map(\.hue),
+            calendar: calendar
         )
     }
 
@@ -268,6 +291,17 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     public let planBudgetRow: CaptureAgendaRow?
     public let warningRow: CaptureAgendaRow?
     public let groups: [CaptureAgendaGroup]
+    /// The Calendar band: today's events from bob's additive `events`
+    /// block, placed after the Now groups (or after the title rows
+    /// when nothing runs). Nil when bob omits `events` (older bob) or
+    /// when the block carries no rows and no all-day lines.
+    public let calendar: CaptureAgendaCalendar?
+    /// True while the band shows a running or upcoming event: the view
+    /// mounts its minute-granularity countdown then, even with no
+    /// running Pomodoro.
+    public var calendarNeedsTick: Bool {
+        calendar?.hasTickingEvent == true
+    }
     public let stateRow: CaptureAgendaRow?
     /// The title row's stale suffix, shared by the presentation and the
     /// view's stale-icon split. Never a ledger fact, only wording.
@@ -313,10 +347,18 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             state = .loading
             planBudgetRow = nil
             groups = []
+            calendar = nil
             stateRow = Self.makeStateRow(text: "Loading today…")
             return
         }
         planBudgetRow = snapshot.planBudget.map(Self.makePlanBudgetRow)
+        calendar = Self.makeCalendar(
+            events: snapshot.events,
+            entries: snapshot.pomodoros,
+            date: today,
+            now: now,
+            locale: locale
+        )
         guard !ordered.isEmpty else {
             groups = []
             if Self.hasMissingDailyNoteWarning(snapshot.warnings) {
@@ -408,6 +450,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         planBudgetRow: CaptureAgendaRow?,
         warningRow: CaptureAgendaRow?,
         groups: [CaptureAgendaGroup],
+        calendar: CaptureAgendaCalendar? = nil,
         stateRow: CaptureAgendaRow?,
         stripFullRow: CaptureAgendaRow
     ) {
@@ -419,6 +462,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         self.planBudgetRow = planBudgetRow
         self.warningRow = warningRow
         self.groups = groups
+        self.calendar = calendar
         self.stateRow = stateRow
         self.stripFullRow = stripFullRow
     }
@@ -894,13 +938,17 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         baseLabel: String
     ) -> CaptureAgendaTask {
         let caption = markerCaption(marker: item.marker, role: entry.role)
+        // MEET items linked to an Event Task wear the event's time
+        // chip instead of the bold span.
+        let timeChip = eventTimeChip(item: item, entry: entry)
+        let title = timeChip == nil ? title : stripLeadingBoldSpan(title)
         let headline = CaptureAgendaRow(
             kind: .taskHeadline,
             text: title,
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.headlineLineLimit,
             numberBadge: item.index,
-            accessoryText: caption,
+            accessoryText: joinAccessories([timeChip, caption]),
             statusGlyph: item.statusSymbol,
             accessibilityLabel: baseLabel
         )
@@ -934,7 +982,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.headlineLineLimit,
             numberBadge: item.index,
-            accessoryText: joinAccessories([chipText, caption]),
+            accessoryText: joinAccessories([timeChip, chipText, caption]),
             statusGlyph: item.statusSymbol,
             accessibilityLabel: baseLabel,
             accessoryAccessibilityLabel: chipLabel
@@ -951,7 +999,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.oneLineLimit,
             numberBadge: item.index,
-            accessoryText: joinAccessories([hiddenChip, caption]),
+            accessoryText: joinAccessories([timeChip, hiddenChip, caption]),
             statusGlyph: item.statusSymbol,
             accessibilityLabel: baseLabel,
             accessoryAccessibilityLabel: hiddenLabel
@@ -1138,5 +1186,633 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// `↑ in <first group>`. Nothing here is shared across builds.
     static func duplicateKey(target: String?, blockID: String) -> String {
         "\(target ?? "")\n\(blockID)"
+    }
+}
+
+// MARK: - Calendar band
+
+/// Per-event facts for one `.calendarRow`. The view renders the row
+/// from these, never from snapshot JSON.
+public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
+    /// `"13:00–13:30"` for the monospaced time column.
+    public let timeText: String
+    public let hue: PomodoroHomeHue?
+    /// True for `#untracked` events: the dot is hollow and dashed and
+    /// a dashed "untracked" capsule follows the title.
+    public let untracked: Bool
+    /// True for Maybe/free rows: the title renders italic and dimmed.
+    public let dimmed: Bool
+    /// The join target behind the row's join button. Nil when the
+    /// event carries no join URL.
+    public let joinURL: String?
+    /// `"in 38m"` / `"23m left"` for running and upcoming rows. Ended
+    /// rows carry the status glyph on the row instead.
+    public let countdownText: String?
+    /// The `=meet`-style fit draft, shown as a chip on the focus row.
+    public let startHint: String?
+
+    public init(
+        timeText: String = "",
+        hue: PomodoroHomeHue? = nil,
+        untracked: Bool = false,
+        dimmed: Bool = false,
+        joinURL: String? = nil,
+        countdownText: String? = nil,
+        startHint: String? = nil
+    ) {
+        self.timeText = timeText
+        self.hue = hue
+        self.untracked = untracked
+        self.dimmed = dimmed
+        self.joinURL = joinURL
+        self.countdownText = countdownText
+        self.startHint = startHint
+    }
+}
+
+/// Fold level of the Calendar band. `full` shows every remaining row;
+/// `compact` shows the focus row behind a `+N` chip; `oneRow` merges
+/// the header and the next event into one line.
+public enum CaptureAgendaCalendarState: Equatable, Sendable {
+    case full
+    case compact
+    case oneRow
+}
+
+/// The Calendar band: today's events between the Now groups and the
+/// Next/Later groups (or right after the title rows when nothing
+/// runs). Every row is precomputed here, so the fit planner only
+/// picks row lists and the view renders verbatim.
+public struct CaptureAgendaCalendar: Equatable, Sendable {
+    public let headerRow: CaptureAgendaRow
+    public let allDayRow: CaptureAgendaRow?
+    /// Reserved slot for the day rail (painted by a later phase): an
+    /// empty decorative row in the `full` and `compact` folds.
+    public let railRow: CaptureAgendaRow
+    public let gapRow: CaptureAgendaRow?
+    public let conflictRow: CaptureAgendaRow?
+    /// Running and upcoming rows in note order.
+    public let upcomingRows: [CaptureAgendaRow]
+    /// Ended rows, shown only while `.calendarEarlier` is expanded.
+    public let endedRows: [CaptureAgendaRow]
+    /// The focus event's row: `compact` shows this one row.
+    public let focusRow: CaptureAgendaRow?
+    /// The focus event's join target for Command-J. Nil when the
+    /// focus row carries no join URL.
+    public let focusJoinURL: String?
+    /// Ended rows hidden behind the earlier chip.
+    public let earlierCount: Int
+    /// `"+M earlier"` (full fold): reveals the ended rows.
+    public let expandEarlierRow: CaptureAgendaRow?
+    /// `"+N"` (compact fold): pins the whole band at full.
+    public let expandAllRow: CaptureAgendaRow?
+    /// Merged header-plus-next line for the `oneRow` fold.
+    public let oneRowRow: CaptureAgendaRow
+    /// `"Calendar clear for the rest of the day"` when every event
+    /// has ended. The band is then exactly header plus this row.
+    public let clearRow: CaptureAgendaRow?
+    /// The next event boundary, for the store's refresh scheduling.
+    public let refreshAt: String?
+    /// True while a running or upcoming event remains: the view ticks
+    /// every minute for the countdowns.
+    public let hasTickingEvent: Bool
+    public let accessibilityLabel: String
+
+    public init(
+        headerRow: CaptureAgendaRow,
+        allDayRow: CaptureAgendaRow? = nil,
+        railRow: CaptureAgendaRow,
+        gapRow: CaptureAgendaRow? = nil,
+        conflictRow: CaptureAgendaRow? = nil,
+        upcomingRows: [CaptureAgendaRow] = [],
+        endedRows: [CaptureAgendaRow] = [],
+        focusRow: CaptureAgendaRow? = nil,
+        focusJoinURL: String? = nil,
+        earlierCount: Int = 0,
+        expandEarlierRow: CaptureAgendaRow? = nil,
+        expandAllRow: CaptureAgendaRow? = nil,
+        oneRowRow: CaptureAgendaRow,
+        clearRow: CaptureAgendaRow? = nil,
+        refreshAt: String? = nil,
+        hasTickingEvent: Bool = false,
+        accessibilityLabel: String = "Calendar"
+    ) {
+        self.headerRow = headerRow
+        self.allDayRow = allDayRow
+        self.railRow = railRow
+        self.gapRow = gapRow
+        self.conflictRow = conflictRow
+        self.upcomingRows = upcomingRows
+        self.endedRows = endedRows
+        self.focusRow = focusRow
+        self.focusJoinURL = focusJoinURL
+        self.earlierCount = earlierCount
+        self.expandEarlierRow = expandEarlierRow
+        self.expandAllRow = expandAllRow
+        self.oneRowRow = oneRowRow
+        self.clearRow = clearRow
+        self.refreshAt = refreshAt
+        self.hasTickingEvent = hasTickingEvent
+        self.accessibilityLabel = accessibilityLabel
+    }
+
+    /// Every precomputed row, for the measurer: the planner picks
+    /// subsets per fold, and the fixpoint pass measures new variants.
+    public var allRows: [CaptureAgendaRow] {
+        var rows = [headerRow]
+        if let allDayRow {
+            rows.append(allDayRow)
+        }
+        rows.append(railRow)
+        if let gapRow {
+            rows.append(gapRow)
+        }
+        if let conflictRow {
+            rows.append(conflictRow)
+        }
+        rows += endedRows
+        rows += upcomingRows
+        if let expandEarlierRow {
+            rows.append(expandEarlierRow)
+        }
+        if let expandAllRow {
+            rows.append(expandAllRow)
+        }
+        rows.append(oneRowRow)
+        if let clearRow {
+            rows.append(clearRow)
+        }
+        return rows
+    }
+
+    /// Rows for the `full` fold: header, all-day line, rail slot, gap,
+    /// conflict, upcoming rows (ended only while the earlier chip is
+    /// expanded), and the earlier chip while ended rows stay hidden.
+    public func fullRows(showEnded: Bool) -> [CaptureAgendaRow] {
+        if let clearRow {
+            return [headerRow, clearRow]
+        }
+        var rows = [headerRow]
+        if let allDayRow {
+            rows.append(allDayRow)
+        }
+        rows.append(railRow)
+        if let gapRow {
+            rows.append(gapRow)
+        }
+        if let conflictRow {
+            rows.append(conflictRow)
+        }
+        if showEnded {
+            rows += endedRows
+        }
+        rows += upcomingRows
+        if !showEnded, let expandEarlierRow {
+            rows.append(expandEarlierRow)
+        }
+        return rows
+    }
+
+    /// Rows for the `compact` fold: header, rail slot, conflict, the
+    /// focus row, and the `+N` chip while rows stay hidden.
+    public func compactRows() -> [CaptureAgendaRow] {
+        if let clearRow {
+            return [headerRow, clearRow]
+        }
+        var rows = [headerRow, railRow]
+        if let conflictRow {
+            rows.append(conflictRow)
+        }
+        if let focusRow {
+            rows.append(focusRow)
+        }
+        if let expandAllRow {
+            rows.append(expandAllRow)
+        }
+        return rows
+    }
+}
+
+// MARK: - Calendar band builders
+
+extension CaptureAgendaPresentation {
+    /// Builds the Calendar band from bob's additive `events` block.
+    /// Nil when bob omits `events` (older bob) or when the block
+    /// carries no rows and no all-day lines: the band stays hidden.
+    static func makeCalendar(
+        events: CaptureAgendaEvents?,
+        entries: [CaptureAgendaPomodoro],
+        date: String,
+        now: Date?,
+        locale: Locale
+    ) -> CaptureAgendaCalendar? {
+        guard let events else {
+            return nil
+        }
+        guard !events.rows.isEmpty || !events.allDay.isEmpty else {
+            return nil
+        }
+        let upcoming = events.rows.filter { $0.phase != .ended }
+        let ended = events.rows.filter { $0.phase == .ended }
+        let stamp = Self.calendarStampText(syncedAt: events.syncedAt, date: date, locale: locale)
+        let header = Self.makeCalendarHeader(
+            events: events,
+            upcoming: upcoming,
+            stamp: stamp,
+            now: now
+        )
+        let railRow = CaptureAgendaRow(
+            kind: .calendarRail,
+            text: "",
+            depth: 0,
+            lineLimit: 1,
+            accessibilityLabel: "Day timeline"
+        )
+        if upcoming.isEmpty {
+            let clearText: String
+            if let stamp {
+                clearText = "Calendar clear for the rest of the day · \(stamp)"
+            } else {
+                clearText = "Calendar clear for the rest of the day"
+            }
+            let clearRow = CaptureAgendaRow(
+                kind: .calendarClear,
+                text: clearText,
+                depth: 0,
+                lineLimit: 1,
+                accessibilityLabel: clearText
+            )
+            return CaptureAgendaCalendar(
+                headerRow: header,
+                railRow: railRow,
+                oneRowRow: header,
+                clearRow: clearRow,
+                refreshAt: events.refreshAt,
+                hasTickingEvent: false,
+                accessibilityLabel: header.accessibilityLabel ?? "Calendar"
+            )
+        }
+        let focusEvent = Self.calendarFocusEvent(events: events, upcoming: upcoming)
+        let focusIndex = focusEvent.flatMap { focus in
+            upcoming.firstIndex(where: { $0.line == focus.line })
+        } ?? 0
+        let upcomingRows = upcoming.indices.map { position in
+            let row = upcoming[position]
+            return Self.makeCalendarEventRow(
+                row,
+                countdown: Self.calendarCountdown(for: row, now: now),
+                startHint: position == focusIndex ? events.startHint : nil
+            )
+        }
+        let endedRows = ended.map {
+            Self.makeCalendarEventRow($0, countdown: nil, startHint: nil)
+        }
+        let focusRow = upcomingRows.indices.contains(focusIndex)
+            ? upcomingRows[focusIndex] : upcomingRows.first
+        let earlierCount = ended.count
+        let expandEarlierRow: CaptureAgendaRow? = earlierCount > 0
+            ? Self.makeCalendarChipRow(
+                text: "+\(earlierCount) earlier",
+                label: "Show \(earlierCount) earlier events"
+            ) : nil
+        let hiddenCompact = max(0, upcomingRows.count - 1) + earlierCount
+        let expandAllRow: CaptureAgendaRow? = hiddenCompact > 0
+            ? Self.makeCalendarChipRow(
+                text: "+\(hiddenCompact)",
+                label: "Show \(hiddenCompact) more events"
+            ) : nil
+        let oneRowRow = Self.makeCalendarOneRow(
+            header: header,
+            upcoming: upcoming,
+            focusIndex: focusIndex,
+            earlierCount: earlierCount
+        )
+        return CaptureAgendaCalendar(
+            headerRow: header,
+            allDayRow: Self.makeCalendarAllDayRow(events.allDay),
+            railRow: railRow,
+            gapRow: events.gap.map(Self.makeCalendarGapRow),
+            conflictRow: events.conflict.flatMap {
+                Self.makeCalendarConflictRow($0, events: events, entries: entries)
+            },
+            upcomingRows: upcomingRows,
+            endedRows: endedRows,
+            focusRow: focusRow,
+            focusJoinURL: focusEvent?.joinURL,
+            earlierCount: earlierCount,
+            expandEarlierRow: expandEarlierRow,
+            expandAllRow: expandAllRow,
+            oneRowRow: oneRowRow,
+            refreshAt: events.refreshAt,
+            hasTickingEvent: true,
+            accessibilityLabel: header.accessibilityLabel ?? "Calendar"
+        )
+    }
+
+    /// The focus event: bob's `focus` index when it lands on a row, else
+    /// the first remaining row.
+    static func calendarFocusEvent(
+        events: CaptureAgendaEvents,
+        upcoming: [CaptureAgendaEventRow]
+    ) -> CaptureAgendaEventRow? {
+        if let focus = events.focus,
+            events.rows.indices.contains(focus)
+        {
+            let row = events.rows[focus]
+            if row.phase != .ended {
+                return row
+            }
+        }
+        return upcoming.first
+    }
+
+    /// `"↻ 08:02"`, with the weekday (`"↻ Fri 08:02"`) when the sync
+    /// stamp is from another day. Nil when bob reports no stamp.
+    static func calendarStampText(syncedAt: String?, date: String, locale: Locale) -> String? {
+        guard let syncedAt, let clock = CaptureAgendaClock.clockTime(syncedAt) else {
+            return nil
+        }
+        let stamp = "↻ \(clock)"
+        let day = String(syncedAt.prefix(10))
+        guard day != date else {
+            return stamp
+        }
+        let parts = day.split(separator: "-")
+        guard parts.count == 3,
+            let year = Int(parts[0]),
+            let month = Int(parts[1]),
+            let dayOfMonth = Int(parts[2])
+        else {
+            return stamp
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        let components = DateComponents(year: year, month: month, day: dayOfMonth)
+        guard let resolved = calendar.date(from: components) else {
+            return stamp
+        }
+        let weekday = calendar.component(.weekday, from: resolved)
+        let symbols = calendar.shortWeekdaySymbols
+        guard symbols.indices.contains(weekday - 1) else {
+            return stamp
+        }
+        return "↻ \(symbols[weekday - 1]) \(clock)"
+    }
+
+    static func makeCalendarHeader(
+        events: CaptureAgendaEvents,
+        upcoming: [CaptureAgendaEventRow],
+        stamp: String?,
+        now: Date?
+    ) -> CaptureAgendaRow {
+        // No remaining rows (with or without ended ones): the quiet
+        // header behind the clear row.
+        guard let focus = calendarFocusEvent(events: events, upcoming: upcoming) else {
+            let accessory = stamp
+            let label = accessory == nil ? "Calendar" : "Calendar, \(accessory ?? "")"
+            return CaptureAgendaRow(
+                kind: .calendarHeader,
+                text: "Calendar",
+                depth: 0,
+                lineLimit: 1,
+                accessoryText: accessory,
+                accessibilityLabel: label
+            )
+        }
+        let startClock = CaptureAgendaClock.clockTime(focus.startsAt) ?? ""
+        let endClock = CaptureAgendaClock.clockTime(focus.endsAt) ?? ""
+        let text: String
+        let countdown: String?
+        if focus.phase == .running {
+            countdown = now.flatMap {
+                CaptureAgendaClock.remainingText(endsAt: focus.endsAt, now: $0)
+            }
+            if let countdown, !endClock.isEmpty {
+                text = "\(focus.title) until \(endClock) · \(countdown)"
+            } else if !endClock.isEmpty {
+                text = "\(focus.title) until \(endClock)"
+            } else {
+                text = focus.title
+            }
+        } else {
+            countdown = now.flatMap {
+                CaptureAgendaClock.countdownUntilText(startsAt: focus.startsAt, now: $0)
+            }
+            if let countdown, !startClock.isEmpty {
+                text = "\(focus.title) at \(startClock) · \(countdown)"
+            } else if !startClock.isEmpty {
+                text = "\(focus.title) at \(startClock)"
+            } else {
+                text = focus.title
+            }
+        }
+        let remainingMinutes = upcoming.compactMap(\.durationMinutes).reduce(0, +)
+        var accessoryParts = ["\(upcoming.count) left"]
+        if remainingMinutes > 0 {
+            accessoryParts.append(CaptureAgendaClock.durationText(minutes: remainingMinutes))
+        }
+        if let stamp {
+            accessoryParts.append(stamp)
+        }
+        let accessory = accessoryParts.joined(separator: " · ")
+        return CaptureAgendaRow(
+            kind: .calendarHeader,
+            text: text,
+            depth: 0,
+            lineLimit: 1,
+            accessoryText: accessory,
+            accessibilityLabel: "\(text), \(accessory)"
+        )
+    }
+
+    /// Trailing countdown for a running or upcoming row. Ended rows
+    /// carry their status glyph on the row instead.
+    static func calendarCountdown(for row: CaptureAgendaEventRow, now: Date?) -> String? {
+        guard let now else {
+            return nil
+        }
+        if row.phase == .running {
+            return CaptureAgendaClock.remainingText(endsAt: row.endsAt, now: now)
+        }
+        return CaptureAgendaClock.countdownUntilText(startsAt: row.startsAt, now: now)
+    }
+
+    static func makeCalendarEventRow(
+        _ row: CaptureAgendaEventRow,
+        countdown: String?,
+        startHint: String?
+    ) -> CaptureAgendaRow {
+        let timeText =
+            CaptureAgendaClock.timeRangeText(startsAt: row.startsAt, endsAt: row.endsAt)
+            ?? row.timeRange ?? ""
+        let qualifier = (row.qualifier ?? "").lowercased()
+        let dimmed = qualifier == "maybe" || qualifier == "free"
+        let data = CaptureAgendaCalendarRowData(
+            timeText: timeText,
+            hue: row.home?.hue,
+            untracked: row.untracked,
+            dimmed: dimmed,
+            joinURL: row.joinURL,
+            countdownText: countdown,
+            startHint: startHint
+        )
+        let spokenRange =
+            CaptureAgendaClock.accessibilityRangeText(
+                startsAt: row.startsAt,
+                endsAt: row.endsAt
+            ) ?? timeText
+        var labelParts = ["\(row.title), \(spokenRange)"]
+        if row.untracked {
+            labelParts.append("untracked")
+        }
+        if let countdown {
+            labelParts.append(countdown)
+        } else if let glyph = row.statusSymbol, !glyph.isEmpty {
+            labelParts.append("status \(glyph)")
+        }
+        if let startHint {
+            labelParts.append("hint \(startHint)")
+        }
+        return CaptureAgendaRow(
+            kind: .calendarRow,
+            text: row.title,
+            depth: 0,
+            lineLimit: 1,
+            accessoryText: countdown,
+            statusGlyph: row.phase == .ended ? row.statusSymbol : nil,
+            accessibilityLabel: labelParts.joined(separator: ", "),
+            calendar: data
+        )
+    }
+
+    static func makeCalendarAllDayRow(_ allDay: [CaptureAgendaAllDayContext]) -> CaptureAgendaRow? {
+        guard !allDay.isEmpty else {
+            return nil
+        }
+        let text = allDay.map { entry in
+            if let qualifier = entry.qualifier, !qualifier.isEmpty {
+                return "\(entry.title) (\(qualifier))"
+            }
+            return entry.title
+        }.joined(separator: " · ")
+        return CaptureAgendaRow(
+            kind: .calendarAllDay,
+            text: text,
+            depth: 0,
+            lineLimit: 2,
+            accessibilityLabel: "All day: \(text)"
+        )
+    }
+
+    /// `"38m free · =7 fits"`: quiet free time before the focus event.
+    static func makeCalendarGapRow(_ gap: CaptureAgendaEventGap) -> CaptureAgendaRow {
+        let text: String
+        if let fits = gap.fits, !fits.isEmpty {
+            text = "\(gap.minutes)m free · \(fits) fits"
+        } else {
+            text = "\(gap.minutes)m free"
+        }
+        return CaptureAgendaRow(
+            kind: .calendarGap,
+            text: text,
+            depth: 0,
+            lineLimit: 1,
+            accessibilityLabel: text
+        )
+    }
+
+    /// `"BOB runs 10m into Standup"`: the running Pomodoro collides
+    /// with the focus event.
+    static func makeCalendarConflictRow(
+        _ conflict: CaptureAgendaEventConflict,
+        events: CaptureAgendaEvents,
+        entries: [CaptureAgendaPomodoro]
+    ) -> CaptureAgendaRow? {
+        guard events.rows.indices.contains(conflict.event) else {
+            return nil
+        }
+        let name = entries.first(where: { $0.line == conflict.pomodoroLine })
+            .map(displayName) ?? "The running session"
+        let text =
+            "\(name) runs \(conflict.overlapMinutes)m into \(events.rows[conflict.event].title)"
+        return CaptureAgendaRow(
+            kind: .calendarConflict,
+            text: text,
+            depth: 0,
+            lineLimit: 2,
+            accessibilityLabel: text
+        )
+    }
+
+    static func makeCalendarChipRow(text: String, label: String) -> CaptureAgendaRow {
+        CaptureAgendaRow(
+            kind: .calendarMore,
+            text: text,
+            depth: 0,
+            lineLimit: 1,
+            accessoryText: nil,
+            accessibilityLabel: label
+        )
+    }
+
+    /// Merged header-plus-next line: `"Standup at 13:00 · in 38m ·
+    /// then 1:1 13:30 · +2"`.
+    static func makeCalendarOneRow(
+        header: CaptureAgendaRow,
+        upcoming: [CaptureAgendaEventRow],
+        focusIndex: Int,
+        earlierCount: Int
+    ) -> CaptureAgendaRow {
+        var text = header.text
+        let after = Array(upcoming.dropFirst(focusIndex + 1))
+        if let next = after.first {
+            let clock = CaptureAgendaClock.clockTime(next.startsAt) ?? ""
+            let thenText = clock.isEmpty ? "then \(next.title)" : "then \(next.title) \(clock)"
+            text += " · \(thenText)"
+            let hidden = max(0, after.count - 1) + earlierCount
+            if hidden > 0 {
+                text += " · +\(hidden)"
+            }
+        } else if earlierCount > 0 {
+            text += " · +\(earlierCount)"
+        }
+        return CaptureAgendaRow(
+            kind: .calendarHeader,
+            text: truncate(text, to: maxStripLength),
+            depth: 0,
+            lineLimit: CaptureAgendaLayoutMetrics.oneLineLimit,
+            accessibilityLabel: text
+        )
+    }
+
+    // MARK: - MEET event time chips
+
+    /// MEET group items linked to an Event Task show a time chip
+    /// instead of the bold span: `"13:00–13:30"`, from the event's
+    /// clock times. Nil for every other item.
+    static func eventTimeChip(item: CaptureAgendaItem, entry: CaptureAgendaPomodoro) -> String? {
+        guard let event = item.event else {
+            return nil
+        }
+        guard entry.name?.lowercased() == "meet" else {
+            return nil
+        }
+        return CaptureAgendaClock.timeRangeText(
+            startsAt: event.startsAt,
+            endsAt: event.endsAt
+        ) ?? event.timeRange
+    }
+
+    /// Drops a leading `"**0930-1000** "` span: the time chip carries
+    /// the range instead.
+    static func stripLeadingBoldSpan(_ text: String) -> String {
+        guard text.hasPrefix("**") else {
+            return text
+        }
+        let rest = text.dropFirst(2)
+        guard let close = rest.range(of: "**") else {
+            return text
+        }
+        return rest[close.upperBound...].trimmingCharacters(in: .whitespaces)
     }
 }

@@ -850,6 +850,37 @@ final class CapturePanelModel: ObservableObject {
     private var agendaHold: CaptureAgendaHold.State = .idle
     private var agendaHoldTask: Task<Void, Never>?
     private var agendaHoldGeneration: UInt64 = 0
+    /// The pending `.eventBoundary` refresh sleep. Re-armed on every
+    /// agenda plan; cancelled by the next arm.
+    private var agendaBoundaryTask: Task<Void, Never>?
+
+    /// Opens a calendar join URL from a band join button. Only http(s)
+    /// URLs open; anything else announces instead of failing silently.
+    func joinCalendarEvent(_ url: URL) {
+        guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            announceStatus("That join link is not a web URL")
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Command-J in an empty draft: opens the focus event's join URL.
+    /// Opening a URL writes nothing, so the idle agenda stays
+    /// read-only.
+    func joinFocusCalendarEvent() {
+        guard !hasDraft else {
+            return
+        }
+        guard let raw = agendaPresentation?.calendar?.focusJoinURL,
+            let url = URL(string: raw),
+            let scheme = url.scheme?.lowercased(),
+            scheme == "https" || scheme == "http"
+        else {
+            announceStatus("No join link for the focus event")
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
 
     /// Measured footer height, reported by the panel view. The
     /// controller derives the compact panel's top from it.
@@ -892,6 +923,13 @@ final class CapturePanelModel: ObservableObject {
     /// its minute-granularity countdown only then.
     var agendaHasLiveCountdown: Bool {
         agendaPresentation?.hasLiveCountdown == true
+    }
+
+    /// True while the Calendar band shows a running or upcoming event:
+    /// the view ticks every minute for the band's countdowns even with
+    /// no running Pomodoro.
+    var agendaHasCalendarTick: Bool {
+        agendaPresentation?.calendarNeedsTick == true
     }
 
     private var auxiliaryOwnedByOther: Bool {
@@ -1039,6 +1077,36 @@ final class CapturePanelModel: ObservableObject {
             isStale: stale
         )
         publishAgendaPlan(presentation)
+        scheduleCalendarBoundaryRefresh()
+    }
+
+    /// Schedules one `.eventBoundary` refresh at the band's next event
+    /// boundary while the agenda is visible. A new plan, hide, or
+    /// snapshot change cancels and re-arms it; the fire-time guard
+    /// keeps a hidden panel from refreshing.
+    private func scheduleCalendarBoundaryRefresh() {
+        agendaBoundaryTask?.cancel()
+        agendaBoundaryTask = nil
+        guard agendaVisible,
+            let raw = agendaPresentation?.calendar?.refreshAt,
+            let fireAt = CaptureAgendaClock.date(fromNaiveLocal: raw)
+        else {
+            return
+        }
+        let delay = fireAt.timeIntervalSinceNow
+        if delay <= 0 {
+            agendaStore?.refresh(reason: .eventBoundary)
+            return
+        }
+        agendaBoundaryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await MainActor.run {
+                guard let self, agendaVisible else {
+                    return
+                }
+                self.agendaStore?.refresh(reason: .eventBoundary)
+            }
+        }
     }
 
     /// Paints one quiet "Loading today…" line while the setting is on

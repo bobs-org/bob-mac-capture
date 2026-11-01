@@ -720,7 +720,7 @@ struct CapturePanelView: View {
     @ViewBuilder
     private var agendaPane: some View {
         if let plan = model.agendaPlan, let presentation = model.agendaPresentation {
-            if model.agendaHasLiveCountdown, model.panelVisible {
+            if model.agendaHasLiveCountdown || model.agendaHasCalendarTick, model.panelVisible {
                 TimelineView(.everyMinute) { context in
                     agendaContent(plan: plan, presentation: presentation)
                         .onChange(of: context.date) { _, _ in
@@ -743,6 +743,7 @@ struct CapturePanelView: View {
                 plan: plan,
                 presentation: presentation,
                 onExpand: { model.expandAgendaUnit($0) },
+                onJoinEvent: { model.joinCalendarEvent($0) },
                 onContentWidthChange: { width in
                     guard model.agendaContentWidth != width else {
                         return

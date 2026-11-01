@@ -40,6 +40,11 @@ public enum CaptureAgendaLayoutMetrics {
     public static let defaultRowHeight: Double = 19
     /// Screen margin below the eye line kept clear of the panel.
     public static let screenMargin: Double = 24
+    /// Height of the Calendar band's reserved day-rail slot.
+    public static let calendarRailHeight: Double = 16
+    /// Vertical chrome the planner adds around the Calendar band's
+    /// rows. The band is a plain block like a non-current group.
+    public static let calendarVerticalInsets: Double = 8
     /// Longest `·`-joined title list kept in a Later one-row summary.
     public static let maxOneRowLength = 120
     /// Longest warning sentence kept in a warning row.
@@ -207,12 +212,41 @@ public enum CaptureAgendaClock {
         guard minutes > 0 else {
             return "\(count) done"
         }
+        return "\(count) done · \(durationText(minutes: minutes))"
+    }
+
+    /// `"2h 40m"`, `"40m"`, or `"1h 00m"` for a minute total.
+    public static func durationText(minutes: Int) -> String {
         if minutes >= 60 {
             let rest = minutes % 60
             let padded = rest < 10 ? "0\(rest)" : "\(rest)"
-            return "\(count) done · \(minutes / 60)h \(padded)m"
+            return "\(minutes / 60)h \(padded)m"
         }
-        return "\(count) done · \(minutes)m"
+        return "\(minutes)m"
+    }
+
+    /// `"in 38m"` / `"in 1h 05m"` until a naive local datetime starts.
+    /// Nil when the datetime is missing or unparseable, `"now"` once
+    /// the start minute is reached.
+    public static func countdownUntilText(
+        startsAt: String?,
+        now: Date,
+        calendar: Calendar = Calendar.current
+    ) -> String? {
+        guard let raw = startsAt, let start = parseNaiveDateTime(raw, calendar: calendar) else {
+            return nil
+        }
+        let remaining = start.timeIntervalSince(now)
+        guard remaining > 60 else {
+            return "now"
+        }
+        let minutes = Int(remaining / 60)
+        if minutes >= 60 {
+            let rest = minutes % 60
+            let padded = rest < 10 ? "0\(rest)" : "\(rest)"
+            return "in \(minutes / 60)h \(padded)m"
+        }
+        return "in \(minutes)m"
     }
 
     /// `"HH:MM"` clock time from a `"YYYY-MM-DDTHH:MM"` datetime.
@@ -236,6 +270,15 @@ public enum CaptureAgendaClock {
     }
 
     /// A naive `"YYYY-MM-DDTHH:MM"` datetime read as local wall-clock time.
+    /// A naive `"YYYY-MM-DDTHH:MM"` datetime read as local
+    /// wall-clock time. Nil when the string does not parse.
+    public static func date(
+        fromNaiveLocal raw: String,
+        calendar: Calendar = Calendar.current
+    ) -> Date? {
+        parseNaiveDateTime(raw, calendar: calendar)
+    }
+
     static func parseNaiveDateTime(_ raw: String, calendar: Calendar) -> Date? {
         let halves = raw.split(separator: "T", maxSplits: 1)
         guard halves.count == 2 else {

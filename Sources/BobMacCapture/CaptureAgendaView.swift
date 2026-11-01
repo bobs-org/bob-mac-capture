@@ -21,6 +21,7 @@ struct CaptureAgendaPaneView: View {
     let plan: CaptureAgendaPlan
     let presentation: CaptureAgendaPresentation
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    var onJoinEvent: (URL) -> Void = { _ in }
     var onContentWidthChange: (CGFloat) -> Void = { _ in }
 
     var body: some View {
@@ -28,6 +29,7 @@ struct CaptureAgendaPaneView: View {
             plan: plan,
             presentation: presentation,
             onExpand: onExpand,
+            onJoinEvent: onJoinEvent,
             onContentWidthChange: onContentWidthChange
         )
         Group {
@@ -102,6 +104,7 @@ struct CaptureAgendaRowsView: View {
     let plan: CaptureAgendaPlan
     let presentation: CaptureAgendaPresentation
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    var onJoinEvent: (URL) -> Void = { _ in }
     var onContentWidthChange: (CGFloat) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -125,7 +128,8 @@ struct CaptureAgendaRowsView: View {
                             for: plan.rows[index]
                         ),
                         chipUnit: targets[index],
-                        onExpand: onExpand
+                        onExpand: onExpand,
+                        onJoinEvent: onJoinEvent
                     )
                 case .group(let group, let indices, let spacerBefore):
                     if spacerBefore {
@@ -141,7 +145,25 @@ struct CaptureAgendaRowsView: View {
                         rows: indices.map { plan.rows[$0] },
                         targets: targets,
                         baseIndex: indices.first ?? 0,
-                        onExpand: onExpand
+                        onExpand: onExpand,
+                        onJoinEvent: onJoinEvent
+                    )
+                case .calendar(let indices, let spacerBefore):
+                    if spacerBefore {
+                        Spacer(minLength: 0)
+                            .frame(
+                                height: CGFloat(
+                                    CaptureAgendaLayoutMetrics.groupSpacing
+                                )
+                            )
+                    }
+                    CaptureAgendaCalendarView(
+                        rows: indices.map { plan.rows[$0] },
+                        targets: targets,
+                        baseIndex: indices.first ?? 0,
+                        accessibilityLabel: presentation.calendar?.accessibilityLabel,
+                        onExpand: onExpand,
+                        onJoinEvent: onJoinEvent
                     )
                 }
             }
@@ -172,6 +194,22 @@ struct CaptureAgendaRowsView: View {
 enum CaptureAgendaSectionBlock {
     case row(Int)
     case group(CaptureAgendaGroup, [Int], Bool)
+    case calendar([Int], Bool)
+
+    /// True for the Calendar band's own row kinds. Group ownership
+    /// stops at these, and they box into a `.calendar` block.
+    static func isCalendarKind(_ kind: CaptureAgendaRowKind) -> Bool {
+        switch kind {
+        case .calendarHeader, .calendarRail, .calendarAllDay, .calendarRow,
+             .calendarGap, .calendarConflict, .calendarMore, .calendarClear:
+            return true
+        case .title, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
+             .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
+             .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup,
+             .truncation, .groupOneRow, .strip:
+            return false
+        }
+    }
 }
 
 @available(macOS 26.0, *)
@@ -190,13 +228,26 @@ enum CaptureAgendaSections {
                 index += 1
                 continue
             }
-            if row.kind == .groupHeader || row.kind == .groupOneRow {
+            if CaptureAgendaSectionBlock.isCalendarKind(row.kind) {
+                var owned: [Int] = [index]
+                var cursor = index + 1
+                while cursor < rows.count,
+                    CaptureAgendaSectionBlock.isCalendarKind(rows[cursor].kind)
+                {
+                    owned.append(cursor)
+                    cursor += 1
+                }
+                blocks.append(.calendar(owned, groupSeen))
+                groupSeen = true
+                index = cursor
+            } else if row.kind == .groupHeader || row.kind == .groupOneRow {
                 var owned: [Int] = [index]
                 var cursor = index + 1
                 while cursor < rows.count {
                     let next = rows[cursor]
                     if next.kind == .groupHeader || next.kind == .groupOneRow
                         || next.kind == .strip
+                        || CaptureAgendaSectionBlock.isCalendarKind(next.kind)
                     {
                         break
                     }
@@ -258,6 +309,20 @@ enum CaptureAgendaChipMap {
             if row.kind == .planBudget {
                 continue
             }
+            if let calendar = presentation.calendar {
+                if let earlier = calendar.expandEarlierRow, row == earlier {
+                    targets[index] = .calendarEarlier
+                    continue
+                }
+                if let all = calendar.expandAllRow, row == all {
+                    targets[index] = .calendar
+                    continue
+                }
+                if row == calendar.oneRowRow {
+                    targets[index] = .calendar
+                    continue
+                }
+            }
             guard let found = owner(of: row, in: presentation) else {
                 continue
             }
@@ -303,6 +368,7 @@ struct CaptureAgendaGroupView: View {
     let targets: [Int: CaptureAgendaUnitID]
     let baseIndex: Int
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    var onJoinEvent: (URL) -> Void = { _ in }
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
@@ -313,7 +379,8 @@ struct CaptureAgendaGroupView: View {
                     role: group.role,
                     expands: CaptureAgendaRowView.showsChip(for: row),
                     chipUnit: targets[baseIndex + offset],
-                    onExpand: onExpand
+                    onExpand: onExpand,
+                    onJoinEvent: onJoinEvent
                 )
             }
         }
@@ -376,6 +443,49 @@ struct CaptureAgendaGroupView: View {
 /// and nothing below), so the stack's height is exactly the sum the
 /// planner budgets. `role` only affects group headers; every other
 /// kind renders from the row alone.
+/// The Calendar band: a plain block (no card) between the Now and
+/// Next groups. The container adds half the calendar insets above and
+/// half below, so the block matches the planner's
+/// `calendarInsets + rows` exactly: measured row heights already carry
+/// their bottom gaps.
+@available(macOS 26.0, *)
+struct CaptureAgendaCalendarView: View {
+    let rows: [CaptureAgendaRow]
+    let targets: [Int: CaptureAgendaUnitID]
+    let baseIndex: Int
+    let accessibilityLabel: String?
+    var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    var onJoinEvent: (URL) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { offset, row in
+                CaptureAgendaRowView(
+                    row: row,
+                    role: .later,
+                    expands: CaptureAgendaRowView.showsChip(for: row),
+                    chipUnit: targets[baseIndex + offset],
+                    onExpand: onExpand,
+                    onJoinEvent: onJoinEvent
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.top, topInset)
+        .padding(.bottom, bottomInset)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel ?? "Calendar")
+    }
+
+    private var topInset: CGFloat {
+        CGFloat(CaptureAgendaLayoutMetrics.calendarVerticalInsets / 2)
+    }
+
+    private var bottomInset: CGFloat {
+        CGFloat(CaptureAgendaLayoutMetrics.calendarVerticalInsets / 2)
+    }
+}
+
 @available(macOS 26.0, *)
 struct CaptureAgendaRowView: View {
     let row: CaptureAgendaRow
@@ -383,6 +493,8 @@ struct CaptureAgendaRowView: View {
     let expands: Bool
     let chipUnit: CaptureAgendaUnitID?
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    var onJoinEvent: (URL) -> Void = { _ in }
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Whether the row's accessory renders as a chip button: every
     /// row whose presentation names an expansion action, plus the
@@ -395,12 +507,14 @@ struct CaptureAgendaRowView: View {
             return true
         }
         switch row.kind {
-        case .strip, .truncation, .groupOneRow:
+        case .strip, .truncation, .groupOneRow, .calendarMore:
             return true
         case .title, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine,
              .logHeader, .logEntry, .warning, .duplicate, .struck,
-             .retired, .emptyGroup:
+             .retired, .emptyGroup, .calendarHeader, .calendarRail,
+             .calendarAllDay, .calendarRow, .calendarGap, .calendarConflict,
+             .calendarClear:
             return false
         }
     }
@@ -423,13 +537,15 @@ struct CaptureAgendaRowView: View {
 
     private var bottomPad: CGFloat {
         switch row.kind {
-        case .title, .groupHeader, .planBudget:
+        case .title, .groupHeader, .planBudget, .calendarHeader:
             return CGFloat(CaptureAgendaLayoutMetrics.headerBottomSpacing)
-        case .stateLine, .strip:
+        case .stateLine, .strip, .calendarRail:
             return 0
         case .multiOpenWarning, .sessionNote, .taskHeadline, .ledgerNote,
              .childLine, .logHeader, .logEntry, .warning, .duplicate,
-             .struck, .retired, .emptyGroup, .truncation, .groupOneRow:
+             .struck, .retired, .emptyGroup, .truncation, .groupOneRow,
+             .calendarAllDay, .calendarRow, .calendarGap, .calendarConflict,
+             .calendarMore, .calendarClear:
             return CGFloat(CaptureAgendaLayoutMetrics.rowSpacing)
         }
     }
@@ -536,6 +652,18 @@ struct CaptureAgendaRowView: View {
             oneRowView
         case .strip:
             stripView
+        case .calendarHeader:
+            calendarHeaderView
+        case .calendarRail:
+            calendarRailView
+        case .calendarAllDay, .calendarGap, .calendarClear:
+            quietLineView
+        case .calendarRow:
+            calendarRowView
+        case .calendarConflict:
+            warningLineView
+        case .calendarMore:
+            chipButton(text: row.text, label: row.accessibilityLabel ?? row.text)
         }
     }
 
@@ -941,6 +1069,131 @@ struct CaptureAgendaRowView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Calendar band
+
+    private var calendarHeaderView: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "calendar")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(row.text)
+                .font(.callout.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.primary)
+                .lineLimit(row.lineLimit)
+            Spacer(minLength: 12)
+            if let accessory = row.accessoryText {
+                Text(accessory)
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    private var calendarRailView: some View {
+        Color.clear
+            .frame(height: CGFloat(CaptureAgendaLayoutMetrics.calendarRailHeight))
+            .accessibilityHidden(true)
+    }
+
+    private var calendarRowView: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let data = row.calendar {
+                Text(data.timeText)
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                calendarDotView(data: data)
+                if data.dimmed {
+                    Text(row.text)
+                        .font(.callout.italic())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(row.lineLimit)
+                } else {
+                    CaptureAgendaRowInlineText.text(row.text, base: .callout, color: .primary)
+                        .lineLimit(row.lineLimit)
+                }
+                if data.untracked {
+                    Text("untracked")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                                )
+                                .foregroundStyle(.secondary)
+                        )
+                }
+                Spacer(minLength: 12)
+                if let hint = data.startHint, !hint.isEmpty {
+                    Text(hint)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
+                if let raw = data.joinURL, let url = Self.joinableURL(raw) {
+                    Button {
+                        onJoinEvent(url)
+                    } label: {
+                        Image(systemName: "video.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .accessibilityLabel("Join \(row.text)")
+                }
+                if let countdown = data.countdownText {
+                    Text(countdown)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if let symbol = row.statusGlyph, !symbol.isEmpty {
+                    CaptureAgendaStatusGlyph(symbol: symbol, base: .callout)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    @ViewBuilder
+    private func calendarDotView(data: CaptureAgendaCalendarRowData) -> some View {
+        Group {
+            if data.untracked {
+                Circle()
+                    .stroke(
+                        PomodoroHomeColor.color(for: data.hue, scheme: colorScheme),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])
+                    )
+            } else {
+                Circle()
+                    .fill(PomodoroHomeColor.color(for: data.hue, scheme: colorScheme))
+            }
+        }
+        .frame(width: 7, height: 7)
+        .accessibilityHidden(true)
+    }
+
+    /// Only http(s) join URLs become buttons; anything else stays text.
+    private static func joinableURL(_ raw: String) -> URL? {
+        guard let url = URL(string: raw),
+            let scheme = url.scheme?.lowercased(),
+            scheme == "https" || scheme == "http"
+        else {
+            return nil
+        }
+        return url
     }
 
     // MARK: - Shared pieces
