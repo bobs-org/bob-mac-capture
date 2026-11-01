@@ -568,7 +568,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let caption: String? = isDropped
             ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))"
             : isParked ? "Parked · not carried" : nil
-        let typedPreviews = task.typedWorkLog.map(Self.strippedWorkLogDate)
+        let typedPreviews = task.typedWorkLog.map(Self.strippedWorkLogStamp)
         // Subtract typed entries by occurrence count so a hand-written entry
         // with identical dated text survives alongside its typed twin.
         var typedCounts: [String: Int] = [:]
@@ -595,7 +595,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             var strippedRemaining: [String] = []
             strippedRemaining.reserveCapacity(task.workLog.count)
             for entry in task.workLog {
-                let stripped = Self.strippedWorkLogDate(entry)
+                let stripped = Self.strippedWorkLogStamp(entry)
                 if let count = strippedCounts[stripped], count > 0 {
                     strippedCounts[stripped] = count - 1
                 } else {
@@ -606,7 +606,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                 remaining = strippedRemaining
             }
         }
-        let otherPreviews = remaining.prefix(2).map(Self.strippedWorkLogDate)
+        let otherPreviews = remaining.prefix(2).map(Self.strippedWorkLogStamp)
         let typedDetails: [[String]] = typedPreviews.indices.map { i in
             i < task.typedWorkLogDetails.count ? task.typedWorkLogDetails[i] : []
         }
@@ -800,19 +800,50 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         "Type the Work Log entry for task \(index)"
     }
 
-    /// Work Log entries arrive dated (`*2026-09-28* — Designed …`); the card
-    /// shows them under a dated section already, so strip the date prefix.
-    static func strippedWorkLogDate(_ entry: String) -> String {
+    /// Work Log entries arrive stamped (`*2026-11-01 14:32* — …`) or, from
+    /// older bob, dated. The card already shows them under a dated section,
+    /// so strip a recognized stamp prefix.
+    static func strippedWorkLogStamp(_ entry: String) -> String {
         guard entry.hasPrefix("*") else {
             return entry
         }
         guard let separator = entry.range(of: "* — ") else {
             return entry
         }
-        let datePart = entry[entry.index(after: entry.startIndex)..<separator.lowerBound]
-        let isDate = datePart.count == 10
-            && datePart.allSatisfy { $0.isNumber || $0 == "-" }
-        return isDate ? String(entry[separator.upperBound...]) : entry
+        let stamp = entry[entry.index(after: entry.startIndex)..<separator.lowerBound]
+        return isWorkLogStamp(stamp) ? String(entry[separator.upperBound...]) : entry
+    }
+
+    /// `YYYY-MM-DD` or `YYYY-MM-DD HH:MM`, checked at digit positions. Seconds,
+    /// `T`, one-digit hours, weekdays, and offsets stay as-is.
+    private static func isWorkLogStamp(_ stamp: Substring) -> Bool {
+        let chars = Array(stamp)
+        switch chars.count {
+        case 10:
+            return isISODatePrefix(chars)
+        case 16:
+            return isISODatePrefix(chars)
+                && chars[10] == " "
+                && isASCIIDigit(chars[11]) && isASCIIDigit(chars[12])
+                && chars[13] == ":"
+                && isASCIIDigit(chars[14]) && isASCIIDigit(chars[15])
+        default:
+            return false
+        }
+    }
+
+    private static func isISODatePrefix(_ chars: [Character]) -> Bool {
+        chars.count >= 10
+            && isASCIIDigit(chars[0]) && isASCIIDigit(chars[1])
+            && isASCIIDigit(chars[2]) && isASCIIDigit(chars[3])
+            && chars[4] == "-"
+            && isASCIIDigit(chars[5]) && isASCIIDigit(chars[6])
+            && chars[7] == "-"
+            && isASCIIDigit(chars[8]) && isASCIIDigit(chars[9])
+    }
+
+    private static func isASCIIDigit(_ character: Character) -> Bool {
+        character >= "0" && character <= "9"
     }
 
     /// The moved-from session name. Newer bob omits the source endpoint name,

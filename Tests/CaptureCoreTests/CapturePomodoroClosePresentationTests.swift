@@ -1595,6 +1595,65 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(unmatchedRow.workLogPreviews, ["Same"])
     }
 
+    func testStrippedWorkLogStampVectors() {
+        let cases: [(String, String)] = [
+            ("*2026-11-01 14:32* — Designed the grammar", "Designed the grammar"),
+            ("*2026-09-28* — Designed the grammar", "Designed the grammar"),
+            ("*2026-11-01 14:32:10* — x", "*2026-11-01 14:32:10* — x"),
+            ("*soon* — x", "*soon* — x"),
+        ]
+        for (input, output) in cases {
+            XCTAssertEqual(
+                CapturePomodoroClosePresentation.strippedWorkLogStamp(input),
+                output,
+                input
+            )
+        }
+    }
+
+    func testStampedWorkLogAndTypedWorkLogDecodeAsUnstampedPreviews() throws {
+        let success = try decodeSuccess(
+            #"""
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "x",
+              "task_line": "- [x] entry",
+              "kind": "pomodoro_close",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "closed",
+              "pomodoro_close": {
+                "raw": "x",
+                "pomodoro_line": 5,
+                "tasks": [
+                  {
+                    "role": "worked",
+                    "block_link": "[[bob#^a]]",
+                    "work_log": [
+                      "*2026-11-01 14:32* — Designed the grammar",
+                      "*2026-09-28* — Older entry"
+                    ],
+                    "typed_work_log": [
+                      "*2026-11-01 14:32* — Designed the grammar"
+                    ]
+                  }
+                ]
+              }
+            }
+            """#
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.typedWorkLogPreviews, ["Designed the grammar"])
+        XCTAssertEqual(row.workLogPreviews, ["Older entry"])
+    }
+
     func testTaskRowDisplayTitleHidesWikilinkAndCodeMarkup() throws {
         let rawText = "[[ref/chat/x|Alias Title]] and `code`"
         let summary = PomodoroCloseSummary(

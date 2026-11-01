@@ -178,8 +178,9 @@ A Pomodoro close instead shows its own card whenever
   badges, transitions, and tags never wrap or shrink, and at narrow widths the
   locator truncates first, then the one-line task title; row titles show wikilink
   display text (`[[path|Alias]]` reads `Alias`), like the pickers —
-  each row shows its `typed_work_log` entries first, all of them, with the date
-  stripped, a `square.and.pencil` glyph in the cyan log tint, and primary text,
+  each row shows its `typed_work_log` entries first, all of them, with its date
+  or date-time stamp stripped, a `square.and.pencil` glyph in the cyan log tint,
+  and primary text,
   each followed by its `typed_work_log_details` lines in secondary callout
   text, indented to the entry text with no glyph and never capped, followed by
   the remaining `work_log` entries in secondary text capped at two —
