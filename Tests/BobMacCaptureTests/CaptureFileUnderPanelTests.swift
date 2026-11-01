@@ -71,55 +71,6 @@ final class CaptureFileUnderPanelTests: XCTestCase {
         XCTAssertFalse(model.fileUnderActive)
     }
 
-    func testClipboardPresentationUsesCurrentBobParseSpans() throws {
-        let model = try fileUnderModel()
-        let listenDraft = "https://example.com/post %l"
-        model.plainDraft = listenDraft
-        model.setCloseListParseSnapshotForTests(
-            CaptureParseSnapshot(
-                draft: listenDraft,
-                spans: [
-                    CaptureSpan(start: 0, end: 24, kind: "ref_url"),
-                    CaptureSpan(start: 25, end: 27, kind: "directive", directive: "listen"),
-                ]
-            )
-        )
-
-        XCTAssertFalse(model.livePreviewUsesLiteralClipboard)
-
-        let encodedURL = "https://example.com/a%25b"
-        model.plainDraft = encodedURL
-        model.setCloseListParseSnapshotForTests(
-            CaptureParseSnapshot(
-                draft: encodedURL,
-                spans: [CaptureSpan(start: 0, end: encodedURL.utf8.count, kind: "ref_url")]
-            )
-        )
-        XCTAssertFalse(model.livePreviewUsesLiteralClipboard)
-
-        let mixedDraft = "\(listenDraft)\n\njot idea %c"
-        model.plainDraft = mixedDraft
-        model.setCloseListParseSnapshotForTests(
-            CaptureParseSnapshot(
-                draft: mixedDraft,
-                spans: [
-                    CaptureSpan(start: 0, end: 24, kind: "ref_url"),
-                    CaptureSpan(start: 25, end: 27, kind: "directive", directive: "listen"),
-                    CaptureSpan(
-                        start: mixedDraft.utf8.count - 2,
-                        end: mixedDraft.utf8.count,
-                        kind: "directive",
-                        directive: "clip"
-                    ),
-                ]
-            )
-        )
-        XCTAssertTrue(model.livePreviewUsesLiteralClipboard)
-
-        model.plainDraft = listenDraft
-        XCTAssertFalse(model.livePreviewUsesLiteralClipboard)
-    }
-
     func testFileUnderEscapeKeepsTheDefaultWithoutReopening() async throws {
         let model = try fileUnderModel()
         let draft = "https://example.com/post"

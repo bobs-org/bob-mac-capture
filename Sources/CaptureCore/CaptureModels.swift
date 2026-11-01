@@ -408,6 +408,14 @@ public struct CaptureParseResponse: Codable, Equatable {
         return depths
     }
 
+    /// True when Bob reported a `%c` directive span for this draft. A bare
+    /// `%` carries no directive value and escaped or literal `%c` text has no
+    /// directive span at all, so neither authorizes a clipboard read. Bob
+    /// stays authoritative: Swift never infers `%c` from the draft text.
+    public var reportsClipDirective: Bool {
+        spans.contains { $0.kind == "directive" && $0.directive == "clip" }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case ok
         case schemaVersion = "schema_version"
@@ -4232,9 +4240,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// already carries the target note's own child indentation, so preview must render
     /// them verbatim rather than re-deriving nesting.
     ///
-    /// Continuous live preview runs with `--no-clip`, so `clip` is absent there and the
-    /// block is just the parent plus authored children; the explicit Preview and Capture
-    /// paths resolve the clipboard and therefore mirror the full block.
+    /// Continuous live preview passes `--no-clip` unless the draft's accepted
+    /// parse reported a `%c` directive span, in which case Bob reads the
+    /// clipboard through the same path the capture will use and `clip` is
+    /// present here. The explicit Preview and Capture paths always resolve
+    /// the clipboard and therefore mirror the full block.
     public var previewBlockLines: [String] {
         var lines = [taskLine]
         lines.append(contentsOf: subBullets)

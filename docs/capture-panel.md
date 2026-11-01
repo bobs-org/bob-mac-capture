@@ -284,7 +284,8 @@ targets a named open Pomodoro by slug, and `@route:block-id=<X>` or
 `#name` completion ranges ending before `=` so accepting a name never erases a
 typed duration. Preview renders Bob's resolved session — selected Pomodoro,
 5-minute-rounded start/end, duration, and created-entry state — sourced only from
-`bob capture --dry-run --no-clip --format json`, and submission runs the same Bob
+the live preview (`bob capture --dry-run [--no-clip] --format json`), and submission
+runs the same Bob
 command; conflicts such as an already-running session surface as ordinary preview
 errors. A whole-item `+[N]`/`-[N]` draft adjusts the current Pomodoro instead
 of capturing a task: each unit is 5 minutes (`+5` extends by 25 minutes), the
@@ -293,9 +294,9 @@ reports requested versus applied minutes, and the item must contain only the
 signed count. The `+N` token highlights as its own `pomodoro_adjust` span and
 never offers route or task completion. Preview renders Bob's resolved
 before-to-after timing, signed minute effect, and target line — sourced only
-from `bob capture --dry-run --no-clip --format json`, including in mixed
-drafts — and submission runs the same Bob command; a missing or ambiguous
-target surfaces Bob's error as an ordinary preview failure. A whole-item
+from the live preview (`bob capture --dry-run [--no-clip] --format json`),
+including in mixed drafts — and submission runs the same Bob command; a missing or
+ambiguous target surfaces Bob's error as an ordinary preview failure. A whole-item
 `++[N]`/`--[N]` draft shifts the whole running session instead of capturing a
 task: each unit is 5 minutes (`++3` moves 15 minutes later), the count defaults
 to 1 (a bare `--` is one unit earlier), the duration is unchanged, and the item
@@ -303,24 +304,24 @@ must contain only the operator. The `++N` token highlights as its own
 `pomodoro_shift` span and never offers route or task completion. Preview renders
 Bob's resolved before-to-after timing, minute effect with later/earlier, and
 target line with a double-chevron row — sourced only from
-`bob capture --dry-run --no-clip --format json`, including in mixed drafts —
-and submission runs the same Bob command; the footer says **Shift** and the
-notification summarizes the same returned shift. A whole-item `=`/`=<X>`
+the live preview (`bob capture --dry-run [--no-clip] --format json`), including in
+mixed drafts — and submission runs the same Bob command; the footer says **Shift**
+and the notification summarizes the same returned shift. A whole-item `=`/`=<X>`
 starts the next future Pomodoro instead of capturing a task: empty is 25
 minutes and `<X>` mirrors the `se<X>` snippet, the item must contain only the
 operator, and the `=` token highlights as its own `pomodoro_start` span and
 never offers route or task completion. Preview renders Bob's resolved session,
 day-file destination, and queued Task Links — sourced only from
-`bob capture --dry-run --no-clip --format json`, including in mixed
-drafts — and submission runs the same Bob command; the footer says **Start**
+the live preview (`bob capture --dry-run [--no-clip] --format json`), including in
+mixed drafts — and submission runs the same Bob command; the footer says **Start**
 and the notification summarizes the same returned start. The same `=` token
 overrides the running Pomodoro when one is open: `=` / `=<X>` restarts it now
 with fresh `se<X>` timing, and `=#name` swaps that Pomodoro in (taking over
 the running ledger unless a timing is given) while the old session returns to
 first future. Preview renders an orange override banner plus Bob's resolved
 before → after range and demoted row — sourced only from
-`bob capture --dry-run --no-clip --format json` — with a **Restart** / **Swap**
-footer tinted orange and matching notifications. An override commits only after
+the live preview (`bob capture --dry-run [--no-clip] --format json`) — with a
+**Restart** / **Swap** footer tinted orange and matching notifications. An override commits only after
 its warning was on screen. Claimed `==` is a retired teaching error. Type `x`, a blank
 line, then `=` to close the running session and start the next one in a single
 draft. A whole-item `x` closes
@@ -381,12 +382,19 @@ submits the original draft text.
 ## Live Preview and Clipboard Semantics
 
 The continuously updated preview below the editor calls
-`bob capture --dry-run --no-clip --format json` on every debounced edit and never reads
-the clipboard. Bob treats `%l` as a companion-audio request on an eligible URL-only
-reference, so `https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type.
-The `%c` directive remains unresolved in continuous preview. Pressing the explicit
-**Preview** button or **Capture** resolves the clipboard and Clipy history normally,
-exactly as the final capture would. A `$<N>` random
+`bob capture --dry-run [--no-clip] --format json` on every debounced edit. `--no-clip`
+is omitted only when the same draft's accepted parse reported a `%c` directive span on
+a compatible grammar, so Bob reads the clipboard through the same path the capture
+will use; every other draft keeps `--no-clip`, and opening the `%` menu never reads
+the clipboard. Each `%c` item shows a Clip card with Bob's exact clipboard content
+(see [Clip card](capture-previews.md#clip-card)). Bob treats `%l` as a
+companion-audio request on an eligible URL-only reference, so
+`https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type. Pressing the
+explicit **Preview** button or **Capture** resolves the clipboard and Clipy history
+normally, exactly as the final capture would. While the panel is key and the current
+compatible parse reports a clip directive, the app observes only the pasteboard change
+counter at no more than 1 Hz and re-runs the debounced preview when it moves; the
+counter reads no content. A `$<N>` random
 schedule is rolled once per
 draft and reused by every subsequent live preview and by the final submission, so the
 displayed scheduled date always matches what gets written.

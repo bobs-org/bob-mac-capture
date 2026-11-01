@@ -4,8 +4,9 @@ import Foundation
 /// or saved idle agenda, built once so the SwiftUI layer never branches
 /// on budget JSON fields or recomputes meter math. A capture preview's
 /// only source of truth is Bob's resolved `plan_budget` object — which comes from
-/// `bob capture --dry-run --no-clip --format json` for live preview and
-/// the same command without `--dry-run`/`--no-clip` for submission — so
+/// `bob capture --dry-run [--no-clip] --format json` for live preview
+/// (`--no-clip` is omitted only for a `%c` draft) and the same command
+/// resolving the clipboard for submission — so
 /// there is no Swift-side ledger logic here, only wording.
 ///
 /// Wording mirrors `print_plan_budget` and `format_pomodoro_task_destination`

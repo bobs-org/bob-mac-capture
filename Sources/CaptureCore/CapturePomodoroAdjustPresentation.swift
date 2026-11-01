@@ -5,8 +5,9 @@ import Foundation
 /// `CaptureCommandSuccess` so the SwiftUI layer never branches on
 /// adjustment-specific JSON fields or recomputes clock math.
 /// The preview's only source of truth is Bob's resolved `pomodoro_adjust`
-/// object — which itself comes from `bob capture --dry-run --no-clip --format
-/// json` for live preview and the same command without `--dry-run`/`--no-clip`
+/// object — which itself comes from `bob capture --dry-run [--no-clip] --format
+/// json` for live preview (`--no-clip` is omitted only for a `%c` draft) and
+/// the same command resolving the clipboard for submission
 /// for submission — so there is no Swift-side clock or ledger logic here, only
 /// wording.
 ///

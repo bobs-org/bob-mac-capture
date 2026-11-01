@@ -787,7 +787,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(inside.candidates.isEmpty)
     }
 
-    func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
+    func testLivePreviewDefaultsToNoClipAndPrioritySeed() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let client = BobProcessClient(
@@ -809,6 +809,49 @@ final class BobProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % $1"))
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
+    }
+
+    func testLivePreviewOmitsNoClipOnlyWithClipEvidence() async throws {
+        func recordURL() -> URL {
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+        }
+        func client(recording record: URL) throws -> BobProcessClient {
+            BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                ]
+            )
+        }
+
+        let guarded = recordURL()
+        _ = try await client(recording: guarded)
+            .captureLivePreview("jot idea", priorityRollSeed: "fixed")
+        let guardedRecord = try String(contentsOf: guarded)
+        XCTAssertTrue(
+            guardedRecord.contains("argv=capture --dry-run --no-clip --format json -- jot idea"))
+
+        let reading = recordURL()
+        _ = try await client(recording: reading)
+            .captureLivePreview("jot idea %c", priorityRollSeed: "fixed", readClipboard: true)
+        let readingRecord = try String(contentsOf: reading)
+        XCTAssertTrue(
+            readingRecord.contains("argv=capture --dry-run --format json -- jot idea %c"))
+        XCTAssertFalse(readingRecord.contains("--no-clip"))
+
+        // The evidence-sensitive precondition accepts both shapes above
+        // (it traps on a read without evidence, which no test invokes).
+        BobProcessClient.preconditionLivePreviewArguments(
+            ["capture", "--dry-run", "--no-clip", "--format", "json", "--", "jot idea"],
+            clipAuthorized: false
+        )
+        BobProcessClient.preconditionLivePreviewArguments(
+            ["capture", "--dry-run", "--format", "json", "--", "jot idea %c"],
+            clipAuthorized: true
+        )
     }
 
     func testPercentListenReferencePassesUnchangedToNoClipPreview() async throws {

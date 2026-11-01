@@ -406,6 +406,39 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
             CaptureTaskBlockPresentation.covers(success, blocks: [removedOnly])
         )
     }
+
+    func testCoversMatchesReadClipLinesInsideTheBlock() throws {
+        let clipped = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "sase",
+            routeLabel: "sase.md",
+            relativeTarget: "sase.md",
+            target: "/tmp/vault/sase.md",
+            text: "jot idea",
+            taskLine: "- [ ] #task jot idea",
+            kind: "task",
+            created: "2026-10-30",
+            placement: "appended",
+            clip: CaptureClipOutput(status: "read", mode: "inline", lines: ["\t- hello-clip"])
+        )
+        XCTAssertEqual(clipped.previewBlockLines, ["- [ ] #task jot idea", "\t- hello-clip"])
+
+        let covered = block(lines: [
+            CaptureBlockLine(text: "- [ ] #task jot idea", depth: 0, change: .added),
+            CaptureBlockLine(text: "\t- hello-clip", depth: 1, change: .added),
+        ])
+        XCTAssertTrue(CaptureTaskBlockPresentation.covers(clipped, blocks: [covered]))
+
+        let parentOnly = block(lines: [
+            CaptureBlockLine(text: "- [ ] #task jot idea", depth: 0, change: .added),
+        ])
+        XCTAssertFalse(
+            CaptureTaskBlockPresentation.covers(clipped, blocks: [parentOnly]),
+            "a block missing the clip child must not cover a read clip"
+        )
+    }
 }
 
 private enum TaskBlockPresentationFixtureError: Error {

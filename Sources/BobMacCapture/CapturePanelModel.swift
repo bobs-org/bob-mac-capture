@@ -533,6 +533,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             invalidateAnalysis()
+            stopClipboardPolling()
             lastAppliedParseDraft = nil
             lastAppliedParseGrammar = nil
             lastAppliedParseClientIdentity = nil
@@ -621,6 +622,23 @@ final class CapturePanelModel: ObservableObject {
     /// second ⌘↩ on the same draft submits. Cleared when the draft changes.
     private var relationCapabilityAcknowledgedDraft: String?
     private var analysisGeneration: UInt64 = 0
+    /// Pasteboard-counter poll refreshes `%c` previews while the panel is
+    /// key and the current compatible parse reports a clip directive. The
+    /// counter reads no content; a change re-runs the debounced preview.
+    /// Nil unless polling is armed. Stopped on hide, focus loss, draft
+    /// removal, evidence lapse, and analysis reset.
+    private var clipboardPollTask: Task<Void, Never>?
+    private var lastSeenClipboardChangeCount: Int?
+    /// True while the panel holds key focus. The controller reports
+    /// become-key/resign-key; defaults true because the panel is created to
+    /// take key on show, and `panelVisible` gates polling regardless.
+    private var panelIsKey = true
+    /// Pasteboard-counter source. Production reads
+    /// `NSPasteboard.general.changeCount`; tests inject a counter.
+    var clipboardChangeCounter: () -> Int = { NSPasteboard.general.changeCount }
+    /// Maximum pasteboard poll rate: the ticker sleeps this long between
+    /// counter reads, so observation stays at or under 1 Hz.
+    static let clipboardPollIntervalNanoseconds: UInt64 = 1_000_000_000
     private var similarTasksGeneration: UInt64 = 0
     private var relationLabelSuggestionGeneration: UInt64 = 0
     /// In-flight `relation_label` probe. Submit must not start a second
@@ -1510,15 +1528,6 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         return CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
-    }
-
-    var livePreviewUsesLiteralClipboard: Bool {
-        guard let snapshot = closeListParseSnapshot,
-              snapshot.draft == plainDraft
-        else {
-            return false
-        }
-        return snapshot.spans.contains { $0.kind == "directive" && $0.directive == "clip" }
     }
 
     /// The live preview's toggle presentation, when the current draft is exactly one
@@ -3093,6 +3102,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         panelVisible = false
+        stopClipboardPolling()
         cancelSimilarTasks(clear: false)
         previewPullInSnapshot = nil
         dismissStashPicker()
@@ -3712,6 +3722,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        stopClipboardPolling()
         if similarTasks.focusedRowID != nil {
             unfocusSimilarRow(applyPending: false)
         }
@@ -3743,6 +3754,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func resetAnalysisState() {
         invalidateAnalysis()
+        stopClipboardPolling()
         cancelSimilarTasks(clear: true)
         editAnalysisBaseline = plainDraft
         invalidateRewrite()
@@ -11870,6 +11882,7 @@ final class CapturePanelModel: ObservableObject {
         }
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
+        stopClipboardPolling()
         closeCommaProvenance.clear()
         lastProvenanceDraft = text
         isApplyingProgrammaticDraft = true
@@ -11985,6 +11998,13 @@ final class CapturePanelModel: ObservableObject {
                 }
 
                 if pickerNeeded == nil {
+                    // A live clipboard read needs this same draft's accepted
+                    // parse: a `%c` directive span on a compatible grammar. A
+                    // bare `%`, escaped or literal `%c`, an older draft's
+                    // span, or a missing/lower grammar keeps `--no-clip`.
+                    let clipAuthorized =
+                        CaptureGrammarGate.isCompatible(parse.grammar)
+                        && parse.reportsClipDirective
                     await self?.startLivePreview(
                         draft: draft,
                         previewDraft: closePending?.trimmed ?? draft,
@@ -11992,7 +12012,8 @@ final class CapturePanelModel: ObservableObject {
                         pendingAction: closePending?.action,
                         generation: generation,
                         processClient: processClient,
-                        trigger: trigger
+                        trigger: trigger,
+                        clipAuthorized: clipAuthorized
                     )
                 }
 
@@ -12249,7 +12270,8 @@ final class CapturePanelModel: ObservableObject {
         pendingAction: String?,
         generation: UInt64,
         processClient: BobProcessClient,
-        trigger: CompletionTrigger
+        trigger: CompletionTrigger,
+        clipAuthorized: Bool
     ) {
         Task { [weak self, processClient] in
             do {
@@ -12258,7 +12280,8 @@ final class CapturePanelModel: ObservableObject {
                 let preview = try await CaptureSignpost.measure("preview") {
                     try await processClient.captureLivePreview(
                         previewDraft,
-                        priorityRollSeed: seed
+                        priorityRollSeed: seed,
+                        readClipboard: clipAuthorized
                     )
                 }
                 await MainActor.run {
@@ -12369,6 +12392,112 @@ final class CapturePanelModel: ObservableObject {
 
     private func isCurrentAnalysis(_ generation: UInt64) -> Bool {
         generation == analysisGeneration
+    }
+
+    /// Arms or disarms the pasteboard-counter poll from the accepted parse.
+    /// Polling needs the panel visible and key, the parse's own draft still
+    /// current, this client's identity on the parse, a compatible grammar,
+    /// and a `%c` directive span. Anything else stops the ticker; the next
+    /// accepted parse re-arms it.
+    private func updateClipboardPolling(parse: CaptureParseResponse, draft: String) {
+        guard panelVisible, panelIsKey,
+              plainDraft == draft,
+              lastAppliedParseDraft == draft,
+              let processClient,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              CaptureGrammarGate.isCompatible(lastAppliedParseGrammar),
+              parse.reportsClipDirective
+        else {
+            stopClipboardPolling()
+            return
+        }
+        startClipboardPolling()
+    }
+
+    private func startClipboardPolling() {
+        guard clipboardPollTask == nil else { return }
+        // Baseline without triggering: activation already refreshed.
+        lastSeenClipboardChangeCount = clipboardChangeCounter()
+        clipboardPollTask = Task { [weak self] in
+            while let self {
+                try? await Task.sleep(
+                    nanoseconds: Self.clipboardPollIntervalNanoseconds
+                )
+                if Task.isCancelled { return }
+                self.clipboardPollTick()
+            }
+        }
+    }
+
+    private func stopClipboardPolling() {
+        clipboardPollTask?.cancel()
+        clipboardPollTask = nil
+        lastSeenClipboardChangeCount = nil
+    }
+
+    /// One pasteboard-counter check. A moved counter re-runs the debounced
+    /// preview for the unchanged draft; lapsed evidence stops the ticker.
+    private func clipboardPollTick() {
+        guard clipboardPollTask != nil else { return }
+        let current = clipboardChangeCounter()
+        guard current != lastSeenClipboardChangeCount else { return }
+        lastSeenClipboardChangeCount = current
+        refreshPreviewForClipboardChange()
+    }
+
+    /// Synchronous single poll check for hosted lifecycle tests.
+    func fireClipboardPollForTests() {
+        clipboardPollTick()
+    }
+
+    var clipboardPollingForTests: Bool {
+        clipboardPollTask != nil
+    }
+
+    /// Reports panel key-focus changes from the controller. Activation
+    /// refreshes the preview; focus loss stops counter polling.
+    func notePanelKeyActive(_ active: Bool) {
+        panelIsKey = active
+        if active {
+            if hasDraft {
+                editorTextDidChange()
+            }
+        } else {
+            stopClipboardPolling()
+        }
+    }
+
+    /// Re-runs the live preview after the pasteboard counter moved while the
+    /// draft stayed put. The accepted parse still describes this draft, so
+    /// re-validate its evidence and re-issue the preview without touching
+    /// completion, similar tasks, or the analysis generation: the response
+    /// keeps the current generation check, so a newer analysis still wins
+    /// and a delayed tick cannot restore stale content.
+    private func refreshPreviewForClipboardChange() {
+        guard let processClient,
+              let parse = latestParse,
+              let appliedDraft = lastAppliedParseDraft,
+              appliedDraft == plainDraft,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              CaptureGrammarGate.isCompatible(lastAppliedParseGrammar),
+              parse.reportsClipDirective,
+              Self.pickerNeed(in: parse) == nil
+        else {
+            stopClipboardPolling()
+            return
+        }
+        let draft = plainDraft
+        let closePending = Self.closePendingTrim(in: parse, draft: draft)
+        startLivePreview(
+            draft: draft,
+            previewDraft: closePending?.trimmed ?? draft,
+            pendingSeparator: closePending?.separator,
+            pendingAction: closePending?.action,
+            generation: analysisGeneration,
+            processClient: processClient,
+            trigger: .edit,
+            clipAuthorized: true
+        )
     }
 
     private func scheduleSimilarTasks(draft: String, immediate: Bool = false) {
@@ -13171,6 +13300,7 @@ final class CapturePanelModel: ObservableObject {
                 spans: parse.spans
             )
         }
+        updateClipboardPolling(parse: parse, draft: draft)
         applyHighlighting(parse: parse, draft: draft, cursorUTF8: cursorUTF8)
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {

@@ -302,7 +302,7 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
 - `capture-complete --all-tasks --cursor BYTE --format json` (candidates, replacements)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, template start)
-- `capture --dry-run --no-clip --format json` (live preview) and `capture --format json` (submit)
+- `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` is omitted only when the draft's accepted parse reported a `%c` directive span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)

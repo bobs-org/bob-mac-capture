@@ -423,6 +423,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_: Notification) {
         model.clearEditorLeader()
         editorLeaderAnchor = nil
+        // Focus loss stops the pasteboard-counter poll; the counter is only
+        // observed while the panel is key.
+        model.notePanelKeyActive(false)
+    }
+
+    func windowDidBecomeKey(_: Notification) {
+        // Activation refreshes the live preview through the model's normal
+        // debounced analysis; a `%c` draft also re-arms counter polling.
+        model.notePanelKeyActive(true)
     }
 
     /// Receives rendered SwiftUI metrics and caches them before trying to apply them to

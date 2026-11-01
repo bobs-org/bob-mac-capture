@@ -3543,12 +3543,6 @@ struct PreviewPane: View {
             .padding(.top, 4)
             .opacity(model.closePendingText != nil ? 0.6 : 1)
         }
-
-        if model.livePreviewUsesLiteralClipboard {
-            Text("Clipboard markers remain unresolved in live preview")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-        }
     }
 
     /// The destination row above the preview items (`→ GOALS · next up`,
@@ -3680,6 +3674,16 @@ struct PreviewPane: View {
                 blocks: blocks,
                 taskBlocks: taskBlocks
             )
+        }
+
+        // The Clip card belongs to this item, so every `%c` in a batch
+        // renders its own clipboard content beneath its own card. It reads
+        // only this item's `clip` object: kind/count header, Bob's exact
+        // child lines, snippet destination, attachment summaries with image
+        // thumbnails, and entry dividers for `%c<N>` history. `not_read`
+        // shows a quiet placeholder. Clip lines never enter a task block.
+        if let clip = CaptureClipPresentation(capture: success) {
+            ClipCardView(clip: clip)
         }
     }
 

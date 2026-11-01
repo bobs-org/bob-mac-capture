@@ -961,6 +961,10 @@ JSON
 JSON
     elif [[ "${draft}" == "jot idea %" ]]; then
       cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
+    elif [[ "${draft}" == "jot idea %c" ]]; then
+      # Real-bob clip parse (see Scripts/generate-directive-fixtures.sh): a
+      # `%c` span authorizing a live clipboard read.
+      cat "${fixtures_dir}/directive-parse-clip.json" | inject_parse_grammar
     elif [[ "${draft}" == "jot idea @foo#" ]]; then
       cat <<'JSON'
 {

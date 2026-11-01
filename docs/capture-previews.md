@@ -3,7 +3,7 @@ title: "Mac Capture previews"
 description: "Preview cards, Pomodoro blocks, session controls, dependencies, completions, and successor offers."
 ---
 
-Every card below renders what `bob capture --dry-run --no-clip --format json` returns for the current draft, in `bob`'s own order. The explicit Preview button and Capture resolve the clipboard and mirror the full block; continuous live preview passes `--no-clip`. Insertion behavior for the rows is in [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
+Every card below renders what `bob capture --dry-run [--no-clip] --format json` returns for the current draft, in `bob`'s own order. Continuous live preview passes `--no-clip` unless the draft's accepted parse reported a `%c` directive span, in which case it reads the clipboard through the same path the capture will use; the explicit Preview button and Capture always resolve the clipboard and mirror the full block. Insertion behavior for the rows is in [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion.png#only-light)](images/task-completion.png)
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
@@ -38,14 +38,33 @@ Template drafts live in the [Saved templates](saved-templates.md) shelf.
 
 ## Live preview
 
-Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
-  a dedicated process-client API that asserts `--no-clip`. Bob's `%l`
-  directive remains a reference request in continuous preview; `%c` stays unresolved
-  until the separate explicit clipboard-resolving preview.
+Live preview calls `bob capture --dry-run [--no-clip] --format json -- <draft>` through
+  a dedicated process-client API. `--no-clip` is omitted only when the same draft's
+  accepted `capture-parse` reported a `directive` span with `directive: "clip"` on a
+  compatible grammar: a bare `%`, escaped or literal `%c`, a previous draft's span, or
+  a missing/lower grammar keeps `--no-clip`, and opening the `%` menu never reads the
+  clipboard. Bob's `%l` directive remains a reference request in continuous preview.
   Template previews show a `Template · N rows` capsule beside the capture count. When
   Bob reports the `template_row` need, the panel keeps the preview calm and shows Bob's
   `template_missing_rows` message. Non-info template diagnostics underline the matching
   typed text in the editor.
+
+Showing the panel refreshes the preview. While the panel is key and the current
+  compatible parse reports a clip directive, the app observes only
+  `NSPasteboard.general.changeCount` at no more than 1 Hz; a change re-runs the
+  debounced preview. The counter reads no content. Polling stops when the panel hides,
+  loses focus, the draft is removed, or the clip evidence lapses.
+
+## Clip card
+
+Each `%c` item renders its own Clip card beneath its preview card, built only from
+  that item's `clip` object: a kind header (`Clipboard · 3 lines`, `2 files · 1 image`,
+  `Snippet · 42 lines → file/clip-…md`, `Last 3 clips`), Bob's exact child lines, the
+  snippet destination, one summary row per attachment with a thumbnail for readable
+  images, and entry dividers for `%c<N>` history. A missing or unreadable image source
+  keeps its summary row. A `clip` Bob did not read (`status: "not_read"`) shows a quiet
+  placeholder. Clip lines never enter a task block: the task-block dedup keeps matching
+  them through the item's verbatim `previewBlockLines`.
 
 ## Batch drafts and authored children
 
@@ -246,8 +265,9 @@ A whole-item `=`/`=<X>` start instead shows its own card
   always takes its natural height: the window grows to show it in full up to the screen
   limit before the auxiliary region scrolls, and the card keeps its last rendered height
   while a live preview reloads. Continuous live
-  preview passes `--no-clip`, so it has no `clip` to show; the explicit **Preview**
-  button and **Capture** resolve the clipboard and therefore mirror the full block.
+  preview passes `--no-clip` unless the draft has a `%c` directive (see [Live
+  preview](#live-preview) and [Clip card](#clip-card)); the explicit **Preview**
+  button and **Capture** always resolve the clipboard and therefore mirror the full block.
 
 ### Pomodoro and task blocks
 

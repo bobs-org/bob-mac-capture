@@ -5,8 +5,9 @@ import Foundation
 /// `CaptureCommandSuccess` so the SwiftUI layer never branches on
 /// reset-specific JSON fields. The preview's only source of truth is Bob's
 /// resolved `pomodoro_reset` object — which itself comes from
-/// `bob capture --dry-run --no-clip --format json` for live preview and the
-/// same command without `--dry-run`/`--no-clip` for submission — so there is
+/// `bob capture --dry-run [--no-clip] --format json` for live preview and the
+/// same command resolving the clipboard for submission (`--no-clip` is
+/// omitted only for a `%c` draft) — so there is
 /// no Swift-side ledger logic here, only wording.
 ///
 /// Wording mirrors `print_human_pomodoro_reset_success` in

@@ -10,8 +10,9 @@ import Foundation
 /// The preview's only source of truth is Bob's resolved link fields — the status
 /// transition, `pomodoro_link_action`, the pre-image source and post-image
 /// destination endpoints, and the optional atomic-start summary — which come from
-/// `bob capture --dry-run --no-clip --format json` for live preview and the same
-/// command without `--dry-run`/`--no-clip` for submission. There is no Swift-side
+/// `bob capture --dry-run [--no-clip] --format json` for live preview
+/// (`--no-clip` is omitted only for a `%c` draft) and the same command
+/// resolving the clipboard for submission. There is no Swift-side
 /// queue, clock, or ledger logic here, only wording.
 ///
 /// Wording mirrors the `pomodoro_link` human output in `src/native/capture.rs`

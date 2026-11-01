@@ -4,11 +4,12 @@ import Foundation
 /// (`task_blocks` on a `bob capture --format json` success), built once
 /// from `CaptureTaskBlock` so the SwiftUI layer never branches on block
 /// JSON fields. The preview's only source of truth is Bob's resolved
-/// block — which itself comes from `bob capture --dry-run --no-clip
-/// --format json` for live preview and the same command without
-/// `--dry-run`/`--no-clip` for submission — so there is no Swift-side
-/// vault logic here, only wording. Works for dry-run previews and
-/// committed captures alike; `dryRun` only changes the created badge.
+/// block — which itself comes from `bob capture --dry-run [--no-clip]
+/// --format json` for live preview (`--no-clip` is omitted only for a `%c`
+/// draft) and the same command resolving the clipboard for submission — so
+/// there is no Swift-side vault logic here, only wording. Works for
+/// dry-run previews and committed captures alike; `dryRun` only changes
+/// the created badge.
 public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     /// One collapsed run of unchanged rows. `id` is the first hidden row
     /// index, stable for the card's identity so expansion survives

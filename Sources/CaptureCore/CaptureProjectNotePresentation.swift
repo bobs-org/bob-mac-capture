@@ -11,10 +11,10 @@ import Foundation
 ///
 /// The preview's only source of truth is Bob's resolved fields — the
 /// `project_note.task_links` rows plus the top-level `pomodoro_name` and
-/// `creates_pomodoro` — which come from `bob capture --dry-run --no-clip
-/// --format json` for live preview and the same command without
-/// `--dry-run`/`--no-clip` for submission. There is no Swift-side ledger or
-/// Pomodoro math here, only wording.
+/// `creates_pomodoro` — which come from `bob capture --dry-run [--no-clip]
+/// --format json` for live preview (`--no-clip` is omitted only for a `%c`
+/// draft) and the same command resolving the clipboard for submission.
+/// There is no Swift-side ledger or Pomodoro math here, only wording.
 public struct CaptureProjectNotePresentation: Equatable, Sendable {
     /// One linked task row: the task text and its `^id`.
     public struct LinkedTaskRow: Equatable, Sendable {

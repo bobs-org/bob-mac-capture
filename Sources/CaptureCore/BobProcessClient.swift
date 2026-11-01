@@ -707,20 +707,31 @@ public final class BobProcessClient: @unchecked Sendable {
         )
     }
 
+    /// Debounced continuous preview. `readClipboard` must be true only when
+    /// the same draft's accepted `capture-parse` reported a `directive` span
+    /// with `directive == "clip"`: the panel threads that evidence in, and
+    /// the precondition below refuses a read without it. Every other draft
+    /// keeps `--no-clip`, so the preview never touches the pasteboard it was
+    /// not asked to read. `--dry-run` and JSON stay unconditional.
     public func captureLivePreview(
         _ draft: String,
-        priorityRollSeed: String
+        priorityRollSeed: String,
+        readClipboard: Bool = false
     ) async throws -> CaptureCommandResponse {
-        let arguments = [
+        var arguments = [
             "capture",
             "--dry-run",
-            "--no-clip",
+        ]
+        if !readClipboard {
+            arguments.append("--no-clip")
+        }
+        arguments += [
             "--format",
             "json",
             "--",
             draft,
         ]
-        Self.preconditionLivePreviewArguments(arguments)
+        Self.preconditionLivePreviewArguments(arguments, clipAuthorized: readClipboard)
 
         let response = try await decodeCaptureResult(
             arguments: arguments,
@@ -1031,11 +1042,17 @@ public final class BobProcessClient: @unchecked Sendable {
         try process.run()
     }
 
-    public static func preconditionLivePreviewArguments(_ arguments: [String]) {
+    public static func preconditionLivePreviewArguments(
+        _ arguments: [String],
+        clipAuthorized: Bool
+    ) {
         precondition(arguments.first == "capture", "live preview must invoke bob capture")
         precondition(arguments.contains("--dry-run"), "live preview must be a dry run")
-        precondition(arguments.contains("--no-clip"), "live preview must never read clipboard")
         precondition(arguments.contains("--format"), "live preview must request JSON")
+        precondition(
+            arguments.contains("--no-clip") != clipAuthorized,
+            "live preview reads the clipboard only with clip evidence"
+        )
     }
 
     /// Shared JSON-envelope decode for `bob` subcommands that report a
