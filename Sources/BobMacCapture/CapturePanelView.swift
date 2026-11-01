@@ -842,19 +842,6 @@ struct CapturePanelView: View {
                         .accessibilityLabel("Capture error: \(errorMessage)")
                         .accessibilityFocused($errorIsFocused)
                         .onAppear { errorIsFocused = true }
-                    // A strict plan-budget refusal carries
-                    // `code == "plan_theme_cap_exceeded"`: the message names
-                    // the themes, and this hint names the gestures that keep
-                    // the plan closed.
-                    if model.errorCode == "plan_theme_cap_exceeded" {
-                        Text("Queue it with ^ or defer with $<N>.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .accessibilityLabel(
-                                "Plan hint: Queue it with ^ or defer with $<N>."
-                            )
-                    }
                     HStack {
                         Button("Retry") {
                             model.submit(openAfterCapture: false)
@@ -3281,9 +3268,6 @@ private struct CompletionRow: View {
         if isOutlinedBadge(badge) || isWarningBadge(badge) {
             return Color.clear
         }
-        if isOverCapBadge(badge) {
-            return Color.red.opacity(0.15)
-        }
         return tint.opacity(0.15)
     }
 
@@ -3298,9 +3282,6 @@ private struct CompletionRow: View {
     }
 
     private func badgeForeground(for badge: String) -> Color {
-        if isOverCapBadge(badge) {
-            return Color.red
-        }
         if isWarningBadge(badge) {
             return Color(nsColor: .systemOrange)
         }
@@ -3313,21 +3294,6 @@ private struct CompletionRow: View {
 
     private func isWarningBadge(_ badge: String) -> Bool {
         badge == CaptureUnconfiguredThemePresentation.createBadge
-    }
-
-    /// A `pomodoro_name` create row that would push the plan past its theme
-    /// cap carries an `after/cap` badge (e.g. `4/3`); it renders red. No
-    /// other completion badge uses the bare `N/M` shape (`H2`, `2 items`,
-    /// `^id` all differ), so the shape alone identifies it.
-    private func isOverCapBadge(_ badge: String) -> Bool {
-        let parts = badge.split(separator: "/")
-        guard parts.count == 2,
-              let after = Int(parts[0]),
-              let cap = Int(parts[1])
-        else {
-            return false
-        }
-        return after > cap
     }
 
     @ViewBuilder

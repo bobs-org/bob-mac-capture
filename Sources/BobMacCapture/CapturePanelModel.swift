@@ -438,9 +438,8 @@ final class CapturePanelModel: ObservableObject {
     @Published var closePendingAction = "Close"
     @Published var errorMessage: String?
     /// Machine-readable failure code for the current error callout, when Bob
-    /// reported one. Today only the strict plan-budget refusal carries a
-    /// code (`plan_theme_cap_exceeded`); nil for every other error and when
-    /// there is no error. Cleared together with `errorMessage`.
+    /// reported one; nil for errors without a code and when there is no
+    /// error. Cleared together with `errorMessage`.
     @Published var errorCode: String?
     /// Shown when `capture-parse` grammar is missing or below 2. Capture
     /// stays disabled and the draft is kept.

@@ -2690,32 +2690,27 @@ public struct CapturePlanBudgetMeter: Codable, Equatable, Sendable {
 }
 
 /// Top-level `plan_budget` on a capture preview/submission or idle agenda
-/// snapshot. Capture previews may include proposal details (`before`, added
-/// themes, warnings); idle agenda budgets report the saved daily counts and
-/// caps. Older Bob omits it entirely and it decodes as nil.
+/// snapshot. The daily plan caps Task Links only. An older Bob also sends a
+/// `themes` meter and `added_themes`; they decode as unknown keys and are
+/// ignored, so a retired type cap never reaches the UI. Older Bob omits the
+/// whole object and it decodes as nil.
 public struct CapturePlanBudget: Codable, Equatable, Sendable {
     public let status: String
-    public let themes: CapturePlanBudgetMeter
     public let links: CapturePlanBudgetMeter
-    public let addedThemes: [String]
-    /// Hue refs for the added theme names, so preview pills and the delta
-    /// chip wear Bob's hues without a second spawn. Older Bob omits the
-    /// array and it decodes as empty.
+    /// Hue refs for the Pomodoro names a capture adds, so preview pills wear
+    /// Bob's hues without a second spawn. Absent on an older Bob and on one
+    /// that adds none; it decodes as empty.
     public let addedThemeRefs: [CapturePomodoroThemeRef]
     public let warnings: [CapturePlanBudgetWarning]
 
     public init(
         status: String,
-        themes: CapturePlanBudgetMeter,
         links: CapturePlanBudgetMeter,
-        addedThemes: [String] = [],
         addedThemeRefs: [CapturePomodoroThemeRef] = [],
         warnings: [CapturePlanBudgetWarning] = []
     ) {
         self.status = status
-        self.themes = themes
         self.links = links
-        self.addedThemes = addedThemes
         self.addedThemeRefs = addedThemeRefs
         self.warnings = warnings
     }
@@ -2723,17 +2718,11 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
-        themes =
-            try container.decodeIfPresent(
-                CapturePlanBudgetMeter.self,
-                forKey: .themes
-            ) ?? CapturePlanBudgetMeter(count: 0, cap: 0, over: false)
         links =
             try container.decodeIfPresent(
                 CapturePlanBudgetMeter.self,
                 forKey: .links
             ) ?? CapturePlanBudgetMeter(count: 0, cap: 0, over: false)
-        addedThemes = try container.decodeIfPresent([String].self, forKey: .addedThemes) ?? []
         addedThemeRefs =
             (try? container.decodeIfPresent(
                 [CapturePomodoroThemeRef].self,
@@ -2748,9 +2737,7 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case status
-        case themes
         case links
-        case addedThemes = "added_themes"
         case addedThemeRefs = "added_theme_refs"
         case warnings
     }
@@ -5921,8 +5908,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
     public let ok: Bool
     public let error: String
     // Additive machine-readable failure code for refusals Bob classifies, such as the
-    // strict plan-budget refusal (`plan_theme_cap_exceeded`) and the incomplete or
-    // unknown `%` and `#` markers (`incomplete_directive`, `type_marker_needs_task`,
+    // incomplete or unknown `%` and `#` markers (`incomplete_directive`, `type_marker_needs_task`,
     // `unknown_directive`). Other failures and older Bob omit it, and it decodes as nil.
     public let code: String?
     public let pullIn: CapturePullIn?
@@ -7920,12 +7906,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     // entry a bare `=` would start. Omitted when false, and older Bob never
     // sends it, so missing decodes as false.
     public let nextUp: Bool
-    // Additive plan-budget preview on `pomodoro_name` create rows: the
-    // resulting theme count and cap when the row is accepted. Only on
-    // `creates_pomodoro` rows; omitted when the daily note or the plan
-    // config is unavailable, so older Bob decodes as nil.
-    public let planThemesAfter: Int?
-    public let planThemesCap: Int?
     public let pomodoro: ActiveTaskPomodoro?
     // Additive `task_link` fields from Bob's linkable-task scanner: the
     // note kind (`inbox`/`area`/`project`), ID suggestions for ID-less
@@ -8103,8 +8083,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         daysUsed: Int? = nil,
         similarTo: [String] = [],
         nextUp: Bool = false,
-        planThemesAfter: Int? = nil,
-        planThemesCap: Int? = nil,
         pomodoro: ActiveTaskPomodoro? = nil,
         noteKind: String? = nil,
         blockIDSuggestions: [String] = [],
@@ -8188,8 +8166,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.daysUsed = daysUsed
         self.similarTo = similarTo
         self.nextUp = nextUp
-        self.planThemesAfter = planThemesAfter
-        self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
         self.noteKind = noteKind
         self.blockIDSuggestions = blockIDSuggestions
@@ -8276,8 +8252,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         daysUsed = try container.decodeIfPresent(Int.self, forKey: .daysUsed)
         similarTo = try container.decodeIfPresent([String].self, forKey: .similarTo) ?? []
         nextUp = try container.decodeIfPresent(Bool.self, forKey: .nextUp) ?? false
-        planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
-        planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
         noteKind = try container.decodeIfPresent(String.self, forKey: .noteKind)
         blockIDSuggestions =
@@ -8368,8 +8342,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case daysUsed = "days_used"
         case similarTo = "similar_to"
         case nextUp = "next_up"
-        case planThemesAfter = "plan_themes_after"
-        case planThemesCap = "plan_themes_cap"
         case pomodoro
         case noteKind = "note_kind"
         case blockIDSuggestions = "block_id_suggestions"

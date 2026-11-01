@@ -10,33 +10,25 @@ import Foundation
 /// there is no Swift-side ledger logic here, only wording.
 ///
 /// Wording mirrors `print_plan_budget` and `format_pomodoro_task_destination`
-/// in `src/native/capture/output.rs` (`plan T/Tc types · L/Lc links`,
-/// `(+N theme: NAME)`, `→ new Pomodoro BOB`, `→ into running GOALS (…)`,
-/// `→ under GOALS (named)`) so the panel and the CLI describe the same
-/// budget the same way. The Mac destination row shortens the CLI's arrow
-/// to the row form (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
-/// `→ new Pomodoro BOB`); the meter capsules, delta chip, and warning
-/// captions carry the same numbers and names.
+/// in `src/native/capture/output.rs` (`plan L/Lc links`, `→ new Pomodoro BOB`,
+/// `→ into running GOALS (…)`, `→ under GOALS (named)`) so the panel and the
+/// CLI describe the same budget the same way. The daily plan caps Task Links
+/// only: there is no type meter, `+N` type delta, or type-cap warning, even
+/// when an older Bob still sends `themes` / `added_themes` / a
+/// `plan_theme_cap_exceeded` warning (all ignored). The Mac destination row
+/// shortens the CLI's arrow to the row form (`→ GOALS · next up`,
+/// `→ running GOALS 0945–1015`, `→ new Pomodoro BOB`); the links capsule and
+/// warning captions carry the same numbers.
 public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// `"→ GOALS · next up"`, `"→ running GOALS 0945–1015"`,
     /// `"→ new Pomodoro BOB"`, or nil when Bob reported no link
     /// destination. The time range uses an en dash; Bob's wire
     /// `time_range` uses a hyphen.
     public let destinationRowText: String?
-    /// `"Types 3/3"` — always present when the budget is present.
-    public let themesCapsuleText: String
-    public let themesOverCap: Bool
     /// `"Links 8/10"` — always present when the budget is present.
     public let linksCapsuleText: String
     public let linksOverCap: Bool
-    /// `"+1 BOB"` when the types meter grew past its previous count,
-    /// else nil. Names the first added theme when Bob reported one.
-    public let deltaChipText: String?
-    /// Per-component swatches for the added theme names, from Bob's
-    /// `added_theme_refs`. Empty on an older Bob; the delta chip then
-    /// renders neutral. Components without a matching ref stay unknown.
-    public let deltaThemeSwatches: [CaptureThemeSwatch]
-    /// Budget warning messages in Bob's order, rendered as orange captions.
+    /// Link-cap warning messages in Bob's order, rendered as orange captions.
     public let warningTexts: [String]
     public let accessibilitySummary: String
 
@@ -56,24 +48,19 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         includeProposalDetails: Bool = true
     ) {
         destinationRowText = Self.destinationRowText(for: destination)
-        themesCapsuleText = "Types \(budget.themes.count)/\(budget.themes.cap)"
-        themesOverCap = budget.themes.over
         linksCapsuleText = "Links \(budget.links.count)/\(budget.links.cap)"
         linksOverCap = budget.links.over
-        deltaChipText = includeProposalDetails ? Self.deltaChipText(for: budget) : nil
-        deltaThemeSwatches = includeProposalDetails
-            ? Self.deltaThemeSwatches(for: budget)
+        warningTexts = includeProposalDetails
+            ? budget.warnings
+                .filter { $0.code != Self.retiredTypeCapWarningCode }
+                .map(\.message)
             : []
-        warningTexts = includeProposalDetails ? budget.warnings.map(\.message) : []
 
         var parts: [String] = []
         if let destinationRowText {
             parts.append(destinationRowText)
         }
-        parts.append("\(themesCapsuleText), \(linksCapsuleText)")
-        if let deltaChipText {
-            parts.append(deltaChipText)
-        }
+        parts.append(linksCapsuleText)
         parts.append(contentsOf: warningTexts)
         accessibilitySummary = parts.joined(separator: ", ")
     }
@@ -127,26 +114,9 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         timeRange.replacingOccurrences(of: "-", with: "–")
     }
 
-    private static func deltaChipText(for budget: CapturePlanBudget) -> String? {
-        let before = budget.themes.before ?? budget.themes.count
-        guard budget.themes.count > before else {
-            return nil
-        }
-        let delta = budget.themes.count - before
-        if let first = budget.addedThemes.first, !first.isEmpty {
-            return "+\(delta) \(first)"
-        }
-        return "+\(delta)"
-    }
-
-    /// Swatches for the added theme names, resolved against Bob's
-    /// `added_theme_refs` in first-added order. Empty when the budget
-    /// reports no added names.
-    private static func deltaThemeSwatches(for budget: CapturePlanBudget) -> [CaptureThemeSwatch] {
-        budget.addedThemes.flatMap { name in
-            PomodoroThemeSwatches.swatches(forName: name, refs: budget.addedThemeRefs)
-        }
-    }
+    /// The retired daily type cap's warning code. An older Bob still sends
+    /// it; the Mac drops it so no type-cap copy reaches the panel.
+    private static let retiredTypeCapWarningCode = "plan_theme_cap_exceeded"
 
     /// Swatches for a preview destination name, resolved against the
     /// budget's `added_theme_refs`. Created destinations tint; existing

@@ -483,7 +483,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             destination: nil,
             includeProposalDetails: false
         )
-        let text = "\(presentation.themesCapsuleText), \(presentation.linksCapsuleText)"
+        let text = presentation.linksCapsuleText
         return CaptureAgendaRow(
             kind: .planBudget,
             text: text,

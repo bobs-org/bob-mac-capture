@@ -60,7 +60,6 @@ final class CapturePullInChoiceTests: XCTestCase {
             offers: offers(count: 2),
             planBudget: CapturePlanBudget(
                 status: "over",
-                themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                 links: CapturePlanBudgetMeter(count: 4, cap: 5, over: false)
             )
         )
@@ -317,7 +316,6 @@ final class CapturePullInChoiceTests: XCTestCase {
             offers: [offer(n: 1, group: "hand_off")],
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                 links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
             )
         )
@@ -534,7 +532,6 @@ final class CapturePullInChoiceTests: XCTestCase {
             offers: offers(count: 3),
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                 links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
             )
         )
@@ -545,7 +542,6 @@ final class CapturePullInChoiceTests: XCTestCase {
             offers: offers(count: 2),
             planBudget: CapturePlanBudget(
                 status: "over",
-                themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                 links: CapturePlanBudgetMeter(count: 4, cap: 5, over: false)
             )
         )

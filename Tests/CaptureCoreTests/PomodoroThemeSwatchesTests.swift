@@ -198,7 +198,6 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
         )
         let budget = try JSONDecoder().decode(CapturePlanBudget.self, from: data)
 
-        XCTAssertEqual(budget.addedThemes, ["BOB"])
         XCTAssertEqual(
             budget.addedThemeRefs,
             [CapturePomodoroThemeRef(key: "bob", name: "BOB", hue: .magenta, hueSource: "hash")]
@@ -217,21 +216,17 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
         XCTAssertTrue(budget.addedThemeRefs.isEmpty)
     }
 
-    func testDeltaSwatchesFollowAddedThemesInOrder() {
+    func testDestinationSwatchesFollowAddedRefs() {
         let budget = CapturePlanBudget(
             status: "ok",
-            themes: CapturePlanBudgetMeter(count: 2, cap: 5, over: false, before: 1),
             links: CapturePlanBudgetMeter(count: 1, cap: 10, over: false, before: 1),
-            addedThemes: ["BOB"],
             addedThemeRefs: [
                 ref(key: "bob", name: "BOB", hue: .magenta, hueSource: "hash"),
             ]
         )
-        let presentation = CapturePlanBudgetPresentation(budget: budget, destination: nil)
 
-        XCTAssertEqual(presentation.deltaChipText, "+1 BOB")
         XCTAssertEqual(
-            presentation.deltaThemeSwatches,
+            CapturePlanBudgetPresentation.swatches(forName: "BOB", budget: budget),
             [CaptureThemeSwatch(hue: .magenta, known: true)]
         )
     }
@@ -253,7 +248,6 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
     func testExistingDestinationResolvesNeutralWithoutBobRefs() {
         let budget = CapturePlanBudget(
             status: "ok",
-            themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false, before: 1),
             links: CapturePlanBudgetMeter(count: 1, cap: 10, over: false, before: 1)
         )
         let endpoint = PomodoroLinkEndpoint(line: 3, name: "GOALS", role: "named")

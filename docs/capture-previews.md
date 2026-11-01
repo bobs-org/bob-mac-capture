@@ -158,8 +158,10 @@ Preview shows every block Bob will write, in Bob's own order: each item's parent
   shows a destination row above it (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
   `→ new Pomodoro BOB`, with a `timer` symbol) from the destination `role`, and a
   batch that changed today's Pomodoros section shows one plan-budget meter row above
-  the items (`Types 3/3`, `Links 8/10` capsules — green within the cap, red over —
-  a `+1 BOB` delta chip whenever the types meter grew, and orange warning captions).
+  the items (a `Links 8/10` capsule — green within the cap, red over — and orange
+  link-cap warning captions). The daily plan caps Task Links only: there is no type
+  capsule, `+N` type delta chip, or type-cap warning, and an older Bob's `themes`
+  meter, `added_themes`, and `plan_theme_cap_exceeded` warning are ignored.
   Both rows join the VoiceOver summary.
 
 ### Close card
@@ -200,9 +202,7 @@ A Pomodoro close instead shows its own card whenever
   the live-preview, preview, and submit status read `Would close …` / `Closed …`
   with started, completed (only when nonzero), and Work Log counts, and a failed
   dry run clears the card so no stale preview sits beside the error. The error
-  callout shows Bob's message unchanged; a strict plan-budget refusal
-  (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^ or
-  defer with $<N>.` While a
+  callout shows Bob's message unchanged. While a
   list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
   submit; while a Work Log bullet dangles (`x` plus `- 1`), the card previews

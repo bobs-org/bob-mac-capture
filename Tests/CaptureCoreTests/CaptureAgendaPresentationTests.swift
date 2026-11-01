@@ -268,7 +268,6 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])],
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
                 links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
             )
         ))
@@ -301,9 +300,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
     func testBudgetRowUsesSavedCountsWithoutProposalDetails() {
         let budget = CapturePlanBudget(
             status: "ok",
-            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false, before: 2),
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false),
-            addedThemes: ["NEW"],
             warnings: [CapturePlanBudgetWarning(code: "theme_cap", message: "proposal warning")]
         )
         let presentation = present(makeSnapshot(entries: [], planBudget: budget))
@@ -314,13 +311,11 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.state, .noOpen)
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
         XCTAssertEqual(row.kind, .planBudget)
-        XCTAssertEqual(row.text, "Types 3/3, Links 8/10")
-        XCTAssertEqual(row.key.text, "Types 3/3, Links 8/10")
-        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Types 3/3, Links 8/10")
+        XCTAssertEqual(row.text, "Links 8/10")
+        XCTAssertEqual(row.key.text, "Links 8/10")
+        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Links 8/10")
         XCTAssertNil(row.planBudget?.destinationRowText)
-        XCTAssertNil(row.planBudget?.deltaChipText)
         XCTAssertTrue(row.planBudget?.warningTexts.isEmpty == true)
-        XCTAssertEqual(row.planBudget?.themesOverCap, false)
         XCTAssertEqual(row.planBudget?.linksOverCap, false)
     }
 
@@ -329,13 +324,12 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             entries: [],
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: CapturePlanBudgetMeter(count: 0, cap: 4, over: false),
                 links: CapturePlanBudgetMeter(count: 0, cap: 7, over: false)
             )
         ))
 
         XCTAssertEqual(presentation.state, .noOpen)
-        XCTAssertEqual(presentation.planBudgetRow?.text, "Types 0/4, Links 0/7")
+        XCTAssertEqual(presentation.planBudgetRow?.text, "Links 0/7")
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
     }
 
@@ -351,13 +345,12 @@ final class CaptureAgendaPresentationTests: XCTestCase {
     }
 
     func testBudgetRowsRepublishOverStateChangesAndKeyCountsAndCaps() throws {
-        func row(over: Bool, count: Int = 3, cap: Int = 3) throws -> CaptureAgendaRow {
+        func row(over: Bool, count: Int = 8, cap: Int = 10) throws -> CaptureAgendaRow {
             let snapshot = makeSnapshot(
                 entries: [],
                 planBudget: CapturePlanBudget(
                     status: "ok",
-                    themes: CapturePlanBudgetMeter(count: count, cap: cap, over: over),
-                    links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+                    links: CapturePlanBudgetMeter(count: count, cap: cap, over: over)
                 )
             )
             return try XCTUnwrap(present(snapshot).planBudgetRow)

@@ -979,10 +979,8 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.selectionSummary, "In progress 1 · Deferred 2, 3 · Dropped 4")
 
         // The batch-level budget decodes alongside the close: the close
-        // removed one link (4 before, 3 after) without adding a theme.
+        // removed one link (4 before, 3 after).
         XCTAssertEqual(success.planBudget?.status, "ok")
-        XCTAssertEqual(success.planBudget?.themes.count, 1)
-        XCTAssertEqual(success.planBudget?.themes.before, 1)
         XCTAssertEqual(success.planBudget?.links.count, 3)
         XCTAssertEqual(success.planBudget?.links.before, 4)
 

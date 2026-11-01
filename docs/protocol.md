@@ -204,16 +204,15 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
   never Ensure Next. Captures that change today's `## Pomodoros` section also
-  report a top-level `plan_budget` object with before/after theme and link
-  meters, an `added_themes` list, and cap warnings that fire only while the
-  batch grows a meter past its cap; the same destination carries a `role` of
-  `current`, `next_up`, `named`, or `created`. With `plan.strict: true` a batch
-  that creates a new named Pomodoro past the theme cap is refused atomically
-  (exit 1, JSON `code: plan_theme_cap_exceeded`), and `pomodoro_name` create
-  rows preview the resulting theme count with `plan_themes_after` and
-  `plan_themes_cap`. `plan_budget` also carries `added_theme_refs`, the hue refs
-  for the added names: the `+1 BOB` delta chip wears the first added hue and
-  created destination, start, toggle, and project-note rows wear theme pills.
+  report a top-level `plan_budget` object with a before/after link meter and
+  link-cap warnings that fire only while the batch grows the meter past its cap;
+  the same destination carries a `role` of `current`, `next_up`, `named`, or
+  `created`. The daily plan caps Task Links only, so the app shows no type
+  meter, type delta, or type-cap badge or hint; an older Bob's `themes` meter,
+  `added_themes`, `plan_themes_after`/`plan_themes_cap`, `plan_theme_cap_exceeded`
+  warnings, and refusals are decoded as absent or ignored. `plan_budget` also
+  carries `added_theme_refs`, the hue refs for the added names: created
+  destination, start, toggle, and project-note rows wear theme pills.
   `pomodoro_name` and `task_toggle_pomodoro_name` spans carry per-component
   `themes` refs, so the editor tints known names behind the unchanged syntax
   color; unknown and exempt names stay neutral. Agenda entries carry `themes`
@@ -222,11 +221,9 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   The shared catalog, hue, and menu rules are defined in the [Pomodoro themes
   contract](https://bobs-org.github.io/pomodoro-themes/).
   An older Bob that omits `plan_budget`, `role`,
-  `plan_themes_after`/`plan_themes_cap`, `added_theme_refs`, span or entry
-  `themes`, or `code` still previews and captures;
-  the Mac app decodes each as absent and renders the destination row as
-  `→ NAME`, omitting only the meter capsules, the cap badge, the strict
-  hint, and the theme tints. Agenda and Refs rows from an older Bob render
+  `added_theme_refs`, span or entry `themes`, or `code` still previews and
+  captures; the Mac app decodes each as absent and renders the destination row as
+  `→ NAME`, omitting only the links capsule and the theme tints. Agenda and Refs rows from an older Bob render
   the plain name with no pills. A trailing `#now` tag is the ordinary trailing-tag error like any
   other `#tag`, and `#now` typed before the route is plain body text. The `^`
   active-task picker lists In Progress and Next tasks only. An older Bob that
@@ -334,7 +331,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 
 - `creates_pomodoro`, `pomodoro_start`, `pomodoro_adjust`, `pomodoro_shift`, `pomodoro_close` (plus `log`, `details`, `typed_work_log`, `typed_work_log_details`)
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
-- `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`, `added_theme_refs`
+- `plan_budget`, destination `role`, `code`, `added_theme_refs`
 - span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`, `task_type`), agenda entry `themes`, Refs Today row `themes`
 - `task_type` completion context, top-level `subject` (`new`/`existing`), candidate `current` / `inherited` / `effect` / `refused`
 - `task_theme.action` `kept`, `type_relocation` (`outcome`, `from`, `to`)
@@ -365,7 +362,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `pomodoro_start` / `pomodoro_adjust` / `pomodoro_shift` | Session, adjust, and shift rows | Omitted rows; malformed suffixes surface `bob`'s diagnostic | Upgrade `bob` for `=` / `+N` / `++N` |
 | `pomodoro_close` with `log` entries | Close card with typed Work Log | Standard card; no close preview | Upgrade `bob` before `x` |
 | `toggle_behavior` | Ensure Next vs Set Next / Open labels | Two-way labels; status and relocation still exact | Upgrade `bob` for exact labels |
-| `plan_budget`, `role`, theme caps | Meter capsules, badges, strict hint | Destination row only (`-> NAME`) | Upgrade `bob` for meters |
+| `plan_budget`, `role` | Links capsule and link-cap warnings | Destination row only (`-> NAME`) | Upgrade `bob` for the links meter |
 | `added_theme_refs`, span/entry/row `themes` | Pill and swatch tints in the editor, agenda, previews, and Refs Today | Plain names; neutral pills only where a budget exists | Upgrade `bob` for theme tints |
 | `configured`, `configured_themes`, `hue_source` `config`/`unconfigured` | Dashed unconfigured pills, Name-it chips from the vocabulary, `theme_not_configured` captions | Today's pills; Name-it shows Recent as before; no unconfigured warning | Upgrade `bob` for configured themes |
 | structured `theme_not_configured` warning | Orange caption with the unconfigured pill in every settled preview and in Name-it | Absent; start/close cards still show other warning strings | Upgrade `bob` for the warning |

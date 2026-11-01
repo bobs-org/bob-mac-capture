@@ -445,7 +445,6 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             entries: [],
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
                 links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
             )
         )
@@ -458,7 +457,6 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
     func testBudgetRowStaysOutsideFoldingAndContentCounts() throws {
         let budget = CapturePlanBudget(
             status: "ok",
-            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
         )
         let baseline = standardPresentation()

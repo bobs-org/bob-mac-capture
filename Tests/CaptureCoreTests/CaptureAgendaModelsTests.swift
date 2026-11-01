@@ -135,17 +135,12 @@ final class CaptureAgendaModelsTests: XCTestCase {
         let snapshot = try JSONDecoder().decode(CaptureAgendaSnapshot.self, from: json)
 
         XCTAssertEqual(snapshot.schemaVersion, 1)
-        XCTAssertEqual(snapshot.planBudget?.themes.count, 3)
-        XCTAssertEqual(snapshot.planBudget?.themes.cap, 3)
-        XCTAssertEqual(snapshot.planBudget?.themes.over, false)
         XCTAssertEqual(snapshot.planBudget?.links.count, 11)
         XCTAssertEqual(snapshot.planBudget?.links.cap, 10)
         XCTAssertEqual(snapshot.planBudget?.links.over, true)
-        XCTAssertNil(snapshot.planBudget?.themes.before)
+        XCTAssertNil(snapshot.planBudget?.links.before)
 
         let cliSnapshot = try decodeFixture("pomodoro-start-blocks.json")
-        XCTAssertEqual(cliSnapshot.planBudget?.themes.count, 0)
-        XCTAssertEqual(cliSnapshot.planBudget?.themes.cap, 3)
         XCTAssertEqual(cliSnapshot.planBudget?.links.count, 0)
         XCTAssertEqual(cliSnapshot.planBudget?.links.cap, 10)
 

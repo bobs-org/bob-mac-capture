@@ -365,9 +365,9 @@ In the `pomodoro_name` context, Bob may preselect a suggested row from the task-
   canonicalizes the `@route:id#name` marker, closes completion without opening **Name
   Pomodoro**, restores the editor caret, and reruns live preview; the daily note is not
   mutated until the later `bob capture` transaction creates the placeholder and task
-  link together. A create row that would push the plan past its theme cap
-  (`plan_themes_after > plan_themes_cap`) carries a red `after/cap` badge
-  (e.g. `4/3`). Unnamed and untypeable-name rows (`requires_name: true`, empty
+  link together. A create row carries no cap badge: the daily plan caps Task
+  Links only, and an older Bob's `plan_themes_after` / `plan_themes_cap` are
+  ignored. Unnamed and untypeable-name rows (`requires_name: true`, empty
   `replacement`) still replace the completion list with an inline **Name Pomodoro**
   prompt. The two prompts can never both be open. Opening the prompt pre-fills the name
   field from the in-progress completion query (`#deep-work` becomes `DEEP WORK`), moves

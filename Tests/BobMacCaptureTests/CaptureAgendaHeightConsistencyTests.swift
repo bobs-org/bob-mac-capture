@@ -24,7 +24,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             try assertConsistent(
                 snapshot: budgetedSnapshot(
                     "agenda-current.json",
-                    themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
                     links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
                 ),
                 fixture: "agenda-current-budget",
@@ -35,7 +34,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             try assertConsistent(
                 snapshot: budgetedSnapshot(
                     "agenda-heavy.json",
-                    themes: CapturePlanBudgetMeter(count: 4, cap: 3, over: true),
                     links: CapturePlanBudgetMeter(count: 12, cap: 10, over: true)
                 ),
                 fixture: "agenda-heavy-budget",
@@ -46,7 +44,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             try assertConsistent(
                 snapshot: budgetedSnapshot(
                     "agenda-empty.json",
-                    themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
                     links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
                 ),
                 fixture: "agenda-empty-budget",
@@ -116,7 +113,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
     func testSavedBudgetRowStaysFlatAndHasNoExpansionTarget() throws {
         let snapshot = try budgetedSnapshot(
             "agenda-current.json",
-            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
         )
         let presentation = CaptureAgendaPresentation(
@@ -211,7 +207,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
 
     private func budgetedSnapshot(
         _ name: String,
-        themes: CapturePlanBudgetMeter,
         links: CapturePlanBudgetMeter
     ) throws -> CaptureAgendaSnapshot {
         let snapshot = try agendaSnapshot(name)
@@ -224,7 +219,6 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             warnings: snapshot.warnings,
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: themes,
                 links: links
             )
         )

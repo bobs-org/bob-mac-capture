@@ -81,34 +81,49 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
 
     // MARK: - Meter row
 
-    func testOverCapBudgetRendersCapsulesDeltaChipAndWarnings() throws {
+    func testOlderBobTypeCapBudgetRendersOnlyTheLinksCapsule() throws {
+        // `plan-budget-over.json` is an older Bob's payload: a `themes` meter, `added_themes`,
+        // and a `plan_theme_cap_exceeded` warning. None of it reaches the presentation.
         let success = try decodeCaptureSuccess(fixtureText("plan-budget-over.json"))
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ new Pomodoro NEWT")
-        XCTAssertEqual(presentation.themesCapsuleText, "Types 4/3")
-        XCTAssertTrue(presentation.themesOverCap)
         XCTAssertEqual(presentation.linksCapsuleText, "Links 4/10")
         XCTAssertFalse(presentation.linksOverCap)
-        XCTAssertEqual(presentation.deltaChipText, "+1 NEWT")
-        XCTAssertEqual(presentation.warningTexts.count, 1)
-        XCTAssertTrue(presentation.warningTexts[0].contains("4/3 themes (adds NEWT)"))
-        // Both rows are in the accessibility summary.
+        XCTAssertTrue(presentation.warningTexts.isEmpty)
         XCTAssertTrue(presentation.accessibilitySummary.contains("→ new Pomodoro NEWT"))
-        XCTAssertTrue(presentation.accessibilitySummary.contains("Types 4/3, Links 4/10"))
-        XCTAssertTrue(presentation.accessibilitySummary.contains("+1 NEWT"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Links 4/10"))
+        XCTAssertFalse(presentation.accessibilitySummary.contains("Types"))
+        XCTAssertFalse(presentation.accessibilitySummary.contains("+1"))
+        XCTAssertFalse(presentation.accessibilitySummary.contains("themes"))
     }
 
-    func testQuietBudgetRendersNoDeltaChipOrWarnings() throws {
+    func testBudgetWithoutThemesMeterDecodesAndRendersLinks() throws {
+        // A newer Bob drops the `themes` meter and `added_themes` entirely.
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "plan_budget":{"status":"ok","links":{"count":2,"cap":10,"over":false,"before":1}}}
+            """
+        )
+        let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
+
+        XCTAssertEqual(presentation.linksCapsuleText, "Links 2/10")
+        XCTAssertTrue(presentation.warningTexts.isEmpty)
+        XCTAssertEqual(presentation.accessibilitySummary, "Links 2/10")
+    }
+
+    func testQuietBudgetRendersNoWarnings() throws {
         let success = try decodeCaptureSuccess(
             fixtureText("plan-budget-destination-role.json")
         )
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ GOALS · named")
-        XCTAssertEqual(presentation.themesCapsuleText, "Types 3/3")
-        XCTAssertFalse(presentation.themesOverCap)
-        XCTAssertNil(presentation.deltaChipText)
+        XCTAssertFalse(presentation.linksOverCap)
         XCTAssertTrue(presentation.warningTexts.isEmpty)
     }
 
@@ -125,10 +140,9 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertNil(CapturePlanBudgetPresentation(capture: success))
     }
 
-    func testLinksDeltaWithoutThemeGrowthShowsNoDeltaChip() throws {
+    func testLinkCapBudgetShowsLinksCapsuleAndWarning() throws {
         let budget = CapturePlanBudget(
             status: "over",
-            themes: CapturePlanBudgetMeter(count: 2, cap: 3, over: false, before: 2),
             links: CapturePlanBudgetMeter(count: 11, cap: 10, over: true, before: 10),
             warnings: [CapturePlanBudgetWarning(
                 code: "plan_link_cap_exceeded",
@@ -141,10 +155,9 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertNil(presentation.destinationRowText)
         XCTAssertEqual(presentation.linksCapsuleText, "Links 11/10")
         XCTAssertTrue(presentation.linksOverCap)
-        XCTAssertNil(presentation.deltaChipText)
         XCTAssertEqual(
             presentation.accessibilitySummary,
-            "Types 2/3, Links 11/10, today's plan now has 11/10 links"
+            "Links 11/10, today's plan now has 11/10 links"
         )
     }
 
@@ -181,9 +194,10 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertNil(failure.code)
     }
 
-    // MARK: - Completion cap badge
+    // MARK: - Completion rows carry no cap badge
 
-    func testCompletionCreateRowDecodesPlanThemes() throws {
+    func testCompletionCreateRowIgnoresOlderBobPlanThemes() throws {
+        // An older Bob still sends `plan_themes_after` / `plan_themes_cap` on create rows.
         let data = Data(
             """
             {"ok":true,"schema_version":1,"cursor":20,
@@ -200,149 +214,33 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         )
 
         let candidate = try XCTUnwrap(response.candidates.first)
-        XCTAssertEqual(candidate.planThemesAfter, 4)
-        XCTAssertEqual(candidate.planThemesCap, 3)
-
         let content = completionRowContent(
             for: candidate,
             context: "pomodoro_name",
             query: "NEW"
         )
-        XCTAssertTrue(content.badges.contains("Create"))
-        XCTAssertTrue(content.badges.contains("4/3"))
-        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
+        XCTAssertEqual(content.badges, ["Create"])
+        XCTAssertFalse(content.accessibilityLabel.contains("4/3"))
     }
 
-    func testCompletionCreateRowWithoutPlanThemesHasNoCapBadge() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "newt",
-            name: "NEWT",
+    func testPomodoroStartNameRowsHaveNoCapBadge() {
+        let newRow = CaptureCompletionCandidate(
+            replacement: "rev",
+            name: "REV",
+            state: "open",
+            placeholder: true,
             createsPomodoro: true
-        )
-
-        let content = completionRowContent(
-            for: candidate,
-            context: "pomodoro_name",
-            query: ""
-        )
-        XCTAssertEqual(content.badges, ["Create"])
-    }
-
-    func testCompletionCreateRowWithinCapHasNoCapBadge() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "goals",
-            name: "GOALS",
-            createsPomodoro: true,
-            planThemesAfter: 3,
-            planThemesCap: 3
-        )
-
-        let content = completionRowContent(
-            for: candidate,
-            context: "pomodoro_name",
-            query: ""
-        )
-        XCTAssertEqual(content.badges, ["Create"])
-    }
-
-    func testPomodoroStartNameNewRowShowsCapBadgeOverCap() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "rev",
-            childCount: 0,
-            name: "REV",
-            state: "open",
-            placeholder: true,
-            createsPomodoro: true,
-            planThemesAfter: 4,
-            planThemesCap: 3
-        )
-
-        let content = completionRowContent(
-            for: candidate,
-            context: "pomodoro_start_name",
-            query: "rev"
-        )
-        XCTAssertEqual(content.badges, ["New", "4/3"])
-        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
-    }
-
-    func testPomodoroStartNameAgainRowShowsCapBadgeOverCap() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "plan",
-            childCount: 1,
-            name: "PLAN",
-            line: 5,
-            state: "completed",
-            timeRange: "0830-0855",
-            createsPomodoro: true,
-            planThemesAfter: 4,
-            planThemesCap: 3
-        )
-
-        let content = completionRowContent(
-            for: candidate,
-            context: "pomodoro_start_name",
-            query: "pl"
-        )
-        XCTAssertEqual(content.badges, ["Again", "4/3"])
-        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
-    }
-
-    func testPomodoroStartNameRowsWithinCapHaveNoCapBadge() {
-        let newWithinCap = CaptureCompletionCandidate(
-            replacement: "rev",
-            name: "REV",
-            state: "open",
-            placeholder: true,
-            createsPomodoro: true,
-            planThemesAfter: 3,
-            planThemesCap: 3
         )
         XCTAssertEqual(
             completionRowContent(
-                for: newWithinCap,
+                for: newRow,
                 context: "pomodoro_start_name",
                 query: "rev"
             ).badges,
             ["New"]
         )
 
-        let againWithinCap = CaptureCompletionCandidate(
-            replacement: "plan",
-            name: "PLAN",
-            line: 5,
-            state: "completed",
-            timeRange: "0830-0855",
-            createsPomodoro: true,
-            planThemesAfter: 3,
-            planThemesCap: 3
-        )
-        XCTAssertEqual(
-            completionRowContent(
-                for: againWithinCap,
-                context: "pomodoro_start_name",
-                query: "pl"
-            ).badges,
-            ["Again"]
-        )
-
-        let newWithoutFields = CaptureCompletionCandidate(
-            replacement: "rev",
-            name: "REV",
-            state: "open",
-            placeholder: true,
-            createsPomodoro: true
-        )
-        XCTAssertEqual(
-            completionRowContent(
-                for: newWithoutFields,
-                context: "pomodoro_start_name",
-                query: "rev"
-            ).badges,
-            ["New"]
-        )
-
-        let againWithoutFields = CaptureCompletionCandidate(
+        let againRow = CaptureCompletionCandidate(
             replacement: "plan",
             name: "PLAN",
             line: 5,
@@ -352,7 +250,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             completionRowContent(
-                for: againWithoutFields,
+                for: againRow,
                 context: "pomodoro_start_name",
                 query: "pl"
             ).badges,
@@ -360,7 +258,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         )
     }
 
-    func testPomodoroStartNameAgainFixtureDecodesPlanThemes() throws {
+    func testPomodoroStartNameAgainFixtureShowsNoCapBadge() throws {
         let text = try fixtureText("pomodoro-start-named-complete-again.json")
         let data = Data(text.utf8)
         let response = try JSONDecoder().decode(
@@ -370,8 +268,6 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         let candidate = try XCTUnwrap(
             response.candidates.first(where: { $0.replacement == "plan" })
         )
-        XCTAssertEqual(candidate.planThemesAfter, 4)
-        XCTAssertEqual(candidate.planThemesCap, 3)
 
         let content = completionRowContent(
             for: candidate,
@@ -379,8 +275,8 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
             query: "pl"
         )
         XCTAssertTrue(content.badges.contains("Again"))
-        XCTAssertTrue(content.badges.contains("4/3"))
-        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
+        XCTAssertFalse(content.badges.contains("4/3"))
+        XCTAssertFalse(content.accessibilityLabel.contains("4/3"))
     }
 
     // MARK: - Helpers

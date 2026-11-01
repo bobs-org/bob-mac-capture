@@ -104,7 +104,6 @@ final class CaptureAgendaDesignTests: XCTestCase {
 
         let withinCap = try budgetedSnapshot(
             "agenda-current.json",
-            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
         )
         try render(
@@ -119,7 +118,6 @@ final class CaptureAgendaDesignTests: XCTestCase {
 
         let overCap = try budgetedSnapshot(
             "agenda-current.json",
-            themes: CapturePlanBudgetMeter(count: 4, cap: 3, over: true),
             links: CapturePlanBudgetMeter(count: 11, cap: 10, over: true)
         )
         try render(
@@ -135,7 +133,6 @@ final class CaptureAgendaDesignTests: XCTestCase {
 
         let empty = try budgetedSnapshot(
             "agenda-empty.json",
-            themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
             links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
         )
         try render(
@@ -198,7 +195,6 @@ final class CaptureAgendaDesignTests: XCTestCase {
 
     private func budgetedSnapshot(
         _ name: String,
-        themes: CapturePlanBudgetMeter,
         links: CapturePlanBudgetMeter
     ) throws -> CaptureAgendaSnapshot {
         let snapshot = try agendaSnapshot(name)
@@ -211,7 +207,6 @@ final class CaptureAgendaDesignTests: XCTestCase {
             warnings: snapshot.warnings,
             planBudget: CapturePlanBudget(
                 status: "ok",
-                themes: themes,
                 links: links
             )
         )

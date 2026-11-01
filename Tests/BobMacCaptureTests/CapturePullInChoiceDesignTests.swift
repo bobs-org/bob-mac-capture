@@ -63,7 +63,6 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
             ),
             planBudget: CapturePlanBudget(
                 status: "warning",
-                themes: CapturePlanBudgetMeter(count: 2, cap: 5, over: false),
                 links: CapturePlanBudgetMeter(count: 4, cap: 5, over: false)
             ),
             draft: "!sase_foo:root"
@@ -90,7 +89,6 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
                 pullIn: CapturePullIn(supported: true, offerCount: 3),
                 planBudget: CapturePlanBudget(
                     status: "ok",
-                    themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                     links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
                 ),
                 draft: "!task with dependents"
@@ -110,7 +108,6 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
                 pullIn: CapturePullIn(supported: true, offerCount: 3),
                 planBudget: CapturePlanBudget(
                     status: "over",
-                    themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
                     links: CapturePlanBudgetMeter(count: 9, cap: 10, over: false)
                 ),
                 draft: "!task with dependents"
