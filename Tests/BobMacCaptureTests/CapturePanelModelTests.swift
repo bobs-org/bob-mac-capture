@@ -330,11 +330,242 @@ final class CapturePanelModelTests: XCTestCase {
 
         model.installCompatibleCaptureGrammarForTests()
         model.acceptSelectedCompletionThenSubmitAndOpen()
-        await waitUntil { !model.isSubmitting }
+        await waitUntil { model.plainDraft.isEmpty && !model.isSubmitting }
 
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertEqual(openedURL?.host, "bob-open-notes")
         XCTAssertEqual(model.lastSuccess?.kind, "task")
+    }
+
+    func testExplicitCompletionSubmitWaitsForCompatibleParse() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                    "FAKE_BOB_PARSE_GRAMMAR": "1",
+                ]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        await waitUntil { model.latestParse?.input == "Call cash" }
+        await waitUntil { model.statusText == CaptureGrammarGate.blockedMessage }
+
+        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL, encoding: .utf8))?
+                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+        )
+    }
+
+    func testExplicitCompletionSubmitStopsWhenParseFails() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                    "FAKE_BOB_PARSE_EXIT": "42",
+                ]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL, encoding: .utf8))?
+                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+        )
+    }
+
+    func testExplicitCompletionSubmitIsCanceledByEditingTheDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                    "FAKE_BOB_DELAY_SECONDS": "0.1",
+                ]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        model.plainDraft = "Different draft"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState {
+                return model.latestParse?.input == "Different draft"
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, "Different draft")
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL, encoding: .utf8))?
+                .contains("argv=capture --format json --refuse-override --") ?? false
+        )
+    }
+
+    func testExplicitCompletionSubmitIsCanceledWhenPanelRetainsAndHidesDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        model.prepareForRetainedClose()
+        await waitUntil { model.latestParse?.input == "Call cash" }
+
+        XCTAssertFalse(model.panelVisible)
+        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL, encoding: .utf8))?
+                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+        )
+    }
+
+    func testExplicitCompletionSubmitIsCanceledWhenBobClientIsReplaced() async throws {
+        let oldRecordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let newRecordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": oldRecordURL.path,
+                    "FAKE_BOB_DELAY_SECONDS": "0.1",
+                ]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": newRecordURL.path,
+            ]
+        )
+        await waitUntil {
+            model.latestParse?.input == "Call cash"
+                && model.latestParse?.grammar == CaptureGrammarGate.minimumRevision
+        }
+
+        XCTAssertEqual(model.plainDraft, "Call cash")
+        XCTAssertFalse(model.isSubmitting)
+        for recordURL in [oldRecordURL, newRecordURL] {
+            XCTAssertFalse(
+                (try? String(contentsOf: recordURL, encoding: .utf8))?
+                    .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+            )
+        }
+    }
+
+    func testNewSubmitGestureDoesNotInheritPendingExplicitContinuation() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        model.submit(openAfterCapture: false)
+        await waitUntil { model.latestParse?.input == "Call cash" }
+
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL, encoding: .utf8))?
+                .contains("argv=capture --format json --refuse-override -- Call cash") ?? false
+        )
     }
 
     func testControlCompletionAcceptsButStopsForAnInlinePrompt() {
@@ -957,7 +1188,7 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
 
         model.acceptSelectedPickerRow(submitAfterInsert: true)
-        await waitUntil { !model.isSubmitting }
+        await waitUntil { model.plainDraft.isEmpty && !model.isSubmitting }
 
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertFalse(model.pickerVisible)
@@ -980,7 +1211,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
 
         model.acceptSelectedPickerRowAndSubmitAndOpen()
-        await waitUntil { !model.isSubmitting }
+        await waitUntil { model.plainDraft.isEmpty && !model.isSubmitting }
 
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
         XCTAssertEqual(openCalls, 1)
@@ -1074,7 +1305,9 @@ final class CapturePanelModelTests: XCTestCase {
 
         model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: true)
         model.submitTaskIDPrompt()
-        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == "" && !model.isSubmitting }
+        await waitUntil {
+            model.taskIDPrompt == nil && model.plainDraft.isEmpty && !model.isSubmitting
+        }
 
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
         let record = try String(contentsOf: recordURL)
@@ -1332,7 +1565,7 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
 
         model.acceptSelectedPickerRow(submitAfterInsert: true)
-        await waitUntil { !model.isSubmitting }
+        await waitUntil { model.plainDraft.isEmpty && !model.isSubmitting }
 
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertFalse(model.pickerVisible)
@@ -1634,7 +1867,7 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
 
         model.acceptPickerRow(id: "ready", submitAfterInsert: true)
-        await waitUntil { !model.isSubmitting }
+        await waitUntil { model.plainDraft.isEmpty && !model.isSubmitting }
 
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
@@ -5424,6 +5657,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.lastSuccess?.pomodoroLinkPlacement)
 
         model.plainDraft = "Add context @file+parent-id"
+        model.installCompatibleCaptureGrammarForTests()
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
         XCTAssertEqual(model.lastSuccess?.kind, "sub_bullet")

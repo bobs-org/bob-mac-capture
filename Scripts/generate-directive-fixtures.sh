@@ -301,6 +301,7 @@ parse directive-parse-unknown.json 'jot idea %x'
 parse directive-parse-escaped.json 'jot idea \%c'
 parse directive-parse-literal-percent.json '100% done'
 parse directive-parse-batch-later-item.json $'first\n\nsecond %c'
+parse directive-parse-batch-three-items.json $'first %c\n\nsecond\n\nthird %c'
 parse directive-parse-unicode.json 'naïve 🧰 %c3'
 parse directive-parse-template.json $'Apply to {0} at {1} %t\n\nFoobar foo\nBaz bar'
 parse directive-parse-template-example.json "$template_example_draft"
@@ -330,6 +331,7 @@ complete directive-complete-global-route-bare.json '@@'
 bob_config="$config_listen"
 complete directive-complete-url-listen.json 'https://example.com/post %'
 complete directive-complete-url-listen-typed.json 'https://example.com/post %l'
+complete_at directive-complete-url-listen-route.json 'https://example.com/post %l' 24
 parse directive-parse-listen-configured.json 'https://example.com/post %l'
 bob_config="$config_default"
 bob_day="$empty_day_file"
@@ -355,6 +357,10 @@ capture ref-queued-listen.json 0 --no-clip -- 'https://example.com/post %l'
 bob_config="$config_default"
 saved_template_draft=$'Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\n'
 template_save capture-templates-save-new.json 0 "$saved_template_draft"
+bob capture-templates --format json > "$scratch_root/raw.json"
+persist "$scratch_root/raw.json" capture-templates-list-after-new.json
+record capture-templates-list-after-new.json 'capture-templates --format json' \
+  'one newly saved current-syntax template' "$(setup)"
 template_save capture-templates-save-invalid.json 2 $'No fields %t\n\n'
 template_save capture-templates-save-not-template.json 2 'Buy milk'
 template_id="$(python3 - "$fixtures/capture-templates-save-new.json" <<'PY'
@@ -373,6 +379,22 @@ bob capture-templates --format json > "$scratch_root/raw.json"
 persist "$scratch_root/raw.json" capture-templates-list-populated.json
 record capture-templates-list-populated.json 'capture-templates --format json' \
   'three saved current-syntax templates' "$(setup)"
+template_id="$(python3 - "$fixtures/capture-templates-list-populated.json" <<'PY'
+import json
+import pathlib
+import sys
+
+print(json.loads(pathlib.Path(sys.argv[1]).read_text())["templates"][0]["id"])
+PY
+)"
+bob capture-templates delete 1 missing --format json > "$scratch_root/raw.json"
+persist "$scratch_root/raw.json" capture-templates-delete.json
+record capture-templates-delete.json 'capture-templates delete 1 missing --format json' \
+  "index 1 ($template_id) plus a missing id" "$(setup)"
+bob capture-templates --format json > "$scratch_root/raw.json"
+persist "$scratch_root/raw.json" capture-templates-list-after-delete.json
+record capture-templates-list-after-delete.json 'capture-templates --format json' \
+  'current-syntax shelf after deleting index 1' "$(setup)"
 
 # --- clip previews: every mode, history, and not_read ---
 set_clip 'hello-clip'
@@ -389,6 +411,12 @@ set_clip $'## Heading\nbody'
 capture clip-snippet-heading.json 0 -- 'jot idea %c'
 set_clip "$(python3 -c "print('long ' * 300)")" "'long ' repeated 300 times"
 capture clip-snippet-long.json 0 -- 'jot idea %c'
+set_clip 'first newest'
+set_history '["first clipboard","first older clipboard","first oldest clipboard"]'
+capture clip-history-one.json 0 -- 'jot idea %c3'
+set_clip 'second newest'
+set_history '["second clipboard","second older clipboard","second oldest clipboard"]'
+capture clip-history-two.json 0 -- 'jot idea %c3'
 set_clip 'newest'
 set_history '["newest","older","oldest"]'
 capture clip-history.json 0 -- 'jot idea %c3'
@@ -556,6 +584,8 @@ modes = {
     "clip-attachments-mixed": "attachments",
     "clip-snippet-heading": "snippet",
     "clip-snippet-long": "snippet",
+    "clip-history-one": "history",
+    "clip-history-two": "history",
     "clip-history": "history",
     "clip-history-attachments": "history",
 }
@@ -566,6 +596,12 @@ for name, mode in modes.items():
     assert all(key in clip for key in ("lines", "attachments", "entries")), name
     assert ("snippet" in clip) == (mode == "snippet"), name
 assert [e["mode"] for e in load("clip-history.json")["clip"]["entries"]] == ["inline"] * 3
+assert [e["lines"] for e in load("clip-history-one.json")["clip"]["entries"]] == [
+    ["\t- first newest"], ["\t- first clipboard"], ["\t- first older clipboard"]
+]
+assert [e["lines"] for e in load("clip-history-two.json")["clip"]["entries"]] == [
+    ["\t- second newest"], ["\t- second clipboard"], ["\t- second older clipboard"]
+]
 assert [e["mode"] for e in load("clip-history-attachments.json")["clip"]["entries"]] == [
     "attachments",
     "inline",

@@ -144,14 +144,18 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         let model = try makeModel(
             recordURL: recordURL,
             environment: [
-                "FAKE_BOB_PARSE_FIXTURE": "directive-parse-batch-later-item.json",
+                "FAKE_BOB_PARSE_FIXTURE": "directive-parse-batch-three-items.json",
                 "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("clip-batch.json"),
             ]
         )
         let draft = "first %c\n\nsecond\n\nthird %c"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { self.isPreviewReady(model) && model.previewResults.count == 3 }
+        guard await waitUntil(condition: {
+            self.isPreviewReady(model) && model.previewResults.count == 3
+        }) else {
+            return
+        }
 
         XCTAssertEqual(model.previewResults.count, 3)
         let cards = model.previewResults.map(CaptureClipPresentation.init(capture:))
@@ -248,6 +252,133 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
             CapturePanelModel.clipboardPollIntervalNanoseconds, 1_000_000_000)
     }
 
+    func testPollingObservationsStayAtOrBelowOneHertz() async throws {
+        let model = try makeModel(
+            environment: ["FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("clip-inline.json")]
+        )
+        var observations: [Date] = []
+        model.clipboardChangeCounter = {
+            observations.append(Date())
+            return 100
+        }
+        let draft = "jot idea %c"
+        model.plainDraft = draft
+        model.prepareForPresentation()
+
+        guard await waitUntil(timeout: 4, condition: { observations.count >= 3 }) else {
+            return
+        }
+        for pair in zip(observations, observations.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(pair.1.timeIntervalSince(pair.0), 0.95)
+        }
+    }
+
+    func testClipboardPollingTaskDoesNotRetainTheModelAfterTeardown() async throws {
+        var model: CapturePanelModel? = try makeModel(
+            environment: ["FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("clip-inline.json")]
+        )
+        var counterReads = 0
+        model?.clipboardChangeCounter = {
+            counterReads += 1
+            return 100
+        }
+        let draft = "jot idea %c"
+        model?.plainDraft = draft
+        model?.prepareForPresentation()
+
+        guard await waitUntil(condition: {
+            model?.clipboardPollingForTests == true && counterReads >= 2
+        }) else {
+            return
+        }
+        weak var weakModel = model
+        model?.prepareForDismissal()
+        let readsAtDismissal = counterReads
+        model = nil
+
+        guard await waitUntil(timeout: 1, condition: { weakModel == nil }) else {
+            return
+        }
+        try await Task.sleep(nanoseconds: 1_100_000_000)
+        XCTAssertEqual(counterReads, readsAtDismissal)
+    }
+
+    func testTwoClipboardChangesSupersedeOlderPreviewsForTheSameDraft() async throws {
+        let recordURL = temporaryURL()
+        let model = try makeModel(
+            recordURL: recordURL,
+            environment: [
+                "FAKE_BOB_PARSE_FIXTURE": "directive-parse-clip-count.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE": "clip-history-one.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE": "clip-history-two.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_THIRD_FIXTURE": "clip-history.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "2",
+            ]
+        )
+        var counter = 100
+        model.clipboardChangeCounter = { counter }
+        let draft = "jot idea %c3"
+        model.plainDraft = draft
+        model.prepareForPresentation()
+        await waitUntil {
+            self.recordContains(recordURL, "argv=capture --dry-run --format json -- \(draft)")
+        }
+
+        counter = 101
+        model.fireClipboardPollForTests()
+        await waitUntil { self.previewCallCount(recordURL) >= 2 }
+        counter = 102
+        model.fireClipboardPollForTests()
+        guard await waitUntil(condition: {
+            self.previewCallCount(recordURL) >= 3
+                && model.previewResults.first?.clip?.entries.count == 3
+        }) else {
+            return
+        }
+
+        try await Task.sleep(nanoseconds: 2_200_000_000)
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.previewResults.first?.clip?.entries.count, 3)
+        XCTAssertEqual(model.previewResults.first?.clip?.entries.first?.lines, ["\t- newest"])
+    }
+
+    func testFocusLossAndHideInvalidateInflightClipboardPreviews() async throws {
+        for lifecycle in ["focus-loss", "hide"] {
+            let recordURL = temporaryURL()
+            defer { try? FileManager.default.removeItem(at: recordURL) }
+            let model = try makeModel(
+                recordURL: recordURL,
+                environment: [
+                    "FAKE_BOB_PARSE_FIXTURE": "directive-parse-clip-count.json",
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("clip-history-one.json"),
+                    "FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "1",
+                ]
+            )
+            let draft = "jot idea %c3"
+            model.plainDraft = draft
+            model.prepareForPresentation()
+            guard await waitUntil(condition: {
+                self.recordContains(
+                    recordURL, "argv=capture --dry-run --format json -- \(draft)")
+            }) else {
+                continue
+            }
+
+            if lifecycle == "focus-loss" {
+                model.notePanelKeyActive(false)
+            } else {
+                model.prepareForDismissal()
+            }
+            try await Task.sleep(nanoseconds: 1_200_000_000)
+
+            XCTAssertTrue(model.previewResults.isEmpty, lifecycle)
+            if case .ready = model.previewState {
+                XCTFail("Canceled (lifecycle) preview must not land")
+            }
+            XCTAssertFalse(model.clipboardPollingForTests, lifecycle)
+        }
+    }
+
     func testRemovedDirectiveDuringInflightPreviewInvalidatesTheRead() async throws {
         let recordURL = temporaryURL()
         let model = try makeModel(
@@ -265,7 +396,7 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         // Bob does) and removing the directive must invalidate the read, so
         // the delayed clip result can never restore stale content.
         await waitUntil { self.recordContains(recordURL, "argv=capture --dry-run --format json") }
-        model.processClient = plainClient(recordURL: recordURL)
+        model.processClient = try plainClient(recordURL: recordURL)
         let plain = "jot idea"
         model.plainDraft = plain
         model.editorTextDidChange(cursorUTF8Offset: plain.utf8.count)
@@ -299,7 +430,7 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         // The old parse is still in flight when the client is replaced and
         // the new draft schedules; only the new draft may land.
         try await Task.sleep(nanoseconds: 300_000_000)
-        model.processClient = plainClient(recordURL: recordURL)
+        model.processClient = try plainClient(recordURL: recordURL)
         let plain = "jot idea"
         model.plainDraft = plain
         model.editorTextDidChange(cursorUTF8Offset: plain.utf8.count)
@@ -355,7 +486,7 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
             env[key] = value
         }
         model.processClient = BobProcessClient(
-            executablePath: fakeBobPath(),
+            executablePath: try fakeBobPath(),
             environment: env
         )
         return model
@@ -363,9 +494,9 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
 
     /// A default fake-bob client on the same record file: no delay, no
     /// fixture overrides, so its previews carry no clip content.
-    private func plainClient(recordURL: URL) -> BobProcessClient {
+    private func plainClient(recordURL: URL) throws -> BobProcessClient {
         BobProcessClient(
-            executablePath: fakeBobPath(),
+            executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
@@ -374,12 +505,17 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         )
     }
 
-    private func fakeBobPath() -> String {
-        URL(fileURLWithPath: #filePath)
+    private func fakeBobPath() throws -> String {
+        let path = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+        guard FileManager.default.isExecutableFile(atPath: path) else {
+            throw NSError(domain: "CaptureClipPreviewHostedTests", code: 1)
+        }
+        return path
     }
 
     private func fixture(_ name: String) throws -> String {
@@ -424,19 +560,21 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
         (try? String(contentsOf: recordURL, encoding: .utf8))?.contains(needle) ?? false
     }
 
+    @discardableResult
     private func waitUntil(
         timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line,
         condition: @escaping () -> Bool
-    ) async {
+    ) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() > deadline {
                 XCTFail("Condition not met before timeout", file: file, line: line)
-                return
+                return false
             }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+        return true
     }
 }

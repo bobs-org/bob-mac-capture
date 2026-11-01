@@ -26,6 +26,7 @@ final class CaptureClipPresentationTests: XCTestCase {
             CaptureClipPresentation(capture: decodeFixture("clip-inline.json")))
         XCTAssertEqual(inline.headerText, "Clipboard · 1 line")
         XCTAssertEqual(inline.childLines, ["\t- hello-clip"])
+        XCTAssertEqual(inline.topLevelChildLines, inline.childLines)
         XCTAssertFalse(inline.isHistory)
         XCTAssertFalse(inline.showsPlaceholder)
         XCTAssertNil(inline.snippetDestination)
@@ -37,6 +38,7 @@ final class CaptureClipPresentationTests: XCTestCase {
             CaptureClipPresentation(capture: decodeFixture("clip-lines-list.json")))
         XCTAssertEqual(list.headerText, "Clipboard · 2 lines")
         XCTAssertEqual(list.childLines, ["\t- one", "\t- two"])
+        XCTAssertEqual(list.topLevelChildLines, list.childLines)
     }
 
     func testAttachmentHeadersCountFilesAndImages() throws {
@@ -44,6 +46,7 @@ final class CaptureClipPresentationTests: XCTestCase {
             CaptureClipPresentation(capture: decodeFixture("clip-attachments-image.json")))
         XCTAssertEqual(image.headerText, "1 image")
         XCTAssertEqual(image.childLines, ["\t- ![[img/shot.png|400]]"])
+        XCTAssertEqual(image.topLevelChildLines, image.childLines)
         XCTAssertEqual(image.attachmentRows.map(\.summaryText), ["img/shot.png · image"])
         XCTAssertEqual(
             image.attachmentRows.map(\.source),
@@ -66,6 +69,7 @@ final class CaptureClipPresentationTests: XCTestCase {
             heading.headerText, "Snippet · 1 line → file/clip-20261030-091500-heading.md")
         XCTAssertEqual(heading.snippetDestination, "file/clip-20261030-091500-heading.md")
         XCTAssertEqual(heading.childLines, ["\t- [[file/clip-20261030-091500-heading]]"])
+        XCTAssertEqual(heading.topLevelChildLines, heading.childLines)
         XCTAssertFalse(heading.showsPlaceholder)
     }
 
@@ -75,6 +79,7 @@ final class CaptureClipPresentationTests: XCTestCase {
         XCTAssertEqual(history.headerText, "Last 3 clips")
         XCTAssertTrue(history.isHistory)
         XCTAssertEqual(history.childLines, ["\t- newest", "\t- older", "\t- oldest"])
+        XCTAssertTrue(history.topLevelChildLines.isEmpty)
         XCTAssertEqual(
             history.historyEntries.map(\.dividerText),
             ["Entry 1 of 3", "Entry 2 of 3", "Entry 3 of 3"])

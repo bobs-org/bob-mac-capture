@@ -92,6 +92,11 @@ public struct CaptureClipPresentation: Equatable, Sendable {
     /// True when Bob did not read the clipboard (`status == "not_read"` or
     /// an unknown status): the card shows only the quiet placeholder.
     public let showsPlaceholder: Bool
+    /// Lines shown above the card's attachment and history sections. History
+    /// lines appear only inside their entry dividers.
+    public var topLevelChildLines: [String] {
+        isHistory ? [] : childLines
+    }
     /// Quiet placeholder copy (`"Clipboard not read"`), nil when read.
     public let placeholderText: String?
     public let accessibilitySummary: String

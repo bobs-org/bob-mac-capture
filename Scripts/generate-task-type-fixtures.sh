@@ -17,7 +17,8 @@
 # names, configured/hidden-exact/history-only/typed-unknown completion,
 # new and existing subjects, set/cleared/kept captures, all five
 # relocation outcomes, a Task Wikilink coexistence case, the incomplete
-# `jot idea #` task type, and the retired `t:` prose case. Commit
+# `jot idea #` task type, bare-to-typed and leading/trailing/child menu
+# requests, and the retired `t:` prose case. Commit
 # operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -203,6 +204,9 @@ capture_commit() {
 parse '@dev^parser#' task-type-parse-empty.json
 parse '#fix Fix it' task-type-parse-leading.json
 parse 'Fix it #fix' task-type-parse-trailing.json
+parse '#f' task-type-parse-leading-short.json
+parse 'Fix the parser #f' task-type-parse-trailing-prefix.json
+parse 'jot idea #f' task-type-parse-typed-trailing.json
 parse $'Parent task\n- check the lexer #fi' task-type-parse-child.json
 parse 'Fix it #fix' task-type-parse-prefix.json
 parse 'Fix it #"DEEP WORK"' task-type-parse-literal.json
@@ -237,6 +241,9 @@ complete '@dev+current#' task-type-complete-attached-toggle-empty.json
 complete '@dev^parser#fix' task-type-complete-attached-new.json
 complete '@dev+current#fix' task-type-complete-attached-toggle.json
 complete '#f' task-type-complete-leading.json
+complete '#fix Fix it' task-type-complete-leading-full.json
+complete 'Fix the parser #f' task-type-complete-trailing-prefix.json
+complete 'jot idea #f' task-type-complete-typed-trailing.json
 complete_at '#fix Fix it' 4 task-type-complete-leading-prefix.json
 
 # Hidden-exact: hide FIX from Recent, then complete empty vs exact.

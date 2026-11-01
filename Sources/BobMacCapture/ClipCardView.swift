@@ -31,7 +31,7 @@ struct ClipCardView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                ForEach(Array(clip.childLines.enumerated()), id: \.offset) { _, line in
+                ForEach(Array(clip.topLevelChildLines.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(.system(.callout, design: .monospaced))
                         .textSelection(.enabled)

@@ -259,7 +259,7 @@ final class CaptureSavedTemplatesTests: XCTestCase {
 
         XCTAssertEqual(list.templates.count, 3)
         XCTAssertEqual(save.saved?.status, .new)
-        XCTAssertEqual(delete.deleted, ["d55d6407f700"])
+        XCTAssertEqual(delete.deleted, ["3e96cbec7865"])
         XCTAssertEqual(clear.cleared, 2)
 
         let record = try String(contentsOf: recordURL)

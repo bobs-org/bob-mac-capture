@@ -6,29 +6,39 @@ import XCTest
 
 @MainActor
 final class CaptureOpenHintTests: XCTestCase {
-    func testChipShowsWhenDraftHasNoPreviewYet() {
-        let model = CapturePanelModel()
+    func testChipShowsWhenDraftHasNoPreviewYet() throws {
+        let pending = try makeModel()
+        pending.plainDraft = "Inbox task"
+        XCTAssertFalse(pending.captureGrammarAllowsSubmit)
+        XCTAssertTrue(pending.openHintChipVisible)
+
+        let model = try makeModel()
         XCTAssertFalse(model.openHintChipVisible)
 
         model.plainDraft = "Inbox task"
+        model.installCompatibleCaptureGrammarForTests()
+        XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertTrue(model.openHintChipVisible)
         XCTAssertNil(model.previewOpenHintPlan)
         XCTAssertTrue(model.openHintPresentation.isAvailable)
         XCTAssertEqual(model.openHintPresentation.rows, [])
     }
 
-    func testEmptyPreviewPlanHidesChip() {
-        let model = CapturePanelModel()
+    func testEmptyPreviewPlanHidesChip() throws {
+        let model = try makeModel()
         model.plainDraft = "https://example.com"
+        model.installCompatibleCaptureGrammarForTests()
         model.previewOpenPlan = CaptureOpenPlan(openNotes: [], captures: [])
 
+        XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertFalse(model.openHintChipVisible)
         XCTAssertFalse(model.openHintPresentation.isAvailable)
     }
 
-    func testNonEmptyPreviewPlanShowsChipAndDestinations() {
-        let model = CapturePanelModel()
+    func testNonEmptyPreviewPlanShowsChipAndDestinations() throws {
+        let model = try makeModel()
         model.plainDraft = "Inbox task"
+        model.installCompatibleCaptureGrammarForTests()
         model.previewOpenPlan = CaptureOpenPlan(
             openNotes: [
                 CaptureOpenNote(
@@ -48,6 +58,7 @@ final class CaptureOpenHintTests: XCTestCase {
             captures: []
         )
 
+        XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertTrue(model.openHintChipVisible)
         XCTAssertEqual(
             model.openHintPresentation.accessibilityLabel,
@@ -130,5 +141,22 @@ final class CaptureOpenHintTests: XCTestCase {
         while !model.openHintRevealed, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(5))
         }
+    }
+
+    private func makeModel() throws -> CapturePanelModel {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fakeBob = source.appendingPathComponent("Tests/Fixtures/fake-bob").path
+        guard FileManager.default.isExecutableFile(atPath: fakeBob) else {
+            throw NSError(domain: "CaptureOpenHintTests", code: 1)
+        }
+        return CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBob,
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            )
+        )
     }
 }

@@ -203,7 +203,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             ]
         )
         model.processClient = failingClient
-        await waitUntil { shelf.templates.first?.id == "6cd8000f52eb" }
+        await waitUntil { shelf.templates.first?.id == "3e96cbec7865" }
         let originalIDs = shelf.templates.map(\.id)
         model.presentTemplateShelf()
         model.armOrConfirmTemplateDelete()
@@ -223,6 +223,45 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertFalse(lastModel.isTemplateShelfPresented)
         XCTAssertEqual(lastModel.statusText, "Template deleted · shelf is empty")
         XCTAssertTrue(lastShelf.isEmpty)
+    }
+
+    func testCurrentWireDeleteRemovesTheRequestedTemplateAndReportsMissingIDs() async throws {
+        let shelf = SavedTemplateShelf()
+        let recordURL = temporaryURL("capture-template-delete-record")
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        defer {
+            try? FileManager.default.removeItem(
+                at: URL(fileURLWithPath: recordURL.path + ".templates-deleted")
+            )
+        }
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_LIST_FIXTURE": "capture-templates-list-populated.json",
+                "FAKE_BOB_TEMPLATES_LIST_AFTER_DELETE_FIXTURE":
+                    "capture-templates-list-after-delete.json",
+                "FAKE_BOB_TEMPLATES_DELETE_FIXTURE": "capture-templates-delete.json",
+            ]
+        )
+        await waitUntil { shelf.templates.first?.id == "3e96cbec7865" }
+        model.presentTemplateShelf()
+
+        model.armOrConfirmTemplateDelete()
+        model.armOrConfirmTemplateDelete()
+        await waitUntil {
+            shelf.templates.first?.id == "a132f04b26f3"
+                && !shelf.templates.contains(where: { $0.id == "3e96cbec7865" })
+        }
+
+        XCTAssertEqual(model.templateShelfCount, 2)
+        XCTAssertEqual(model.statusText, "Template deleted")
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(record.contains("capture-templates delete"))
+        XCTAssertTrue(record.contains("3e96cbec7865"))
     }
 
     func testControlTAndControlSSwitchBetweenShelfAndStash() {
@@ -281,14 +320,17 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         model.templateOrigin = Self.threeTemplates[0].id
 
         XCTAssertEqual(model.templateShelfCount, 2)
-        XCTAssertEqual(model.templateEntries.map(\.id), ["reading", "grocery"])
+        XCTAssertEqual(model.templateEntries.map(\.id), ["a132f04b26f3", "3e96cbec7865"])
         XCTAssertEqual(model.templateEntries.map(\.index), [1, 2])
 
         model.discardDraft()
 
         XCTAssertNil(model.templateOrigin)
         XCTAssertEqual(model.templateShelfCount, 3)
-        XCTAssertEqual(model.templateEntries.map(\.id), ["job", "reading", "grocery"])
+        XCTAssertEqual(
+            model.templateEntries.map(\.id),
+            ["1a5b06a8bf68", "a132f04b26f3", "3e96cbec7865"]
+        )
     }
 
     func testEscapeAndFailedCaptureKeepCheckoutAndSubmitCarriesOrigin() async throws {
@@ -322,7 +364,11 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertEqual(model.templateOrigin, Self.threeTemplates[0].id)
         XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
         let record = try String(contentsOf: recordURL, encoding: .utf8)
-        XCTAssertTrue(record.contains("argv=capture --format json --refuse-override --template-origin job --"))
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture --format json --refuse-override --template-origin 1a5b06a8bf68 --"
+            )
+        )
     }
 
     func testCurrentFreshParseWithoutTemplateReleasesCheckoutButPendingParseDoesNot() async throws {
@@ -393,32 +439,34 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_LIST_FIXTURE": "capture-templates-list-empty.json",
                 "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-new.json",
             ]
         )
         await waitUntil { shelf.availability == .available }
-        model.plainDraft = Self.threeTemplates[0].draft
-        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+        let newDraft = "Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\n"
+        model.plainDraft = newDraft
+        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: newDraft)
 
         model.saveTemplateFromKeyboard()
         await waitUntil { !model.isSavingTemplate }
 
-        XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
-        XCTAssertEqual(model.templateOrigin, "6cd8000f52eb")
+        XCTAssertEqual(model.plainDraft, newDraft)
+        XCTAssertEqual(model.templateOrigin, "24370f765a9b")
         XCTAssertEqual(model.statusText, "Template saved — ⌃T to reuse")
         XCTAssertNil(model.errorMessage)
-        XCTAssertEqual(model.templateShelfCount, 2)
         let record = try String(contentsOf: recordURL, encoding: .utf8)
         XCTAssertTrue(record.contains("argv=capture-templates save --format json -- Apply to {0}!"))
         XCTAssertFalse(record.contains("argv=capture-templates save --format json --template-origin"))
 
-        model.templateOrigin = "6cd8000f52eb"
+        model.templateOrigin = "24370f765a9b"
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_LIST_FIXTURE": "capture-templates-list-after-new.json",
                 "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-replaced.json",
             ]
         )
@@ -426,12 +474,32 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             let output = try? String(contentsOf: recordURL, encoding: .utf8)
             return (output?.components(separatedBy: "argv=capture-templates --format json").count ?? 0) >= 2
         }
-        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+        await waitUntil { shelf.templates.map(\.id) == ["24370f765a9b"] }
+        let replacementDraft = "Apply for {0} at {1} for {2} %t\n\n"
+        model.plainDraft = replacementDraft
+        model.templateOrigin = "24370f765a9b"
+        model.setParsedTemplateForTests(
+            CaptureParseTemplate(fieldCount: 3), draft: replacementDraft)
         model.saveTemplateFromKeyboard()
-        await waitUntil { !model.isSavingTemplate && model.templateOrigin == "6cd8000f52eb" }
+        await waitUntil { !model.isSavingTemplate && model.templateOrigin == "1a5b06a8bf68" }
         XCTAssertEqual(model.statusText, "Template updated")
         let updatedRecord = try String(contentsOf: recordURL, encoding: .utf8)
-        XCTAssertTrue(updatedRecord.contains("argv=capture-templates save --format json --template-origin 6cd8000f52eb --"))
+        XCTAssertTrue(
+            updatedRecord.contains(
+                "argv=capture-templates save --format json --template-origin 24370f765a9b --"
+            )
+        )
+
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_TEMPLATES_LIST_FIXTURE": "capture-templates-list-populated.json",
+            ]
+        )
+        await waitUntil { shelf.templates.contains(where: { $0.id == "1a5b06a8bf68" }) }
+        XCTAssertEqual(model.templateShelfCount, 2)
     }
 
     func testCommandSRefusalStaysInStatusAndOldBobDoesNotAttemptSave() async throws {
@@ -510,7 +578,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
                 XCTAssertTrue(model.statusText.hasSuffix(expectedSuffix), model.statusText)
             }
             let record = try String(contentsOf: recordURL, encoding: .utf8)
-            XCTAssertTrue(record.contains("--template-origin job --"))
+            XCTAssertTrue(record.contains("--template-origin 1a5b06a8bf68 --"))
         }
     }
 
@@ -596,30 +664,30 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
     private static let threeTemplates: [CaptureSavedTemplate] = [
         CaptureSavedTemplate(
             index: 1,
-            id: "job",
-            text: "Apply to {0}! @job^apply-{1}\n- **URL**: {2}",
-            draft: "Apply to {0}! @job^apply-{1}\n- **URL**: {2} %t\n\n",
-            cursor: 57,
+            id: "1a5b06a8bf68",
+            text: "Apply for {0} at {1} for {2}",
+            draft: "Apply for {0} at {1} for {2} %t\n\n",
+            cursor: 33,
             fieldCount: 3,
-            lineCount: 2,
-            route: "job"
+            lineCount: 1,
+            route: nil
         ),
         CaptureSavedTemplate(
             index: 2,
-            id: "reading",
+            id: "a132f04b26f3",
             text: "Read {0} @reading^{1} $2",
             draft: "Read {0} @reading^{1} $2 %t\n\n",
-            cursor: 38,
+            cursor: 29,
             fieldCount: 2,
             lineCount: 1,
             route: "reading"
         ),
         CaptureSavedTemplate(
             index: 3,
-            id: "grocery",
+            id: "3e96cbec7865",
             text: "Buy {0} @grocery",
             draft: "Buy {0} @grocery %t\n\n",
-            cursor: 30,
+            cursor: 21,
             fieldCount: 1,
             lineCount: 1,
             route: "grocery"

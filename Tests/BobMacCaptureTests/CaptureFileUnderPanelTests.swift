@@ -58,15 +58,22 @@ final class CaptureFileUnderPanelTests: XCTestCase {
 
     func testFileUnderAcceptPreservesListenDirective() async throws {
         let model = try fileUnderModel()
-        model.plainDraft = "https://example.com/post %l"
-        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
-        await waitUntil { model.completionVisible }
+        let draft = "https://example.com/post %l"
+        model.plainDraft = draft
+        // Ask Bob at the end of the URL, before the listen directive. That
+        // real response has an empty candidate list; the panel then opens its
+        // synthesized File-under rows at the true end of the draft.
+        model.editorTextDidChange(cursorUTF8Offset: 24)
+        await waitUntil { model.fileUnderActive }
+
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 27, end: 27))
+        XCTAssertEqual(model.selectedCompletion?.route, "mac_inbox")
 
         model.acceptSelectedCompletion()
 
         XCTAssertEqual(
             model.plainDraft,
-            "https://example.com/post %l @mac_inbox"
+            draft + " @mac_inbox"
         )
         XCTAssertFalse(model.fileUnderActive)
     }

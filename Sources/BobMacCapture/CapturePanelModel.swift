@@ -379,6 +379,13 @@ private struct CaptureInboxRouteSubmitContext {
     let vaultDirectoryIdentity: String
 }
 
+private struct PendingExplicitSubmitIntent: Equatable {
+    let draft: String
+    let processClientIdentity: String
+    let analysisGeneration: UInt64
+    let openAfterCapture: Bool
+}
+
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
@@ -535,6 +542,7 @@ final class CapturePanelModel: ObservableObject {
             invalidateAnalysis()
             stopClipboardPolling()
             lastAppliedParseDraft = nil
+            lastAppliedParseGeneration = nil
             lastAppliedParseGrammar = nil
             lastAppliedParseClientIdentity = nil
             captureGrammarWarning = nil
@@ -601,6 +609,10 @@ final class CapturePanelModel: ObservableObject {
     private let debounceNanoseconds: UInt64
     private let similarTasksSettleNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
+    private var pendingExplicitSubmitIntent: PendingExplicitSubmitIntent?
+    private var pendingExplicitSubmitTask: Task<Void, Never>?
+    private var livePreviewTask: Task<Void, Never>?
+    private var livePreviewGeneration: UInt64 = 0
     private var similarTasksTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
@@ -611,6 +623,10 @@ final class CapturePanelModel: ObservableObject {
     /// Latest parse's `grammar` for `lastAppliedParseDraft`. Nil until a
     /// parse lands or when that parse omitted the field.
     private var lastAppliedParseGrammar: Int?
+    /// Analysis generation whose parse produced the current capability
+    /// evidence. A same-draft refresh invalidates the previous parse until
+    /// its own response lands.
+    private var lastAppliedParseGeneration: UInt64?
     /// Process-client identity that produced `lastAppliedParseDraft`. A
     /// Recheck Bob / client replacement clears it so a stale parse cannot
     /// authorize capture.
@@ -1155,6 +1171,9 @@ final class CapturePanelModel: ObservableObject {
 
     deinit {
         analysisTask?.cancel()
+        pendingExplicitSubmitTask?.cancel()
+        livePreviewTask?.cancel()
+        clipboardPollTask?.cancel()
         similarTasksTask?.cancel()
         rewriteTask?.cancel()
         todayPomodoroGotoTask?.cancel()
@@ -1523,6 +1542,7 @@ final class CapturePanelModel: ObservableObject {
     var captureGrammarAllowsSubmit: Bool {
         guard let processClient,
               lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
               lastAppliedParseClientIdentity == processClient.identityToken
         else {
             return false
@@ -1839,6 +1859,7 @@ final class CapturePanelModel: ObservableObject {
         let changed = self.processClient !== processClient
         self.processClient = processClient
         if changed {
+            cancelPendingExplicitSubmit()
             // An old count or assist parse must never re-arm the assist
             // after Bob becomes unavailable or the executable/vault changes.
             // The agenda store owns recounting; it clears and repopulates
@@ -1984,6 +2005,8 @@ final class CapturePanelModel: ObservableObject {
         guard !isApplyingProgrammaticDraft else {
             return
         }
+
+        cancelPendingExplicitSubmit()
 
         let draft = plainDraft
         if let hiddenThemeDraftSnapshot, hiddenThemeDraftSnapshot != draft {
@@ -2256,7 +2279,69 @@ final class CapturePanelModel: ObservableObject {
         closePendingText != nil
     }
 
+    /// Carries an explicit submit or submit-and-open gesture through the
+    /// analysis required after Bob inserts the accepted completion. The
+    /// continuation is tied to that exact draft, client, and analysis.
+    private func submitAfterCurrentAnalysis(openAfterCapture: Bool) {
+        cancelPendingExplicitSubmit()
+        guard let processClient, let analysisTask, hasDraft else {
+            return
+        }
+        let intent = PendingExplicitSubmitIntent(
+            draft: plainDraft,
+            processClientIdentity: processClient.identityToken,
+            analysisGeneration: analysisGeneration,
+            openAfterCapture: openAfterCapture
+        )
+        pendingExplicitSubmitIntent = intent
+        pendingExplicitSubmitTask = Task { [weak self, processClient, analysisTask] in
+            await analysisTask.value
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            self.resumeExplicitSubmit(intent, processClient: processClient)
+        }
+    }
+
+    private func resumeExplicitSubmit(
+        _ intent: PendingExplicitSubmitIntent,
+        processClient: BobProcessClient
+    ) {
+        guard pendingExplicitSubmitIntent == intent else {
+            return
+        }
+        pendingExplicitSubmitIntent = nil
+        pendingExplicitSubmitTask = nil
+
+        guard analysisGeneration == intent.analysisGeneration,
+              plainDraft == intent.draft,
+              self.processClient === processClient,
+              processClient.identityToken == intent.processClientIdentity,
+              lastAppliedParseDraft == intent.draft,
+              lastAppliedParseGeneration == intent.analysisGeneration,
+              lastAppliedParseClientIdentity == intent.processClientIdentity
+        else {
+            return
+        }
+        guard CaptureGrammarGate.isCompatible(lastAppliedParseGrammar) else {
+            captureGrammarWarning = CaptureGrammarGate.blockedMessage
+            statusText = CaptureGrammarGate.blockedMessage
+            return
+        }
+        guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
+            return
+        }
+        submit(openAfterCapture: intent.openAfterCapture)
+    }
+
+    private func cancelPendingExplicitSubmit() {
+        pendingExplicitSubmitTask?.cancel()
+        pendingExplicitSubmitTask = nil
+        pendingExplicitSubmitIntent = nil
+    }
+
     func submit(openAfterCapture: Bool) {
+        cancelPendingExplicitSubmit()
         clearOpenHintReveal()
         guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
@@ -2276,6 +2361,7 @@ final class CapturePanelModel: ObservableObject {
         if !captureGrammarAllowsSubmit {
             let knownIncompatible =
                 lastAppliedParseDraft == plainDraft
+                && lastAppliedParseGeneration == analysisGeneration
                 && lastAppliedParseClientIdentity == processClient.identityToken
                 && !CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
             if knownIncompatible {
@@ -3102,6 +3188,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         panelVisible = false
+        cancelPendingExplicitSubmit()
         stopClipboardPolling()
         cancelSimilarTasks(clear: false)
         previewPullInSnapshot = nil
@@ -3722,6 +3809,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        cancelPendingExplicitSubmit()
         stopClipboardPolling()
         if similarTasks.focusedRowID != nil {
             unfocusSimilarRow(applyPending: false)
@@ -3762,6 +3850,7 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = []
         parsedTemplate = nil
         lastAppliedParseDraft = nil
+        lastAppliedParseGeneration = nil
         lastAppliedParseItemCount = nil
         lastAppliedParseGrammar = nil
         lastAppliedParseClientIdentity = nil
@@ -6043,7 +6132,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Add task text or @note+id, then capture")
                 return
             }
-            submit(openAfterCapture: followUp == .submitAndOpen)
+            submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -7216,7 +7305,7 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        submit(openAfterCapture: true)
+        submitAfterCurrentAnalysis(openAfterCapture: true)
     }
 
     @discardableResult
@@ -9989,6 +10078,7 @@ final class CapturePanelModel: ObservableObject {
     func installRelationCapabilityForPreviews(draft: String, hasGrammar: Bool) {
         plainDraft = draft
         lastAppliedParseDraft = draft
+        lastAppliedParseGeneration = analysisGeneration
         lastAppliedParseGrammar = CaptureGrammarGate.minimumRevision
         lastAppliedParseClientIdentity = processClient?.identityToken
         lastRelationGrammar = hasGrammar ? 1 : nil
@@ -10010,6 +10100,7 @@ final class CapturePanelModel: ObservableObject {
     /// Test seam for missing (`nil`), 1, 2, and 3 grammar cases.
     func installCaptureGrammarForTests(_ grammar: Int?) {
         lastAppliedParseDraft = plainDraft
+        lastAppliedParseGeneration = analysisGeneration
         lastAppliedParseGrammar = grammar
         lastAppliedParseClientIdentity = processClient?.identityToken
         refreshCaptureGrammarGate()
@@ -10901,7 +10992,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Added ^\(success.blockID) to \(success.route).md and inserted \(link)")
                 requestFocus(.editor)
                 if followUp == .submit || followUp == .submitAndOpen {
-                    submit(openAfterCapture: followUp == .submitAndOpen)
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -10948,7 +11039,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
                 requestFocus(.editor)
                 if followUp == .submit || followUp == .submitAndOpen {
-                    submit(openAfterCapture: followUp == .submitAndOpen)
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -11013,7 +11104,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
                 requestFocus(.editor)
                 if followUp == .submit || followUp == .submitAndOpen {
-                    submit(openAfterCapture: followUp == .submitAndOpen)
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -11061,7 +11152,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
                 requestFocus(.editor)
                 if followUp == .submit || followUp == .submitAndOpen {
-                    submit(openAfterCapture: followUp == .submitAndOpen)
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -11225,7 +11316,7 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
         requestFocus(.editor)
         if followUp == .submit || followUp == .submitAndOpen {
-            submit(openAfterCapture: followUp == .submitAndOpen)
+            submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -11280,7 +11371,7 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
         requestFocus(.editor)
         if followUp == .submit || followUp == .submitAndOpen {
-            submit(openAfterCapture: followUp == .submitAndOpen)
+            submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -11348,7 +11439,7 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(insertion)")
         requestFocus(.editor)
         if followUp == .submit || followUp == .submitAndOpen {
-            submit(openAfterCapture: followUp == .submitAndOpen)
+            submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -11401,6 +11492,7 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             parsedTemplate = nil
             lastAppliedParseDraft = nil
+            lastAppliedParseGeneration = nil
             similarTasksParseItems = []
             similarTasksFolded = false
             completionResponse = nil
@@ -11931,6 +12023,9 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        cancelPendingExplicitSubmit()
+        cancelLivePreviewRequest()
+
         let draft = plainDraft
         if overrideRefusalDraft != draft {
             overrideRefusalDraft = nil
@@ -11984,7 +12079,12 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return
                     }
-                    self?.applyParse(parse, draft: draft, cursorUTF8: cursorUTF8Offset)
+                    self?.applyParse(
+                        parse,
+                        draft: draft,
+                        generation: generation,
+                        cursorUTF8: cursorUTF8Offset
+                    )
                     if let need = pickerNeeded {
                         // An incomplete `^` is a state, not an error: skip the
                         // doomed live dry run and stay calm instead of flashing
@@ -11997,6 +12097,7 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
+                var previewTask: Task<Void, Never>?
                 if pickerNeeded == nil {
                     // A live clipboard read needs this same draft's accepted
                     // parse: a `%c` directive span on a compatible grammar. A
@@ -12005,7 +12106,7 @@ final class CapturePanelModel: ObservableObject {
                     let clipAuthorized =
                         CaptureGrammarGate.isCompatible(parse.grammar)
                         && parse.reportsClipDirective
-                    await self?.startLivePreview(
+                    previewTask = await self?.startLivePreview(
                         draft: draft,
                         previewDraft: closePending?.trimmed ?? draft,
                         pendingSeparator: closePending?.separator,
@@ -12049,38 +12150,37 @@ final class CapturePanelModel: ObservableObject {
                             )
                             self?.editAnalysisBaseline = draft
                         }
-                        return
-                    }
-
-                    do {
-                        let completion = try await CaptureSignpost.measure("completion") {
-                            try await processClient.captureComplete(
-                                draft,
-                                cursor: cursorUTF8Offset
+                    } else {
+                        do {
+                            let completion = try await CaptureSignpost.measure("completion") {
+                                try await processClient.captureComplete(
+                                    draft,
+                                    cursor: cursorUTF8Offset
+                                )
+                            }
+                            await self?.handleCompletionResponse(
+                                completion,
+                                draft: draft,
+                                cursor: cursorUTF8Offset,
+                                trigger: trigger,
+                                writtenRange: writtenRange,
+                                generation: generation,
+                                processClient: processClient
                             )
-                        }
-                        await self?.handleCompletionResponse(
-                            completion,
-                            draft: draft,
-                            cursor: cursorUTF8Offset,
-                            trigger: trigger,
-                            writtenRange: writtenRange,
-                            generation: generation,
-                            processClient: processClient
-                        )
-                        await MainActor.run {
-                            guard self?.isCurrentAnalysis(generation) == true else {
-                                return
+                            await MainActor.run {
+                                guard self?.isCurrentAnalysis(generation) == true else {
+                                    return
+                                }
+                                self?.editAnalysisBaseline = draft
                             }
-                            self?.editAnalysisBaseline = draft
-                        }
-                    } catch {
-                        await MainActor.run {
-                            guard self?.isCurrentAnalysis(generation) == true else {
-                                return
+                        } catch {
+                            await MainActor.run {
+                                guard self?.isCurrentAnalysis(generation) == true else {
+                                    return
+                                }
+                                self?.statusText = String(describing: error)
+                                self?.editAnalysisBaseline = draft
                             }
-                            self?.statusText = String(describing: error)
-                            self?.editAnalysisBaseline = draft
                         }
                     }
                 } else {
@@ -12092,6 +12192,9 @@ final class CapturePanelModel: ObservableObject {
                         self?.editAnalysisBaseline = draft
                     }
                 }
+
+                await previewTask?.value
+                try Task.checkCancellation()
             } catch is CancellationError {
             } catch {
                 await MainActor.run {
@@ -12263,6 +12366,7 @@ final class CapturePanelModel: ObservableObject {
         rewriteSawMatchingSelection = false
     }
 
+    @discardableResult
     private func startLivePreview(
         draft: String,
         previewDraft: String,
@@ -12272,11 +12376,37 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient,
         trigger: CompletionTrigger,
         clipAuthorized: Bool
-    ) {
-        Task { [weak self, processClient] in
+    ) -> Task<Void, Never> {
+        livePreviewGeneration &+= 1
+        let previewRequestGeneration = livePreviewGeneration
+        livePreviewTask?.cancel()
+        let task = Task { [weak self, processClient] in
+            defer {
+                if self?.livePreviewGeneration == previewRequestGeneration {
+                    self?.livePreviewTask = nil
+                }
+            }
             do {
-                let seed = await self?.activePriorityRollSeed() ?? UUID().uuidString
+                guard self?.isCurrentLivePreviewRequest(
+                          previewRequestGeneration: previewRequestGeneration,
+                          analysisGeneration: generation,
+                          draft: draft,
+                          processClient: processClient,
+                          clipAuthorized: clipAuthorized
+                      ) == true else {
+                    return
+                }
+                let seed = self?.activePriorityRollSeed() ?? UUID().uuidString
                 let processClientIdentity = processClient.identityToken
+                guard self?.isCurrentLivePreviewRequest(
+                    previewRequestGeneration: previewRequestGeneration,
+                    analysisGeneration: generation,
+                    draft: draft,
+                    processClient: processClient,
+                    clipAuthorized: clipAuthorized
+                ) == true else {
+                    return
+                }
                 let preview = try await CaptureSignpost.measure("preview") {
                     try await processClient.captureLivePreview(
                         previewDraft,
@@ -12285,7 +12415,13 @@ final class CapturePanelModel: ObservableObject {
                     )
                 }
                 await MainActor.run {
-                    guard self?.isCurrentAnalysis(generation) == true else {
+                    guard self?.isCurrentLivePreviewRequest(
+                        previewRequestGeneration: previewRequestGeneration,
+                        analysisGeneration: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        clipAuthorized: clipAuthorized
+                    ) == true else {
                         return
                     }
                     switch preview {
@@ -12381,13 +12517,53 @@ final class CapturePanelModel: ObservableObject {
             } catch is CancellationError {
             } catch {
                 await MainActor.run {
-                    guard self?.isCurrentAnalysis(generation) == true else {
+                    guard self?.isCurrentLivePreviewRequest(
+                        previewRequestGeneration: previewRequestGeneration,
+                        analysisGeneration: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        clipAuthorized: clipAuthorized
+                    ) == true else {
                         return
                     }
                     self?.previewState = .failed(String(describing: error))
                 }
             }
         }
+        livePreviewTask = task
+        return task
+    }
+
+    private func isCurrentLivePreviewRequest(
+        previewRequestGeneration: UInt64,
+        analysisGeneration: UInt64,
+        draft: String,
+        processClient: BobProcessClient,
+        clipAuthorized: Bool
+    ) -> Bool {
+        guard livePreviewGeneration == previewRequestGeneration,
+              self.analysisGeneration == analysisGeneration,
+              plainDraft == draft,
+              self.processClient === processClient,
+              lastAppliedParseDraft == draft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              let parse = latestParse,
+              Self.pickerNeed(in: parse) == nil
+        else {
+            return false
+        }
+        guard clipAuthorized else {
+            return true
+        }
+        return CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
+            && parse.reportsClipDirective
+    }
+
+    private func cancelLivePreviewRequest() {
+        livePreviewGeneration &+= 1
+        livePreviewTask?.cancel()
+        livePreviewTask = nil
     }
 
     private func isCurrentAnalysis(_ generation: UInt64) -> Bool {
@@ -12403,6 +12579,7 @@ final class CapturePanelModel: ObservableObject {
         guard panelVisible, panelIsKey,
               plainDraft == draft,
               lastAppliedParseDraft == draft,
+              lastAppliedParseGeneration == analysisGeneration,
               let processClient,
               lastAppliedParseClientIdentity == processClient.identityToken,
               CaptureGrammarGate.isCompatible(lastAppliedParseGrammar),
@@ -12419,11 +12596,17 @@ final class CapturePanelModel: ObservableObject {
         // Baseline without triggering: activation already refreshed.
         lastSeenClipboardChangeCount = clipboardChangeCounter()
         clipboardPollTask = Task { [weak self] in
-            while let self {
-                try? await Task.sleep(
-                    nanoseconds: Self.clipboardPollIntervalNanoseconds
-                )
-                if Task.isCancelled { return }
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(
+                        nanoseconds: Self.clipboardPollIntervalNanoseconds
+                    )
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self else {
+                    return
+                }
                 self.clipboardPollTick()
             }
         }
@@ -12433,6 +12616,7 @@ final class CapturePanelModel: ObservableObject {
         clipboardPollTask?.cancel()
         clipboardPollTask = nil
         lastSeenClipboardChangeCount = nil
+        cancelLivePreviewRequest()
     }
 
     /// One pasteboard-counter check. A moved counter re-runs the debounced
@@ -12478,6 +12662,7 @@ final class CapturePanelModel: ObservableObject {
               let parse = latestParse,
               let appliedDraft = lastAppliedParseDraft,
               appliedDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
               lastAppliedParseClientIdentity == processClient.identityToken,
               CaptureGrammarGate.isCompatible(lastAppliedParseGrammar),
               parse.reportsClipDirective,
@@ -13202,6 +13387,8 @@ final class CapturePanelModel: ObservableObject {
         analysisGeneration &+= 1
         analysisTask?.cancel()
         analysisTask = nil
+        cancelPendingExplicitSubmit()
+        cancelLivePreviewRequest()
         cancelSimilarTasks(clear: false)
     }
 
@@ -13255,6 +13442,7 @@ final class CapturePanelModel: ObservableObject {
     private func applyParse(
         _ parse: CaptureParseResponse,
         draft: String,
+        generation: UInt64,
         cursorUTF8: Int? = nil
     ) {
         if plainDraft == draft, parse.template == nil {
@@ -13265,6 +13453,7 @@ final class CapturePanelModel: ObservableObject {
         latestParse = parse
         parsedTemplate = parse.template
         lastAppliedParseDraft = draft
+        lastAppliedParseGeneration = generation
         lastAppliedParseGrammar = parse.grammar
         lastAppliedParseClientIdentity = processClient?.identityToken
         lastAppliedParseItemCount = parse.items.isEmpty

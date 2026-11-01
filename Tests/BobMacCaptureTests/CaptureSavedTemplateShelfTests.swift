@@ -33,7 +33,7 @@ final class CaptureSavedTemplateShelfTests: XCTestCase {
         shelf.refresh(reason: .show)
         await waitUntil { shelf.lastRefreshedAt != nil && shelf.count == 3 }
 
-        XCTAssertEqual(shelf.templates[0].id, "6cd8000f52eb")
+        XCTAssertEqual(shelf.templates[0].id, "3e96cbec7865")
         XCTAssertEqual(shelf.availability, .available)
     }
 
