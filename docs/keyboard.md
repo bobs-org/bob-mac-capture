@@ -75,7 +75,7 @@ as Command-Y L does.
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |
 | Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
-| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows (template headers only accept) | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
+| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
 | Command-Return | Same as Control-Return | Same as Control-Return | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
@@ -87,10 +87,10 @@ as Command-Y L does.
 | Ctrl-Shift-J | Move the caret to the next physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
-| @ | After a first line exactly `@@`, ask bob to start a template: `@@@` becomes `@@template:` with the caret on a new line. At the end of any other line, a standalone `@@` plus `@` is erased and `@@template:` becomes the first line, with the caret staying where the token began. Undo restores the literal `@@@`; everywhere else, insert `@` normally | Same rewrite and close completion; the list header shows the hint only on the first line | Native text-field behavior | Native text-field behavior |
+| @ | Insert `@`; Bob may return route completion when the draft contains a global `@@route` declaration | Insert `@` and refresh Bob's completion for the edited draft | Native text-field behavior | Native text-field behavior |
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | 1–9 | Right after a task number in a close task list (`x`, `x*`, `x!`, and their `*`/`!`/`~` groups, including `=x` link closes), insert `,` before the digit (`x1` + `2` → `x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
-| + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion; the `@@template:` candidate is excluded | Native text-field behavior | Native text-field behavior |
+| + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
@@ -101,7 +101,7 @@ as Command-Y L does.
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-S | Save the current `%t` draft | Save the current `%t` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
 | Command-1…5 | Focus that similar-tasks row and open its strip; pressing the same key again unfocuses it | Close completion, then focus that row | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 
@@ -272,7 +272,7 @@ the following line, reusing an existing line terminator when one is already ther
 In a template draft, as reported by bob's parse, Ctrl-J inserts a plain newline
 everywhere in the draft with no indentation and no `-`.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
-stay literal ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
+remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
 for a local editor snippet: with a collapsed caret immediately after `--`, it
 replaces those two ASCII hyphens with a single em dash `—` and leaves the caret
 right after it, everywhere else in the editor including inside prose. To submit

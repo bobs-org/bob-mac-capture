@@ -2755,35 +2755,35 @@ final class BobMacCaptureTests: XCTestCase {
         }
 
         let header = try applyPlain(
-            text: "@@template:",
-            selectedRange: NSRange(location: "@@template:".utf16.count, length: 0)
+            text: "Task {0} %t",
+            selectedRange: NSRange(location: "Task {0} %t".utf16.count, length: 0)
         )
-        XCTAssertEqual(header.text, "@@template:\n")
-        XCTAssertEqual(header.selection, NSRange(location: "@@template:\n".utf16.count, length: 0))
+        XCTAssertEqual(header.text, "Task {0} %t\n")
+        XCTAssertEqual(header.selection, NSRange(location: "Task {0} %t\n".utf16.count, length: 0))
 
         let templateLine = try applyPlain(
-            text: "@@template:\nApply to {0}",
-            selectedRange: NSRange(location: "@@template:\nApply to {0}".utf16.count, length: 0)
+            text: "Task {0} %t\nApply to {0}",
+            selectedRange: NSRange(location: "Task {0} %t\nApply to {0}".utf16.count, length: 0)
         )
-        XCTAssertEqual(templateLine.text, "@@template:\nApply to {0}\n")
+        XCTAssertEqual(templateLine.text, "Task {0} %t\nApply to {0}\n")
 
         let childBullet = try applyPlain(
-            text: "@@template:\nTask {0}\n- child",
-            selectedRange: NSRange(location: "@@template:\nTask {0}\n- child".utf16.count, length: 0)
+            text: "Task {0} %t\nTask {1}\n- child",
+            selectedRange: NSRange(location: "Task {0} %t\nTask {1}\n- child".utf16.count, length: 0)
         )
-        XCTAssertEqual(childBullet.text, "@@template:\nTask {0}\n- child\n")
+        XCTAssertEqual(childBullet.text, "Task {0} %t\nTask {1}\n- child\n")
 
         let placeholderRow = try applyPlain(
-            text: "@@template:\nTask {0}\n\n- ",
-            selectedRange: NSRange(location: "@@template:\nTask {0}\n\n- ".utf16.count, length: 0)
+            text: "Task {0} %t\n\n- ",
+            selectedRange: NSRange(location: "Task {0} %t\n\n- ".utf16.count, length: 0)
         )
-        XCTAssertEqual(placeholderRow.text, "@@template:\nTask {0}\n\n- \n")
+        XCTAssertEqual(placeholderRow.text, "Task {0} %t\n\n- \n")
 
         let selection = try applyPlain(
-            text: "@@template:\nTask {0}",
-            selectedRange: NSRange(location: 5, length: 4)
+            text: "Task {0} %t",
+            selectedRange: NSRange(location: 5, length: 1)
         )
-        XCTAssertEqual(selection.text, "@@tem\ne:\nTask {0}")
+        XCTAssertEqual(selection.text, "Task \n0} %t")
         XCTAssertEqual(selection.selection, NSRange(location: 6, length: 0))
     }
 
@@ -2795,8 +2795,8 @@ final class BobMacCaptureTests: XCTestCase {
 
         let textView = NSTextView()
         textView.isEditable = true
-        textView.string = "@@template:\nTask {0}"
-        textView.setSelectedRange(NSRange(location: "@@template:\nTask {0}".utf16.count, length: 0))
+        textView.string = "Task {0} %t"
+        textView.setSelectedRange(NSRange(location: "Task {0} %t".utf16.count, length: 0))
 
         XCTAssertTrue(
             CapturePanelController.insertBulletNewlineInEditableTextView(
@@ -2804,7 +2804,7 @@ final class BobMacCaptureTests: XCTestCase {
                 model: model
             )
         )
-        XCTAssertEqual(textView.string, "@@template:\nTask {0}\n")
+        XCTAssertEqual(textView.string, "Task {0} %t\n")
         XCTAssertNil(model.completionResponse)
     }
 

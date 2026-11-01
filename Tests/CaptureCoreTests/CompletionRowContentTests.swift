@@ -38,47 +38,17 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
-    func testTemplateHeaderCandidateHasDirectivePresentationWithoutBadges() {
-        let candidate = CaptureCompletionCandidate(
-            replacement: "@@template:",
-            label: "Bulk template: one capture per row below",
-            kind: "template"
-        )
-
-        let content = completionRowContent(for: candidate, context: "route", query: "te")
-
-        XCTAssertEqual(content.category, .route)
-        XCTAssertEqual(content.symbolName, "square.stack.3d.down.right")
-        XCTAssertEqual(content.contextLabel, "Template")
-        XCTAssertEqual(content.primaryText, "@@template:")
-        XCTAssertEqual(content.secondaryText, "Bulk template: one capture per row below")
-        XCTAssertEqual(content.badges, [])
-        XCTAssertEqual(content.accessibilityHint, "Starts a bulk template: one capture per row")
-    }
-
-    func testTemplateHeaderFixturePreservesBobReplacementAndLabel() throws {
-        let fixtures = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Fixtures", isDirectory: true)
-        let data = try Data(contentsOf: fixtures.appendingPathComponent("capture-complete-template-header.json"))
-        let response = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-        let candidate = try XCTUnwrap(response.candidates.first)
-        let content = completionRowContent(for: candidate, context: response.context, query: "te")
-
-        XCTAssertEqual(response.context, "route")
-        XCTAssertEqual(candidate.replacement, "template:")
-        XCTAssertEqual(response.replacement.start, 2)
-        XCTAssertEqual(response.replacement.end, 4)
-        XCTAssertEqual(content.primaryText, "@@template:")
-        XCTAssertEqual(content.secondaryText, candidate.label)
-        XCTAssertEqual(content.badges, [])
-    }
-
-    func testTemplateSpansMapToHeaderAndMatchingSlotCategories() {
+    func testDirectiveAndTemplateSlotSpansMapToSemanticCategories() {
         XCTAssertEqual(
-            captureSemanticCategory(forSpan: CaptureSpan(start: 0, end: 11, kind: "template_header")),
-            .route
+            captureSemanticCategory(
+                forSpan: CaptureSpan(
+                    start: 0,
+                    end: 2,
+                    kind: "directive",
+                    directive: "template"
+                )
+            ),
+            .directive
         )
         XCTAssertEqual(
             captureSemanticCategory(
@@ -1187,7 +1157,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "schedule"), .schedule)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "priority"), .priority)
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "clipboard"), .clipboard)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "directive"), .directive)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_delimiter"), .wikilinkDelimiter)
         XCTAssertEqual(
             captureSemanticCategory(forSpanKind: "wikilink_task_delimiter"), .wikilinkDelimiter

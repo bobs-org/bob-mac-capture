@@ -14,6 +14,8 @@
 #   directive-complete-*.json   bob capture-complete
 #   directive-capture-*.json    bob capture --dry-run without clipboard reads
 #   clip-*.json                 bob capture --dry-run clip previews and refusals
+#   capture-template-*.json     bob capture --dry-run with `%t`
+#   capture-templates-*.json    bob capture-templates save/list with `%t` or a refusal
 #
 # The clipboard is always mocked through BOB_CLIPBOARD_CMD and
 # BOB_CLIPBOARD_HISTORY_CMD; the real pasteboard is never read. Every capture is a dry
@@ -116,6 +118,7 @@ bob_config="$config_default"
 bob_day="$day_file"
 clip_command="cat $clip_file"
 history_command="bash $clip_dir/history.sh"
+template_example_draft=$'Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz https://example.com/baz\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role'
 
 # Every Bob call runs in a cleared environment so nothing from the real home, vault,
 # config, display, or clipboard can leak into a fixture.
@@ -250,6 +253,24 @@ capture() {
   record "$out" "capture --dry-run${flags[*]:+ ${flags[*]}}" "${args[*]}" "$(setup "$reads_clip")"
 }
 
+template_save() {
+  local out="$1" expected="$2" draft="$3" origin="${4:-}"
+  local status=0
+  local args=(capture-templates save --format json)
+  if [[ -n "$origin" ]]; then
+    args+=(--template-origin "$origin")
+  fi
+  args+=(-- "$draft")
+  bob "${args[@]}" > "$scratch_root/raw.json" || status=$?
+  if [[ "$status" != "$expected" ]]; then
+    echo "capture-templates save for $out exited $status (expected $expected):" >&2
+    cat "$scratch_root/raw.json" >&2
+    exit 1
+  fi
+  persist "$scratch_root/raw.json" "$out"
+  record "$out" "capture-templates save --format json" "$draft" "$(setup)"
+}
+
 clip_desc=""
 history_desc=""
 
@@ -268,18 +289,24 @@ set_history() {
 # --- capture-parse: bare and typed markers, escapes, batches, Unicode, templates ---
 parse directive-parse-bare-percent.json 'jot idea %'
 parse directive-parse-bare-hash.json 'jot idea #'
+parse directive-parse-ordinary-task.json 'Buy milk @grocery'
 parse directive-parse-clip.json 'jot idea %c'
 parse directive-parse-clip-one.json 'jot idea %c1'
 parse directive-parse-clip-count.json 'jot idea %c3'
 parse directive-parse-note.json 'jot idea %n'
 parse directive-parse-listen-url.json 'https://example.com/post %l'
+parse directive-parse-listen-route.json 'https://example.com/post %l @mac_inbox'
+parse directive-parse-listen-mixed.json $'https://example.com/post %l\n\nhttps://example.org/other'
 parse directive-parse-unknown.json 'jot idea %x'
 parse directive-parse-escaped.json 'jot idea \%c'
 parse directive-parse-literal-percent.json '100% done'
 parse directive-parse-batch-later-item.json $'first\n\nsecond %c'
 parse directive-parse-unicode.json 'naïve 🧰 %c3'
 parse directive-parse-template.json $'Apply to {0} at {1} %t\n\nFoobar foo\nBaz bar'
+parse directive-parse-template-example.json "$template_example_draft"
 parse directive-parse-template-no-rows.json 'Apply {0} %t'
+parse directive-parse-template-one-row.json $'Task {0} %t\n\nvalue'
+parse directive-parse-template-arity-error.json $'Record {0} @work:{1} %t\n\nAcme abc extra'
 parse directive-parse-template-clip.json $'Apply {0} %c %t\n\nx'
 parse directive-parse-global-route.json $'@@dev\nFirst\n\nSecond'
 parse directive-parse-global-route-bare.json '@@'
@@ -299,6 +326,7 @@ complete_at directive-complete-mid-draft.json 'jot % idea' 5
 complete directive-complete-literal-percent.json '100%'
 complete directive-complete-bare-hash.json 'jot idea #'
 complete directive-complete-typed-hash.json 'jot idea #f'
+complete directive-complete-global-route-bare.json '@@'
 bob_config="$config_listen"
 complete directive-complete-url-listen.json 'https://example.com/post %'
 complete directive-complete-url-listen-typed.json 'https://example.com/post %l'
@@ -319,6 +347,32 @@ capture directive-capture-bare-hash-refused.json 2 --no-clip -- 'jot idea #'
 capture directive-capture-unknown-refused.json 2 --no-clip -- 'jot idea %x'
 capture directive-capture-template-clip-refused.json 2 --no-clip -- \
   $'Apply {0} %c %t\n\nx'
+capture capture-template-example.json 0 --no-clip -- \
+  $'Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz https://example.com/baz\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role'
+capture capture-template-one-row.json 0 --no-clip -- $'Task {0} %t\n\nvalue'
+ bob_config="$config_listen"
+capture ref-queued-listen.json 0 --no-clip -- 'https://example.com/post %l'
+bob_config="$config_default"
+saved_template_draft=$'Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\n'
+template_save capture-templates-save-new.json 0 "$saved_template_draft"
+template_save capture-templates-save-invalid.json 2 $'No fields %t\n\n'
+template_save capture-templates-save-not-template.json 2 'Buy milk'
+template_id="$(python3 - "$fixtures/capture-templates-save-new.json" <<'PY'
+import json
+import pathlib
+import sys
+
+print(json.loads(pathlib.Path(sys.argv[1]).read_text())["saved"]["id"])
+PY
+)"
+template_save capture-templates-save-replaced.json 0 \
+  $'Apply for {0} at {1} for {2} %t\n\n' "$template_id"
+template_save capture-templates-save-reading.json 0 'Read {0} @reading^{1} $2 %t'
+template_save capture-templates-save-grocery.json 0 'Buy {0} @grocery %t'
+bob capture-templates --format json > "$scratch_root/raw.json"
+persist "$scratch_root/raw.json" capture-templates-list-populated.json
+record capture-templates-list-populated.json 'capture-templates --format json' \
+  'three saved current-syntax templates' "$(setup)"
 
 # --- clip previews: every mode, history, and not_read ---
 set_clip 'hello-clip'
@@ -405,6 +459,9 @@ assert spans("directive-parse-clip-count.json")[0]["count"] == 3
 assert spans("directive-parse-note.json")[0]["directive"] == "note"
 assert load("directive-parse-listen-url.json")["ref_listen"] is True
 assert spans("directive-parse-listen-url.json")[0]["directive"] == "listen"
+assert load("directive-parse-listen-route.json")["ref_listen"] is True
+assert load("directive-parse-listen-mixed.json")["items"][0]["ref_listen"] is True
+assert load("directive-parse-listen-mixed.json")["items"][1].get("ref_listen") is not True
 assert any(d["code"] == "unknown_directive" for d in load("directive-parse-unknown.json")["diagnostics"])
 assert spans("directive-parse-escaped.json") == []
 assert spans("directive-parse-literal-percent.json") == []
@@ -417,6 +474,11 @@ assert "header" not in template and template["directive"]["line"] == 1
 assert template["field_count"] == 2 and len(template["rows"]) == 2
 assert spans("directive-parse-template.json")[0]["directive"] == "template"
 assert load("directive-parse-template-no-rows.json")["needs"] == ["template_row"]
+assert len(load("directive-parse-template-one-row.json")["template"]["rows"]) == 1
+assert any(
+    d["code"] == "template_row_arity"
+    for d in load("directive-parse-template-arity-error.json")["diagnostics"]
+)
 assert any(
     d["code"] == "template_clipboard" for d in load("directive-parse-template-clip.json")["diagnostics"]
 )
@@ -471,6 +533,18 @@ assert load("directive-capture-unknown-refused.json")["code"] == "unknown_direct
 template_capture = load("directive-capture-template.json")
 assert template_capture["ok"] is True and len(template_capture["captures"]) == 2
 assert "header" not in template_capture["template"]
+assert load("directive-parse-template-example.json")["template"]["field_count"] == 3
+assert len(load("capture-template-example.json")["captures"]) == 3
+assert load("capture-template-one-row.json")["template"]["row_count"] == 1
+saved_template = load("capture-templates-save-new.json")["template"]
+retired_template_header = "@@" + "template:"
+assert "%t" in saved_template["draft"] and retired_template_header not in saved_template["draft"]
+assert all(
+    "%t" in template["draft"] and retired_template_header not in template["draft"]
+    for template in load("capture-templates-list-populated.json")["templates"]
+)
+assert load("capture-templates-save-invalid.json")["ok"] is False
+assert load("capture-templates-save-not-template.json")["ok"] is False
 route_capture = load("directive-capture-global-route.json")
 assert route_capture["ok"] is True and len(route_capture["captures"]) == 2
 
@@ -514,7 +588,7 @@ PY
 cat > "$fixtures/directive-fixtures-README.md" <<EOF
 # Directive and clipboard wire fixtures
 
-Regenerate every \`directive-*.json\` and \`clip-*.json\` file with:
+Regenerate the directive, template, and clipboard fixtures with:
 
 \`\`\`bash
 BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \\

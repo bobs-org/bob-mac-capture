@@ -3684,11 +3684,6 @@ final class CaptureModelTests: XCTestCase {
     //     bob capture -b vault -f json --dry-run -- 'new note @sase+capture
     //     - child one
     //     - child two'
-    //   sub-bullet-global-task-block (same vault as children):
-    //     bob capture -b vault -f json --dry-run -- '@@sase+capture
-    //     first note
-    //
-    //     second note'
     //   sub-bullet-long-task-block (`vault/sase.md` holding
     //   `- [/] #task Long parent ^long` with a `keep` child and a
     //   30-entry Work Log):
@@ -3765,26 +3760,6 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertTrue(block.lines[4].text.contains("child two"))
     }
 
-    func testTaskBlocksDecodeGlobalFixture() throws {
-        let success = try decodeBlockFixture("sub-bullet-global-task-block.json")
-
-        XCTAssertEqual(success.taskBlocks.count, 1)
-        let block = try XCTUnwrap(success.taskBlocks.first)
-        XCTAssertEqual(block.roles, ["sub_bullet"])
-        XCTAssertEqual(
-            block.lines.map(\.change),
-            [.unchanged, .unchanged, .added, .added]
-        )
-        XCTAssertEqual(success.captures.count, 2)
-        for item in success.normalizedCaptures {
-            XCTAssertEqual(item.kind, "sub_bullet")
-            XCTAssertTrue(
-                CaptureTaskBlockPresentation.covers(item, blocks: success.taskBlocks),
-                "global item \(item.taskLine) should be covered"
-            )
-        }
-    }
-
     func testTaskBlocksDecodeLongFixture() throws {
         let success = try decodeBlockFixture("sub-bullet-long-task-block.json")
 
@@ -3849,22 +3824,17 @@ final class CaptureModelTests: XCTestCase {
             parse.spans.filter { $0.kind == "directive" }.map(\.directive), ["template"])
     }
 
-    func testTemplateParseStateFixturesDecodeHeaderOnlyNoRowsAndArityError() throws {
-        let headerOnly = try decodeParseFixture("capture-parse-template-header-only.json")
-        XCTAssertNotNil(headerOnly.template)
-        XCTAssertTrue(headerOnly.needs.contains("template_row"))
-        XCTAssertTrue(headerOnly.diagnostics.contains { $0.code == "template_missing_rows" })
-
-        let noRows = try decodeParseFixture("capture-parse-template-no-rows.json")
+    func testTemplateParseStateFixturesDecodeNoRowsAndArityError() throws {
+        let noRows = try decodeParseFixture("directive-parse-template-no-rows.json")
         XCTAssertNotNil(noRows.template)
         XCTAssertTrue(noRows.needs.contains("template_row"))
         XCTAssertTrue(noRows.diagnostics.contains { $0.code == "template_missing_rows" })
         XCTAssertEqual(
             noRows.diagnostics.first { $0.code == "template_missing_rows" }?.message,
-            "add one row per capture: 2 values separated by spaces"
+            "add a blank line, then one row per capture"
         )
 
-        let arity = try decodeParseFixture("capture-parse-template-arity-error.json")
+        let arity = try decodeParseFixture("directive-parse-template-arity-error.json")
         XCTAssertNotNil(arity.template)
         XCTAssertTrue(arity.diagnostics.contains { $0.code == "template_row_arity" })
     }
@@ -3907,7 +3877,7 @@ final class CaptureModelTests: XCTestCase {
         let parse = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(
-                #"{"ok":true,"schema_version":1,"input":"@@template:","body":"","mode":"task","needs":[],"spans":[],"diagnostics":[],"template":42}"#
+                #"{"ok":true,"schema_version":1,"input":"Task {0} %t","body":"","mode":"task","needs":[],"spans":[],"diagnostics":[],"template":42}"#
                     .utf8
             )
         )

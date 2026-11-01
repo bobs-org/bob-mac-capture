@@ -3,38 +3,38 @@ title: "Mac Capture saved templates"
 description: "Save, shelve, and reuse capture drafts with the Bob Mac Capture template shelf."
 ---
 
-The Control-T shelf reuses saved `@@template:` blocks. Shelf keys are in [Keyboard](keyboard.md); template preview rows are in [Capture previews](capture-previews.md); the list/save endpoints are in [Protocol](protocol.md).
+The Control-T shelf reuses saved drafts marked with `%t`. Shelf keys are in [Keyboard](keyboard.md); template preview rows are in [Capture previews](capture-previews.md); the list/save endpoints are in [Protocol](protocol.md).
 
 ## Saved templates
 
-Bob Mac Capture's Control-T shelf reuses saved `@@template:` blocks. Picking a row
-inserts bob's draft at the start of the editor as one undoable edit and checks out that
+Bob Mac Capture's Control-T shelf stores valid `%t` drafts. Put `%t` in the first item,
+then leave a blank line before the rows that supply field values. Picking a shelf row
+inserts Bob's draft at the start of the editor as one undoable edit and checks out that
 template in app memory. The original remains on disk. While it is checked out, the
 Templates count and shelf omit it. Escape, hiding the panel, and a failed capture keep
 the checkout. A successful capture moves the used block to the top; if you edited it,
-the new block replaces the checked-out one. Command-S saves the current template block
-without clearing the draft, and the next successful capture settles that checkout.
-To start one, type `@@@` at the very start of a draft or at the end of any line.
+the new block replaces the checked-out one. Command-S saves the current `%t` draft
+without clearing the editor, and the next successful capture settles that checkout.
 
-Discard releases the checkout and returns the original to the shelf. Removing the
-template header and receiving a fresh parse without a template, emptying the editor, or
-using Command-Z to undo the insert also releases it. Control-C stashes the full draft
-without checkout metadata and reports "Canceled draft stashed · template kept"; restoring
-that draft does not check out the template again. Quitting or crashing loses the draft
-and its in-memory checkout, while the shelf remains unchanged.
+Discard releases the checkout and returns the original to the shelf. Removing `%t` and
+receiving a fresh parse without a template, emptying the editor, or using Command-Z to
+undo the insert also releases it. Control-C stashes the full draft without checkout
+metadata and reports "Canceled draft stashed · template kept"; restoring that draft
+does not check out the template again. Quitting or crashing loses the draft and its
+in-memory checkout, while the shelf remains unchanged.
 
 The shelf stores the template block, never the capture rows. It lives at
 `${XDG_STATE_HOME:-~/.local/state}/bob-cli/capture/templates.json` with mode `0600`;
 `BOB_CAPTURE_TEMPLATES_FILE` can override the file path. The default capacity is 36,
 configured with `capture.max_saved_templates`; setting it to 0 turns off automatic and
-Command-S saves while leaving existing templates available. Forced `-r`, `-s`, and `-t`
-destinations are not saved. Settings shows the count and file path, can reveal the file
-in Finder, and has a confirmed **Clear Templates…** action that also removes the
+Command-S saves while leaving existing templates available. Forced `-r`, `-s`, and
+`-t` destinations are not saved. Settings shows the count and file path, can reveal the
+file in Finder, and has a confirmed **Clear Templates…** action that also removes the
 quarantine copy.
 
-The shelf refreshes on launch, after a capture or mutation, and on Recheck Bob.
-A panel show also refreshes, except when the last refresh started less than 5 s
-ago; those other reasons always run.
+The shelf refreshes on launch, after a capture or mutation, and on Recheck Bob. A panel
+show also refreshes, except when the last refresh started less than 5 s ago; those
+other reasons always run.
 
 An older bob that does not know `capture-templates` hides the shelf and asks you to
 update bob. The app only sends `--template-origin` after a successful template-list

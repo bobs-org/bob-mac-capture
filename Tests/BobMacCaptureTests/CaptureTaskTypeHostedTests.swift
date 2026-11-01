@@ -35,14 +35,13 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         XCTAssertNotEqual(model.completionResponse?.context, "task_type")
     }
 
-    func testBareHashOpensNoMenuAndSubmitsNote() async throws {
-        // `retire_t = prose`: `t:` is ordinary text, so the old `:` separator
-        // rewrite test is deleted. A bare `#` stays the Pomodoro note.
+    func testBareHashRequestsTaskTypeCompletion() async throws {
         let model = try makeModel()
-        model.plainDraft = "jot idea #"
-        model.editorTextDidChange(cursorUTF8Offset: "jot idea #".utf8.count)
-        try await Task.sleep(nanoseconds: 80_000_000)
-        XCTAssertNotEqual(model.completionResponse?.context, "task_type")
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+        XCTAssertEqual(model.completionResponse?.query, "")
     }
 
     func testAcceptReplacesWholeTokenAndPlacesCursor() {

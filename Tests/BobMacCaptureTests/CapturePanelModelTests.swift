@@ -326,31 +326,6 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.lastSuccess?.kind, "task")
     }
 
-    func testControlCompletionAcceptsTemplateHeaderWithoutSubmitting() {
-        let model = CapturePanelModel()
-        model.plainDraft = "@@te"
-        model.completionResponse = CaptureCompletionResponse(
-            ok: true,
-            cursor: 4,
-            replacement: CaptureRange(start: 2, end: 4),
-            context: "route",
-            candidates: [
-                CaptureCompletionCandidate(
-                    replacement: "template:",
-                    route: "template:",
-                    label: "Bulk template: one capture per row below",
-                    kind: "template"
-                )
-            ]
-        )
-
-        model.acceptSelectedCompletionThenSubmitAndOpen()
-
-        XCTAssertEqual(model.plainDraft, "@@template:")
-        XCTAssertFalse(model.isSubmitting)
-        XCTAssertFalse(model.inlinePromptVisible)
-    }
-
     func testControlCompletionAcceptsButStopsForAnInlinePrompt() {
         let model = CapturePanelModel()
         model.plainDraft = "@Cash+"
@@ -5044,7 +5019,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, draft)
     }
 
-    func testSingleAtAndTripleAtDoNotTriggerRewrite() async throws {
+    func testRouteAndTemplateDirectiveDoNotTriggerRewrite() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -5062,10 +5037,10 @@ final class CapturePanelModelTests: XCTestCase {
             ((try? String(contentsOf: recordURL)) ?? "").contains("argv=capture-parse")
         }
 
-        model.plainDraft = "Buy milk @dev @@@"
+        model.plainDraft = "Buy milk @dev %t"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         await waitUntil {
-            ((try? String(contentsOf: recordURL)) ?? "").contains("Buy milk @dev @@@")
+            ((try? String(contentsOf: recordURL)) ?? "").contains("Buy milk @dev %t")
         }
 
         let record = try String(contentsOf: recordURL)
@@ -5309,63 +5284,6 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
         XCTAssertTrue(record.contains("capture-complete"))
-    }
-
-    func testTemplateHeaderCandidateReachableWithPrimedCache() async throws {
-        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_RECORD_PATH": recordURL.path,
-            ]
-        )
-        installTargetCache(
-            on: model,
-            targets: [
-                CaptureTarget(
-                    route: "mac_inbox",
-                    name: "mac_inbox",
-                    label: "mac_inbox.md",
-                    kind: "inbox",
-                    relativePath: "mac_inbox.md"
-                ),
-            ]
-        )
-        model.plainDraft = "@@te"
-        model.editorTextDidChange(cursorUTF8Offset: "@@te".utf8.count)
-        await waitUntil { model.completionResponse?.candidates.first?.kind == "template" }
-
-        XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "template")
-        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "template:")
-    }
-
-    func testGlobalSubBulletTaskCompletionAndMissingIDPromptUseHeaderRange() async throws {
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
-        )
-        let draft = "@@file+\nFirst note"
-        model.plainDraft = draft
-
-        model.editorTextDidChange(cursorUTF8Offset: "@@file+".utf8.count)
-        await waitUntil { model.completionResponse?.context == "task" }
-
-        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 7, end: 7))
-        model.selectedCompletionIndex = 1
-        model.acceptSelectedCompletion()
-
-        XCTAssertEqual(model.taskIDPrompt?.draftSnapshot, draft)
-        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 7, end: 7))
-
-        model.updateTaskIDPromptBlockID("new-id")
-        model.submitTaskIDPrompt()
-        await waitUntil { model.taskIDPrompt == nil }
-
-        XCTAssertEqual(model.plainDraft, "@@file+new-id\nFirst note")
     }
 
     func testTaskBlockIDAuthoredIDSideOpensNewIDComposerWithLivePreview() async throws {
@@ -5874,52 +5792,6 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(modelC.plainDraft, "Add context @file++")
     }
 
-    func testPlusCommitsGlobalRouteDeclarationAndOpensTaskPicker() async throws {
-        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_RECORD_PATH": recordURL.path,
-            ]
-        )
-        installTargetCache(
-            on: model,
-            targets: [
-                CaptureTarget(
-                    route: "mac_inbox",
-                    name: "mac_inbox",
-                    label: "mac_inbox.md",
-                    kind: "inbox",
-                    relativePath: "mac_inbox.md"
-                ),
-            ]
-        )
-
-        let draft = "@@ma\nFirst task"
-        model.plainDraft = draft
-        model.editorTextDidChange(cursorUTF8Offset: "@@ma".utf8.count)
-        await waitUntil { model.completionResponse?.context == "route" }
-        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 2, end: 4))
-        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
-
-        model.plainDraft = "@@ma+\nFirst task"
-        model.editorTextDidChange(cursorUTF8Offset: nil)
-
-        XCTAssertEqual(model.plainDraft, "@@mac_inbox+\nFirst task")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 12)
-
-        await waitUntil { model.completionResponse?.context == "task" }
-        let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(
-            record.contains(
-                "argv=capture-complete --all-tasks --cursor 12 --format json -- @@mac_inbox+\nFirst task"
-            )
-        )
-    }
-
     func testEditorSelectionDidChangeUsesEmittedSelectionNotStaleModelState() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -6123,7 +5995,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
     }
 
-    func testBareTrailingHashDoesNotOpenTaskSectionCompletion() async throws {
+    func testBareTrailingHashOpensTaskTypeNotTaskSectionCompletion() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -6132,27 +6004,16 @@ final class CapturePanelModelTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TASK_TYPE_CHOOSER": "1",
             ]
         )
         let draft = "jot idea #"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil {
-            guard case .ready = model.previewState else {
-                return false
-            }
-            let record = (try? String(contentsOf: recordURL)) ?? ""
-            return record.contains("argv=capture-parse --format json -- jot idea #")
-                && record.contains("argv=capture --dry-run --no-clip --format json -- jot idea #")
-        }
-        // Live preview is recorded before the completion request, so wait long
-        // enough that a task-section complete would have been invoked.
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        XCTAssertNil(model.completionResponse)
-        XCTAssertFalse(model.completionVisible)
+        await waitUntil { model.completionResponse?.context == "task_type" }
+        XCTAssertEqual(model.completionResponse?.query, "")
         let record = try String(contentsOf: recordURL)
-        XCTAssertFalse(record.contains("capture-complete"))
+        XCTAssertTrue(record.contains("argv=capture-complete"))
     }
 
     func testNoteBulletHashStillOpensSectionCompletion() async throws {

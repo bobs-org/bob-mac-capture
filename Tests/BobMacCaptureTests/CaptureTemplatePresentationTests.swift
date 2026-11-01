@@ -22,7 +22,7 @@ final class CaptureTemplatePresentationTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "@@template:"
+        model.plainDraft = "Apply {0} %t"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
 
         await waitUntil { model.parseDiagnostics.contains { $0.code == "template_missing_rows" } }
@@ -37,7 +37,7 @@ final class CaptureTemplatePresentationTests: XCTestCase {
         let underlined = model.attributedDraft.runs.contains { run in
             run.underlineStyle == .single && run.underlineColor == .red
         }
-        XCTAssertFalse(underlined, "header-only missing-rows state stays calm with no underline")
+        XCTAssertFalse(underlined, "a missing-rows state stays calm with no underline")
     }
 
     func testTemplateDiagnosticUnderlineUsesTypedRange() async throws {
@@ -95,7 +95,7 @@ final class CaptureTemplatePresentationTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "@@template:\nTask {0}\n\nvalue"
+        model.plainDraft = "Task {0} %t\n\nvalue"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
 
         await waitUntil { model.parsedTemplate != nil }
@@ -109,7 +109,7 @@ final class CaptureTemplatePresentationTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "@@template:\nRecord {0} @work:{1}\n\nAcme abc extra"
+        model.plainDraft = "Record {0} @work:{1} %t\n\nAcme abc extra"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         await waitUntil { model.parseDiagnostics.contains { $0.code == "template_row_arity" } }
         return model

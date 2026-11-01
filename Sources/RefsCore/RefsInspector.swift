@@ -1405,13 +1405,13 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 }
 
 /// Splits a quote into plain and strong runs by pairing `**`
-/// delimiters from left to right. Unpaired markers stay literal;
+/// delimiters from left to right. Unpaired markers remain visible verbatim;
 /// empty pairs disappear. Single `*`, `_`, `__`, and backticks are
 /// never emphasis.
 public enum RefsQuoteEmphasis {
     /// The quote with every paired `**` delimiter stripped, so
     /// tooltips and VoiceOver read the words without the markup.
-    /// Unpaired markers stay literal, matching `runs`.
+    /// Unpaired markers remain visible verbatim, matching `runs`.
     public static func plainText(_ text: String) -> String {
         runs(text).map(\.text).joined()
     }

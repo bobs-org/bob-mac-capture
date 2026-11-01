@@ -29,7 +29,7 @@ public struct CaptureAgendaInlineSegment: Equatable, Sendable {
 /// emphasis, dimmed `[key:: value]` fields, and `#tags` become styled
 /// segments with their delimiters dropped or kept per kind, and
 /// everything else stays literal plain text. A trailing `^block-id` is
-/// hidden. Unmatched delimiters stay literal. Segments tile `text`
+/// hidden. Unmatched delimiters remain unchanged. Segments tile `text`
 /// exactly, as `TaskDisplayText` guarantees for its own callers (whose
 /// behavior is unchanged).
 public struct CaptureAgendaInlineText: Equatable, Sendable {
@@ -307,7 +307,7 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
     /// destination is the nonempty percent-encoded form bob emits
     /// (no spaces, parens, quotes, or angle brackets). Tooltip and
     /// closing `)` are consumed together. Malformed or other-label
-    /// Markdown links stay literal via `parseField`.
+    /// Markdown links remain verbatim via `parseField`.
     static func parseKeepSourceLinkOrField(
         chars: [Character],
         from index: Int,

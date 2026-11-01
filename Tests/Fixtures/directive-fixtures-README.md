@@ -1,6 +1,6 @@
 # Directive and clipboard wire fixtures
 
-Regenerate every `directive-*.json` and `clip-*.json` file with:
+Regenerate the directive, template, and clipboard fixtures with:
 
 ```bash
 BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
@@ -29,18 +29,24 @@ below stands for `/tmp/bob-mac-capture-directive-fixture/clipboard`.
 | --- | --- | --- | --- |
 | `directive-parse-bare-percent.json` | `capture-parse` | `jot idea %` | - |
 | `directive-parse-bare-hash.json` | `capture-parse` | `jot idea #` | - |
+| `directive-parse-ordinary-task.json` | `capture-parse` | `Buy milk @grocery` | - |
 | `directive-parse-clip.json` | `capture-parse` | `jot idea %c` | - |
 | `directive-parse-clip-one.json` | `capture-parse` | `jot idea %c1` | - |
 | `directive-parse-clip-count.json` | `capture-parse` | `jot idea %c3` | - |
 | `directive-parse-note.json` | `capture-parse` | `jot idea %n` | - |
 | `directive-parse-listen-url.json` | `capture-parse` | `https://example.com/post %l` | - |
+| `directive-parse-listen-route.json` | `capture-parse` | `https://example.com/post %l @mac_inbox` | - |
+| `directive-parse-listen-mixed.json` | `capture-parse` | `https://example.com/post %l\n\nhttps://example.org/other` | - |
 | `directive-parse-unknown.json` | `capture-parse` | `jot idea %x` | - |
 | `directive-parse-escaped.json` | `capture-parse` | `jot idea \%c` | - |
 | `directive-parse-literal-percent.json` | `capture-parse` | `100% done` | - |
 | `directive-parse-batch-later-item.json` | `capture-parse` | `first\n\nsecond %c` | - |
 | `directive-parse-unicode.json` | `capture-parse` | `naïve 🧰 %c3` | - |
 | `directive-parse-template.json` | `capture-parse` | `Apply to {0} at {1} %t\n\nFoobar foo\nBaz bar` | - |
+| `directive-parse-template-example.json` | `capture-parse` | `Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz https://example.com/baz\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role` | - |
 | `directive-parse-template-no-rows.json` | `capture-parse` | `Apply {0} %t` | - |
+| `directive-parse-template-one-row.json` | `capture-parse` | `Task {0} %t\n\nvalue` | - |
+| `directive-parse-template-arity-error.json` | `capture-parse` | `Record {0} @work:{1} %t\n\nAcme abc extra` | - |
 | `directive-parse-template-clip.json` | `capture-parse` | `Apply {0} %c %t\n\nx` | - |
 | `directive-parse-global-route.json` | `capture-parse` | `@@dev\nFirst\n\nSecond` | - |
 | `directive-parse-global-route-bare.json` | `capture-parse` | `@@` | - |
@@ -58,6 +64,7 @@ below stands for `/tmp/bob-mac-capture-directive-fixture/clipboard`.
 | `directive-complete-literal-percent.json` | `capture-complete --cursor 4` | `100%` | - |
 | `directive-complete-bare-hash.json` | `capture-complete --cursor 10` | `jot idea #` | - |
 | `directive-complete-typed-hash.json` | `capture-complete --cursor 11` | `jot idea #f` | - |
+| `directive-complete-global-route-bare.json` | `capture-complete --cursor 2` | `@@` | - |
 | `directive-complete-url-listen.json` | `capture-complete --cursor 26` | `https://example.com/post %` | `highlights.listen_command` configured |
 | `directive-complete-url-listen-typed.json` | `capture-complete --cursor 27` | `https://example.com/post %l` | `highlights.listen_command` configured |
 | `directive-parse-listen-configured.json` | `capture-parse` | `https://example.com/post %l` | `highlights.listen_command` configured |
@@ -70,6 +77,16 @@ below stands for `/tmp/bob-mac-capture-directive-fixture/clipboard`.
 | `directive-capture-bare-hash-refused.json` | `capture --dry-run --no-clip` | `jot idea #` | - |
 | `directive-capture-unknown-refused.json` | `capture --dry-run --no-clip` | `jot idea %x` | - |
 | `directive-capture-template-clip-refused.json` | `capture --dry-run --no-clip` | `Apply {0} %c %t\n\nx` | - |
+| `capture-template-example.json` | `capture --dry-run --no-clip` | `Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz https://example.com/baz\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role` | - |
+| `capture-template-one-row.json` | `capture --dry-run --no-clip` | `Task {0} %t\n\nvalue` | - |
+| `ref-queued-listen.json` | `capture --dry-run --no-clip` | `https://example.com/post %l` | `highlights.listen_command` configured |
+| `capture-templates-save-new.json` | `capture-templates save --format json` | `Apply to {0}! @job_2026_apply_29:{1} %t\n- **URL**: {2}\n\n` | - |
+| `capture-templates-save-invalid.json` | `capture-templates save --format json` | `No fields %t\n\n` | - |
+| `capture-templates-save-not-template.json` | `capture-templates save --format json` | `Buy milk` | - |
+| `capture-templates-save-replaced.json` | `capture-templates save --format json` | `Apply for {0} at {1} for {2} %t\n\n` | - |
+| `capture-templates-save-reading.json` | `capture-templates save --format json` | `Read {0} @reading^{1} $2 %t` | - |
+| `capture-templates-save-grocery.json` | `capture-templates save --format json` | `Buy {0} @grocery %t` | - |
+| `capture-templates-list-populated.json` | `capture-templates --format json` | `three saved current-syntax templates` | - |
 | `clip-inline.json` | `capture --dry-run` | `jot idea %c` | clipboard: `hello-clip` |
 | `clip-lines-list.json` | `capture --dry-run` | `jot idea %c` | clipboard: `- one\n- two` |
 | `clip-lines-plain.json` | `capture --dry-run` | `jot idea %c` | clipboard: `line a\nline b` |

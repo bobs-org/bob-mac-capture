@@ -74,7 +74,7 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   foreground over the tint; an unconfigured name stays neutral while the caret is
   in it, then takes the dashed orange underline. Typing `#` plus a letter at either
   edge of a line, including a child `- #f`, opens the `task_type` menu after
-  the usual 50 ms debounce. A bare `#` stays the Pomodoro note and opens no menu. Every span kind — capture markers and the five Obsidian wikilink
+  the usual 50 ms debounce. A trailing `#` opens Bob's `task_type` menu when the current draft is an incomplete task-type marker. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
@@ -110,14 +110,10 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   so the app still never recognizes close syntax itself. Known limitation: a
   batch that links several new tasks before its `x` can push a 9-link session
   past 10.
-  Global destination spans (`global_route`, `global_sub_bullet_route`, and
-  `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
-  the editor and the completion list never disagree about what color represents what
-  syntax.
-  `template_header` shares the route color; each `template_placeholder` and
-  `template_field` uses the same slot hue, selected by `field % 6` from orange, teal,
-  pink, green, purple, and brown. Template diagnostics underline their typed ranges in
-  red; ordinary drafts keep their existing highlighting.
+  `global_route` reuses the destination color. `directive` spans use teal; each
+  `template_placeholder` and `template_field` uses the same slot hue, selected by
+  `field % 6` from orange, teal, pink, green, purple, and brown. Template diagnostics
+  underline their typed ranges in red; ordinary drafts keep their existing highlighting.
 - A sealed project-note marker paints as one manila chip, a folder tab sitting in the
   sentence. Bob adds a `project_note` value (`create` or `offer`) to every span of the
   marker (route, separator, block ID, `@` seal, and any placeholder standing in for a
@@ -141,8 +137,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
   `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
-  also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker and
-  the route side of a `@@route` or `@@route+block-id` declaration anywhere in the draft.
+  also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker
+  and a route-only `@@route` declaration anywhere in the draft.
   A single leading `@` and its still-typing route fragment also remain
   completion-active before the draft has enough syntax to be submitted as a routed
   capture, so an empty editor can complete the marker-only task-toggle form
@@ -150,9 +146,6 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   complete `@@` sigil just like Bob's server response. The authored ID side never
   uses the inline list: the right-hand side of `@route:` and `@route^` opens the
   Block ID Picker instead (see [Task pickers](task-pickers.md)).
-  A Bob `template` candidate for `@@te` or `@@` is shown as the `@@template:` directive
-  with Bob's label beneath it; accepting inserts Bob's replacement verbatim. The `+`
-  shortcut does not accept this header candidate.
   While route completion is visible, typing `+` directly after the route text accepts
   the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
   as typed, otherwise the selected candidate's route is spliced in, and the task picker
@@ -164,14 +157,6 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
-  Typing a third `@` after a standalone `@@` at the end of any physical line
-  asks bob to start a template through the same rewrite lane. Bob erases the
-  token and its separating spaces or tabs, inserts `@@template:` as the first
-  line, and keeps the caret where the token began. If the second `@` was already
-  absorbed into `@@route` before the third arrives, the app retries from the
-  recorded pre-absorption draft; moving the caret or editing the draft clears
-  that recovery. This gesture needs a bob build that implements
-  `start_template`; with an older bob, the third `@` remains literal.
   Typing `^` immediately after a complete `@route:id`, `:` after `@route^id`,
   or `+` after `@route:id` or `@route^id` uses that same rewrite lane. After `@route+block-id`,
   typing `:` or `^` switches to the corresponding `@route:id` or `@route^id`
@@ -205,9 +190,10 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
 What you can type in the editor. The canonical token contract is [Capture syntax](https://bobs-org.github.io/reference/capture-syntax/); the app colors the span kinds `bob` reports, asks `bob` for completion at the real caret, and never parses punctuation itself.
 
 A draft is one or more capture items separated by one or more blank or whitespace-only
-physical lines, with an optional global destination declaration token anywhere in the
-draft. A declaration is exactly one `@@route` or `@@route+block-id` token; it routes
-otherwise-unmarked items to `route.md`, or beneath `^block-id` in that route. A line
+physical lines, with an optional route-only `@@route` declaration anywhere in the
+draft. It routes otherwise-unmarked items to `route.md`; it does not choose a task
+parent. Local item markers such as `@route+block-id` still select a parent for that
+item. A line
 containing only `@@...` declarations is metadata rather than a capture item. Any local
 item marker still wins for that item, and if the same item also declares a global
 destination, Bob reports a shadow warning instead of guessing. Unsupported `@@` forms
@@ -380,11 +366,11 @@ submits the original draft text.
 
 The continuously updated preview below the editor calls
 `bob capture --dry-run --no-clip --format json` on every debounced edit and never reads
-the clipboard. Bob still claims an eligible URL-only reference ending in exact `%` as
-a companion-audio request: `https://arxiv.org/pdf/2609.12039 %` stays a reference
-while you type. Ordinary `%`, `%N`, and `%header` clipboard spans stay literal. Pressing
-the explicit **Preview** button or **Capture** resolves the clipboard and
-Clipy history normally, exactly as the final capture would. A `$<N>` random
+the clipboard. Bob treats `%l` as a companion-audio request on an eligible URL-only
+reference, so `https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type.
+The `%c` directive remains unresolved in continuous preview. Pressing the explicit
+**Preview** button or **Capture** resolves the clipboard and Clipy history normally,
+exactly as the final capture would. A `$<N>` random
 schedule is rolled once per
 draft and reused by every subsequent live preview and by the final submission, so the
 displayed scheduled date always matches what gets written.

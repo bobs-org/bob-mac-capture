@@ -26,7 +26,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertTrue(model.isTemplateShelfPresented, "a draft with no template opens the shelf")
         model.dismissTemplateShelf()
 
-        model.plainDraft = "@@template:\nBuy {0}\n\n"
+        model.plainDraft = "Buy {0} %t\n\n"
         model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 1), draft: model.plainDraft)
         model.presentTemplateShelf()
         XCTAssertFalse(model.isTemplateShelfPresented)
@@ -39,7 +39,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertFalse(model.isTemplateShelfPresented)
         XCTAssertEqual(
             model.statusText,
-            "No saved templates yet — type @@@ to start one; capturing it saves it here"
+            "No saved templates yet — add %t to the first item to start one"
         )
 
         let loading = SavedTemplateShelf()
@@ -331,7 +331,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_PARSE_FIXTURE": "capture-parse-not-template.json",
+                "FAKE_BOB_PARSE_FIXTURE": "directive-parse-ordinary-task.json",
             ]
         )
         let pendingModel = CapturePanelModel(
@@ -408,7 +408,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.templateShelfCount, 2)
         let record = try String(contentsOf: recordURL, encoding: .utf8)
-        XCTAssertTrue(record.contains("argv=capture-templates save --format json -- @@template:"))
+        XCTAssertTrue(record.contains("argv=capture-templates save --format json -- Apply to {0}!"))
         XCTAssertFalse(record.contains("argv=capture-templates save --format json --template-origin"))
 
         model.templateOrigin = "6cd8000f52eb"
@@ -541,10 +541,23 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-templates clear --format json"))
     }
 
-    func testCommandSRejectsNonTemplateAndDoublePressDoesNotStartSecondSave() async throws {
-        let model = CapturePanelModel()
-        model.saveTemplateFromKeyboard()
-        XCTAssertEqual(model.statusText, "Only @@template: drafts can be saved as templates")
+    func testCommandSPresentsBobsNonTemplateRefusalAndDoublePressDoesNotStartSecondSave() async throws {
+        let refusalModel = CapturePanelModel()
+        let refusalRecord = temporaryURL("capture-template-refusal-record")
+        defer { try? FileManager.default.removeItem(at: refusalRecord) }
+        refusalModel.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": refusalRecord.path,
+                "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-not-template.json",
+            ]
+        )
+        refusalModel.plainDraft = "Buy milk"
+        refusalModel.saveTemplateFromKeyboard()
+        await waitUntil { !refusalModel.isSavingTemplate }
+        XCTAssertEqual(refusalModel.statusText, "only `%t` drafts can be saved as templates")
 
         let shelf = SavedTemplateShelf()
         let recordURL = temporaryURL("capture-template-double-save-record")
@@ -583,7 +596,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             index: 1,
             id: "job",
             text: "Apply to {0}! @job^apply-{1}\n- **URL**: {2}",
-            draft: "@@template:\nApply to {0}! @job^apply-{1}\n- **URL**: {2}\n\n",
+            draft: "Apply to {0}! @job^apply-{1}\n- **URL**: {2} %t\n\n",
             cursor: 57,
             fieldCount: 3,
             lineCount: 2,
@@ -593,7 +606,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             index: 2,
             id: "reading",
             text: "Read {0} @reading^{1} $2",
-            draft: "@@template:\nRead {0} @reading^{1} $2\n\n",
+            draft: "Read {0} @reading^{1} $2 %t\n\n",
             cursor: 38,
             fieldCount: 2,
             lineCount: 1,
@@ -603,7 +616,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             index: 3,
             id: "grocery",
             text: "Buy {0} @grocery",
-            draft: "@@template:\nBuy {0} @grocery\n\n",
+            draft: "Buy {0} @grocery %t\n\n",
             cursor: 30,
             fieldCount: 1,
             lineCount: 1,

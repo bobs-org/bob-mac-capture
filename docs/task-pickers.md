@@ -322,8 +322,7 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `task_type` completion for the task
   toggle retype, and once the item has body text it opens `task_section` completion for that
-  task's ALL-CAPS section bullets. A standalone trailing `#` stays the Pomodoro-note
-  marker and `@route#` stays note-section completion. Typing `#` immediately after a
+  task's ALL-CAPS section bullets. A trailing `#` opens Bob's `task_type` completion when the draft is an incomplete task-type marker; `@route#` stays note-section completion. Typing `#` immediately after a
   resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion
   for today's open Pomodoros. Colon-Pomodoro (`@route:id#name`) selects or creates a
   named Pomodoro; plus-sub-bullet (`@route+id#section`) keeps its task-section selector
@@ -334,7 +333,7 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
 
 ### Tasks without block IDs
 
-In the `@route+` and `@@route+` task contexts, Bob may return open tasks that still lack block IDs.
+In the item-local `@route+` task context, Bob may return open tasks that still lack block IDs.
   Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
   list with an inline **Add block ID** prompt; opening the prompt moves keyboard focus
   into the block-ID field so the ID can be typed immediately, with a highlighted field

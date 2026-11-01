@@ -56,9 +56,9 @@ final class CaptureFileUnderPanelTests: XCTestCase {
         XCTAssertFalse(model.fileUnderActive)
     }
 
-    func testFileUnderAcceptPreservesPercentListenDirective() async throws {
+    func testFileUnderAcceptPreservesListenDirective() async throws {
         let model = try fileUnderModel()
-        model.plainDraft = "https://arxiv.org/pdf/2609.12039 %"
+        model.plainDraft = "https://example.com/post %l"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         await waitUntil { model.completionVisible }
 
@@ -66,21 +66,21 @@ final class CaptureFileUnderPanelTests: XCTestCase {
 
         XCTAssertEqual(
             model.plainDraft,
-            "https://arxiv.org/pdf/2609.12039 % @mac_inbox"
+            "https://example.com/post %l @mac_inbox"
         )
         XCTAssertFalse(model.fileUnderActive)
     }
 
     func testClipboardPresentationUsesCurrentBobParseSpans() throws {
         let model = try fileUnderModel()
-        let listenDraft = "https://arxiv.org/pdf/2609.12039 %"
+        let listenDraft = "https://example.com/post %l"
         model.plainDraft = listenDraft
         model.setCloseListParseSnapshotForTests(
             CaptureParseSnapshot(
                 draft: listenDraft,
                 spans: [
-                    CaptureSpan(start: 0, end: 32, kind: "ref_url"),
-                    CaptureSpan(start: 33, end: 34, kind: "ref_listen"),
+                    CaptureSpan(start: 0, end: 24, kind: "ref_url"),
+                    CaptureSpan(start: 25, end: 27, kind: "directive", directive: "listen"),
                 ]
             )
         )
@@ -97,18 +97,19 @@ final class CaptureFileUnderPanelTests: XCTestCase {
         )
         XCTAssertFalse(model.livePreviewUsesLiteralClipboard)
 
-        let mixedDraft = "\(listenDraft)\n\npaste %"
+        let mixedDraft = "\(listenDraft)\n\njot idea %c"
         model.plainDraft = mixedDraft
         model.setCloseListParseSnapshotForTests(
             CaptureParseSnapshot(
                 draft: mixedDraft,
                 spans: [
-                    CaptureSpan(start: 0, end: 32, kind: "ref_url"),
-                    CaptureSpan(start: 33, end: 34, kind: "ref_listen"),
+                    CaptureSpan(start: 0, end: 24, kind: "ref_url"),
+                    CaptureSpan(start: 25, end: 27, kind: "directive", directive: "listen"),
                     CaptureSpan(
-                        start: mixedDraft.utf8.count - 1,
+                        start: mixedDraft.utf8.count - 2,
                         end: mixedDraft.utf8.count,
-                        kind: "clipboard"
+                        kind: "directive",
+                        directive: "clip"
                     ),
                 ]
             )

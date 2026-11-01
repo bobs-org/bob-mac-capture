@@ -822,7 +822,7 @@ final class BobProcessClientTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "https://arxiv.org/pdf/2609.12039 %"
+        let draft = "https://example.com/post %l"
 
         let response = try await client.captureLivePreview(draft, priorityRollSeed: "fixed")
 
@@ -847,7 +847,7 @@ final class BobProcessClientTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "https://arxiv.org/pdf/2609.12039 % @mac_inbox"
+        let draft = "https://example.com/post %l @mac_inbox"
 
         let response = try await client.capture(draft, dryRun: false, readClipboard: true)
 

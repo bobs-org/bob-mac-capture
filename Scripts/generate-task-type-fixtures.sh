@@ -16,8 +16,8 @@
 # Fixtures cover leading/trailing/child/attached parse, prefix and literal
 # names, configured/hidden-exact/history-only/typed-unknown completion,
 # new and existing subjects, set/cleared/kept captures, all five
-# relocation outcomes, a Task Wikilink coexistence case, the `jot idea #`
-# Pomodoro note (no menu), and the retired `t:` prose case. Commit
+# relocation outcomes, a Task Wikilink coexistence case, the incomplete
+# `jot idea #` task type, and the retired `t:` prose case. Commit
 # operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -199,7 +199,7 @@ capture_commit() {
 }
 
 # Parse: edges, child, literals, refused, prose, routed, attached,
-# Pomodoro note, wikilink coexistence, retired `t:` (prose).
+# incomplete task type, wikilink coexistence, retired `t:` (prose).
 parse '@dev^parser#' task-type-parse-empty.json
 parse '#fix Fix it' task-type-parse-leading.json
 parse 'Fix it #fix' task-type-parse-trailing.json
@@ -216,11 +216,11 @@ parse '@dev^parser#' task-type-parse-attached-new-empty.json
 parse '@dev^parser#fix' task-type-parse-attached-new.json
 parse '@dev+current#' task-type-parse-attached-toggle-empty.json
 parse '@dev+current#fix' task-type-parse-attached-toggle.json
-parse 'jot idea #' task-type-parse-pomodoro-note.json
+parse 'jot idea #' task-type-parse-incomplete-marker.json
 parse 'Fix it t:fix' task-type-parse-retired.json
 
 # Completion: empty attached, leading/trailing, prefix, refused, new/existing
-# subjects, child/second-line, adjacent route, wikilink, Pomodoro note (empty).
+# subjects, child/second-line, adjacent route, wikilink, and incomplete marker.
 complete '@dev^parser#' task-type-complete-empty.json
 complete '@dev #f' task-type-complete-new.json
 complete 'Fix it #fix' task-type-complete-prefix.json
@@ -232,7 +232,7 @@ complete $'Parent task\n #fi' task-type-complete-second-line.json
 complete_at '@de #fix' 3 task-type-complete-adjacent-route.json
 complete 'Follow up ((foo #f' task-type-complete-wikilink-coexist.json
 complete_at 'Follow up ((foo #f' 14 task-type-complete-wikilink-query.json
-complete 'jot idea #' task-type-complete-pomodoro-note.json
+complete 'jot idea #' task-type-complete-incomplete-marker.json
 complete '@dev+current#' task-type-complete-attached-toggle-empty.json
 complete '@dev^parser#fix' task-type-complete-attached-new.json
 complete '@dev+current#fix' task-type-complete-attached-toggle.json

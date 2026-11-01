@@ -14,19 +14,16 @@ final class CaptureSavedTemplatesTests: XCTestCase {
         XCTAssertEqual(response.capacity, 36)
         XCTAssertTrue(response.saving)
         XCTAssertEqual(response.templates.count, 3)
-        XCTAssertEqual(response.templates[0].fieldCount, 3)
-        XCTAssertEqual(response.templates[0].lineCount, 2)
-        XCTAssertEqual(response.templates[0].route, "job")
+        XCTAssertEqual(response.templates[0].fieldCount, 1)
+        XCTAssertEqual(response.templates[0].lineCount, 1)
+        XCTAssertEqual(response.templates[0].route, "grocery")
         XCTAssertEqual(
             response.templates[0].spans.map(\.kind),
-            [
-                "template_placeholder", "task_block_id_route", "task_block_id", "template_placeholder",
-                "template_placeholder",
-            ]
+            ["template_placeholder", "route"]
         )
         XCTAssertFalse(response.templates[0].id.isEmpty)
         XCTAssertEqual(response.templates[1].fieldCount, 2)
-        XCTAssertEqual(response.templates[2].fieldCount, 1)
+        XCTAssertEqual(response.templates[2].fieldCount, 3)
 
         let empty = try JSONDecoder().decode(
             CaptureSavedTemplatesResponse.self,
@@ -47,7 +44,7 @@ final class CaptureSavedTemplatesTests: XCTestCase {
             CaptureSavedTemplatesResponse.self,
             from: Data(
                 """
-                {"schema_version":1,"capacity":8,"saving":true,"file":"/tmp/templates.json","templates":[{"id":"old","text":"Task {0}","draft":"@@template:\\nTask {0}\\n\\n","cursor":30}],"warnings":[]}
+                {"schema_version":1,"capacity":8,"saving":true,"file":"/tmp/templates.json","templates":[{"id":"old","text":"Task {0}","draft":"Task {0} %t\\n\\n","cursor":12}],"warnings":[]}
                 """.utf8)
         )
         XCTAssertEqual(response.templates.first?.index, 0)
@@ -105,7 +102,7 @@ final class CaptureSavedTemplatesTests: XCTestCase {
         )
         XCTAssertFalse(invalid.ok)
         XCTAssertEqual(invalid.code, "template_missing_placeholder")
-        XCTAssertEqual(invalid.error, "template line 2: add at least one placeholder such as {0}")
+        XCTAssertEqual(invalid.error, "template line 1: add at least one placeholder such as {0}")
     }
 
     func testCaptureTemplateSummaryDecodesSaveOutcomesAndOlderPayloads() throws {
@@ -256,7 +253,7 @@ final class CaptureSavedTemplatesTests: XCTestCase {
         )
 
         let list = try await client.savedTemplates()
-        let save = try await client.saveTemplate("@@template:\nBuy {0}\n\n", origin: "origin123")
+        let save = try await client.saveTemplate("Buy {0} %t\n\n", origin: "origin123")
         let delete = try await client.deleteSavedTemplates(ids: ["one", "two"])
         let clear = try await client.clearSavedTemplates()
 
@@ -269,7 +266,7 @@ final class CaptureSavedTemplatesTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-templates --format json"))
         XCTAssertTrue(
             record.contains(
-                "argv=capture-templates save --format json --template-origin origin123 -- @@template:"))
+                "argv=capture-templates save --format json --template-origin origin123 -- Buy {0} %t"))
         XCTAssertTrue(record.contains("argv=capture-templates delete one two --format json"))
         XCTAssertTrue(record.contains("argv=capture-templates clear --format json"))
     }
@@ -322,10 +319,10 @@ final class CaptureSavedTemplatesTests: XCTestCase {
             ]
         )
 
-        let response = try await client.saveTemplate("@@template:\nNo fields\n\n")
+        let response = try await client.saveTemplate("No fields %t\n\n")
         XCTAssertFalse(response.ok)
         XCTAssertEqual(response.code, "template_missing_placeholder")
-        XCTAssertEqual(response.error, "template line 2: add at least one placeholder such as {0}")
+        XCTAssertEqual(response.error, "template line 1: add at least one placeholder such as {0}")
     }
 
     func testTemplateOriginIsIdentityGatedBySuccessfulList() async throws {
@@ -361,12 +358,11 @@ final class CaptureSavedTemplatesTests: XCTestCase {
         _ = try await client.capture("Buy milk", readClipboard: false, templateOrigin: "origin123")
         _ = try await client.savedTemplates()
         let exampleDraft = [
-            "@@template:",
-            "Apply to {0}! @job_2026_apply_29:{1}",
+            "Apply to {0}! @job_2026_apply_29:{1} %t",
             "- **URL**: {2}",
             "",
             "Foobar foo http://foobar.com/career/some_foo_job",
-            "Bazbuz baz http://bazbuz.com/career/some_baz_job",
+            "Bazbuz baz https://example.com/baz",
             "\"Two Sigma\" two-sigma https://www.twosigma.com/careers/some_role",
         ].joined(separator: "\n")
         let listedCapture = try await client.capture(

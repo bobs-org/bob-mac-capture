@@ -274,9 +274,8 @@ struct SettingsView: View {
                 }
 
                 Text(
-                    "bob saves the template block after each successful @@template: capture. "
-                        + "Rows are never saved. Type @@@ at the start of a draft or the end of "
-                        + "any line to begin one."
+                    "bob saves the template block after each successful %t capture. "
+                        + "Rows are never saved. Add %t to the first item to start a new template."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

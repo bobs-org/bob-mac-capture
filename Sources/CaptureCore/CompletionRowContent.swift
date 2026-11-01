@@ -9,7 +9,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case blockID
     case schedule
     case priority
-    case clipboard
+    case directive
     case wikilinkDelimiter
     case wikilinkTarget
     case wikilinkHeading
@@ -65,13 +65,13 @@ extension CaptureSemanticCategory {
 public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemanticCategory {
     switch kind {
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route",
-         "global_route", "global_sub_bullet_route", "task_toggle_route", "template_header",
+         "global_route", "task_toggle_route",
          "active_task_route":
         return .route
     case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
-         "global_sub_bullet_block_id", "task_toggle_block_id", "active_task_block_id",
+         "task_toggle_block_id", "active_task_block_id",
          "project_task_block_id", "dependency_block_id":
         return .blockID
     case "dependency_sigil", "dependency_note":
@@ -109,12 +109,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .schedule
     case "priority":
         return .priority
-    case "clipboard":
-        return .clipboard
-    case "ref_listen":
-        // Bob marks the listen directive semantically; use the existing
-        // route accent so it stays distinct from clipboard syntax.
-        return .route
+    case "directive":
+        return .directive
     case "wikilink_delimiter":
         return .wikilinkDelimiter
     case "wikilink_task_delimiter":
@@ -194,12 +190,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
 }
 
 /// Maps a typed span while retaining the template slot index carried by Bob.
-/// Template spans without a field index remain neutral; every older span kind
+/// Template spans without a field index remain neutral; every other span kind
 /// follows the established kind-only mapping.
 public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanticCategory {
     switch span.kind {
-    case "template_header":
-        return .route
     case "template_placeholder", "template_field":
         guard let field = span.field else {
             return .neutral
@@ -463,28 +457,20 @@ public func completionRowContent(
     switch context {
     case .route:
         category = .route
-        if candidate.kind == "template" {
-            symbolName = "square.stack.3d.down.right"
-            contextLabel = "Template"
-            primaryText = "@@template:"
-            secondaryText = candidate.label
-            accessibilityHint = "Starts a bulk template: one capture per row"
+        symbolName = "signpost.right"
+        contextLabel = "Destination"
+        if let alias = candidate.alias, !alias.isEmpty,
+           let route = candidate.route, !route.isEmpty
+        {
+            primaryText = "\(route) · aka \(alias)"
         } else {
-            symbolName = "signpost.right"
-            contextLabel = "Destination"
-            if let alias = candidate.alias, !alias.isEmpty,
-               let route = candidate.route, !route.isEmpty
-            {
-                primaryText = "\(route) · aka \(alias)"
-            } else {
-                primaryText = candidate.route ?? candidate.label ?? candidate.replacement
-            }
-            if let label = candidate.label, label != primaryText {
-                secondaryText = label
-            }
-            badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
-            accessibilityHint = "Sets the capture destination."
+            primaryText = candidate.route ?? candidate.label ?? candidate.replacement
         }
+        if let label = candidate.label, label != primaryText {
+            secondaryText = label
+        }
+        badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
+        accessibilityHint = "Sets the capture destination."
 
     case .section:
         category = .section

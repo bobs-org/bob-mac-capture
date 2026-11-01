@@ -1069,7 +1069,7 @@ struct CaptureAgendaStatusGlyph: View {
 /// Inline display text: code spans read monospaced, wikilink display
 /// text and Keep source `💡` glyphs read link-tinted and never
 /// clickable, strong and emphasis use their intents, and fields and
-/// tags read dimmed. Unmatched delimiters stay literal, as the parser
+/// tags read dimmed. Unmatched delimiters remain visible as authored, as the parser
 /// guarantees.
 @available(macOS 26.0, *)
 enum CaptureAgendaRowInlineText {

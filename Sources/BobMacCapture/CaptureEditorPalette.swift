@@ -81,7 +81,7 @@ enum CaptureEditorPalette {
             return .green
         case .priority:
             return .orange
-        case .clipboard:
+        case .directive:
             return .teal
         case .wikilinkDelimiter:
             return .secondary

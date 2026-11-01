@@ -50,7 +50,7 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         }
     }
 
-    // MARK: - Unmatched delimiters stay literal
+    // MARK: - Unmatched delimiters remain unchanged
 
     func testUnmatchedDelimitersStayLiteral() {
         let cases = [

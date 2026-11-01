@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":"Ask about #fix today","body":"Ask about #fix today","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":2,"input":"Ask about #fix today","body":"Ask about #fix today","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[]}

@@ -324,7 +324,6 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
             "sub-bullet-task-block.json",
             "sub-bullet-section-task-block.json",
             "sub-bullet-children-task-block.json",
-            "sub-bullet-global-task-block.json",
             "sub-bullet-long-task-block.json",
         ] {
             let success = try blockFixture(fixture)

@@ -11,9 +11,9 @@ Capabilities are detected per response, never pinned to release numbers: unknown
 
 `bob` must support these contracts before the panel can use them:
 
-- A `bob` build that supports `@@route` / `@@route+block-id` global destination
-  declarations anywhere in the draft, `capture-rewrite` (including
-  `switch_block_id_separator` for `^`, `:`, and `+`, and `start_template`),
+- A `bob` build that supports route-only `@@route` global destination declarations
+  anywhere in the draft, `capture-rewrite` (including
+  `switch_block_id_separator` for `^`, `:`, and `+`),
   `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
@@ -354,8 +354,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
-| `@@route` / `@@route+block-id` declarations | Unmarked items route to the declaration | Ordinary draft capture; bare markers report the local `bob` error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token; `@@@` at the start of a draft or end of any line starts a template | With an older bob, `+` types literally; the third `@` types literally for both template-start forms; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+`, relation-label attachment, and template start |
+| `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label` | `@@` absorbs eligible markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token | With an older bob, `+` types literally; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+` and relation-label attachment |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
@@ -372,7 +372,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `theme_suggestion` on `capture-complete` (`pomodoro_name`), `suggested` + `suggestion_label` on candidates | Suggested row preselected with `Suggested · <reason>` secondary, `Suggested` header on a suggested create row, reason in accessibility label | First row selected; no reason shown | Upgrade `bob` for suggestions |
 | `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` / `type X · <source>` (`kept`) line in new-task, link, toggle, and relationship previews, VoiceOver summaries, and notifications (`type FIX` on set/kept) | No type line | Upgrade `bob` for type writes |
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
-| `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | `#` plus a letter opens the menu; bare `#` stays the Pomodoro note | Upgrade `bob` for `#` completion |
+| `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | No task-type menu or refusal details | Upgrade `bob` for `#` completion |
 | `type` on `pomodoro_link_destination` | ` · <label>` suffix on the ledger and day-file destination rows (`Linked under CHORE · default type`) | Destination rows without the label | Upgrade `bob` for typed placement |
 | `theme_suggestion` on `ref today`, `suggested` + `suggestion_label` on rows | Suggested row preselected with reason in `rowMeta`; synthetic `New X Pomodoro` row first when `create`; Return on a suggested non-default row sends its entry | Default row selected; Return sends `.automatic`; no synthetic row | Upgrade `bob` for suggestions |
 | `ref` object | Queue preview card, footer action | Ordinary inbox task | Upgrade `bob`; `-R` disables queueing |
@@ -392,12 +392,12 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `open_notes` | Control-Return lands on captured lines | Tabs open without landing | Upgrade `bob`; needs plugin 2.44.1+ |
 | `--tasks` on `capture-pomodoros` | Agenda, counts, `=#name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
 | `pomodoro_start_name` | Start list for `=#name` | No rows | Upgrade `bob` |
-| Template spans, `@@template:` | Template rows, shelf, preview capsule | Ordinary drafts keep working; refuse before writing | Upgrade `bob` for templates |
+| Template spans, `%t` | Template rows, shelf, preview capsule | Ordinary drafts keep working; `%t` may be refused before writing | Upgrade `bob` for templates |
 | `override`, guard flags | Orange banner; guarded commit; choice card | Plain start; retry without the flag is remembered | Upgrade `bob` for overrides |
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |
 | `task_complete.unblocked`, `pomodoro_close.unblocked`, `project_note.successors` | Grouped Pull-In choice card; project offers show a New project context and task preview rows | Single legacy wording | Upgrade `bob` for offers |
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
-| `sub_bullet_depths`, `global_destination`, `items` | Exact children; one shared-scope line | Depth 1; per-item targets | Upgrade `bob` for shared scope |
+| `sub_bullet_depths`, route-only `global_destination`, `items` | Exact children; batch route declaration and per-item route overrides | Depth 1; per-item targets | Upgrade `bob` for global declarations |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
 | Close-comma assist field | Auto-inserted `,` | Assist off; digits type normally | Upgrade `bob` for assists |
 | `relation_to` / `relation_from` completion | `~` / `~~` picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` for relations |

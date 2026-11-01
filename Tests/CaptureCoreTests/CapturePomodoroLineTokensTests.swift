@@ -327,7 +327,6 @@ final class CapturePomodoroLineTokensTests: XCTestCase {
             "sub-bullet-task-block.json",
             "sub-bullet-section-task-block.json",
             "sub-bullet-children-task-block.json",
-            "sub-bullet-global-task-block.json",
             "sub-bullet-long-task-block.json",
         ]
         var lineCount = 0

@@ -460,7 +460,7 @@ final class CaptureRefPresentationTests: XCTestCase {
 
     func testRefURLSpanMapsToLinkCategory() {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_url"), .link)
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_listen"), .route)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "directive"), .directive)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "bogus-kind"), .neutral)
     }
@@ -579,10 +579,10 @@ final class CaptureRefPresentationTests: XCTestCase {
         let success = try decodeFixture("ref-queued-listen.json")
         let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
 
-        XCTAssertEqual(success.ref?.url, "https://arxiv.org/pdf/2609.12039")
+        XCTAssertEqual(success.ref?.url, "https://example.com/post")
         XCTAssertTrue(success.ref?.listen ?? false)
         XCTAssertTrue(presentation.isQueued)
-        XCTAssertEqual(presentation.chips, ["arXiv"])
+        XCTAssertEqual(presentation.chips, ["Article"])
         XCTAssertEqual(
             presentation.detailText,
             "new to your library · reading task lands in mac_inbox.md · file it later · companion audio requested"
@@ -774,22 +774,18 @@ final class CaptureRefPresentationTests: XCTestCase {
         XCTAssertEqual(refParent.source, "default")
     }
 
-    func testCaptureParsePercentAndAtListenFixturesDecodeSemanticSpans() throws {
-        let percent = try decodeParseFixture("capture-parse-ref-listen.json")
+    func testCaptureParseListenDirectiveFixtureKeepsSemanticFlagAndSpan() throws {
+        let percent = try decodeParseFixture("directive-parse-listen-url.json")
         XCTAssertTrue(percent.refListen)
-        XCTAssertEqual(percent.input, "https://arxiv.org/pdf/2609.12039 %")
+        XCTAssertEqual(percent.input, "https://example.com/post %l")
         XCTAssertEqual(
-            percent.spans.filter { $0.kind == "ref_listen" },
-            [CaptureSpan(start: 33, end: 34, kind: "ref_listen")]
+            percent.spans.filter { $0.kind == "directive" },
+            [CaptureSpan(start: 25, end: 27, kind: "directive", directive: "listen")]
         )
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_listen"), .route)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "directive"), .directive)
 
-        let alias = try decodeParseFixture("capture-parse-ref-listen-alias.json")
-        XCTAssertTrue(alias.refListen)
-
-        let mixed = try decodeParseFixture("capture-parse-ref-listen-mixed.json")
-        XCTAssertTrue(mixed.refListen)
-        XCTAssertEqual(mixed.items.map(\.refListen), [true, false])
+        let configured = try decodeParseFixture("directive-parse-listen-configured.json")
+        XCTAssertTrue(configured.refListen)
     }
 
     func testCaptureParseRefExplicitFixtureKeepsTheRouteToken() throws {

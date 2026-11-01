@@ -29,15 +29,9 @@ A `=` override restart or swap previews on the same start card with an orange
 
 ## Templates
 
-  A Bob `template` candidate for `@@te` or `@@` is shown as the `@@template:` directive
-  with Bob's label beneath it; accepting inserts Bob's replacement verbatim. The `+`
-  shortcut does not accept this header candidate.
-  When the route list includes a template candidate at bare `@@`, its header shows
-  that typing `@` again starts a template.
-
   Template fields decode tolerantly: an older Bob omits them and keeps ordinary drafts
   working. A new Bob with an older app exposes unknown template span kinds as neutral
-  text. An older Bob refuses `@@template:` before writing anything, so upgrade Bob before
+  text. An older Bob refuses `%t` drafts before writing anything, so upgrade Bob before
   submitting a template draft.
 
 Template drafts live in the [Saved templates](saved-templates.md) shelf.
@@ -45,9 +39,9 @@ Template drafts live in the [Saved templates](saved-templates.md) shelf.
 ## Live preview
 
 Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
-  a dedicated process-client API that asserts `--no-clip`. Bob's admitted URL `%`
-  listen marker remains a reference request in continuous preview; ordinary clipboard
-  spans stay literal until the separate explicit clipboard-resolving preview.
+  a dedicated process-client API that asserts `--no-clip`. Bob's `%l`
+  directive remains a reference request in continuous preview; `%c` stays unresolved
+  until the separate explicit clipboard-resolving preview.
   Template previews show a `Template · N rows` capsule beside the capture count. When
   Bob reports the `template_row` need, the panel keeps the preview calm and shows Bob's
   `template_missing_rows` message. Non-info template diagnostics underline the matching
@@ -65,9 +59,10 @@ The additive `sub_bullets` field on `capture` output is the exact rendered autho
   authored-child depths. Its additive `global_destination` object is decoded
   tolerantly; absent metadata means the connected `bob` binary predates global
   destination declarations.
-  Template parsing adds a nullable header/range/field/row object and per-row items with
-  UTF-8 source ranges. Template rows never open pickers; a row-incomplete need keeps the
-  dry-run preview idle until a row is added. Capture responses add a template summary and
+  Template parsing adds `template.directive` (`range` and source `line`), template
+  range/field/row data, and per-row items with UTF-8 source ranges. Template rows never
+  open pickers; a row-incomplete need keeps the dry-run preview idle until a row is added.
+  Capture responses add a template summary and
   per-capture row numbers, including the legacy one-result response shape.
 
 ## Capture results
@@ -244,10 +239,9 @@ A whole-item `=`/`=<X>` start instead shows its own card
   count, and ` · was 0920–0945`, or `Swapped in NAME` with the taken range and the demoted
   session back to first future. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
-  transition rows. When Bob reports a global destination, preview and the destination
-  detail show one compact shared-scope line (`All items → foo.md` or
-  `All items → foo.md · under ^a-id`) and mark item-level deviations as local overrides
-  instead of repeating the shared target on every item. The outer auxiliary detail region
+  transition rows. When Bob reports a global route, preview and the destination
+  detail show one compact line (`All items → foo.md`) and mark item-level deviations as
+  local overrides instead of repeating the shared route on every item. The outer auxiliary detail region
   owns scrolling, so preview itself never nests another scroll view. The preview card
   always takes its natural height: the window grows to show it in full up to the screen
   limit before the auxiliary region scrolls, and the card keeps its last rendered height

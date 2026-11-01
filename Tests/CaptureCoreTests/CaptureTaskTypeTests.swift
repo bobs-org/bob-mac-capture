@@ -574,13 +574,15 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertEqual(attachedComplete.query, "")
     }
 
-    func testPomodoroNoteHasNoCompletionAndRetiredIsProse() throws {
-        let note = try decodeParse("task-type-parse-pomodoro-note.json")
-        XCTAssertEqual(note.mode, "pomodoro_note")
-        XCTAssertFalse(note.spans.contains(where: { $0.kind == "task_type" }))
-        let noteComplete = try decodeCompletion("task-type-complete-pomodoro-note.json")
-        XCTAssertNil(noteComplete.context)
-        XCTAssertTrue(noteComplete.candidates.isEmpty)
+    func testBareHashIsAnIncompleteTaskTypeAndRetiredIsProse() throws {
+        let incomplete = try decodeParse("task-type-parse-incomplete-marker.json")
+        XCTAssertEqual(incomplete.mode, "incomplete")
+        XCTAssertEqual(incomplete.needs, ["task_type"])
+        XCTAssertTrue(incomplete.spans.contains(where: { $0.kind == "task_type" }))
+
+        let incompleteComplete = try decodeCompletion("task-type-complete-incomplete-marker.json")
+        XCTAssertEqual(incompleteComplete.context, "task_type")
+        XCTAssertEqual(incompleteComplete.query, "")
 
         let retired = try decodeParse("task-type-parse-retired.json")
         XCTAssertEqual(retired.input, "Fix it t:fix")

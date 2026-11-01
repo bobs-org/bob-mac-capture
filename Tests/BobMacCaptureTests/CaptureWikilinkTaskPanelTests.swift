@@ -6,7 +6,7 @@ import XCTest
 @testable import BobMacCapture
 
 /// Task Wikilink picker panel wiring: auto-open only on a written second
-/// `(`, burst typing, and trailing `@@@`; the chip on caret moves and
+/// `(` and burst typing; the chip on caret moves and
 /// Backspace; closed and multiword chip reopen; Escape suppression;
 /// Backspace leaving `(`; accept/caret/no inline list; missing-replacement
 /// no-op; filter clearing without a refetch; stale guard; the ID prompt
@@ -258,13 +258,12 @@ final class CaptureWikilinkTaskPanelTests: XCTestCase {
         XCTAssertFalse(model.picker?.candidates.isEmpty ?? true)
     }
 
-    func testTrailingTemplateCoexistsWithWikilinkTask() async throws {
+    func testWikilinkTaskSpansRemainAvailableAtTheCaret() async throws {
         let model = try liveModel()
-        model.plainDraft = "Follow up ((s @@@"
+        model.plainDraft = "Follow up ((s"
         model.editorTextDidChange(cursorUTF8Offset: 13)
         await waitUntil { model.latestParse?.input == model.plainDraft }
-        // The trailing `@@@` template marker leaves the `((` parse spans
-        // intact, so the picker still auto-opens on the query.
+        // Bob's wikilink task spans still open the picker at the query.
         XCTAssertEqual(
             model.latestParse?.spans.map(\.kind),
             ["wikilink_task_delimiter", "wikilink_task_query"]

@@ -1008,9 +1008,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot `:`/`^`/`+`/`|` rewrite-lane gesture or template-start
-    /// `@` intent when the focused main draft editor can insert that character
-    /// natively. The key event still reaches AppKit; the model consumes the
+    /// Records a one-shot `:`/`^`/`+`/`|` rewrite-lane gesture when the focused
+    /// main draft editor can insert that character natively. The key event still
+    /// reaches AppKit; the model consumes the
     /// intent from the resulting text change.
     /// Modal fields, shortcuts, IME, and non-collapsed selections leave the
     /// event alone.
@@ -1027,17 +1027,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         else {
             return
         }
-        if characters == "@" {
-            guard event.modifierFlags.intersection([.command, .control]).isEmpty else {
-                return
-            }
-        } else {
-            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-                characters == ":" || characters == "^" || characters == "+"
-                    || characters == "|"
-            else {
-                return
-            }
+        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+            characters == ":" || characters == "^" || characters == "+"
+                || characters == "|"
+        else {
+            return
         }
         let selection = textView.selectedRange()
         guard selection.length == 0 else {

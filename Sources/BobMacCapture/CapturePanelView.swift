@@ -1134,7 +1134,7 @@ private struct CapturePanelFooter: View {
                 }
                 .help(
                     model.templateOrigin == nil
-                        ? "Reuse a saved @@template: draft (Control-T). Type @@@ to start a new one."
+                        ? "Reuse a saved %t draft (Control-T). Add %t to the first item to start a new one."
                         : "1 template is in this draft; it returns when you capture or discard"
                 )
                 .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
@@ -2987,15 +2987,6 @@ private struct CompletionList: View {
                             .padding(.horizontal, 8)
                             .padding(.top, 4)
                             .accessibilityAddTraits(.isHeader)
-                    } else if model.templateStartHintVisible {
-                        TemplateShelfHintKeycap(
-                            keys: "@",
-                            action: "again to start a template",
-                            accessibilityLabel: "Type @ again to start a template"
-                        )
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                        .accessibilityAddTraits(.isHeader)
                     }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
                     // context. Task-section rows stay a plain ungrouped list.
@@ -3503,7 +3494,7 @@ struct PreviewPane: View {
         }
 
         if model.livePreviewUsesLiteralClipboard {
-            Text("Clipboard markers stay literal in live preview")
+            Text("Clipboard markers remain unresolved in live preview")
                 .foregroundStyle(.secondary)
                 .font(.caption)
         }
