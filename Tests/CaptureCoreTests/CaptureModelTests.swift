@@ -234,44 +234,29 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.diagnostics, [])
         XCTAssertEqual(decoded.subBullets, [])
         XCTAssertEqual(decoded.subBulletDepths, [])
+        XCTAssertNil(decoded.grammar)
     }
 
-    func testParseResponseDecodesGlobalDestinationMetadataTolerantly() throws {
-        let data = Data(
-            """
-            {
-              "ok": true,
-              "schema_version": 1,
-              "input": "@@foo+a-id\\nFirst note",
-              "body": "First note",
-              "mode": "sub_bullet",
-              "route": "foo",
-              "block_id": "a-id",
-              "needs": [],
-              "spans": [
-                { "start": 0, "end": 5, "kind": "global_sub_bullet_route" },
-                { "start": 6, "end": 10, "kind": "global_sub_bullet_block_id" }
-              ],
-              "diagnostics": [],
-              "global_destination": {
-                "range": { "start": 0, "end": 10 },
-                "mode": "sub_bullet",
-                "route": "foo",
-                "block_id": "a-id"
-              }
-            }
-            """.utf8
-        )
+    func testParseResponseDecodesRouteOnlyGlobalDestination() throws {
+        let decoded = try decodeParseFixture("directive-parse-global-route.json")
 
-        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-        XCTAssertEqual(decoded.globalDestination?.range, CaptureRange(start: 0, end: 10))
-        XCTAssertEqual(decoded.globalDestination?.scopeSummary, "foo.md \u{00b7} under ^a-id")
+        XCTAssertEqual(decoded.globalDestination?.range, CaptureRange(start: 0, end: 5))
+        XCTAssertEqual(decoded.globalDestination?.line, 1)
+        XCTAssertEqual(decoded.globalDestination?.route, "dev")
+        XCTAssertEqual(decoded.globalDestination?.destinationLabel, "dev.md")
         XCTAssertEqual(decoded.globalDestination?.needs, [])
         XCTAssertEqual(
             decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-            [.route, .blockID]
+            [.route]
         )
+    }
+
+    func testParseResponseDecodesBareGlobalDestinationNeedingRoute() throws {
+        let decoded = try decodeParseFixture("directive-parse-global-route-bare.json")
+
+        XCTAssertNil(decoded.globalDestination?.route)
+        XCTAssertEqual(decoded.globalDestination?.needs, ["route"])
+        XCTAssertEqual(decoded.globalDestination?.destinationLabel, "global destination")
     }
 
     func testCaptureRewriteResponseDecodesFullPayload() throws {
@@ -468,7 +453,7 @@ final class CaptureModelTests: XCTestCase {
               "created": "2026-08-14",
               "scheduled": null,
               "placement": "inserted",
-              "global_destination": { "mode": "task", "route": "foo" },
+              "global_destination": { "route": "foo" },
               "captures": [
                 {
                   "ok": true,
@@ -491,7 +476,7 @@ final class CaptureModelTests: XCTestCase {
         )
 
         let globalDestination = try XCTUnwrap(success.globalDestination)
-        XCTAssertEqual(globalDestination.scopeSummary, "foo.md")
+        XCTAssertEqual(globalDestination.destinationLabel, "foo.md")
         XCTAssertTrue(captureUsesGlobalDestination(success.normalizedCaptures[0], globalDestination))
     }
 
@@ -568,70 +553,152 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.subBullets, [])
     }
 
-    func testCaptureCommandResponseDecodesHeaderlessSingleClipWithOmittedEntries() throws {
-        let success = try decodeCaptureSuccess(
-            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]}}"#
-        )
+    func testCaptureCommandResponseDecodesInlineClip() throws {
+        let success = try decodeFixture("clip-inline.json")
 
-        XCTAssertEqual(success.clip?.header, nil)
-        XCTAssertEqual(success.clip?.mode, "inline")
-        XCTAssertEqual(success.clip?.lines, ["\t- hello-clip"])
-        XCTAssertEqual(success.clip?.attachments, [])
-        XCTAssertEqual(success.clip?.entries, [])
+        let clip = try XCTUnwrap(success.clip)
+        XCTAssertEqual(clip.status, "read")
+        XCTAssertTrue(clip.wasRead)
+        XCTAssertNil(clip.count)
+        XCTAssertEqual(clip.mode, "inline")
+        XCTAssertEqual(clip.lines, ["\t- hello-clip"])
+        XCTAssertEqual(clip.attachments, [])
+        XCTAssertNil(clip.snippet)
+        XCTAssertEqual(clip.entries, [])
     }
 
-    func testCaptureCommandResponseDecodesHeaderedClipWithOmittedEntries() throws {
-        let success = try decodeCaptureSuccess(
-            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":"MYNOTE","mode":"inline","lines":["\t- **MYNOTE:** hello-clip"],"attachments":[]}}"#
-        )
+    func testCaptureCommandResponseDecodesLinesClips() throws {
+        let list = try XCTUnwrap(decodeFixture("clip-lines-list.json").clip)
+        XCTAssertEqual(list.mode, "lines")
+        XCTAssertEqual(list.lines, ["\t- one", "\t- two"])
 
-        XCTAssertEqual(success.clip?.header, "MYNOTE")
-        XCTAssertEqual(success.clip?.mode, "inline")
-        XCTAssertEqual(success.clip?.lines, ["\t- **MYNOTE:** hello-clip"])
-        XCTAssertEqual(success.clip?.entries, [])
+        let plain = try XCTUnwrap(decodeFixture("clip-lines-plain.json").clip)
+        XCTAssertEqual(plain.mode, "lines")
+        XCTAssertEqual(plain.lines, ["\t- line a", "\t- line b"])
     }
 
-    func testCaptureCommandResponseDecodesAttachmentClipWithOmittedEntries() throws {
-        let success = try decodeCaptureSuccess(
-            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"attachments","lines":["\t- ![[img/shot.png|400]]"],"attachments":[{"source":"/tmp/tmp.GQUVrOEvrX/shot.png","saved":"img/shot.png","kind":"image","reused":false}]}}"#
-        )
-
-        XCTAssertEqual(success.clip?.mode, "attachments")
-        XCTAssertEqual(success.clip?.lines, ["\t- ![[img/shot.png|400]]"])
+    func testCaptureCommandResponseDecodesAttachmentClips() throws {
+        let image = try XCTUnwrap(decodeFixture("clip-attachments-image.json").clip)
+        XCTAssertEqual(image.mode, "attachments")
+        XCTAssertEqual(image.lines, ["\t- ![[img/shot.png|400]]"])
         XCTAssertEqual(
-            success.clip?.attachments,
+            image.attachments,
             [
                 CaptureAttachmentOutput(
-                    source: "/tmp/tmp.GQUVrOEvrX/shot.png",
+                    source: "/tmp/bob-mac-capture-directive-fixture/clipboard/shot.png",
                     saved: "img/shot.png",
                     kind: "image",
                     reused: false
                 )
             ])
-        XCTAssertEqual(success.clip?.entries, [])
+        XCTAssertEqual(image.entries, [])
+
+        let mixed = try XCTUnwrap(decodeFixture("clip-attachments-mixed.json").clip)
+        XCTAssertEqual(mixed.attachments.map(\.kind), ["image", "file"])
+        XCTAssertEqual(mixed.attachments.map(\.saved), ["img/shot.png", "file/notes.pdf"])
+        XCTAssertEqual(mixed.lines, ["\t- ![[img/shot.png|400]]", "\t- [[file/notes.pdf]]"])
     }
 
-    func testCaptureCommandResponseDecodesSnippetClipWithOmittedEntries() throws {
-        let success = try decodeCaptureSuccess(
-            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"snippet","lines":["\t- [[file/clip-20260715-131415-heading]]"],"attachments":[],"snippet":"file/clip-20260715-131415-heading.md"}}"#
-        )
+    func testCaptureCommandResponseDecodesSnippetClips() throws {
+        let heading = try XCTUnwrap(decodeFixture("clip-snippet-heading.json").clip)
+        XCTAssertEqual(heading.mode, "snippet")
+        XCTAssertEqual(heading.snippet, "file/clip-20261030-091500-heading.md")
+        XCTAssertEqual(heading.lines, ["\t- [[file/clip-20261030-091500-heading]]"])
+        XCTAssertEqual(heading.entries, [])
 
-        XCTAssertEqual(success.clip?.mode, "snippet")
-        XCTAssertEqual(success.clip?.snippet, "file/clip-20260715-131415-heading.md")
-        XCTAssertEqual(success.clip?.entries, [])
+        let long = try XCTUnwrap(decodeFixture("clip-snippet-long.json").clip)
+        XCTAssertEqual(long.mode, "snippet")
+        XCTAssertNotNil(long.snippet)
     }
 
-    func testCaptureCommandResponseDecodesHistoryClipWithNestedOmittedEntries() throws {
-        let success = try decodeCaptureSuccess(
-            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.XA4h1kbsUm/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"history","lines":["\t- hello-clip","\t- older one","\t- older two"],"attachments":[],"entries":[{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]},{"header":null,"mode":"lines","lines":["\t- older one","\t- older two"],"attachments":[]}]}}"#
-        )
+    func testCaptureCommandResponseDecodesHistoryClipEntries() throws {
+        let clip = try XCTUnwrap(decodeFixture("clip-history.json").clip)
 
-        XCTAssertEqual(success.clip?.mode, "history")
-        XCTAssertEqual(success.clip?.entries.count, 2)
-        XCTAssertEqual(success.clip?.entries[0].lines, ["\t- hello-clip"])
-        XCTAssertEqual(success.clip?.entries[0].entries, [])
-        XCTAssertEqual(success.clip?.entries[1].mode, "lines")
-        XCTAssertEqual(success.clip?.entries[1].entries, [])
+        XCTAssertEqual(clip.mode, "history")
+        XCTAssertEqual(clip.entries.count, 3)
+        XCTAssertEqual(clip.entries.map(\.mode), ["inline", "inline", "inline"])
+        XCTAssertEqual(clip.entries.map(\.lines), [["\t- newest"], ["\t- older"], ["\t- oldest"]])
+        XCTAssertEqual(clip.lines, ["\t- newest", "\t- older", "\t- oldest"])
+        XCTAssertTrue(clip.entries.allSatisfy { $0.entries.isEmpty && $0.wasRead })
+    }
+
+    func testCaptureCommandResponseDecodesHistoryClipWithAttachmentEntry() throws {
+        let clip = try XCTUnwrap(decodeFixture("clip-history-attachments.json").clip)
+
+        XCTAssertEqual(clip.mode, "history")
+        XCTAssertEqual(clip.entries.map(\.mode), ["attachments", "inline"])
+        XCTAssertEqual(clip.entries[0].attachments.map(\.saved), ["img/shot.png"])
+        XCTAssertEqual(clip.attachments, clip.entries[0].attachments)
+    }
+
+    func testCaptureCommandResponseDecodesNotReadClipWithoutModeOrCollections() throws {
+        let one = try XCTUnwrap(decodeFixture("clip-not-read.json").clip)
+        XCTAssertEqual(one.status, "not_read")
+        XCTAssertFalse(one.wasRead)
+        XCTAssertEqual(one.count, 1)
+        XCTAssertNil(one.mode)
+        XCTAssertEqual(one.lines, [])
+        XCTAssertEqual(one.attachments, [])
+        XCTAssertNil(one.snippet)
+        XCTAssertEqual(one.entries, [])
+
+        let counted = try XCTUnwrap(decodeFixture("clip-not-read-count.json").clip)
+        XCTAssertEqual(counted.count, 3)
+        XCTAssertNil(counted.mode)
+    }
+
+    func testCaptureClipRequiresStatusAndReadMode() {
+        let reply = { (clip: String) in
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test","kind":"task","created":"2026-10-30","scheduled":null,"placement":"inserted","clip":\#(clip)}"#
+        }
+
+        let withoutStatus = reply(#"{"mode":"inline","lines":[],"attachments":[]}"#)
+        let readWithoutMode = reply(#"{"status":"read","lines":[]}"#)
+        XCTAssertThrowsError(try decodeCaptureSuccess(withoutStatus))
+        XCTAssertThrowsError(try decodeCaptureSuccess(readWithoutMode))
+    }
+
+    func testCaptureCommandResponseDecodesPerItemClipsInBatch() throws {
+        let success = try decodeFixture("clip-batch.json")
+
+        XCTAssertEqual(success.normalizedCaptures.count, 3)
+        XCTAssertEqual(success.normalizedCaptures.map { $0.clip?.mode }, ["inline", nil, "inline"])
+        XCTAssertEqual(success.clip, success.normalizedCaptures[0].clip)
+
+        let unread = try decodeFixture("clip-batch-not-read.json")
+        XCTAssertEqual(unread.normalizedCaptures.map { $0.clip?.count }, [1, 3])
+        XCTAssertTrue(unread.normalizedCaptures.allSatisfy { $0.clip?.wasRead == false })
+    }
+
+    func testClipRefusalsDecodeAsFailuresWithBobCopy() throws {
+        for name in [
+            "clip-error-missing-attachment.json", "clip-error-unavailable.json",
+            "clip-error-history-unavailable.json",
+        ] {
+            let data = try Data(contentsOf: fixtureURL(name))
+            let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+            guard case .failure(let failure) = response else {
+                return XCTFail("\(name) should decode as a failure")
+            }
+            XCTAssertFalse(failure.error.isEmpty, name)
+            XCTAssertNil(failure.code, name)
+        }
+    }
+
+    func testDirectiveRefusalsDecodeMachineReadableCodes() throws {
+        let codes = [
+            "directive-capture-bare-percent-refused.json": "incomplete_directive",
+            "directive-capture-bare-hash-refused.json": "type_marker_needs_task",
+            "directive-capture-unknown-refused.json": "unknown_directive",
+        ]
+        for (name, code) in codes {
+            let data = try Data(contentsOf: fixtureURL(name))
+            let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+            guard case .failure(let failure) = response else {
+                return XCTFail("\(name) should decode as a failure")
+            }
+            XCTAssertEqual(failure.code, code, name)
+        }
     }
 
     func testPreviewBlockLinesOrderAuthoredChildrenClipThenScheduleLog() throws {
@@ -646,7 +713,7 @@ final class CaptureModelTests: XCTestCase {
                             "    - Text the owner",
                             "  - Attach the final checklist",
                             "    - Verify the links"],
-             "clip":{"header":null,"mode":"lines","lines":["  - clipped one","  - clipped two"],
+             "clip":{"status":"read","mode":"lines","lines":["  - clipped one","  - clipped two"],
                      "attachments":[],"entries":[]},
              "schedule_log":{"reason":"p:1 roll","lines":["  - **SCHEDULE LOG**",
                                                           "    - _2026-08-18_ — p:1 roll"]}}
@@ -3759,24 +3826,27 @@ final class CaptureModelTests: XCTestCase {
     }
 
     func testTemplateParseFixtureDecodesRangesRowsFieldsAndSlotSpans() throws {
-        let data = try Data(contentsOf: fixtureURL("capture-parse-template-example.json"))
-        let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+        let parse = try decodeParseFixture("directive-parse-template.json")
 
         let template = try XCTUnwrap(parse.template)
-        XCTAssertEqual(template.header.line, 1)
-        XCTAssertEqual(template.fieldCount, 3)
-        XCTAssertEqual(template.rows.count, 3)
+        XCTAssertEqual(template.directive.line, 1)
+        XCTAssertEqual(template.directive.range, CaptureRange(start: 20, end: 22))
+        XCTAssertEqual(template.range, CaptureRange(start: 0, end: 22))
+        XCTAssertEqual(template.fieldCount, 2)
+        XCTAssertEqual(template.rows.count, 2)
         XCTAssertEqual(template.rows[0].row, 1)
-        XCTAssertEqual(template.rows[0].mode, "pomodoro_task")
-        XCTAssertEqual(template.rows[0].body, "Apply to Foobar!")
-        XCTAssertEqual(
-            template.rows[0].fields.map(\.value),
-            ["Foobar", "foo", "http://foobar.com/career/some_foo_job"])
+        XCTAssertEqual(template.rows[0].line, 3)
+        XCTAssertEqual(template.rows[0].range, CaptureRange(start: 24, end: 34))
+        XCTAssertEqual(template.rows[0].mode, "task")
+        XCTAssertEqual(template.rows[0].body, "Apply to Foobar at foo")
+        XCTAssertEqual(template.rows[0].fields.map(\.value), ["Foobar", "foo"])
         XCTAssertEqual(parse.items.last?.mode, "template_row")
-        XCTAssertEqual(parse.items.last?.templateRow?.row, 3)
+        XCTAssertEqual(parse.items.last?.templateRow?.row, 2)
         XCTAssertEqual(
-            parse.spans.filter { $0.kind == "template_placeholder" }.map(\.field), [0, 1, 2])
+            parse.spans.filter { $0.kind == "template_placeholder" }.map(\.field), [0, 1])
         XCTAssertEqual(parse.spans.filter { $0.kind == "template_field" }.first?.field, 0)
+        XCTAssertEqual(
+            parse.spans.filter { $0.kind == "directive" }.map(\.directive), ["template"])
     }
 
     func testTemplateParseStateFixturesDecodeHeaderOnlyNoRowsAndArityError() throws {

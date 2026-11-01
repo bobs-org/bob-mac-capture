@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":2,"input":"@@dev jot idea %c","body":"jot idea","mode":"task","route":"dev","section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":5,"kind":"global_route"},{"start":15,"end":17,"kind":"directive","directive":"clip"}],"diagnostics":[],"global_destination":{"range":{"start":0,"end":5},"line":1,"route":"dev","needs":[]}}

@@ -753,7 +753,8 @@ final class NotificationService: NSObject, ObservableObject {
         let overrideSummary = overrideCount == 0
             ? ""
             : "\(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
-        let kindDestinationSummary = [kindSummary, globalDestination.scopeSummary, overrideSummary]
+        let destinationLabel = globalDestination.destinationLabel
+        let kindDestinationSummary = [kindSummary, destinationLabel, overrideSummary]
             .filter { !$0.isEmpty }
             .joined(separator: " \u{00b7} ")
         let summary = [kindDestinationSummary, pulledInSummary(captures: captures)]

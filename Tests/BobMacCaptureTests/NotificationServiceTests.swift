@@ -616,7 +616,7 @@ final class NotificationServiceTests: XCTestCase {
                     text: "Second task"
                 ),
             ],
-            globalDestination: CaptureGlobalDestination(mode: "task", route: "foo")
+            globalDestination: CaptureGlobalDestination(route: "foo")
         )
 
         XCTAssertEqual(content.title, "2 items captured")
@@ -626,36 +626,6 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("2. Second task"))
         XCTAssertFalse(content.body.contains("-> foo.md"))
         XCTAssertFalse(content.body.contains("@@"))
-    }
-
-    func testGlobalSharedParentBatchMentionsParentOnce() {
-        let content = NotificationService.successContent(
-            captures: [
-                capture(
-                    kind: "sub_bullet",
-                    routeLabel: "file.md",
-                    target: "/Users/bryan/bob/file.md",
-                    text: "First note",
-                    blockID: "hand"
-                ),
-                capture(
-                    kind: "sub_bullet",
-                    routeLabel: "file.md",
-                    target: "/Users/bryan/bob/file.md",
-                    text: "Second note",
-                    blockID: "hand"
-                ),
-            ],
-            globalDestination: CaptureGlobalDestination(
-                mode: "sub_bullet",
-                route: "file",
-                blockID: "hand"
-            )
-        )
-
-        XCTAssertEqual(content.subtitle, "2 notes \u{00b7} file.md \u{00b7} under ^hand")
-        XCTAssertTrue(content.body.contains("1. First note"))
-        XCTAssertFalse(content.body.contains("1. First note \u{2192} file.md"))
     }
 
     func testGlobalMixedOverrideBatchNamesOnlyOverrideDestination() {
@@ -674,7 +644,7 @@ final class NotificationServiceTests: XCTestCase {
                     text: "Second task"
                 ),
             ],
-            globalDestination: CaptureGlobalDestination(mode: "task", route: "foo")
+            globalDestination: CaptureGlobalDestination(route: "foo")
         )
 
         XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))

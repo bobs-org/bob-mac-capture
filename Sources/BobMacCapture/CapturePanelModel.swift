@@ -13766,7 +13766,7 @@ final class CapturePanelModel: ObservableObject {
             let overrides = overrideCount == 0
                 ? ""
                 : ", \(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
-            return "\(prefix) \u{2192} All items \u{2192} \(globalDestination.scopeSummary)\(overrides): \(sample)"
+            return "\(prefix) \u{2192} All items \u{2192} \(globalDestination.destinationLabel)\(overrides): \(sample)"
         }
 
         guard captures.count != 1 else {
@@ -13810,7 +13810,7 @@ final class CapturePanelModel: ObservableObject {
             let overrides = overrideCount == 0
                 ? ""
                 : ", \(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
-            return "\(prefix) \(captures.count) items \u{00b7} All items \u{2192} \(globalDestination.scopeSummary)\(overrides)"
+            return "\(prefix) \(captures.count) items \u{00b7} All items \u{2192} \(globalDestination.destinationLabel)\(overrides)"
         }
 
         guard captures.count != 1 else {

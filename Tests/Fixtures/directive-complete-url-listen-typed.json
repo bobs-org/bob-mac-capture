@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":2,"cursor":27,"replacement":{"start":25,"end":27},"context":"directive","candidates":[{"token":"%l","name":"Listen","summary":"Queue this URL with companion audio","detail":"A listen command is configured.","replacement":"%l","cursor_after":27}],"query":"l"}

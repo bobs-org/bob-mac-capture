@@ -131,7 +131,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.preview()
         await waitUntil { !model.isPreviewing }
 
-        XCTAssertEqual(model.previewGlobalDestination?.scopeSummary, "foo.md")
+        XCTAssertEqual(model.previewGlobalDestination?.destinationLabel, "foo.md")
         XCTAssertEqual(model.previewResults.map(\.text), ["First task", "Second task"])
         XCTAssertTrue(model.statusText.contains("All items \u{2192} foo.md"))
         XCTAssertTrue(model.destinationSummary?.contains("All items \u{2192} foo.md") == true)
@@ -154,7 +154,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
-        XCTAssertEqual(model.lastSuccessGlobalDestination?.scopeSummary, "foo.md")
+        XCTAssertEqual(model.lastSuccessGlobalDestination?.destinationLabel, "foo.md")
         XCTAssertEqual(model.lastSuccessResults.map(\.relativeTarget), ["foo.md", "bar.md"])
         XCTAssertTrue(model.statusText.contains("1 local override"))
         XCTAssertTrue(model.destinationSummary?.contains("1 local override") == true)

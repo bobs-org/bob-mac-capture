@@ -1475,13 +1475,13 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
     }
 
-    func testCaptureSubmitDecodesSingleClipPayloadWithOmittedEntriesAsSuccess() async throws {
+    func testCaptureSubmitDecodesSingleClipPayloadAsSuccess() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_STDOUT": #"{"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]}}"#,
+                "FAKE_BOB_STDOUT": #"{"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"status":"read","mode":"inline","lines":["\t- hello-clip"],"attachments":[],"entries":[]}}"#,
             ]
         )
 

@@ -132,7 +132,9 @@ public struct CaptureTemplateRow: Codable, Equatable, Sendable {
     }
 }
 
-public struct CaptureTemplateHeader: Codable, Equatable {
+/// The `%t` directive that marks a draft's first item as a template. Bob reports its
+/// source range and 1-based line as `template.directive`.
+public struct CaptureTemplateDirective: Codable, Equatable {
     public let range: CaptureRange
     public let line: Int
 
@@ -158,7 +160,7 @@ public struct CaptureTemplateHeader: Codable, Equatable {
 /// Template-specific parse metadata. Row ranges and field ranges index the
 /// original editor draft; the expanded instance is only used for preview.
 public struct CaptureParseTemplate: Codable, Equatable {
-    public let header: CaptureTemplateHeader
+    public let directive: CaptureTemplateDirective
     public let range: CaptureRange
     public let lineStart: Int
     public let lineEnd: Int
@@ -166,14 +168,14 @@ public struct CaptureParseTemplate: Codable, Equatable {
     public let rows: [CaptureTemplateRow]
 
     public init(
-        header: CaptureTemplateHeader = CaptureTemplateHeader(),
+        directive: CaptureTemplateDirective = CaptureTemplateDirective(),
         range: CaptureRange = CaptureRange(start: 0, end: 0),
         lineStart: Int = 0,
         lineEnd: Int = 0,
         fieldCount: Int = 0,
         rows: [CaptureTemplateRow] = []
     ) {
-        self.header = header
+        self.directive = directive
         self.range = range
         self.lineStart = lineStart
         self.lineEnd = lineEnd
@@ -183,9 +185,9 @@ public struct CaptureParseTemplate: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        header =
-            (try? container.decodeIfPresent(CaptureTemplateHeader.self, forKey: .header))
-            ?? CaptureTemplateHeader()
+        directive =
+            (try? container.decodeIfPresent(CaptureTemplateDirective.self, forKey: .directive))
+            ?? CaptureTemplateDirective()
         range =
             (try? container.decodeIfPresent(CaptureRange.self, forKey: .range))
             ?? CaptureRange(start: 0, end: 0)
@@ -196,7 +198,7 @@ public struct CaptureParseTemplate: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case header
+        case directive
         case range
         case lineStart = "line_start"
         case lineEnd = "line_end"
@@ -208,6 +210,11 @@ public struct CaptureParseTemplate: Codable, Equatable {
 public struct CaptureParseResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
+    /// Top-level capture-language revision. Bob reports `grammar: 2` or later for
+    /// `%` directives; a Bob that predates the field omits it. Decoding keeps a missing
+    /// or mistyped value as nil, never a guessed revision, so the compatibility gate can
+    /// tell "older than grammar" from "grammar 1".
+    public let grammar: Int?
     public let input: String
     public let body: String
     public let mode: String
@@ -257,6 +264,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     public init(
         ok: Bool,
         schemaVersion: Int,
+        grammar: Int? = nil,
         input: String,
         body: String,
         mode: String,
@@ -285,6 +293,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
+        self.grammar = grammar
         self.input = input
         self.body = body
         self.mode = mode
@@ -319,6 +328,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ok = try container.decode(Bool.self, forKey: .ok)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        grammar = (try? container.decodeIfPresent(Int.self, forKey: .grammar)) ?? nil
         input = try container.decode(String.self, forKey: .input)
         body = try container.decode(String.self, forKey: .body)
         mode = try container.decode(String.self, forKey: .mode)
@@ -401,6 +411,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case ok
         case schemaVersion = "schema_version"
+        case grammar
         case input
         case body
         case mode
@@ -807,6 +818,14 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// nil. A value this client does not know still decodes, so the marker
     /// keeps its wash even when the modifier is newer than the app.
     public let projectNote: String?
+    /// Named `%` directive on a `directive` span: `clip`, `note`, `template`, or
+    /// `listen`. A bare `%` is still a `directive` span but carries no value, and an
+    /// unknown token (`%x`) does not either. A value this client does not know still
+    /// decodes. Other span kinds and an older Bob omit it.
+    public let directive: String?
+    /// History count for `%c<N>` when N is at least 2, on a `directive` span. Bob omits it
+    /// for `%c`, `%c1`, and every other span.
+    public let count: Int?
 
     public init(
         start: Int,
@@ -816,7 +835,9 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         themes: [CapturePomodoroThemeRef] = [],
         cancelsSource: Bool = false,
         completesSource: Bool = false,
-        projectNote: String? = nil
+        projectNote: String? = nil,
+        directive: String? = nil,
+        count: Int? = nil
     ) {
         self.start = start
         self.end = end
@@ -826,6 +847,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.cancelsSource = cancelsSource
         self.completesSource = completesSource
         self.projectNote = projectNote
+        self.directive = directive
+        self.count = count
     }
 
     public init(from decoder: Decoder) throws {
@@ -842,6 +865,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
         completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
         projectNote = (try? container.decodeIfPresent(String.self, forKey: .projectNote)) ?? nil
+        directive = (try? container.decodeIfPresent(String.self, forKey: .directive)) ?? nil
+        count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -853,6 +878,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case cancelsSource = "cancels_source"
         case completesSource = "completes_source"
         case projectNote = "project_note"
+        case directive
+        case count
     }
 }
 
@@ -2438,33 +2465,32 @@ public struct CaptureRewriteEdit: Codable, Equatable {
     }
 }
 
+/// A `@@<route>` global destination. It is route-only: Bob reports where the declaration
+/// sits (`range`, 1-based `line`), the chosen `route`, and any `needs` still open (a bare
+/// `@@` needs `route`). It carries no mode or block ID.
 public struct CaptureGlobalDestination: Codable, Equatable, Sendable {
     public let range: CaptureRange?
-    public let mode: String
+    public let line: Int?
     public let route: String?
-    public let blockID: String?
     public let needs: [String]
 
     public init(
         range: CaptureRange? = nil,
-        mode: String,
+        line: Int? = nil,
         route: String? = nil,
-        blockID: String? = nil,
         needs: [String] = []
     ) {
         self.range = range
-        self.mode = mode
+        self.line = line
         self.route = route
-        self.blockID = blockID
         self.needs = needs
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         range = try container.decodeIfPresent(CaptureRange.self, forKey: .range)
-        mode = try container.decode(String.self, forKey: .mode)
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? nil
         route = try container.decodeIfPresent(String.self, forKey: .route)
-        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
     }
 
@@ -2472,18 +2498,10 @@ public struct CaptureGlobalDestination: Codable, Equatable, Sendable {
         route.map { "\($0).md" } ?? "global destination"
     }
 
-    public var scopeSummary: String {
-        guard let blockID, !blockID.isEmpty else {
-            return destinationLabel
-        }
-        return "\(destinationLabel) \u{00b7} under ^\(blockID)"
-    }
-
     private enum CodingKeys: String, CodingKey {
         case range
-        case mode
+        case line
         case route
-        case blockID = "block_id"
         case needs
     }
 }
@@ -4252,25 +4270,9 @@ public func captureUsesGlobalDestination(
     guard routeMatches else {
         return false
     }
-    guard capture.blockID == globalDestination.blockID else {
-        return false
-    }
-
-    switch normalizedCaptureKind(globalDestination.mode) {
-    case "task":
-        return normalizedCaptureKind(capture.kind) == "task"
-    case "sub_bullet":
-        return normalizedCaptureKind(capture.kind) == "sub_bullet"
-    default:
-        return true
-    }
-}
-
-private func normalizedCaptureKind(_ value: String) -> String {
-    value
-        .lowercased()
-        .replacingOccurrences(of: "-", with: "_")
-        .replacingOccurrences(of: " ", with: "_")
+    // A route-only destination has no block, so a capture that landed under a block ID
+    // overrode it.
+    return capture.blockID == nil
 }
 
 /// One prerequisite in Bob's `dependency_update` preview detail: the exact
@@ -5905,9 +5907,10 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
 public struct CaptureCommandFailure: Codable, Equatable {
     public let ok: Bool
     public let error: String
-    // Additive machine-readable failure code, emitted only for the strict
-    // plan-budget refusal (`plan_theme_cap_exceeded`). Older Bob omits it
-    // and it decodes as nil.
+    // Additive machine-readable failure code for refusals Bob classifies, such as the
+    // strict plan-budget refusal (`plan_theme_cap_exceeded`) and the incomplete or
+    // unknown `%` and `#` markers (`incomplete_directive`, `type_marker_needs_task`,
+    // `unknown_directive`). Other failures and older Bob omit it, and it decodes as nil.
     public let code: String?
     public let pullIn: CapturePullIn?
     public let offers: [TaskCompleteUnblocked]
@@ -6317,25 +6320,43 @@ public struct CapturePomodoroEntry: Codable, Equatable {
     }
 }
 
-// Keep callers on non-optional collection fields while tolerating older bob binaries
-// that omitted empty arrays from clip JSON.
+/// The `clip` object on a capture reply. A `%c` that Bob read has `status: "read"`, a
+/// `mode` (`inline`, `lines`, `attachments`, `snippet`, or `history`), and the rendered
+/// child `lines`, `attachments`, optional `snippet`, and history `entries` (each entry is
+/// itself a read clip object). A `%c` that Bob was told not to read has only
+/// `status: "not_read"` and the requested `count`: no mode and no collections.
+///
+/// `status` is required and never defaulted, and a read clip must carry its `mode`, so a
+/// reply that predates this contract fails to decode instead of looking like a clip that
+/// was read. Collections tolerate omission and decode as empty.
 public struct CaptureClipOutput: Codable, Equatable, Sendable {
-    public let header: String?
-    public let mode: String
+    /// `read` or `not_read`. A value this client does not know still decodes.
+    public let status: String
+    /// The requested entry count (`%c` is 1). Present only when `status == "not_read"`.
+    public let count: Int?
+    /// Present exactly when `status == "read"`.
+    public let mode: String?
     public let lines: [String]
     public let attachments: [CaptureAttachmentOutput]
     public let snippet: String?
     public let entries: [CaptureClipOutput]
 
+    public static let readStatus = "read"
+    public static let notReadStatus = "not_read"
+
+    public var wasRead: Bool { status == Self.readStatus }
+
     public init(
-        header: String? = nil,
-        mode: String,
+        status: String = CaptureClipOutput.readStatus,
+        count: Int? = nil,
+        mode: String? = nil,
         lines: [String] = [],
         attachments: [CaptureAttachmentOutput] = [],
         snippet: String? = nil,
         entries: [CaptureClipOutput] = []
     ) {
-        self.header = header
+        self.status = status
+        self.count = count
         self.mode = mode
         self.lines = lines
         self.attachments = attachments
@@ -6345,8 +6366,13 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        header = try container.decodeIfPresent(String.self, forKey: .header)
-        mode = try container.decode(String.self, forKey: .mode)
+        status = try container.decode(String.self, forKey: .status)
+        count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
+        if status == Self.notReadStatus {
+            mode = nil
+        } else {
+            mode = try container.decode(String.self, forKey: .mode)
+        }
         lines = try container.decodeIfPresent([String].self, forKey: .lines) ?? []
         attachments =
             try container.decodeIfPresent([CaptureAttachmentOutput].self, forKey: .attachments) ?? []
@@ -6355,7 +6381,8 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case header
+        case status
+        case count
         case mode
         case lines
         case attachments
@@ -6600,11 +6627,18 @@ public struct CaptureCompletionRelation: Codable, Equatable {
 public struct CaptureCompletionResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
+    /// Top-level capture-language revision; see `CaptureParseResponse.grammar`. A Bob that
+    /// predates the field omits it, and that stays nil rather than a guessed revision.
+    public let grammar: Int?
     public let cursor: Int
     public let replacement: CaptureRange
     public let context: String?
     public let candidates: [CaptureCompletionCandidate]
     public let warnings: [String]
+    /// Additive `initial_selection`. Bob sends `none` for a bare `%` or `#` menu that opens
+    /// with nothing selected, in every completion context. Omission keeps the existing
+    /// first-row, best-match, or suggested-row selection; see `opensWithoutSelection`.
+    public let initialSelection: String?
     /// Additive top-level `override` object, present when the name field is
     /// a `=#` start while a session runs. Older Bob omits it; then the rows
     /// and picker status read as a plain start.
@@ -6652,14 +6686,20 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// it; missing decodes as nil so other contexts stay unchanged.
     public let subject: String?
 
+    /// Whether Bob asked for this menu to open with no selected row. Any other value,
+    /// including a future one this client does not know, keeps the default selection.
+    public var opensWithoutSelection: Bool { initialSelection == "none" }
+
     public init(
         ok: Bool,
         schemaVersion: Int = 1,
+        grammar: Int? = nil,
         cursor: Int,
         replacement: CaptureRange,
         context: String?,
         candidates: [CaptureCompletionCandidate],
         warnings: [String] = [],
+        initialSelection: String? = nil,
         blockID: CaptureBlockIDField? = nil,
         query: String? = nil,
         owner: DependencyOwner? = nil,
@@ -6675,11 +6715,13 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
+        self.grammar = grammar
         self.cursor = cursor
         self.replacement = replacement
         self.context = context
         self.candidates = candidates
         self.warnings = warnings
+        self.initialSelection = initialSelection
         self.blockID = blockID
         self.query = query
         self.owner = owner
@@ -6698,12 +6740,15 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ok = try container.decode(Bool.self, forKey: .ok)
         schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        grammar = (try? container.decodeIfPresent(Int.self, forKey: .grammar)) ?? nil
         cursor = try container.decode(Int.self, forKey: .cursor)
         replacement = try container.decode(CaptureRange.self, forKey: .replacement)
         context = try container.decodeIfPresent(String.self, forKey: .context)
         candidates =
             try container.decodeIfPresent([CaptureCompletionCandidate].self, forKey: .candidates) ?? []
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        initialSelection =
+            (try? container.decodeIfPresent(String.self, forKey: .initialSelection)) ?? nil
         blockID = try container.decodeIfPresent(CaptureBlockIDField.self, forKey: .blockID)
         query = try container.decodeIfPresent(String.self, forKey: .query)
         owner = try container.decodeIfPresent(DependencyOwner.self, forKey: .owner)
@@ -6734,11 +6779,13 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case ok
         case schemaVersion = "schema_version"
+        case grammar
         case cursor
         case replacement
         case context
         case candidates
         case warnings
+        case initialSelection = "initial_selection"
         case blockID = "block_id"
         case query
         case owner
@@ -7740,6 +7787,14 @@ public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned
 
 public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let replacement: String
+    /// Additive `directive` row fields: the literal `%` token, a one-line `summary`,
+    /// and an optional explanatory `detail`. Directive rows have no route, kind, or
+    /// label; their `name` is the directive's display name. Bob authors every one of
+    /// them, including the `disabled_reason` of a row that cannot be used here (its
+    /// `replacement` is then empty). Every other context omits all three.
+    public let token: String?
+    public let summary: String?
+    public let detail: String?
     public let route: String?
     public let label: String?
     public let kind: String?
@@ -7891,6 +7946,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public var id: String {
         [
             replacement,
+            token,
             route,
             notePath,
             locator,
@@ -7912,6 +7968,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
 
     public init(
         replacement: String,
+        token: String? = nil,
+        summary: String? = nil,
+        detail: String? = nil,
         route: String? = nil,
         label: String? = nil,
         kind: String? = nil,
@@ -7989,6 +8048,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         refused: String? = nil
     ) {
         self.replacement = replacement
+        self.token = token
+        self.summary = summary
+        self.detail = detail
         self.route = route
         self.label = label
         self.kind = kind
@@ -8069,6 +8131,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         replacement = try container.decode(String.self, forKey: .replacement)
+        token = (try? container.decodeIfPresent(String.self, forKey: .token)) ?? nil
+        summary = (try? container.decodeIfPresent(String.self, forKey: .summary)) ?? nil
+        detail = (try? container.decodeIfPresent(String.self, forKey: .detail)) ?? nil
         route = try container.decodeIfPresent(String.self, forKey: .route)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
@@ -8153,6 +8218,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case replacement
+        case token
+        case summary
+        case detail
         case route
         case label
         case kind

@@ -3430,9 +3430,9 @@ struct PreviewPane: View {
             }
         }
         if let globalDestination = success.globalDestination {
-            Text("All items \u{2192} \(globalDestination.scopeSummary)")
+            Text("All items \u{2192} \(globalDestination.destinationLabel)")
                 .fontWeight(.semibold)
-                .accessibilityLabel("All items to \(globalDestination.scopeSummary)")
+                .accessibilityLabel("All items to \(globalDestination.destinationLabel)")
         }
 
         // The plan-budget meter is batch-level: `plan_budget` lives on the

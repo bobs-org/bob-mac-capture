@@ -64,7 +64,8 @@ docs-check:
 
 # Offline importer and preview-wrapper behavior tests.
 docs-test:
-    bash -n Scripts/docs-media.sh Scripts/docs-check.sh Scripts/generate-task-type-fixtures.sh
+    bash -n Scripts/docs-media.sh Scripts/docs-check.sh Scripts/generate-task-type-fixtures.sh \
+      Scripts/generate-directive-fixtures.sh
     python3 -B Scripts/test_docs_scripts.py
 
 # Offline script tests, including the macOS CI precommit gate.
