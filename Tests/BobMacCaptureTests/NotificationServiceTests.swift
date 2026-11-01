@@ -1563,49 +1563,108 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.body.components(separatedBy: "Pulled in 2 successor offers").count - 1, 1)
     }
 
-    func testProjectOfferNotificationDoesNotDoubleCountPickedTaskLinks() {
-        let picked = TaskCompleteUnblocked(
+    private func projectOfferRow(_ id: String, selected: Bool) -> TaskCompleteUnblocked {
+        TaskCompleteUnblocked(
             notePath: "cash_goog_exit.md",
-            blockID: "draft-memo",
-            text: "Draft the memo",
+            blockID: selected ? id : "",
+            text: "Task \(id)",
             offer: TaskCompleteOffer(
-                key: "opaque:project-offer",
+                key: "opaque:project-offer-\(id)",
                 n: 1,
                 group: "project",
                 project: "cash_goog_exit.md",
-                selected: true
+                selected: selected
             ),
             trigger: "project_created"
         )
+    }
+
+    private func projectLink(_ id: String) -> CaptureProjectTaskLink {
+        CaptureProjectTaskLink(
+            blockID: id,
+            blockLink: "[[cash_goog_exit#^\(id)]]",
+            text: "Task \(id)",
+            taskLine: "- [*] Task \(id) ^\(id)"
+        )
+    }
+
+    private func projectOfferCapture(
+        links: [String],
+        successors: [TaskCompleteUnblocked]
+    ) -> CaptureCommandSuccess {
+        capture(
+            kind: "project_note",
+            routeLabel: "cash_goog_exit.md",
+            target: "/tmp/bob/cash_goog_exit.md",
+            text: "Finish the exit packet",
+            projectNote: CaptureProjectNoteSummary(
+                basename: "cash_goog_exit.md",
+                taskLinks: links.map(projectLink),
+                form: "offer",
+                successors: successors
+            )
+        )
+    }
+
+    func testProjectOfferNotificationCountsPickedTaskLinksOnce() {
         let content = NotificationService.successContent(captures: [
-            capture(
-                kind: "project_note",
-                routeLabel: "cash_goog_exit.md",
-                target: "/tmp/bob/cash_goog_exit.md",
-                text: "Finish the exit packet",
-                projectNote: CaptureProjectNoteSummary(
-                    basename: "cash_goog_exit.md",
-                    taskLinks: [
-                        CaptureProjectTaskLink(
-                            blockID: "call-bank",
-                            text: "Call the bank",
-                            taskLine: "- [*] Call the bank ^call-bank"
-                        ),
-                        CaptureProjectTaskLink(
-                            blockID: "draft-memo",
-                            text: "Draft the memo",
-                            taskLine: "- [*] Draft the memo ^draft-memo"
-                        ),
-                    ],
-                    form: "offer",
-                    successors: [picked]
-                )
-            ),
+            projectOfferCapture(
+                links: ["call-bank", "draft-memo"],
+                successors: [projectOfferRow("draft-memo", selected: true)]
+            )
+        ])
+
+        XCTAssertEqual(content.body.components(separatedBy: "Linked 2 tasks").count - 1, 1)
+        XCTAssertTrue(content.body.contains("Linked 2 tasks into today's Pomodoro"))
+        XCTAssertFalse(content.body.contains("Pulled in"))
+    }
+
+    func testPickedOnlyProjectOfferNotificationReportsItsLink() {
+        let content = NotificationService.successContent(captures: [
+            projectOfferCapture(
+                links: ["draft-memo"],
+                successors: [projectOfferRow("draft-memo", selected: true)]
+            )
         ])
 
         XCTAssertTrue(content.body.contains("Linked 1 task into today's Pomodoro"))
-        XCTAssertFalse(content.body.contains("Pulled in 1 successor offer"))
-        XCTAssertFalse(content.body.contains("Linked 2 tasks"))
+        XCTAssertFalse(content.body.contains("Pulled in"))
+    }
+
+    func testUnselectedProjectOffersAddNoLinkedLine() {
+        let offered = [
+            projectOfferRow("draft-memo", selected: false),
+            projectOfferRow("book-trip", selected: false),
+        ]
+        let offerOnly = NotificationService.successContent(captures: [
+            projectOfferCapture(links: [], successors: offered)
+        ])
+        XCTAssertFalse(offerOnly.body.contains("Linked"))
+        XCTAssertFalse(offerOnly.body.contains("Pulled in"))
+
+        let authored = NotificationService.successContent(captures: [
+            projectOfferCapture(links: ["call-bank"], successors: offered)
+        ])
+        XCTAssertTrue(authored.body.contains("Linked 1 task into today's Pomodoro"))
+        XCTAssertFalse(authored.body.contains("Pulled in"))
+    }
+
+    func testBatchedProjectOfferPickIsNotAlsoPulledIn() {
+        let content = NotificationService.successContent(captures: [
+            projectOfferCapture(
+                links: ["draft-memo"],
+                successors: [projectOfferRow("draft-memo", selected: true)]
+            ),
+            capture(
+                kind: "task",
+                routeLabel: "cash.md",
+                target: "/tmp/bob/cash.md",
+                text: "Plain task"
+            ),
+        ])
+
+        XCTAssertFalse(content.subtitle.contains("Pulled in"))
+        XCTAssertFalse(content.body.contains("Pulled in"))
     }
 
     func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {

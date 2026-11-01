@@ -48,11 +48,98 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(choice.selectableKeys.count, 2)
         XCTAssertEqual(
             choice.contextText,
-            "New project · Finish the exit packet!"
+            "New project · Finish the exit packet"
         )
         XCTAssertEqual(choice.sections.first?.title, "Project cash_goog_exit")
         XCTAssertEqual(model.statusText, "Choose tasks to pull in")
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testProjectNoteOfferSkipSubmitsExplicitNoneWithoutPickedLinks() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openProjectOfferChoice(record: record)
+        XCTAssertTrue(model.pullInChoice?.markedKeys.isEmpty == true)
+
+        let controller = CapturePanelController(model: model)
+        XCTAssertTrue(controller.perform(.chooseNoPullInOffers))
+        try await waitUntil { !model.isSubmitting }
+
+        let calls = try recordText(record)
+        // The real-Bob preview advertises `inbox_route.supported`, so the submit
+        // also carries `--require-inbox-route-choice` ahead of `--refuse-override`.
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --pull-in none --require-inbox-route-choice "
+                    + "--refuse-override -- \(Self.projectOfferDraft)"
+            ),
+            calls
+        )
+        // Skip names no opaque key: Bob creates the project and links nothing it offered.
+        XCTAssertFalse(calls.contains("--pull-in cash_goog_exit.md@"))
+        XCTAssertEqual(captureCallCount(calls), 2)
+        XCTAssertNil(model.pullInChoice)
+        XCTAssertEqual(model.plainDraft, "")
+    }
+
+    func testProjectNoteOfferEscapeKeepsTheDraftAndNeverSubmits() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openProjectOfferChoice(record: record)
+
+        model.cancelPullInChoiceFromKeyboard()
+
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.plainDraft, Self.projectOfferDraft)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        let calls = try recordText(record)
+        XCTAssertEqual(captureCallCount(calls), 1, "only the preview ran")
+        XCTAssertFalse(calls.contains("--pull-in"))
+    }
+
+    func testProjectNoteOfferMarkedKeySubmitsOnceWithOpenIntent() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openProjectOfferChoice(record: record)
+        let success = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: Data(try fixtureText("project-note-successors.json").utf8)
+        )
+        let keys = try XCTUnwrap(success.projectNote).successors.compactMap { $0.offer?.key }
+        XCTAssertEqual(keys.count, 2)
+        XCTAssertEqual(model.pullInChoice?.selectableKeys, keys)
+
+        model.movePullInChoiceHighlight(by: 1)
+        model.toggleHighlightedPullInOffer()
+        XCTAssertEqual(model.pullInChoice?.markedKeys, [keys[1]])
+
+        let controller = CapturePanelController(model: model)
+        var opened: [URL] = []
+        model.captureSuccessNotifier = { _, _, _ in }
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        XCTAssertTrue(controller.perform(.confirmPullInChoiceAndOpen))
+        try await waitUntil { !model.isSubmitting }
+
+        XCTAssertNil(model.pullInChoice)
+        XCTAssertEqual(model.plainDraft, "")
+        let calls = try recordText(record)
+        XCTAssertEqual(captureCallCount(calls), 2)
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --pull-in \(keys[1]) --require-inbox-route-choice "
+                    + "--refuse-override -- \(Self.projectOfferDraft)"
+            ),
+            calls
+        )
+        XCTAssertFalse(calls.contains(keys[0]))
+        let url = try XCTUnwrap(opened.first)
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(url.host, "bob-open-notes")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let paths = items.filter { $0.name.hasPrefix("path") }.compactMap(\.value)
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/cash_goog_exit.md") }, "\(paths)")
     }
 
     func testMarkedSubsetDispatchesOpaqueKeysOnceAndKeepsOpenAfterIntent() async throws {
@@ -209,6 +296,24 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertFalse(model.pullInChoiceVisible)
         XCTAssertEqual(model.plainDraft, "edited")
         XCTAssertFalse(model.editorInputLocked)
+    }
+
+    private static let projectOfferDraft = "Finish the exit packet @cash:goog-exit@"
+
+    /// Previews the generated real-Bob project-offer response and opens its
+    /// unmarked choice card.
+    private func openProjectOfferChoice(record: URL) async throws -> CapturePanelModel {
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("project-note-successors.json")
+        )
+        model.plainDraft = Self.projectOfferDraft
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+        return model
     }
 
     private func makeModel(record: URL, stdout: String, exit: String = "0") -> CapturePanelModel {

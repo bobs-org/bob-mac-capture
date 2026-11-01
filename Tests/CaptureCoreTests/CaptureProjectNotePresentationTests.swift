@@ -205,45 +205,66 @@ final class CaptureProjectNotePresentationTests: XCTestCase {
         XCTAssertEqual(guarded.previewAccessibilitySummary, "New project cash_goog_exit.md")
     }
 
-    func testPickedSuccessorsDoNotRepeatInProjectTaskLinkSummary() throws {
-        let picked = TaskCompleteUnblocked(
+    private func offerRow(_ id: String, text: String, selected: Bool) -> TaskCompleteUnblocked {
+        TaskCompleteUnblocked(
             notePath: "cash_goog_exit.md",
-            blockID: "draft-memo",
-            text: "Draft the memo",
-            offer: TaskCompleteOffer(key: "opaque:offer", group: "project", selected: true),
+            blockID: selected ? id : "",
+            text: text,
+            offer: TaskCompleteOffer(
+                key: "opaque:\(id)", group: "project", selected: selected),
             trigger: "project_created"
         )
+    }
+
+    func testPickedOnlyOfferCountsItsLinkOnce() throws {
+        let success = projectNoteSuccess(
+            taskLinks: [link("draft-memo", text: "Draft the memo")],
+            form: "offer",
+            successors: [offerRow("draft-memo", text: "Draft the memo", selected: true)]
+        )
+
+        let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: success))
+        XCTAssertEqual(presentation.headerText, "Links 1 task into ADMIN (new)")
+        XCTAssertEqual(presentation.linkedTasks.map(\.blockID), ["draft-memo"])
+        XCTAssertEqual(presentation.notificationDetail, "Linked 1 task into ADMIN")
+    }
+
+    func testAuthoredColonPlusPickedOfferCountsBothLinks() throws {
         let success = projectNoteSuccess(
             taskLinks: [
                 link("call-bank", text: "Call the bank"),
                 link("draft-memo", text: "Draft the memo"),
+            ],
+            form: "offer",
+            successors: [
+                offerRow("draft-memo", text: "Draft the memo", selected: true),
+                offerRow("book-trip", text: "Book the trip", selected: false),
             ]
         )
-        let withOffer = CaptureCommandSuccess(
-            ok: success.ok,
-            dryRun: success.dryRun,
-            routed: success.routed,
-            route: success.route,
-            routeLabel: success.routeLabel,
-            relativeTarget: success.relativeTarget,
-            target: success.target,
-            text: success.text,
-            taskLine: success.taskLine,
-            kind: success.kind,
-            created: success.created,
-            placement: success.placement,
-            pomodoroName: success.pomodoroName,
-            createsPomodoro: success.createsPomodoro,
-            projectNote: CaptureProjectNoteSummary(
-                basename: "cash_goog_exit.md",
-                taskLinks: success.projectNote?.taskLinks ?? [],
-                form: "offer",
-                successors: [picked]
-            )
-        )
 
-        let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: withOffer))
-        XCTAssertEqual(presentation.headerText, "Links 1 task into ADMIN (new)")
-        XCTAssertEqual(presentation.linkedTasks.map(\.blockID), ["call-bank"])
+        let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: success))
+        XCTAssertEqual(presentation.headerText, "Links 2 tasks into ADMIN (new)")
+        XCTAssertEqual(presentation.linkedTasks.map(\.blockID), ["call-bank", "draft-memo"])
+        XCTAssertEqual(presentation.notificationDetail, "Linked 2 tasks into ADMIN")
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("Draft the memo, ^draft-memo"))
+    }
+
+    func testUnselectedOffersAddNoLinkedCount() throws {
+        let unselected = [
+            offerRow("draft-memo", text: "Draft the memo", selected: false),
+            offerRow("book-trip", text: "Book the trip", selected: false),
+        ]
+        let authored = projectNoteSuccess(
+            taskLinks: [link("call-bank", text: "Call the bank")],
+            form: "offer",
+            successors: unselected
+        )
+        let presentation = try XCTUnwrap(CaptureProjectNotePresentation(capture: authored))
+        XCTAssertEqual(presentation.notificationDetail, "Linked 1 task into ADMIN")
+
+        let offerOnly = projectNoteSuccess(
+            taskLinks: [], form: "offer", successors: unselected)
+        XCTAssertNil(CaptureProjectNotePresentation(capture: offerOnly))
     }
 }

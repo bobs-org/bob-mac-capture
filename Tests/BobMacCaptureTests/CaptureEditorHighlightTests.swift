@@ -218,6 +218,45 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testGeneratedOfferParseWashesOnlyTheMarkerAndLeavesTheNamePlain() throws {
+        // Real bob output (Scripts/generate-project-note-offer-fixtures.sh): the
+        // named offer parse carries `pomodoro_name.themes`. Bob reports `admin` as
+        // an unknown hash-hued theme, so the name wears neither the manila wash
+        // nor a theme tint; the `:` and `@` keep the offer seal color.
+        let parse = try Self.fixtureParse("capture-parse-project-note-offer.json")
+        let draft = parse.input
+        XCTAssertEqual(draft, "Finish it @cash:goog-exit@#admin")
+        let nameSpan = try XCTUnwrap(parse.spans.first { $0.kind == "pomodoro_name" })
+        XCTAssertNil(nameSpan.projectNote)
+        let theme = try XCTUnwrap(nameSpan.themes.first)
+        XCTAssertEqual(theme.key, "admin")
+        XCTAssertFalse(theme.known)
+        XCTAssertEqual(theme.hueSource, "hash")
+        XCTAssertEqual(theme.start, nameSpan.start)
+        XCTAssertEqual(theme.end, nameSpan.end)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        let wash = CaptureEditorPalette.projectNoteWash(increaseContrast: false)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }).joined(),
+            "@cash:goog-exit@"
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor == wash }).joined(),
+            "@cash:goog-exit@"
+        )
+        let green = NSColor(CaptureEditorPalette.color(for: .projectNoteOfferSeal))
+        let greenRuns = Self.strings(in: text) { run in
+            run.foregroundColor.map { NSColor($0) == green } ?? false
+        }
+        XCTAssertEqual(greenRuns, [":", "@"])
+    }
+
     func testProjectNoteChipDoesNotWashThemeNameAndKeepsItsTint() throws {
         let draft = "Finish it @cash^goog-exit@#admin"
         let theme = CapturePomodoroThemeRef(
@@ -579,6 +618,15 @@ final class CaptureEditorHighlightTests: XCTestCase {
             CaptureSpan(start: 37, end: 38, kind: "pomodoro_start"),
             CaptureSpan(start: 64, end: 68, kind: "route"),
         ]
+    }
+
+    private static func fixtureParse(_ name: String) throws -> CaptureParseResponse {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+        return try JSONDecoder().decode(CaptureParseResponse.self, from: Data(contentsOf: url))
     }
 
     private static func parse(draft: String, spans: [CaptureSpan]) -> CaptureParseResponse {

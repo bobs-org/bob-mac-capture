@@ -1,10 +1,13 @@
 import Foundation
 
-/// Pure presentation model for the explicit Task Links from a `project_note`
-/// capture. Picked project successors stay in the Pull-In presentation so the
-/// same task is not shown as both linked and pulled in. Built once from
-/// `CaptureCommandSuccess` so the SwiftUI/AppKit layer never branches on
-/// project-note JSON fields itself.
+/// Pure presentation model for the Task Links from a `project_note` capture,
+/// authored ` :` bullets and picked `@route:id@` offers alike. Bob reports a
+/// pick as an ordinary `project_note.task_links` row (it is a ` :` link) and
+/// again in `project_note.successors`, so this model counts every
+/// `task_links` row exactly once and the general pulled-in successor count
+/// never includes project successors. Built once from `CaptureCommandSuccess`
+/// so the SwiftUI/AppKit layer never branches on project-note JSON fields
+/// itself.
 ///
 /// The preview's only source of truth is Bob's resolved fields — the
 /// `project_note.task_links` rows plus the top-level `pomodoro_name` and
@@ -41,15 +44,7 @@ public struct CaptureProjectNotePresentation: Equatable, Sendable {
         guard let note = capture.projectNote else {
             return nil
         }
-        let pickedOfferIDs = Set(
-            note.successors.compactMap { row -> String? in
-                guard row.offer?.selected == true else {
-                    return nil
-                }
-                return row.blockID
-            }
-        )
-        let linkedTasks = note.taskLinks.filter { !pickedOfferIDs.contains($0.blockID) }
+        let linkedTasks = note.taskLinks
         guard !linkedTasks.isEmpty else {
             return nil
         }

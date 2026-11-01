@@ -384,7 +384,9 @@ with Skip and Pull In N buttons that also work by pointer, plus a lowest-priorit
 `⌃↩ Pull In & Open` hint. When the card already carries an open intent (Control-Return
 from a picker, or Control-Return on the card itself), that hint is omitted and both
 buttons show a trailing `arrow.up.forward` glyph. The success notification
-reports what was pulled in.
+reports what was pulled in. A project capture's picks are Task Links, so its
+notification counts each one once in "Linked N tasks into …" together with any
+authored ` :id` bullets and never adds a second "Pulled in" count.
 
 ## Inbox routing
 
