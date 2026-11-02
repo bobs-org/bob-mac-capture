@@ -50,6 +50,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
 
     func testEventConflictsDecodeForAdjustAndShift() throws {
         let conflict = #"""
+                    {
                       "event":{"title":"Standup","time_range":"1200-1230","line":9,
                         "untracked":true},
                       "overlap_minutes":10,"more":2,"fit":"+1"
