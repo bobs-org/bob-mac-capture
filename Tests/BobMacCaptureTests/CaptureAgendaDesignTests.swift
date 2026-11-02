@@ -200,7 +200,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
                 plan: plan,
                 presentation: presentation
             )
-            .environment(\.colorSchemeContrast, contrast)
+            .environment(\._colorSchemeContrast, contrast)
             for appearance in [
                 NSAppearance.Name.aqua,
                 NSAppearance.Name.darkAqua,

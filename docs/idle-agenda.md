@@ -61,8 +61,9 @@ including the next panel show.
   runs 10m into Standup") paints amber. The band folds `full → compact` (header
   and focus row behind a `+N` chip) `→ oneRow` (header plus "then 1:1 13:30 · +2")
   after the Later groups fold; ended rows stay hidden behind a "+M earlier" chip
-  until expanded. When every event has ended, one quiet row reads "Calendar clear
-  for the rest of the day". Command-J joins the focus event from an empty draft.
+  until expanded. When no timed event is upcoming, any all-day row remains above the
+  quiet "Calendar clear for the rest of the day" row. Command-J joins the focus event
+  from an empty draft.
   The band's countdowns tick every minute, and the store schedules one extra
   refresh at the next event boundary while the agenda is visible. A decorative day
   rail runs from the current hour through at least three hours and extends through the

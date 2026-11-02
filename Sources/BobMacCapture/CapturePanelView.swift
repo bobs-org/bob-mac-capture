@@ -4379,14 +4379,18 @@ struct PreviewPane: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(eventRunText)
-            }
-            if let warning = eventRunLaterWarning(in: success) {
-                eventWarningBanner(
-                    headline: warning.message,
-                    detail: nil,
-                    fit: nil,
-                    accessibilityText: warning.message
-                )
+                if let warning = eventRunLaterWarning(in: success) {
+                    eventWarningBanner(
+                        headline: warning.message,
+                        detail: nil,
+                        fit: nil,
+                        accessibilityText: warning.message.replacingOccurrences(
+                            of: "`",
+                            with: ""
+                        ),
+                        interpretingInlineMarkdown: true
+                    )
+                }
             }
             if let conflict = start.eventConflict {
                 eventWarningBanner(
@@ -4685,14 +4689,26 @@ struct PreviewPane: View {
         headline: String,
         detail: String?,
         fit: String?,
-        accessibilityText: String
+        accessibilityText: String,
+        interpretingInlineMarkdown: Bool = false
     ) -> some View {
+        let displayHeadline: Text
+        if interpretingInlineMarkdown,
+            let attributed = try? AttributedString(
+                markdown: headline,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )
+        {
+            displayHeadline = Text(attributed)
+        } else {
+            displayHeadline = Text(headline)
+        }
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
-                Text(headline)
+                displayHeadline
                     .fontWeight(.semibold)
                     .fixedSize(horizontal: false, vertical: true)
             }

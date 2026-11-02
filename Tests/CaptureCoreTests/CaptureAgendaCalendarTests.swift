@@ -252,6 +252,45 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         )
     }
 
+    func testClearBandKeepsAllDayRowWhenOnlyAllDayEventsRemain() {
+        let events = makeEvents(
+            rows: [],
+            focus: nil,
+            allDay: [CaptureAgendaAllDayContext(line: 5, title: "School holiday")]
+        )
+        let calendar = present(events, now: dateAt("2026-08-28T18:00")).calendar
+
+        XCTAssertEqual(calendar?.allDayRow?.text, "School holiday")
+        XCTAssertEqual(
+            calendar?.fullRows(showEnded: false).map(\.kind),
+            [.calendarHeader, .calendarAllDay, .calendarClear]
+        )
+    }
+
+    func testClearBandKeepsAllDayRowWhenEveryTimedEventEnded() {
+        let events = makeEvents(
+            rows: [
+                makeRow(line: 5, title: "Done standup", startsAt: "2026-08-28T08:00",
+                    endsAt: "2026-08-28T08:30", phase: .ended),
+            ],
+            focus: nil,
+            allDay: [
+                CaptureAgendaAllDayContext(
+                    line: 4,
+                    title: "School holiday",
+                    qualifier: "day 2 of 3"
+                ),
+            ]
+        )
+        let calendar = present(events, now: dateAt("2026-08-28T18:00")).calendar
+
+        XCTAssertEqual(calendar?.allDayRow?.text, "School holiday (day 2 of 3)")
+        XCTAssertEqual(
+            calendar?.fullRows(showEnded: false).map(\.kind),
+            [.calendarHeader, .calendarAllDay, .calendarClear]
+        )
+    }
+
     func testNoBandWithoutEvents() {
         XCTAssertNil(present(nil).calendar)
         let empty = makeEvents(rows: [], focus: nil)

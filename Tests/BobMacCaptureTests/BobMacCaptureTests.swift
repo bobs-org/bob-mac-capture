@@ -632,7 +632,10 @@ final class BobMacCaptureTests: XCTestCase {
         // A typed draft leaves Command-J to AppKit.
         XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .command)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 38)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .control)))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
+            .insertBulletNewline
+        )
     }
 
     func testKeyRouterUnselectedCompletionSubmitsAndTabTakesTheFirstRow() {

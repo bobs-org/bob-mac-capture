@@ -897,7 +897,13 @@ final class CapturePanelModel: ObservableObject {
     /// Whether the panel itself is ordered front. The countdown
     /// ticker mounts only while this is true, so a hidden panel never
     /// re-plans every minute.
-    @Published private(set) var panelVisible = false
+    @Published private(set) var panelVisible = false {
+        didSet {
+            if oldValue && !panelVisible {
+                resetCalendarBoundaryRefresh()
+            }
+        }
+    }
 
     /// Whether the agenda paints: the setting is on, the draft is
     /// blank, nothing else owns the auxiliary region, no live preview
@@ -1041,6 +1047,7 @@ final class CapturePanelModel: ObservableObject {
     /// them.
     private var agendaSourceSnapshot: CaptureAgendaSnapshot?
     private var agendaSourceStatus: CaptureAgendaStoreStatus = .idle
+    private var agendaLastFiredBoundary: Date?
 
     /// Measures what is missing, plans, and publishes. Runs on store
     /// publish, width change, screen change (via the budget), and
@@ -1054,6 +1061,9 @@ final class CapturePanelModel: ObservableObject {
         let day =
             today ?? agendaSourceSnapshot?.date ?? agendaPlanningDay
             ?? CaptureAgendaStore.localToday()
+        if let agendaPlanningDay, agendaPlanningDay != day {
+            resetCalendarBoundaryRefresh()
+        }
         agendaPlanningDay = day
         guard agendaEnabled, agendaStore != nil else {
             agendaPresentation = nil
@@ -1081,9 +1091,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Schedules one `.eventBoundary` refresh at the band's next event
-    /// boundary while the agenda is visible. A new plan, hide, or
-    /// snapshot change cancels and re-arms it; the fire-time guard
-    /// keeps a hidden panel from refreshing.
+    /// boundary while the agenda is visible. A new plan cancels and
+    /// re-arms the sleep; each boundary fires at most once until the
+    /// panel hides or the day or snapshot changes.
     private func scheduleCalendarBoundaryRefresh() {
         agendaBoundaryTask?.cancel()
         agendaBoundaryTask = nil
@@ -1093,20 +1103,47 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        let delay = fireAt.timeIntervalSinceNow
-        if delay <= 0 {
-            agendaStore?.refresh(reason: .eventBoundary)
+        guard let agendaStore else {
             return
         }
-        agendaBoundaryTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            await MainActor.run {
-                guard let self, agendaVisible else {
+        switch CaptureAgendaBoundaryRefresh.decision(
+            refreshAt: fireAt,
+            lastFiredBoundary: agendaLastFiredBoundary,
+            now: Date()
+        ) {
+        case .none:
+            return
+        case .immediate:
+            agendaLastFiredBoundary = fireAt
+            agendaStore.refresh(reason: .eventBoundary)
+        case .sleep(let delay):
+            agendaBoundaryTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                } catch {
                     return
                 }
-                self.agendaStore?.refresh(reason: .eventBoundary)
+                await MainActor.run {
+                    guard let self, self.agendaVisible,
+                        CaptureAgendaBoundaryRefresh.decision(
+                            refreshAt: fireAt,
+                            lastFiredBoundary: self.agendaLastFiredBoundary,
+                            now: Date()
+                        ) == .immediate
+                    else {
+                        return
+                    }
+                    self.agendaLastFiredBoundary = fireAt
+                    self.agendaStore?.refresh(reason: .eventBoundary)
+                }
             }
         }
+    }
+
+    private func resetCalendarBoundaryRefresh() {
+        agendaBoundaryTask?.cancel()
+        agendaBoundaryTask = nil
+        agendaLastFiredBoundary = nil
     }
 
     /// Paints one quiet "Loading today…" line while the setting is on
@@ -1895,6 +1932,7 @@ final class CapturePanelModel: ObservableObject {
                 self.agendaSourceSnapshot = snapshot
                 self.agendaSourceStatus = status
                 if snapshotChanged {
+                    self.resetCalendarBoundaryRefresh()
                     self.agendaExpanded = []
                     self.agendaMeasurer.noteSnapshotChange()
                     self.agendaPlanningDay = nil
@@ -1921,6 +1959,7 @@ final class CapturePanelModel: ObservableObject {
     /// lands, so a hidden panel never paints yesterday's plan at the
     /// next show.
     private func noteAgendaDayChanged() {
+        resetCalendarBoundaryRefresh()
         agendaPlanningDay = nil
         publishAgendaLoading(today: CaptureAgendaStore.localToday())
     }

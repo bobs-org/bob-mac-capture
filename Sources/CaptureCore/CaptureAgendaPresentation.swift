@@ -1453,7 +1453,12 @@ public struct CaptureAgendaCalendar: Equatable, Sendable {
     /// expanded), and the earlier chip while ended rows stay hidden.
     public func fullRows(showEnded: Bool) -> [CaptureAgendaRow] {
         if let clearRow {
-            return [headerRow, clearRow]
+            var rows = [headerRow]
+            if let allDayRow {
+                rows.append(allDayRow)
+            }
+            rows.append(clearRow)
+            return rows
         }
         var rows = [headerRow]
         if let allDayRow {
@@ -1553,6 +1558,7 @@ extension CaptureAgendaPresentation {
             )
             return CaptureAgendaCalendar(
                 headerRow: header,
+                allDayRow: Self.makeCalendarAllDayRow(events.allDay),
                 railRow: railRow,
                 oneRowRow: header,
                 clearRow: clearRow,
