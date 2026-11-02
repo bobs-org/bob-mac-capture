@@ -3446,11 +3446,7 @@ struct PreviewPane: View {
     @ViewBuilder
     private func previewContent(_ success: CaptureCommandSuccess) -> some View {
         let captures = success.normalizedCaptures
-        let keepMovingRows = captures.flatMap { capture in
-            (capture.taskComplete?.keepMoving ?? [])
-                + (capture.pomodoroClose?.keepMoving ?? [])
-                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
-        }
+        let keepMovingRows = captures.flatMap(\.allKeepMovingRows)
         let orderedTaskBlocks = taskBlocksForPreview(
             captures: captures,
             blocks: success.taskBlocks
@@ -3636,10 +3632,10 @@ struct PreviewPane: View {
                 pullIn: success.pullIn
             )
         }
-        for relationComplete in success.relationCompletes {
-            guard let complete = relationComplete.taskComplete else {
-                continue
-            }
+        ForEach(
+            Array(success.relationCompletes.compactMap(\.taskComplete).enumerated()),
+            id: \.offset
+        ) { _, complete in
             pullInPreviewSummary(
                 for: complete.unblocked + complete.keepMoving,
                 pullIn: success.pullIn
@@ -4905,7 +4901,7 @@ struct PreviewPane: View {
         } else {
             displayHeadline = Text(headline)
         }
-        VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)

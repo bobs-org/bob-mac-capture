@@ -833,12 +833,7 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {
         let count = captures.reduce(into: 0) { total, capture in
-            let rows = (capture.taskComplete?.unblocked ?? [])
-                + (capture.pomodoroClose?.unblocked ?? [])
-                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.unblocked)
-                + (capture.taskComplete?.keepMoving ?? [])
-                + (capture.pomodoroClose?.keepMoving ?? [])
-                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
+            let rows = capture.allUnblockedRows + capture.allKeepMovingRows
             var selectedKeys = Set<String>()
             var unkeyedSelectedCount = 0
             for row in rows where row.offer?.selected == true {
@@ -851,11 +846,9 @@ final class NotificationService: NSObject, ObservableObject {
             total += selectedKeys.count + unkeyedSelectedCount
         }
         guard count > 0 else { return "" }
-        let keepMovingRows = captures.flatMap { capture in
-            (capture.taskComplete?.keepMoving ?? [])
-                + (capture.pomodoroClose?.keepMoving ?? [])
-                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
-        }.filter { $0.offer?.selected == true }
+        let keepMovingRows: [TaskCompleteUnblocked] = captures
+            .flatMap(\.allKeepMovingRows)
+            .filter { $0.offer?.selected == true }
         if !keepMovingRows.isEmpty {
             let movingKeys = Set(keepMovingRows.compactMap { row -> String? in
                 guard let key = row.offer?.key, !key.isEmpty else { return nil }

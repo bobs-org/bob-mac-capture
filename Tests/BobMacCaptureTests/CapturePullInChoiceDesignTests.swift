@@ -249,8 +249,11 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
             try RenderFixtureWriter.write(view, name: name, width: width, appearance: .darkAqua)
         }
     }
+}
 
-    private func cardOffer(
+/// Shared by the pull-in choice design and model tests.
+extension XCTestCase {
+    func cardOffer(
         n: Int,
         text: String,
         group: String = "hand_off",
