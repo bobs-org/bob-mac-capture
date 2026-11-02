@@ -15,6 +15,7 @@ final class CaptureAgendaModelsTests: XCTestCase {
         "agenda-homes.json",
         "agenda-homes-legacy.json",
         "agenda-events.json",
+        "agenda-events-buffered.json",
     ]
 
     private func fixture(_ name: String) throws -> Data {

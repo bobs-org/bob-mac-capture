@@ -1,5 +1,109 @@
 import Foundation
 
+/// An Event Task's pre/post-event buffer, decoded from bob's additive
+/// `buffer` object (`capture-pomodoros --tasks` rows and `items[].event`,
+/// capture `event_run.events[]` and `event_conflict.event`). The buffered
+/// span is what the event occupies; the meeting span is when it happens.
+///
+/// Agenda payloads carry `starts_at`/`ends_at` (the buffered span);
+/// capture payloads carry only the minute counts and `time_range`.
+/// Every field decodes tolerantly: a malformed buffer decodes as nil so
+/// it never fails the whole snapshot.
+public struct CaptureEventBuffer: Codable, Equatable, Sendable, Hashable {
+    public let beforeMinutes: Int
+    public let afterMinutes: Int
+    public let timeRange: String?
+    public let startsAt: String?
+    public let endsAt: String?
+
+    public init(
+        beforeMinutes: Int = 0,
+        afterMinutes: Int = 0,
+        timeRange: String? = nil,
+        startsAt: String? = nil,
+        endsAt: String? = nil
+    ) {
+        self.beforeMinutes = max(0, beforeMinutes)
+        self.afterMinutes = max(0, afterMinutes)
+        self.timeRange = timeRange
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        beforeMinutes = max(0, try container.decodeIfPresent(Int.self, forKey: .beforeMinutes) ?? 0)
+        afterMinutes = max(0, try container.decodeIfPresent(Int.self, forKey: .afterMinutes) ?? 0)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        startsAt = try container.decodeIfPresent(String.self, forKey: .startsAt)
+        endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case beforeMinutes = "before_minutes"
+        case afterMinutes = "after_minutes"
+        case timeRange = "time_range"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+    }
+
+    /// True when neither side reserves time: renders and spans stay
+    /// exactly as without a buffer.
+    public var isEmpty: Bool {
+        beforeMinutes <= 0 && afterMinutes <= 0
+    }
+
+    /// Human label with a typographic minus, matching bob: `"−30m"`,
+    /// `"+15m"`, or `"−30m +15m"`. Nil when empty.
+    public func label() -> String? {
+        switch (beforeMinutes, afterMinutes) {
+        case (0, 0):
+            return nil
+        case (let before, 0):
+            return "\u{2212}\(before)m"
+        case (0, let after):
+            return "+\(after)m"
+        case (let before, let after):
+            return "\u{2212}\(before)m +\(after)m"
+        }
+    }
+
+    /// Label of one buffered side, `"−30m"` or `"+15m"`. Nil when that
+    /// side is zero.
+    public func partLabel(_ part: CaptureBufferPart) -> String? {
+        switch part {
+        case .before:
+            return beforeMinutes > 0 ? "\u{2212}\(beforeMinutes)m" : nil
+        case .after:
+            return afterMinutes > 0 ? "+\(afterMinutes)m" : nil
+        }
+    }
+
+    /// Spoken buffer facts for accessibility labels:
+    /// `"30-minute buffer before and 15-minute buffer after"`.
+    /// Omits a zero side; nil when empty.
+    public func spoken() -> String? {
+        var parts: [String] = []
+        if beforeMinutes > 0 {
+            parts.append("\(beforeMinutes)-minute buffer before")
+        }
+        if afterMinutes > 0 {
+            parts.append("\(afterMinutes)-minute buffer after")
+        }
+        guard !parts.isEmpty else {
+            return nil
+        }
+        return parts.joined(separator: " and ")
+    }
+}
+
+/// Which buffered side an overlap sits wholly inside. Serialized by bob
+/// as `"before"` / `"after"`; anything else decodes as nil.
+public enum CaptureBufferPart: String, Equatable, Sendable, Hashable, Codable {
+    case before
+    case after
+}
+
 /// Decoded `bob capture-pomodoros --tasks --format json` snapshot: today's
 /// agenda painted from the Pomodoro ledger. bob owns every fact here (roles,
 /// numbering, link resolution, task blocks, line kinds, log tags); the app
@@ -527,19 +631,24 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
     public let endsAt: String?
     public let untracked: Bool
     public let title: String
+    /// The event's pre/post-event buffer; nil on an older bob and when
+    /// the event carries none. A malformed buffer decodes as nil.
+    public let buffer: CaptureEventBuffer?
 
     public init(
         timeRange: String? = nil,
         startsAt: String? = nil,
         endsAt: String? = nil,
         untracked: Bool = false,
-        title: String = ""
+        title: String = "",
+        buffer: CaptureEventBuffer? = nil
     ) {
         self.timeRange = timeRange
         self.startsAt = startsAt
         self.endsAt = endsAt
         self.untracked = untracked
         self.title = title
+        self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
@@ -549,6 +658,7 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
         endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt)
         untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -557,6 +667,7 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
         case endsAt = "ends_at"
         case untracked
         case title
+        case buffer
     }
 }
 
@@ -673,6 +784,9 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
     public let calendarURL: String?
     public let location: String?
     public let pomodoro: CaptureAgendaEventPomodoro?
+    /// The event's pre/post-event buffer; nil on an older bob and when
+    /// the event carries none. A malformed buffer decodes as nil.
+    public let buffer: CaptureEventBuffer?
 
     public init(
         line: Int = 0,
@@ -693,7 +807,8 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         joinURL: String? = nil,
         calendarURL: String? = nil,
         location: String? = nil,
-        pomodoro: CaptureAgendaEventPomodoro? = nil
+        pomodoro: CaptureAgendaEventPomodoro? = nil,
+        buffer: CaptureEventBuffer? = nil
     ) {
         self.line = line
         self.blockID = blockID
@@ -714,6 +829,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         self.calendarURL = calendarURL
         self.location = location
         self.pomodoro = pomodoro
+        self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
@@ -743,6 +859,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
             CaptureAgendaEventPomodoro.self,
             forKey: .pomodoro
         )
+        buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -765,6 +882,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         case calendarURL = "calendar_url"
         case location
         case pomodoro
+        case buffer
     }
 }
 
@@ -829,11 +947,21 @@ public struct CaptureAgendaEventConflict: Decodable, Equatable, Sendable {
     public let pomodoroLine: Int
     public let event: Int
     public let overlapMinutes: Int
+    /// Which buffered side the overlap sits wholly inside (`before` /
+    /// `after`); nil when the overlap reaches the meeting or the event
+    /// has no buffer. A malformed value decodes as nil.
+    public let bufferPart: CaptureBufferPart?
 
-    public init(pomodoroLine: Int = 0, event: Int = 0, overlapMinutes: Int = 0) {
+    public init(
+        pomodoroLine: Int = 0,
+        event: Int = 0,
+        overlapMinutes: Int = 0,
+        bufferPart: CaptureBufferPart? = nil
+    ) {
         self.pomodoroLine = pomodoroLine
         self.event = event
         self.overlapMinutes = overlapMinutes
+        self.bufferPart = bufferPart
     }
 
     public init(from decoder: Decoder) throws {
@@ -841,12 +969,15 @@ public struct CaptureAgendaEventConflict: Decodable, Equatable, Sendable {
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         event = try container.decodeIfPresent(Int.self, forKey: .event) ?? 0
         overlapMinutes = try container.decodeIfPresent(Int.self, forKey: .overlapMinutes) ?? 0
+        bufferPart =
+            (try? container.decodeIfPresent(CaptureBufferPart.self, forKey: .bufferPart)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
         case pomodoroLine = "pomodoro_line"
         case event
         case overlapMinutes = "overlap_minutes"
+        case bufferPart = "buffer_part"
     }
 }
 

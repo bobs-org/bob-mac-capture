@@ -1132,7 +1132,16 @@ struct CaptureAgendaRowView: View {
                             .position(x: x, y: 10)
                     }
                     ForEach(Array(rail.events.enumerated()), id: \.offset) { _, event in
+                        if let leading = event.leadingWing, leading.end - leading.start > 0.004
+                        {
+                            railWingView(leading, event: event, width: width)
+                        }
                         railEventCapsule(event, width: width)
+                        if let trailing = event.trailingWing,
+                            trailing.end - trailing.start > 0.004
+                        {
+                            railWingView(trailing, event: event, width: width)
+                        }
                     }
                     if let gap = rail.firstGap, gap.end - gap.start > 0.08 {
                         Text("\(gap.minutes)m")
@@ -1198,7 +1207,42 @@ struct CaptureAgendaRowView: View {
     }
 
     private func railWidth(_ event: CaptureAgendaRailEvent, width: CGFloat) -> CGFloat {
-        max(2, CGFloat(max(0, event.end - event.start)) * width)
+        railSpanWidth(start: event.start, end: event.end, width: width)
+    }
+
+    private func railSpanWidth(start: Double, end: Double, width: CGFloat) -> CGFloat {
+        max(2, CGFloat(max(0, end - start)) * width)
+    }
+
+    /// A buffer wing fused to a rail capsule: thinner than the capsule,
+    /// in the event's home hue at low opacity, dashed when the event is
+    /// untracked or Maybe/free, and outlined in the hue while the
+    /// buffer is in progress.
+    private func railWingView(
+        _ wing: CaptureAgendaRailWing,
+        event: CaptureAgendaRailEvent,
+        width: CGFloat
+    ) -> some View {
+        let color = PomodoroHomeColor.color(for: event.hue, scheme: colorScheme)
+        let dashed = event.untracked || event.maybe
+        return RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(color.opacity(0.35))
+            .overlay {
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .stroke(
+                        wing.active ? color : color.opacity(0.55),
+                        style: StrokeStyle(
+                            lineWidth: wing.active ? 1.5 : 1,
+                            dash: dashed ? [2, 2] : []
+                        )
+                    )
+            }
+            .frame(width: railSpanWidth(start: wing.start, end: wing.end, width: width), height: 3)
+            .position(
+                x: railX((wing.start + wing.end) / 2, width: width),
+                y: 10
+            )
+            .accessibilityHidden(true)
     }
 
     private func railX(_ position: Double, width: CGFloat) -> CGFloat {
@@ -1235,6 +1279,29 @@ struct CaptureAgendaRowView: View {
                                     style: StrokeStyle(lineWidth: 1, dash: [3, 2])
                                 )
                                 .foregroundStyle(.secondary)
+                        )
+                }
+                if let bufferLabel = data.bufferLabel, !bufferLabel.isEmpty {
+                    Text(bufferLabel)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(
+                            data.bufferActive
+                                ? PomodoroHomeColor.color(
+                                    for: data.hue, scheme: colorScheme)
+                                : .secondary
+                        )
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(
+                            Capsule()
+                                .stroke(style: StrokeStyle(lineWidth: 1))
+                                .foregroundStyle(
+                                    data.bufferActive
+                                        ? PomodoroHomeColor.color(
+                                            for: data.hue, scheme: colorScheme)
+                                        : .secondary
+                                )
                         )
                 }
                 Spacer(minLength: 12)

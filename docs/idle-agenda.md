@@ -55,10 +55,15 @@ including the next panel show.
   minutes, and sync stamp ("4 left · 2h 30m · ↻ 08:02", with the weekday when the
   stamp is from another day). Event rows show the time, a home-hue dot (hollow and
   dashed for `#untracked` events, with a dashed "untracked" capsule), the title
-  (italic and dimmed for Maybe/free rows), a join button when the event carries one,
+  (italic and dimmed for Maybe/free rows), a quiet buffer capsule ("−30m +15m",
+  tinted with the event hue while its buffer is in progress) when the event
+  reserves one, a join button when the event carries one,
   and a trailing countdown; the focus row also wears the `=meet`-style fit draft.
-  A quiet gap row ("38m free · =7 fits") precedes the focus, and a collision ("BOB
-  runs 10m into Standup") paints amber. The band folds `full → compact` (header
+  VoiceOver adds the buffer facts ("30-minute buffer before and 15-minute buffer
+  after, holds 11:30 to 13:15"). A quiet gap row ("38m free · =7 fits") precedes
+  the focus, and a collision ("BOB runs 10m into Standup", or "BOB runs 5m into
+  Lunch's −30m buffer" when the overlap sits wholly inside one buffered side)
+  paints amber. The band folds `full → compact` (header
   and focus row behind a `+N` chip) `→ oneRow` (header plus "then 1:1 13:30 · +2")
   after the Later groups fold; ended rows stay hidden behind a "+M earlier" chip
   until expanded. When no timed event is upcoming, any all-day row remains above the
@@ -67,11 +72,15 @@ including the next panel show.
   The band's countdowns tick every minute, and the store schedules one extra
   refresh at the next event boundary while the agenda is visible. A decorative day
   rail runs from the current hour through at least three hours and extends through the
-  last remaining event or running session. It shows hour ticks, filled event capsules,
-  dashed untracked capsules, dotted Maybe/free capsules, the pink running-session
-  sublane, a now hairline, and the first gap when it has room; VoiceOver gets these
+  last remaining event or running session, extending through buffered ends. It
+  shows hour ticks, filled event capsules, dashed untracked capsules, dotted
+  Maybe/free capsules, thinner buffer wings fused to each buffered capsule (in the
+  event hue, dashed when untracked, outlined in the hue while the buffer is in
+  progress), the pink running-session
+  sublane, a now hairline, and the first gap (over buffered spans, so it agrees
+  with bob's gap) when it has room; VoiceOver gets these
   facts from the event rows instead. MEET group items linked to an Event Task show a
-  time chip instead of the bold span.
+  time chip (with the buffer label appended) instead of the bold span.
 - Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
   then collapse to one line per task, one row per Pomodoro, and finally into a Later
   name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`, `4 tasks`)

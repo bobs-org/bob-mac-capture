@@ -134,6 +134,40 @@ final class CaptureAgendaDesignTests: XCTestCase {
             contrast: .increased
         )
 
+        // Buffered calendar: now sits in Lunch's −30m lead-in, so the
+        // lead-in wing reads active and the row capsule tints.
+        let bufferedSnapshot = try agendaSnapshot("agenda-events-buffered.json")
+        let bufferedNow = Calendar.current.date(
+            from: DateComponents(
+                year: 2_026,
+                month: 8,
+                day: 28,
+                hour: 9,
+                minute: 20
+            )
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: bufferedSnapshot,
+                today: bufferedSnapshot.date ?? "",
+                now: bufferedNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-events-buffered",
+            budget: 2_000
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: bufferedSnapshot,
+                today: bufferedSnapshot.date ?? "",
+                now: bufferedNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-events-buffered-high-contrast",
+            budget: 2_000,
+            contrast: .increased
+        )
+
         let withinCap = try budgetedSnapshot(
             "agenda-current.json",
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)

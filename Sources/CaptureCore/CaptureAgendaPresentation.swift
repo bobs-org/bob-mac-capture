@@ -1242,6 +1242,12 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     public let countdownText: String?
     /// The `=meet`-style fit draft, shown as a chip on the focus row.
     public let startHint: String?
+    /// The buffer label (`"−30m +15m"`), shown as a quiet caption
+    /// capsule after the title. Nil when the event has no buffer.
+    public let bufferLabel: String?
+    /// True while the event's buffer is in progress: the capsule tints
+    /// with the event hue instead of the secondary color.
+    public let bufferActive: Bool
 
     public init(
         timeText: String = "",
@@ -1250,7 +1256,9 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         dimmed: Bool = false,
         joinURL: String? = nil,
         countdownText: String? = nil,
-        startHint: String? = nil
+        startHint: String? = nil,
+        bufferLabel: String? = nil,
+        bufferActive: Bool = false
     ) {
         self.timeText = timeText
         self.hue = hue
@@ -1259,29 +1267,55 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         self.joinURL = joinURL
         self.countdownText = countdownText
         self.startHint = startHint
+        self.bufferLabel = bufferLabel
+        self.bufferActive = bufferActive
     }
 }
 
-/// A visible event capsule on the normalized day rail.
+/// A hatched buffer wing fused to a rail capsule: the lead-in or
+/// lead-out reserve around the meeting. Thinner than the capsule and
+/// painted in the event's home hue. `active` while the buffer is in
+/// progress (the lead-in or lead-out contains now).
+public struct CaptureAgendaRailWing: Hashable, Equatable, Sendable {
+    public let start: Double
+    public let end: Double
+    public let active: Bool
+
+    public init(start: Double, end: Double, active: Bool = false) {
+        self.start = start
+        self.end = end
+        self.active = active
+    }
+}
+
+/// A visible event capsule on the normalized day rail. The capsule
+/// always spans the meeting; `leadingWing`/`trailingWing` extend it
+/// through the buffered span when the event reserves one.
 public struct CaptureAgendaRailEvent: Hashable, Equatable, Sendable {
     public let start: Double
     public let end: Double
     public let hue: PomodoroHomeHue?
     public let untracked: Bool
     public let maybe: Bool
+    public let leadingWing: CaptureAgendaRailWing?
+    public let trailingWing: CaptureAgendaRailWing?
 
     public init(
         start: Double,
         end: Double,
         hue: PomodoroHomeHue? = nil,
         untracked: Bool = false,
-        maybe: Bool = false
+        maybe: Bool = false,
+        leadingWing: CaptureAgendaRailWing? = nil,
+        trailingWing: CaptureAgendaRailWing? = nil
     ) {
         self.start = start
         self.end = end
         self.hue = hue
         self.untracked = untracked
         self.maybe = maybe
+        self.leadingWing = leadingWing
+        self.trailingWing = trailingWing
     }
 }
 
@@ -1576,11 +1610,12 @@ extension CaptureAgendaPresentation {
             return Self.makeCalendarEventRow(
                 row,
                 countdown: Self.calendarCountdown(for: row, now: now),
-                startHint: position == focusIndex ? events.startHint : nil
+                startHint: position == focusIndex ? events.startHint : nil,
+                now: now
             )
         }
         let endedRows = ended.map {
-            Self.makeCalendarEventRow($0, countdown: nil, startHint: nil)
+            Self.makeCalendarEventRow($0, countdown: nil, startHint: nil, now: now)
         }
         let focusRow = upcomingRows.indices.contains(focusIndex)
             ? upcomingRows[focusIndex] : upcomingRows.first
@@ -1624,6 +1659,81 @@ extension CaptureAgendaPresentation {
         )
     }
 
+    /// An event's meeting span plus the span it occupies with its
+    /// buffer: `(meetingStart, meetingEnd, occupiedStart, occupiedEnd)`.
+    /// Nil when the meeting times do not parse. Buffered bounds come
+    /// from bob's `buffer.starts_at`/`ends_at` and clamp to at least the
+    /// meeting, so a buffer never shrinks the capsule.
+    static func occupiedEventRange(
+        row: CaptureAgendaEventRow,
+        calendar: Calendar = .current
+    ) -> (meetingStart: Date, meetingEnd: Date, occupiedStart: Date, occupiedEnd: Date)? {
+        guard let startsAt = row.startsAt,
+            let endsAt = row.endsAt,
+            let meetingStart = CaptureAgendaClock.date(
+                fromNaiveLocal: startsAt,
+                calendar: calendar
+            ),
+            let rawEnd = CaptureAgendaClock.date(fromNaiveLocal: endsAt, calendar: calendar)
+        else {
+            return nil
+        }
+        let meetingEnd =
+            rawEnd <= meetingStart
+            ? calendar.date(byAdding: .day, value: 1, to: rawEnd) ?? rawEnd
+            : rawEnd
+        var occupiedStart = meetingStart
+        if let raw = row.buffer?.startsAt,
+            let parsed = CaptureAgendaClock.date(fromNaiveLocal: raw, calendar: calendar)
+        {
+            occupiedStart = min(parsed, meetingStart)
+        }
+        var occupiedEnd = meetingEnd
+        if let raw = row.buffer?.endsAt,
+            let parsed = CaptureAgendaClock.date(fromNaiveLocal: raw, calendar: calendar)
+        {
+            occupiedEnd = max(parsed, meetingEnd)
+        }
+        return (meetingStart, meetingEnd, occupiedStart, occupiedEnd)
+    }
+
+    /// True while the row's buffer is in progress: now sits in the
+    /// lead-in (`occupiedStart <= now < meetingStart`) or the lead-out
+    /// (`meetingEnd < now <= occupiedEnd`).
+    static func bufferInProgress(
+        row: CaptureAgendaEventRow,
+        now: Date?,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let now, let buffer = row.buffer, !buffer.isEmpty else {
+            return false
+        }
+        guard let range = occupiedEventRange(row: row, calendar: calendar) else {
+            return false
+        }
+        if range.occupiedStart <= now, now < range.meetingStart {
+            return true
+        }
+        if range.meetingEnd < now, now <= range.occupiedEnd {
+            return true
+        }
+        return false
+    }
+
+    /// `"holds 11:30 to 13:15"` from the buffer's buffered span. Nil
+    /// when the event has no buffer or its buffered clocks are missing.
+    static func bufferHoldText(_ buffer: CaptureEventBuffer?) -> String? {
+        guard let buffer, !buffer.isEmpty else {
+            return nil
+        }
+        guard let start = CaptureAgendaClock.clockTime(buffer.startsAt),
+            let end = CaptureAgendaClock.clockTime(buffer.endsAt)
+        else {
+            return nil
+        }
+        return "holds \(start) to \(end)"
+    }
+
     static func makeCalendarRail(
         events: CaptureAgendaEvents,
         entries: [CaptureAgendaPomodoro],
@@ -1664,17 +1774,20 @@ extension CaptureAgendaPresentation {
         }
 
         let remainingRows = events.rows.filter { $0.phase != .ended }
-        let eventRanges = remainingRows.compactMap { row -> (CaptureAgendaEventRow, Date, Date)? in
-            guard let (start, end) = parsedRange(row.startsAt, row.endsAt) else {
+        let eventRanges = remainingRows.compactMap {
+            row -> (CaptureAgendaEventRow, Date, Date, Date, Date)? in
+            guard let range = Self.occupiedEventRange(row: row, calendar: calendar) else {
                 return nil
             }
-            return (row, start, end)
-        }.sorted { $0.1 < $1.1 }
+            return (
+                row, range.meetingStart, range.meetingEnd, range.occupiedStart, range.occupiedEnd
+            )
+        }.sorted { $0.3 < $1.3 }
         let current = entries.first(where: { $0.role == .current })
         let sessionRange = current.flatMap { parsedRange($0.startsAt, $0.endsAt) }
         var domainEnd = domainStart.addingTimeInterval(180 * 60)
-        for (_, _, end) in eventRanges {
-            domainEnd = max(domainEnd, end)
+        for (_, _, _, _, occupiedEnd) in eventRanges {
+            domainEnd = max(domainEnd, occupiedEnd)
         }
         if let sessionRange {
             domainEnd = max(domainEnd, sessionRange.1)
@@ -1684,14 +1797,31 @@ extension CaptureAgendaPresentation {
             min(1, max(0, date.timeIntervalSince(domainStart) / span))
         }
 
-        let railEvents = eventRanges.map { row, start, end in
+        let railEvents = eventRanges.map {
+            row, meetingStart, meetingEnd, occupiedStart, occupiedEnd in
             let qualifier = (row.qualifier ?? "").lowercased()
+            let leadingWing: CaptureAgendaRailWing? =
+                occupiedStart < meetingStart
+                ? CaptureAgendaRailWing(
+                    start: position(occupiedStart),
+                    end: position(meetingStart),
+                    active: occupiedStart <= now && now < meetingStart
+                ) : nil
+            let trailingWing: CaptureAgendaRailWing? =
+                meetingEnd < occupiedEnd
+                ? CaptureAgendaRailWing(
+                    start: position(meetingEnd),
+                    end: position(occupiedEnd),
+                    active: meetingEnd < now && now <= occupiedEnd
+                ) : nil
             return CaptureAgendaRailEvent(
-                start: position(start),
-                end: position(end),
+                start: position(meetingStart),
+                end: position(meetingEnd),
                 hue: row.home?.hue,
                 untracked: row.untracked,
-                maybe: qualifier == "maybe" || qualifier == "free"
+                maybe: qualifier == "maybe" || qualifier == "free",
+                leadingWing: leadingWing,
+                trailingWing: trailingWing
             )
         }
         let runningSession = sessionRange.map { start, end in
@@ -1718,22 +1848,22 @@ extension CaptureAgendaPresentation {
 
         var cursor = max(now, sessionRange?.1 ?? now)
         var firstGap: CaptureAgendaRailGap?
-        for (_, start, end) in eventRanges {
-            if end <= cursor {
+        for (_, _, _, occupiedStart, occupiedEnd) in eventRanges {
+            if occupiedEnd <= cursor {
                 continue
             }
-            if start > cursor {
-                let minutes = Int(start.timeIntervalSince(cursor) / 60)
+            if occupiedStart > cursor {
+                let minutes = Int(occupiedStart.timeIntervalSince(cursor) / 60)
                 if minutes > 0 {
                     firstGap = CaptureAgendaRailGap(
                         start: position(cursor),
-                        end: position(start),
+                        end: position(occupiedStart),
                         minutes: minutes
                     )
                 }
                 break
             }
-            cursor = max(cursor, end)
+            cursor = max(cursor, occupiedEnd)
         }
         return CaptureAgendaRailData(
             now: position(now),
@@ -1875,13 +2005,17 @@ extension CaptureAgendaPresentation {
     static func makeCalendarEventRow(
         _ row: CaptureAgendaEventRow,
         countdown: String?,
-        startHint: String?
+        startHint: String?,
+        now: Date? = nil,
+        calendar: Calendar = .current
     ) -> CaptureAgendaRow {
         let timeText =
             CaptureAgendaClock.timeRangeText(startsAt: row.startsAt, endsAt: row.endsAt)
             ?? row.timeRange ?? ""
         let qualifier = (row.qualifier ?? "").lowercased()
         let dimmed = qualifier == "maybe" || qualifier == "free"
+        let bufferLabel = row.buffer?.label()
+        let bufferActive = Self.bufferInProgress(row: row, now: now, calendar: calendar)
         let data = CaptureAgendaCalendarRowData(
             timeText: timeText,
             hue: row.home?.hue,
@@ -1889,7 +2023,9 @@ extension CaptureAgendaPresentation {
             dimmed: dimmed,
             joinURL: row.joinURL,
             countdownText: countdown,
-            startHint: startHint
+            startHint: startHint,
+            bufferLabel: bufferLabel,
+            bufferActive: bufferActive
         )
         let spokenRange =
             CaptureAgendaClock.accessibilityRangeText(
@@ -1899,6 +2035,13 @@ extension CaptureAgendaPresentation {
         var labelParts = ["\(row.title), \(spokenRange)"]
         if row.untracked {
             labelParts.append("untracked")
+        }
+        if let buffer = row.buffer, let spoken = buffer.spoken() {
+            var bufferPart = spoken
+            if let holds = Self.bufferHoldText(buffer) {
+                bufferPart += ", \(holds)"
+            }
+            labelParts.append(bufferPart)
         }
         if let countdown {
             labelParts.append(countdown)
@@ -1956,8 +2099,9 @@ extension CaptureAgendaPresentation {
         )
     }
 
-    /// `"BOB runs 10m into Standup"`: the running Pomodoro collides
-    /// with the focus event.
+    /// `"BOB runs 10m into Standup"`, or `"BOB runs 5m into Lunch's
+    /// −30m buffer"` when the overlap sits wholly inside one buffered
+    /// side: the running Pomodoro collides with the focus event.
     static func makeCalendarConflictRow(
         _ conflict: CaptureAgendaEventConflict,
         events: CaptureAgendaEvents,
@@ -1966,10 +2110,17 @@ extension CaptureAgendaPresentation {
         guard events.rows.indices.contains(conflict.event) else {
             return nil
         }
+        let row = events.rows[conflict.event]
         let name = entries.first(where: { $0.line == conflict.pomodoroLine })
             .map(displayName) ?? "The running session"
-        let text =
-            "\(name) runs \(conflict.overlapMinutes)m into \(events.rows[conflict.event].title)"
+        let text: String
+        if let part = conflict.bufferPart,
+            let side = row.buffer?.partLabel(part)
+        {
+            text = "\(name) runs \(conflict.overlapMinutes)m into \(row.title)'s \(side) buffer"
+        } else {
+            text = "\(name) runs \(conflict.overlapMinutes)m into \(row.title)"
+        }
         return CaptureAgendaRow(
             kind: .calendarConflict,
             text: text,
@@ -2024,7 +2175,8 @@ extension CaptureAgendaPresentation {
 
     /// MEET group items linked to an Event Task show a time chip
     /// instead of the bold span: `"13:00–13:30"`, from the event's
-    /// clock times. Nil for every other item.
+    /// clock times, with the buffer label appended (`"13:00–13:30
+    /// −30m +15m"`). Nil for every other item.
     static func eventTimeChip(item: CaptureAgendaItem, entry: CaptureAgendaPomodoro) -> String? {
         guard let event = item.event else {
             return nil
@@ -2032,10 +2184,18 @@ extension CaptureAgendaPresentation {
         guard entry.name?.lowercased() == "meet" else {
             return nil
         }
-        return CaptureAgendaClock.timeRangeText(
-            startsAt: event.startsAt,
-            endsAt: event.endsAt
-        ) ?? event.timeRange
+        guard
+            let range = CaptureAgendaClock.timeRangeText(
+                startsAt: event.startsAt,
+                endsAt: event.endsAt
+            ) ?? event.timeRange
+        else {
+            return nil
+        }
+        if let label = event.buffer?.label() {
+            return "\(range) \(label)"
+        }
+        return range
     }
 
     /// Drops a leading `"**0930-1000** "` span: the time chip carries

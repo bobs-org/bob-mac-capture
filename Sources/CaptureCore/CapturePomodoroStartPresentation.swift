@@ -535,7 +535,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         guard let run else {
             return nil
         }
-        let titles = run.events.map(\.title).filter { !$0.isEmpty }.joined(separator: " · ")
+        let titles = run.events.map { event -> String in
+            if let label = event.buffer?.label() {
+                return "\(event.title) \(label)"
+            }
+            return event.title
+        }.filter { !$0.isEmpty }.joined(separator: " · ")
         var parts = [name, eventClockRange(run.timeRange)]
         if !run.source.isEmpty {
             parts.append(run.source == "calendar" ? "from your calendar" : "calendar run")
@@ -693,7 +698,14 @@ public struct CaptureEventConflictPresentation: Equatable, Sendable {
 
     public init(_ conflict: PomodoroEventConflict, sessionName: String) {
         let event = conflict.event
-        headline = "\(sessionName) runs \(conflict.overlapMinutes)m into \(event.title)"
+        if let part = conflict.bufferPart,
+            let side = event.buffer?.partLabel(part)
+        {
+            headline =
+                "\(sessionName) runs \(conflict.overlapMinutes)m into \(event.title)'s \(side) buffer"
+        } else {
+            headline = "\(sessionName) runs \(conflict.overlapMinutes)m into \(event.title)"
+        }
         var details = [eventClockRange(event.timeRange)]
         if conflict.more > 0 {
             details.append("and \(conflict.more) more")

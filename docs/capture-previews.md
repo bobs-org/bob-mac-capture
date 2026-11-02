@@ -29,9 +29,9 @@ A `=` override restart or swap previews on the same start card with an orange
 
 ## Calendar-aware start previews
 
-MEET starts show event runs (range, titles, source, untracked) and far-run warning.
-Non-MEET starts/adjusts/shifts show conflict banners and optional fit drafts; older Bob
-omits them.
+MEET starts show buffered runs and far-run warning; other starts show
+conflict banners naming the buffered side and fit drafts (older Bob omits
+them).
 
 ## Templates
 

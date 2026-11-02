@@ -1238,6 +1238,9 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
     public let line: Int
     public let blockID: String?
     public let untracked: Bool
+    /// The event's pre/post-event buffer; nil on an older bob and when
+    /// the event carries none. A malformed buffer decodes as nil.
+    public let buffer: CaptureEventBuffer?
 
     public init(
         index: Int = 0,
@@ -1245,7 +1248,8 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         timeRange: String = "",
         line: Int = 0,
         blockID: String? = nil,
-        untracked: Bool = false
+        untracked: Bool = false,
+        buffer: CaptureEventBuffer? = nil
     ) {
         self.index = index
         self.title = title
@@ -1253,6 +1257,7 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         self.line = line
         self.blockID = blockID
         self.untracked = untracked
+        self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
@@ -1263,6 +1268,7 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1272,6 +1278,7 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         case line
         case blockID = "block_id"
         case untracked
+        case buffer
     }
 }
 
@@ -1327,17 +1334,22 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
     public let timeRange: String
     public let line: Int
     public let untracked: Bool
+    /// The event's pre/post-event buffer; nil on an older bob and when
+    /// the event carries none. A malformed buffer decodes as nil.
+    public let buffer: CaptureEventBuffer?
 
     public init(
         title: String = "",
         timeRange: String = "",
         line: Int = 0,
-        untracked: Bool = false
+        untracked: Bool = false,
+        buffer: CaptureEventBuffer? = nil
     ) {
         self.title = title
         self.timeRange = timeRange
         self.line = line
         self.untracked = untracked
+        self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
@@ -1346,6 +1358,7 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
         line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
         untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1353,6 +1366,7 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
         case timeRange = "time_range"
         case line
         case untracked
+        case buffer
     }
 }
 
@@ -1361,17 +1375,23 @@ public struct PomodoroEventConflict: Codable, Equatable, Sendable {
     public let overlapMinutes: Int
     public let more: Int
     public let fit: String?
+    /// Which buffered side the overlap sits wholly inside (`before` /
+    /// `after`); nil when the overlap reaches the meeting or the event
+    /// has no buffer. A malformed value decodes as nil.
+    public let bufferPart: CaptureBufferPart?
 
     public init(
         event: PomodoroEventConflictEvent = PomodoroEventConflictEvent(),
         overlapMinutes: Int = 0,
         more: Int = 0,
-        fit: String? = nil
+        fit: String? = nil,
+        bufferPart: CaptureBufferPart? = nil
     ) {
         self.event = event
         self.overlapMinutes = overlapMinutes
         self.more = more
         self.fit = fit
+        self.bufferPart = bufferPart
     }
 
     public init(from decoder: Decoder) throws {
@@ -1385,6 +1405,8 @@ public struct PomodoroEventConflict: Codable, Equatable, Sendable {
         overlapMinutes = try container.decodeIfPresent(Int.self, forKey: .overlapMinutes) ?? 0
         more = try container.decodeIfPresent(Int.self, forKey: .more) ?? 0
         fit = try container.decodeIfPresent(String.self, forKey: .fit)
+        bufferPart =
+            (try? container.decodeIfPresent(CaptureBufferPart.self, forKey: .bufferPart)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1392,6 +1414,7 @@ public struct PomodoroEventConflict: Codable, Equatable, Sendable {
         case overlapMinutes = "overlap_minutes"
         case more
         case fit
+        case bufferPart = "buffer_part"
     }
 }
 
