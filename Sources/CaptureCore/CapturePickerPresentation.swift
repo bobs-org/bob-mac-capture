@@ -797,7 +797,7 @@ public enum CapturePickerSource: Equatable, Sendable {
 /// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then
 /// `dependency`, then `blockedTask`, then `taskComplete`, then
 /// `wikilinkTask`, then `dependencyTarget`, then `pomodoroID`, then `blockID`,
-/// then `pomodoroStart`.
+/// then `templateRow`, then `listItem`, then `section`, then `pomodoroStart`.
 /// A bare `&` reports both `task_dependency` and `dependency_target`; the
 /// picker need wins so the list opens instead of the owner hint.
 public enum CapturePickerNeed: Equatable, Sendable {
@@ -820,6 +820,9 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case templateRow
     /// A lone `@file` or `@file#section` header with no bullet under it yet.
     case listItem
+    /// An unterminated quoted section selector (`@route#"…`): finish the
+    /// quoted name instead of flashing Bob's `incomplete_section` refusal.
+    case section
 
     public var statusText: String {
         switch self {
@@ -859,6 +862,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Add a blank line, then one row per capture"
         case .listItem:
             return "Add a bullet under the header \u{2014} Shift-Return starts one"
+        case .section:
+            return "Finish the quoted section name \u{2014} pick a section"
         }
     }
 }

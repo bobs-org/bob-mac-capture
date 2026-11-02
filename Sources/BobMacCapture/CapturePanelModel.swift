@@ -5837,6 +5837,97 @@ final class CapturePanelModel: ObservableObject {
         return context.field?.splice
     }
 
+    /// One native undoable edit for an accepted block-ID splice. The splice
+    /// range is draft-global UTF-8 bytes; the replacement text is Bob's
+    /// `before + ID + after (+ remainder for type-through)`. Returns nil when
+    /// the range is not on UTF-8 character boundaries, so a stale draft is
+    /// never edited.
+    private static func nativeEditForBlockIDSplice(
+        id: String,
+        remainder: String = "",
+        draft: String,
+        splice: CaptureBlockIDSplice
+    ) -> CaptureNativeRewriteEdit? {
+        guard let applied = splice.applied(id: id, remainder: remainder, to: draft) else {
+            return nil
+        }
+        guard let replacementRange = utf16Range(in: draft, byteRange: splice.range) else {
+            return nil
+        }
+        guard
+            let caretUTF16 = utf16Range(
+                in: applied.draft,
+                start: applied.caret,
+                end: applied.caret
+            )?.location
+        else {
+            return nil
+        }
+        return CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: applied.written,
+            resultingSelection: NSRange(location: caretUTF16, length: 0),
+            expectedDraft: draft,
+            resultingDraft: applied.draft
+        )
+    }
+
+    /// Applies an accepted splice through the focused `NSTextView` so Undo
+    /// restores the pre-accept draft in one step. Returns true when the
+    /// native bridge wrote `edit.resultingDraft`; the model then mirrors the
+    /// draft without wholesale replacement so the undo stack survives.
+    /// Returns false without changing state when no text view is wired or
+    /// the bridge declines, so the caller falls back to `setPlainDraft`.
+    private func applyBlockIDSpliceNatively(
+        edit: CaptureNativeRewriteEdit,
+        caretUTF8: Int
+    ) -> Bool {
+        suppressedCompletionAcceptanceDraft = edit.resultingDraft
+        guard applyNativeRewriteEdit?(edit) == true else {
+            suppressedCompletionAcceptanceDraft = nil
+            return false
+        }
+        if plainDraft != edit.resultingDraft {
+            isApplyingProgrammaticDraft = true
+            attributedDraft = AttributedString(edit.resultingDraft)
+            isApplyingProgrammaticDraft = false
+        }
+        restoreSelection(cursorUTF8Offset: caretUTF8, suppressEditorCallbacks: true)
+        return true
+    }
+
+    /// One native undoable edit for an ordinary insertion (older Bob with no
+    /// splice, or any non-splice picker accept): Bob's `replacement` range
+    /// with `insertion` written over it.
+    private static func nativeEditForOrdinaryInsertion(
+        insertion: String,
+        draft: String,
+        range: CaptureRange
+    ) -> CaptureNativeRewriteEdit? {
+        guard let target = stringRange(in: draft, byteRange: range) else {
+            return nil
+        }
+        var text = draft
+        text.replaceSubrange(target, with: insertion)
+        let caret = range.start + insertion.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            return nil
+        }
+        guard let replacementRange = utf16Range(in: draft, byteRange: range) else {
+            return nil
+        }
+        guard let caretUTF16 = utf16Range(in: text, start: caret, end: caret)?.location else {
+            return nil
+        }
+        return CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: insertion,
+            resultingSelection: NSRange(location: caretUTF16, length: 0),
+            expectedDraft: draft,
+            resultingDraft: text
+        )
+    }
+
     /// Washes the picker's marker token in accent inside the dimmed editor.
     /// Attribute-only: `plainDraft`, the selection, and undo are untouched,
     /// and the characters-change callback that drives `editorTextDidChange`
@@ -6020,21 +6111,60 @@ final class CapturePanelModel: ObservableObject {
             closePickerAfterStaleDraft()
             return
         }
-        var text = plainDraft
-        let caret: Int
         if let splice = Self.blockIDSplice(for: openPicker.source) {
             // The ID goes on the owning task's line; the remainder stays where
-            // the user was typing, after what the splice wrote there.
+            // the user was typing, after what the splice wrote there. Apply
+            // through the focused text view so Undo restores the pre-commit
+            // draft in one step; fall back to a wholesale replacement when no
+            // text view is wired.
             guard let applied = splice.applied(id: id, remainder: remainder, to: plainDraft) else {
                 closePickerAfterStaleDraft()
                 return
             }
-            text = applied.draft
-            caret = applied.caret
-        } else {
-            text.replaceSubrange(idRange, with: id + remainder)
-            caret = openPicker.replacementRange.start + (id + remainder).utf8.count
+            guard stringRange(in: applied.draft, start: applied.caret, end: applied.caret) != nil
+            else {
+                closePickerAfterStaleDraft()
+                return
+            }
+            if let edit = Self.nativeEditForBlockIDSplice(
+                id: id,
+                remainder: remainder,
+                draft: plainDraft,
+                splice: splice
+            ),
+                applyBlockIDSpliceNatively(edit: edit, caretUTF8: applied.caret)
+            {
+                closePickerForAccept()
+                scheduleAnalysis(
+                    cursorUTF8Offset: applied.caret,
+                    requestCompletion: true,
+                    trigger: .edit
+                )
+                return
+            }
+            let text = applied.draft
+            let caret = applied.caret
+            closePickerForAccept()
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+            return
         }
+        let insertion = id + remainder
+        let caret = openPicker.replacementRange.start + insertion.utf8.count
+        if let edit = Self.nativeEditForOrdinaryInsertion(
+            insertion: insertion,
+            draft: plainDraft,
+            range: openPicker.replacementRange
+        ),
+            applyBlockIDSpliceNatively(edit: edit, caretUTF8: caret)
+        {
+            closePickerForAccept()
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+            return
+        }
+        var text = plainDraft
+        text.replaceSubrange(idRange, with: insertion)
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             closePickerAfterStaleDraft()
             return
@@ -6260,32 +6390,169 @@ final class CapturePanelModel: ObservableObject {
         } else {
             insertionText = insertion
         }
-        var text = plainDraft
-        let caret: Int
         if let splice = Self.blockIDSplice(for: picker.source) {
             // A project-task prompt sends Bob's splice: the ID goes on the
             // owning task's line, which is not the caret's line when the prompt
             // opened on a nested line, and the caret ends where the user was
             // typing. A same-line splice is the ID-only range, so this is the
-            // ordinary insertion there.
+            // ordinary insertion there. Apply through the focused text view
+            // so Undo restores the pre-accept draft in one step; fall back to
+            // a wholesale replacement when no text view is wired (tests) or
+            // the bridge declines. Older Bob sends no splice and keeps the
+            // ordinary insertion below.
             guard let applied = splice.applied(id: insertionText, to: plainDraft) else {
                 closePickerAfterStaleDraft()
                 return
             }
-            text = applied.draft
-            caret = applied.caret
-        } else {
-            text.replaceSubrange(range, with: insertionText)
+            guard stringRange(in: applied.draft, start: applied.caret, end: applied.caret) != nil
+            else {
+                closePickerAfterStaleDraft()
+                return
+            }
+            let spliceSource = picker.source
+            let spliceOwner = picker.dependencyOwner
+            let spliceScopeLine = picker.scopeLineNumber
+            let spliceIsRelation = spliceSource.isRelationshipModifier
+            let spliceDisplay = row.displayText
+            let spliceInsertion = insertion
+            if let edit = Self.nativeEditForBlockIDSplice(
+                id: insertionText,
+                draft: plainDraft,
+                splice: splice
+            ),
+                applyBlockIDSpliceNatively(edit: edit, caretUTF8: applied.caret)
+            {
+                if spliceIsRelation {
+                    rememberRelationshipDisplayName(
+                        replacement: spliceInsertion,
+                        text: spliceDisplay
+                    )
+                }
+                closePickerForAccept()
+                scheduleAnalysis(
+                    cursorUTF8Offset: applied.caret,
+                    requestCompletion: false,
+                    trigger: .edit
+                )
+                if case .blockID(let context) = spliceSource {
+                    announceStatus(
+                        context.insertedAnnouncement(
+                            id: insertionText,
+                            markerLine: spliceScopeLine
+                        )
+                    )
+                } else if spliceSource == .taskLink || spliceIsRelation || spliceSource == .taskComplete
+                    || spliceSource.isWikilinkTask
+                {
+                    announceStatus("Inserted \(insertionText)")
+                } else if case .parentTask = spliceSource {
+                    announceStatus("Inserted \(insertionText)")
+                } else {
+                    announceStatus("Inserted \(row.detail.insertionPrefix)\(insertionText)")
+                }
+                if followUp == .submit || followUp == .submitAndOpen {
+                    if spliceIsRelation, spliceOwner == nil {
+                        announceStatus("Add task text or @note+id, then capture")
+                        return
+                    }
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
+                }
+                return
+            }
+            let text = applied.draft
+            let caret = applied.caret
+            guard stringRange(in: text, start: caret, end: caret) != nil else {
+                closePickerAfterStaleDraft()
+                return
+            }
+            let source = picker.source
+            let owner = picker.dependencyOwner
+            if source.isRelationshipModifier {
+                rememberRelationshipDisplayName(replacement: insertion, text: row.displayText)
+            }
+            closePickerForAccept()
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+            if case .blockID(let context) = source {
+                announceStatus(
+                    context.insertedAnnouncement(id: insertionText, markerLine: picker.scopeLineNumber)
+                )
+            } else if source == .taskLink || source.isRelationshipModifier || source == .taskComplete || source.isWikilinkTask {
+                announceStatus("Inserted \(insertionText)")
+            } else if case .parentTask = source {
+                announceStatus("Inserted \(insertionText)")
+            } else {
+                announceStatus("Inserted \(row.detail.insertionPrefix)\(insertionText)")
+            }
+            if followUp == .submit || followUp == .submitAndOpen {
+                if source.isRelationshipModifier, owner == nil {
+                    announceStatus("Add task text or @note+id, then capture")
+                    return
+                }
+                submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
+            }
+            return
+        }
+        let isWikilinkCursorAfter: Int? = {
             if picker.source.isWikilinkTask,
                let match = picker.candidates.first(where: {
                    Self.wikilinkTaskKey(for: $0) == row.id
                }),
                let after = match.cursorAfter
             {
-                caret = after
-            } else {
-                caret = picker.replacementRange.start + insertionText.utf8.count
+                return after
             }
+            return nil
+        }()
+        if isWikilinkCursorAfter == nil,
+           let edit = Self.nativeEditForOrdinaryInsertion(
+               insertion: insertionText,
+               draft: plainDraft,
+               range: picker.replacementRange
+           ),
+           applyBlockIDSpliceNatively(
+               edit: edit,
+               caretUTF8: picker.replacementRange.start + insertionText.utf8.count
+           )
+        {
+            // Ordinary insertion through the text view so Undo works; the
+            // caret is the end of the inserted text.
+            let caret = picker.replacementRange.start + insertionText.utf8.count
+            let source = picker.source
+            let owner = picker.dependencyOwner
+            if source.isRelationshipModifier {
+                rememberRelationshipDisplayName(replacement: insertion, text: row.displayText)
+            }
+            closePickerForAccept()
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+            if case .blockID(let context) = source {
+                announceStatus(
+                    context.insertedAnnouncement(id: insertionText, markerLine: picker.scopeLineNumber)
+                )
+            } else if source == .taskLink || source.isRelationshipModifier || source == .taskComplete || source.isWikilinkTask {
+                announceStatus("Inserted \(insertionText)")
+            } else if case .parentTask = source {
+                announceStatus("Inserted \(insertionText)")
+            } else {
+                announceStatus("Inserted \(row.detail.insertionPrefix)\(insertionText)")
+            }
+            if followUp == .submit || followUp == .submitAndOpen {
+                if source.isRelationshipModifier, owner == nil {
+                    announceStatus("Add task text or @note+id, then capture")
+                    return
+                }
+                submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
+            }
+            return
+        }
+        var text = plainDraft
+        text.replaceSubrange(range, with: insertionText)
+        let caret: Int
+        if let after = isWikilinkCursorAfter {
+            caret = after
+        } else {
+            caret = picker.replacementRange.start + insertionText.utf8.count
         }
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             closePickerAfterStaleDraft()
@@ -7199,8 +7466,9 @@ final class CapturePanelModel: ObservableObject {
     /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
     /// `task_parent`, then `task_dependency`, then `blocked_task`, then
     /// `task_complete`, then `dependency_target`, then `pomodoro_id`, then
-    /// `block_id`, then `template_row`, then `list_item`, then the `=<X>#`
-    /// named-start incomplete, checked top-level or in any item.
+    /// `block_id`, then `template_row`, then `list_item`, then `section`,
+    /// then the `=<X>#` named-start incomplete, checked top-level or in any
+    /// item.
     /// Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
     /// `pomodoro_start` object) keep today's behavior.
     static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
@@ -7260,6 +7528,12 @@ final class CapturePanelModel: ObservableObject {
         // a state to finish, not a refusal to flash.
         if needs("list_item") {
             return .listItem
+        }
+        // An unterminated quoted section selector (`@route#"…`) is an
+        // editing state with a `section` need, never a mistake: keep the
+        // preview calm like `list_item`, never a flashed refusal.
+        if needs("section") {
+            return .section
         }
         // A `=<X>#` draft (or chain token) is `incomplete` with a
         // `pomodoro_name` need and a partial `pomodoro_start` spec. It keeps

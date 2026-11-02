@@ -473,6 +473,42 @@ final class CaptureListTests: XCTestCase {
         XCTAssertEqual(context.count, 0)
     }
 
+    // MARK: - Spaced section picks
+
+    func testSectionMenuInsertsTheSlugThatResolvesBack() throws {
+        let menu = try completion("list-complete-section.json")
+
+        XCTAssertEqual(menu.context, "section")
+        XCTAssertEqual(menu.replacement, CaptureRange(start: 6, end: 8))
+        let row = try XCTUnwrap(menu.candidates.first)
+        XCTAssertEqual(row.replacement, "future-work")
+        XCTAssertEqual(row.title, "Future Work")
+    }
+
+    func testSectionMenuOpensOnAHeaderThatAlreadyHasBullets() throws {
+        let menu = try completion("list-complete-section-with-bullets.json")
+
+        XCTAssertEqual(menu.context, "section")
+        XCTAssertEqual(menu.replacement, CaptureRange(start: 6, end: 8))
+        XCTAssertEqual(menu.candidates.first?.replacement, "future-work")
+    }
+
+    func testPartialQuotedSectionCoversTheOpeningQuote() throws {
+        let menu = try completion("list-complete-section-partial-quote.json")
+
+        XCTAssertEqual(menu.context, "section")
+        XCTAssertEqual(menu.replacement, CaptureRange(start: 6, end: 9))
+        XCTAssertEqual(menu.candidates.first?.replacement, "future-work")
+    }
+
+    func testPartialQuotedSectionOpensWithBulletsBelow() throws {
+        let menu = try completion("list-complete-section-partial-quote-with-bullets.json")
+
+        XCTAssertEqual(menu.context, "section")
+        XCTAssertEqual(menu.replacement, CaptureRange(start: 6, end: 9))
+        XCTAssertEqual(menu.candidates.first?.replacement, "future-work")
+    }
+
     // MARK: - First bullet after a lone header
 
     func testListHeaderParseReportsTheListItemNeed() throws {
@@ -560,5 +596,19 @@ final class CaptureListTests: XCTestCase {
             CapturePickerNeed.listItem.statusText,
             "Add a bullet under the header \u{2014} Shift-Return starts one"
         )
+    }
+
+    func testSectionNeedIsACalmStatusNotAnError() {
+        XCTAssertEqual(
+            CapturePickerNeed.section.statusText,
+            "Finish the quoted section name \u{2014} pick a section"
+        )
+    }
+
+    func testUnterminatedSectionReportsTheSectionNeed() throws {
+        let incomplete = try parse("list-parse-section-incomplete.json")
+
+        XCTAssertEqual(incomplete.needs, ["section"])
+        XCTAssertNil(incomplete.section)
     }
 }

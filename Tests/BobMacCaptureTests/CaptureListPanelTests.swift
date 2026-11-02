@@ -270,4 +270,346 @@ final class CaptureListPanelTests: XCTestCase {
 
         XCTAssertNil(model.listHeaderNewlineInsertion(caretUTF8: 4))
     }
+
+    // MARK: - Hosted native undo
+
+    private func makeTextView(_ text: String) -> NSTextView {
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.allowsUndo = true
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        return textView
+    }
+
+    private func makeHostedTextView(_ text: String) -> (NSTextView, NSWindow) {
+        // Native undo lives on the window: a windowless text view has no undo
+        // manager, so undo and redo would silently do nothing.
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        let textView = makeTextView(text)
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        return (textView, window)
+    }
+
+    private func wireNativeApply(_ model: CapturePanelModel, textView: NSTextView) {
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applySeparatorToggleInEditableTextView(
+                edit,
+                firstResponder: textView
+            )
+        }
+    }
+
+    private func installHostedPrompt(
+        _ name: String,
+        textView: NSTextView,
+        caret: Int,
+        markerLine: Int,
+        filter: String = ""
+    ) throws -> CapturePanelModel {
+        let model = CapturePanelModel()
+        wireNativeApply(model, textView: textView)
+        model.installBlockIDPickerForPreviews(
+            field: try field(name),
+            candidates: [],
+            context: "project_task_block_id",
+            replacement: CaptureRange(start: caret, end: caret),
+            filter: filter,
+            draft: textView.string,
+            scopeLineNumber: markerLine
+        )
+        return model
+    }
+
+    private func assertOneNativeUndoStep(
+        textView: NSTextView,
+        model: CapturePanelModel,
+        from before: String,
+        to after: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(textView.string, after, file: file, line: line)
+        XCTAssertEqual(model.plainDraft, after, file: file, line: line)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), after.utf8.count, file: file, line: line)
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false, file: file, line: line)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, before, file: file, line: line)
+        model.plainDraft = textView.string
+        XCTAssertEqual(model.plainDraft, before, file: file, line: line)
+        XCTAssertTrue(textView.undoManager?.canRedo ?? false, file: file, line: line)
+        textView.undoManager?.redo()
+        XCTAssertEqual(textView.string, after, file: file, line: line)
+        model.plainDraft = textView.string
+        XCTAssertEqual(model.plainDraft, after, file: file, line: line)
+    }
+
+    func testNestedAcceptIsOneNativeUndoStep() throws {
+        let (textView, window) = makeHostedTextView(nestedDraft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-nested.json",
+            textView: textView,
+            caret: 51,
+            markerLine: 3
+        )
+
+        model.acceptPickerRow(id: "suggestion:fix-flaky-gkeep", submitAfterInsert: false)
+
+        XCTAssertEqual(
+            model.statusText,
+            "Inserted :fix-flaky-gkeep on \u{2018}Fix flaky gkeep test\u{2019}"
+        )
+        XCTAssertFalse(model.pickerVisible)
+        assertOneNativeUndoStep(
+            textView: textView,
+            model: model,
+            from: nestedDraft,
+            to: nestedAccepted
+        )
+    }
+
+    func testSameLineAcceptIsOneNativeUndoStep() throws {
+        let draft = "@dev\n- Fix flaky gkeep test :"
+        let after = "@dev\n- Fix flaky gkeep test :fix-flaky-gkeep"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-same-line.json",
+            textView: textView,
+            caret: 29,
+            markerLine: 2
+        )
+
+        model.acceptPickerRow(id: "suggestion:fix-flaky-gkeep", submitAfterInsert: false)
+
+        XCTAssertEqual(model.statusText, "Inserted :fix-flaky-gkeep")
+        assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: after)
+    }
+
+    func testOwnerIDReplacementIsOneNativeUndoStep() throws {
+        let draft = "@dev\n- Fix flaky gkeep test :old-id\n  - repro on CI first :"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-nested-owner-id.json",
+            textView: textView,
+            caret: 59,
+            markerLine: 3
+        )
+
+        model.acceptPickerRow(id: "suggestion:fix-flaky-gkeep", submitAfterInsert: false)
+
+        assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: nestedAccepted)
+    }
+
+    func testTypeThroughRemainderIsOneNativeUndoStep() throws {
+        let draft = "@dev\n- Fix flaky gkeep test :"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-same-line.json",
+            textView: textView,
+            caret: 29,
+            markerLine: 2
+        )
+        model.updatePickerFilter("fix Fix")
+
+        let after = "@dev\n- Fix flaky gkeep test :fix Fix"
+        XCTAssertEqual(model.plainDraft, after)
+        XCTAssertEqual(textView.string, after)
+        assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: after)
+    }
+
+    func testProjectNoteNestedIsOneNativeUndoStep() throws {
+        let draft = "Finish it @cash^goog-exit@\n- Draft the memo\n  - outline first :"
+        let after = "Finish it @cash^goog-exit@\n- Draft the memo :draft-memo\n  - outline first"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-project-note-nested.json",
+            textView: textView,
+            caret: 63,
+            markerLine: 3
+        )
+
+        model.acceptPickerRow(id: "suggestion:draft-memo", submitAfterInsert: false)
+
+        XCTAssertEqual(
+            model.statusText,
+            "Inserted :draft-memo on \u{2018}Draft the memo\u{2019}"
+        )
+        assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: after)
+    }
+
+    func testOlderBobFallbackIsOneNativeUndoStep() throws {
+        let data = Data(
+            """
+            {"ok":true,"schema_version":1,"cursor":63,"replacement":{"start":63,"end":63},
+            "context":"project_task_block_id","candidates":[],
+            "block_id":{"route":"cash_goog_exit","relative_target":"cash_goog_exit.md",
+            "marker":":","marker_range":{"start":62,"end":63},"intent":"new",
+            "body":"Draft the memo","allowed_character":"[A-Za-z0-9-]",
+            "allowed_description":"A-Z, a-z, 0-9 or '-'","suggestions":["draft-memo"]}}
+            """.utf8
+        )
+        let older = try XCTUnwrap(
+            JSONDecoder().decode(CaptureCompletionResponse.self, from: data).blockID
+        )
+        let draft = "Finish it @cash^goog-exit@\n- Draft the memo\n  - outline first :"
+        let after = draft + "draft-memo"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = CapturePanelModel()
+        wireNativeApply(model, textView: textView)
+        model.installBlockIDPickerForPreviews(
+            field: older,
+            candidates: [],
+            context: "project_task_block_id",
+            replacement: CaptureRange(start: 63, end: 63),
+            draft: draft,
+            scopeLineNumber: 3
+        )
+
+        model.acceptPickerRow(id: "suggestion:draft-memo", submitAfterInsert: false)
+
+        assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: after)
+    }
+
+    func testUnrelatedTypingHistorySurvivesTheSplice() async throws {
+        let (textView, window) = makeHostedTextView(nestedDraft)
+        defer { window.close() }
+        textView.insertText(" ", replacementRange: textView.selectedRange())
+        // Typing and the picker accept run on separate key events in
+        // production, so they land in separate undo groups. Yield a runloop
+        // turn here for the same boundary; otherwise both inserts coalesce
+        // into one group and the first undo skips the typed draft.
+        textView.breakUndoCoalescing()
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let typed = textView.string
+        XCTAssertEqual(typed, nestedDraft + " ")
+        let model = try installHostedPrompt(
+            "list-complete-nested.json",
+            textView: textView,
+            caret: typed.utf8.count,
+            markerLine: 3
+        )
+
+        model.acceptPickerRow(id: "suggestion:fix-flaky-gkeep", submitAfterInsert: false)
+
+        let after = nestedAccepted + " "
+        XCTAssertEqual(textView.string, after)
+        XCTAssertEqual(model.plainDraft, after)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, typed)
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, nestedDraft)
+        textView.undoManager?.redo()
+        textView.undoManager?.redo()
+        XCTAssertEqual(textView.string, after)
+    }
+
+    func testHostedStaleDraftIsNeverSpliced() throws {
+        let textView = makeTextView(nestedDraft)
+        let model = try installHostedPrompt(
+            "list-complete-nested.json",
+            textView: textView,
+            caret: 51,
+            markerLine: 3
+        )
+        textView.string = "@dev\n- Something else"
+        model.plainDraft = "@dev\n- Something else"
+
+        model.acceptPickerRow(id: "suggestion:fix-flaky-gkeep", submitAfterInsert: false)
+
+        XCTAssertEqual(textView.string, "@dev\n- Something else")
+        XCTAssertEqual(model.plainDraft, "@dev\n- Something else")
+        XCTAssertEqual(model.statusText, "Draft changed \u{2014} reopen the task picker")
+    }
+
+    // MARK: - Section picks
+
+    private func completion(_ name: String) throws -> CaptureCompletionResponse {
+        try JSONDecoder().decode(CaptureCompletionResponse.self, from: fixtureData(name))
+    }
+
+    private func installSectionCompletion(
+        on model: CapturePanelModel,
+        fixture: String,
+        draft: String
+    ) throws {
+        let response = try completion(fixture)
+        model.plainDraft = draft
+        model.completionResponse = response
+        model.selectedCompletionIndex = CaptureCompletionMenu.initialSelectedIndex(
+            for: response,
+            queryIsEmpty: false
+        )
+    }
+
+    func testSectionNeedIsACalmIncompleteState() throws {
+        XCTAssertEqual(
+            CapturePanelModel.pickerNeed(in: try parse("list-parse-section-incomplete.json")),
+            .section
+        )
+        XCTAssertEqual(
+            CapturePickerNeed.section.statusText,
+            "Finish the quoted section name \u{2014} pick a section"
+        )
+    }
+
+    func testSectionAcceptInsertsBobsReplacementVerbatim() throws {
+        let model = CapturePanelModel()
+        try installSectionCompletion(on: model, fixture: "list-complete-section.json", draft: "@sase#Fu")
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+
+        XCTAssertEqual(model.plainDraft, "@sase#future-work")
+        XCTAssertNil(model.completionResponse)
+    }
+
+    func testSectionAcceptOnAHeaderWithBulletsInsertsVerbatim() throws {
+        let model = CapturePanelModel()
+        let draft = "@sase#Fu\n- boom"
+        try installSectionCompletion(on: model, fixture: "list-complete-section-with-bullets.json", draft: draft)
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+
+        XCTAssertEqual(model.plainDraft, "@sase#future-work\n- boom")
+    }
+
+    func testPartialQuotedSectionAcceptCoversTheOpeningQuote() throws {
+        let model = CapturePanelModel()
+        try installSectionCompletion(
+            on: model,
+            fixture: "list-complete-section-partial-quote.json",
+            draft: "@sase#\"Fu"
+        )
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+
+        XCTAssertEqual(model.plainDraft, "@sase#future-work")
+    }
+
+    func testPartialQuotedSectionWithBulletsInsertsVerbatim() throws {
+        let model = CapturePanelModel()
+        let draft: String = "@sase#\"Fu\n- boom"
+        try installSectionCompletion(
+            on: model,
+            fixture: "list-complete-section-partial-quote-with-bullets.json",
+            draft: draft
+        )
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+
+        XCTAssertEqual(model.plainDraft, "@sase#future-work\n- boom")
+    }
 }

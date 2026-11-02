@@ -301,9 +301,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             guard let self else {
                 return false
             }
-            return Self.applySeparatorToggleInEditableTextView(
+            if Self.applySeparatorToggleInEditableTextView(
                 edit,
                 firstResponder: self.panel?.firstResponder
+            ) {
+                return true
+            }
+            // A block-ID accept runs while the picker filter has focus, so
+            // the first responder is not the draft editor. Fall back to the
+            // cached editor (or a content-view search) so the splice still
+            // lands as one native undoable edit; the picker close restores
+            // editor focus afterwards.
+            return Self.applyNativeRewriteToDraftEditor(
+                edit,
+                panel: self.panel,
+                cachedEditor: self.cachedEditor.textView
             )
         }
         model.applyTemplateInsert = { [weak self] edit in
@@ -1090,6 +1102,78 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         textView.setSelectedRange(edit.resultingSelection)
         textView.scrollRangeToVisible(edit.resultingSelection)
         return textView.string == edit.resultingDraft
+    }
+
+    /// Applies a block-ID splice to the draft editor even when the picker
+    /// filter has focus. Finds the cached editor first, then searches the
+    /// panel content for an editable text view showing the expected draft.
+    /// Returns false without changing state when no editor matches, the
+    /// editor is composing, or the draft moved under the picker.
+    static func applyNativeRewriteToDraftEditor(
+        _ edit: CaptureNativeRewriteEdit,
+        panel: NSPanel?,
+        cachedEditor: NSTextView?
+    ) -> Bool {
+        if let cached = cachedEditor,
+           cached.window === panel,
+           !cached.hasMarkedText(),
+           cached.string == edit.expectedDraft
+        {
+            let selection = cached.selectedRange()
+            guard selection.length == 0 else {
+                return false
+            }
+            cached.breakUndoCoalescing()
+            cached.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            cached.setSelectedRange(edit.resultingSelection)
+            cached.scrollRangeToVisible(edit.resultingSelection)
+            if cached.string == edit.resultingDraft {
+                panel?.makeFirstResponder(cached)
+                return true
+            }
+            return false
+        }
+        guard let content = panel?.contentView,
+              let editor = findDraftEditor(
+                  matching: edit.expectedDraft,
+                  in: content
+              )
+        else {
+            return false
+        }
+        let selection = editor.selectedRange()
+        guard selection.length == 0 else {
+            return false
+        }
+        editor.breakUndoCoalescing()
+        editor.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        editor.setSelectedRange(edit.resultingSelection)
+        editor.scrollRangeToVisible(edit.resultingSelection)
+        if editor.string == edit.resultingDraft {
+            panel?.makeFirstResponder(editor)
+            return true
+        }
+        return false
+    }
+
+    /// Depth-first search for an editable text view showing `expected`.
+    private static func findDraftEditor(matching expected: String, in view: NSView?) -> NSTextView? {
+        guard let view else {
+            return nil
+        }
+        if let textView = view as? NSTextView,
+           textView.isEditable,
+           !textView.hasMarkedText(),
+           textView.string == expected
+        {
+            return textView
+        }
+        for subview in view.subviews {
+            if let found = findDraftEditor(matching: expected, in: subview) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Backspace for an assist-generated `,<digit>` pair: with an editable

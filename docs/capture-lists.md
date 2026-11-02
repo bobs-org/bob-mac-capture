@@ -12,7 +12,9 @@ A line that holds only `@file` or `@file#section`, followed by bullets, is a lis
 
 ## Task IDs on bullets
 
-A trailing ` :` or ` ^` on a bullet, or on one of its nested lines, opens the [Project task](task-pickers.md#block-id-picker) prompt, with Bob's suggestions drawn from the owning task's text. A section list opens no prompt.
+A trailing ` :` or ` ^` on a bullet, or on one of its nested lines, opens the [Project task](task-pickers.md#block-id-picker) prompt, with Bob's suggestions drawn from the owning task's text. A section list opens no prompt. Accepting a block ID applies Bob's splice as one native undoable edit, so Undo restores the pre-accept draft; an older Bob without a splice inserts at Bob's replacement instead.
+
+A section name with spaces works as `@sase#future-work` or `@sase#"Future Work"` for `## Future Work`: picking a section inserts Bob's replacement verbatim, and an unterminated `@"…` section stays a calm incomplete state.
 
 - Bob sends `block_id.owner_line` (the owning task's line) and `block_id.splice`. Accepting writes `before + ID + after` over the splice's range, so a prompt opened on a nested line puts the ID on the owner's line, replaces an ID already there, and leaves the caret where you were typing.
 - When the owner is on another line, a header row names it (`ID for ‘Fix flaky gkeep test’`, with what accepting does), the detail strip leads with the same words, and the announcement reads `Inserted :fix-flaky-gkeep on ‘Fix flaky gkeep test’`.

@@ -7,14 +7,15 @@ BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-list-fixtures.sh
 ```
 
-Generated with `bob 0.4.0` built from bob-cli revision `35c46693134d9f5407b0ae61e246ce7ad74767ee`
-(grammar revision 6, `schema_version` 1). The script requires commit `35c46693`
+Generated with `bob 0.4.0` built from bob-cli revision `b483c93b0ec02c5589ef0535d78de10ee31f0afb`
+(grammar revision 6, `schema_version` 1). The script requires commit `b483c93b`
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-list-fixture`.
 
 Inputs use an isolated vault with `dev.md` (task `^existing` and an Ideas section),
-`cash.md`, a daily FIX Pomodoro, configured types, and
-`BOB_NOW=2026-10-30 09:15:00`. Every capture is a dry run with `--no-clip`.
+`cash.md`, `sase.md` (`## Future Work` for spaced section picks), a daily FIX
+Pomodoro, configured types, and `BOB_NOW=2026-10-30 09:15:00`. Every capture is
+a dry run with `--no-clip`.
 
 ## Raw fixtures
 
@@ -24,11 +25,16 @@ Inputs use an isolated vault with `dev.md` (task `^existing` and an Ideas sectio
 | `list-parse-nested-prompt.json` | `capture-parse` | `@dev\n- Fix flaky gkeep test\n  - repro on CI first :` |
 | `list-parse-header-only.json` | `capture-parse` | `@dev` |
 | `list-parse-section.json` | `capture-parse` | `@dev#Ideas\n- idea one\n  - detail\n- idea two` |
+| `list-parse-section-incomplete.json` | `capture-parse` | `@sase#"Fu` |
 | `list-complete-same-line.json` | `capture-complete --cursor 29` | `@dev\n- Fix flaky gkeep test :` |
 | `list-complete-nested.json` | `capture-complete --cursor 51` | `@dev\n- Fix flaky gkeep test\n  - repro on CI first :` |
 | `list-complete-nested-owner-id.json` | `capture-complete --cursor 59` | `@dev\n- Fix flaky gkeep test :old-id\n  - repro on CI first :` |
 | `list-complete-nested-caret.json` | `capture-complete --cursor 51` | `@dev\n- Fix flaky gkeep test\n  - repro on CI first ^` |
 | `list-complete-project-note-same-line.json` | `capture-complete --cursor 45` | `Finish it @cash^goog-exit@\n- Draft the memo :` |
 | `list-complete-project-note-nested.json` | `capture-complete --cursor 63` | `Finish it @cash^goog-exit@\n- Draft the memo\n  - outline first :` |
+| `list-complete-section.json` | `capture-complete --cursor 8` | `@sase#Fu` |
+| `list-complete-section-with-bullets.json` | `capture-complete --cursor 8` | `@sase#Fu\n- boom` |
+| `list-complete-section-partial-quote.json` | `capture-complete --cursor 9` | `@sase#"Fu` |
+| `list-complete-section-partial-quote-with-bullets.json` | `capture-complete --cursor 9` | `@sase#"Fu\n- boom` |
 | `list-capture-tasks.json` | `capture --dry-run --no-clip` | `@dev\n- Fix flaky gkeep test :fix-flaky-gkeep\n  - repro on CI first\n- Write release notes ^release-notes s:2\n- Ping Alice about the cutover` |
 | `list-capture-notes.json` | `capture --dry-run --no-clip` | `@dev#Ideas\n- idea one\n  - detail\n- idea two` |

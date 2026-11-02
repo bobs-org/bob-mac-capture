@@ -5,7 +5,7 @@
 #     Scripts/generate-list-fixtures.sh
 #
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
-# checkout must contain the list block-ID editor assists (commit 35c46693) with a clean
+# checkout must contain the spaced section selectors (commit b483c93b) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies it
 # reports `grammar >= 6`, then persists, from one isolated vault, config, cache, state,
 # HOME, and pinned clock:
@@ -23,7 +23,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
 cli_dir="${BOB_CLI_DIR:-}"
-prerequisite_commit="35c46693"
+prerequisite_commit="b483c93b"
 if [[ -z "$bob_bin" || ! -x "$bob_bin" ]]; then
   echo "Set BOB_BIN to a bob binary built from BOB_CLI_DIR (for example CARGO_TARGET_DIR/debug/bob)." >&2
   exit 1
@@ -103,6 +103,21 @@ type: "[[area]]"
 
 - [ ] #task Existing cash thing [created::2026-10-01] ^cash-existing
 EOF
+# sase.md hosts spaced section names: `## Future Work` for `@sase#Fu` fixtures.
+cat > "$vault/sase.md" <<'EOF'
+---
+type: "[[area]]"
+---
+# Sase
+
+## Future Work
+
+- old thing
+
+## Ideas
+
+- x
+EOF
 printf '## Pomodoros\n- [ ] (0900-0930) — FIX\n' > "$day_file"
 find "$vault" -name '*.md' -exec touch -d '2026-10-29 12:00:00 UTC' {} +
 
@@ -180,6 +195,15 @@ complete() {
   record "$1" "capture-complete --cursor $cursor" "$2"
 }
 
+# A caret in the middle of the draft, for a list header that already has
+# bullets below it: the section menu must open on the header line.
+complete_at() {
+  bob capture-complete -b "$vault" --cursor "$2" --format json -- "$3" \
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$1"
+  record "$1" "capture-complete --cursor $2" "$3"
+}
+
 capture() {
   bob capture -b "$vault" --format json --dry-run --no-clip -- "$2" > "$scratch_root/raw.json"
   persist "$scratch_root/raw.json" "$1"
@@ -197,6 +221,7 @@ parse list-parse-worked.json "$worked_after"
 parse list-parse-nested-prompt.json $'@dev\n- Fix flaky gkeep test\n  - repro on CI first :'
 parse list-parse-header-only.json '@dev'
 parse list-parse-section.json "$section_list"
+parse list-parse-section-incomplete.json '@sase#"Fu'
 
 # --- capture-complete: the block-ID prompt on a list bullet ---
 complete list-complete-same-line.json $'@dev\n- Fix flaky gkeep test :'
@@ -208,6 +233,12 @@ complete list-complete-project-note-same-line.json \
   $'Finish it @cash^goog-exit@\n- Draft the memo :'
 complete list-complete-project-note-nested.json \
   $'Finish it @cash^goog-exit@\n- Draft the memo\n  - outline first :'
+
+# --- capture-complete: section picks on a spaced heading ---
+complete list-complete-section.json '@sase#Fu'
+complete_at list-complete-section-with-bullets.json 8 $'@sase#Fu\n- boom'
+complete list-complete-section-partial-quote.json '@sase#"Fu'
+complete_at list-complete-section-partial-quote-with-bullets.json 9 $'@sase#"Fu\n- boom'
 
 # --- capture --dry-run: where each bullet lands ---
 capture list-capture-tasks.json "$worked_after"
@@ -305,6 +336,31 @@ assert tasks["captures"][0]["block_link"] == "[[dev#^fix-flaky-gkeep]]"
 notes = load("list-capture-notes.json")
 assert [item["list"]["kind"] for item in notes["captures"]] == ["notes", "notes"]
 assert all(item["list"]["section"] == "Ideas" for item in notes["captures"])
+
+incomplete = load("list-parse-section-incomplete.json")
+assert incomplete["needs"] == ["section"]
+assert incomplete["section"] is None
+
+section_menu = load("list-complete-section.json")
+assert section_menu["context"] == "section"
+assert section_menu["replacement"] == {"start": 6, "end": 8}
+assert section_menu["candidates"][0]["replacement"] == "future-work"
+assert section_menu["candidates"][0]["title"] == "Future Work"
+
+section_bullets = load("list-complete-section-with-bullets.json")
+assert section_bullets["context"] == "section"
+assert section_bullets["replacement"] == {"start": 6, "end": 8}
+assert section_bullets["candidates"][0]["replacement"] == "future-work"
+
+partial = load("list-complete-section-partial-quote.json")
+assert partial["context"] == "section"
+assert partial["replacement"] == {"start": 6, "end": 9}
+assert partial["candidates"][0]["replacement"] == "future-work"
+
+partial_bullets = load("list-complete-section-partial-quote-with-bullets.json")
+assert partial_bullets["context"] == "section"
+assert partial_bullets["replacement"] == {"start": 6, "end": 9}
+assert partial_bullets["candidates"][0]["replacement"] == "future-work"
 PY
 
 {
@@ -323,8 +379,9 @@ PY
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo
   echo "Inputs use an isolated vault with \`dev.md\` (task \`^existing\` and an Ideas section),"
-  echo "\`cash.md\`, a daily FIX Pomodoro, configured types, and"
-  echo "\`BOB_NOW=2026-10-30 09:15:00\`. Every capture is a dry run with \`--no-clip\`."
+  echo "\`cash.md\`, \`sase.md\` (\`## Future Work\` for spaced section picks), a daily FIX"
+  echo "Pomodoro, configured types, and \`BOB_NOW=2026-10-30 09:15:00\`. Every capture is"
+  echo "a dry run with \`--no-clip\`."
   echo
   echo "## Raw fixtures"
   echo
