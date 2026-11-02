@@ -786,7 +786,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertNotNil(presentation.warningRow)
     }
 
-    // MARK: - Keep source links
+    // MARK: - Icon links
 
     private let keepDentist =
         "Call dentist [💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")"
@@ -912,12 +912,15 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         )
     }
 
-    func testOneRowProjectsKeepLinksBeforeTruncation() {
-        let presentation = present(makeSnapshot(entries: [
-            makeEntry(line: 20, name: "CALLS", role: .later, items: [
-                makeItem(ledgerLine: 21, blockID: "long", text: keepLongTitle),
-            ]),
-        ]))
+    func testOneRowProjectsIconLinksBeforeTruncation() {
+        let presentation = present(
+            makeSnapshot(entries: [
+                makeEntry(
+                    line: 20, name: "CALLS", role: .later,
+                    items: [
+                        makeItem(ledgerLine: 21, blockID: "long", text: keepLongTitle)
+                    ])
+            ]))
         let rawJoined = "CALLS · \(keepLongTitle)"
         XCTAssertGreaterThan(rawJoined.count, CaptureAgendaLayoutMetrics.maxOneRowLength)
         let oneRow = presentation.groups[0].oneRowRow
@@ -926,6 +929,27 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertFalse(oneRow.text.contains("https://"))
         XCTAssertFalse(oneRow.text.contains("Open in Google Keep"))
         XCTAssertEqual(oneRow.key.text, oneRow.text)
+    }
+
+    func testOneRowProjectsCalendarIconBeforeTruncation() {
+        let longCalendarTitle =
+            "Call dentist [📅](https://example.test/event?eid=example"
+            + "&details="
+            + String(repeating: "x", count: 100) + " \"Open in Google Calendar\")"
+        let presentation = present(
+            makeSnapshot(entries: [
+                makeEntry(
+                    line: 20, name: "LATER", role: .later,
+                    items: [
+                        makeItem(ledgerLine: 21, blockID: "calendar", text: longCalendarTitle)
+                    ])
+            ]))
+        let rawJoined = "LATER · \(longCalendarTitle)"
+        XCTAssertGreaterThan(rawJoined.count, CaptureAgendaLayoutMetrics.maxOneRowLength)
+        let oneRow = presentation.groups[0].oneRowRow
+        XCTAssertEqual(oneRow.text, "LATER · Call dentist 📅")
+        XCTAssertLessThanOrEqual(oneRow.text.count, CaptureAgendaLayoutMetrics.maxOneRowLength)
+        XCTAssertFalse(oneRow.text.contains("https://"))
     }
 
     func testLightbulbFixtureProjectsKeepLinks() throws {
@@ -942,5 +966,52 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             "Task 1, Todo, Call dentist 💡"
         )
         XCTAssertFalse(presentation.groups[2].oneRowRow.text.contains("https://"))
+    }
+
+    func testCalendarFixtureRowsProjectBadgesAndPreserveMetadata() throws {
+        let presentation = present(try fixture("agenda-events.json"))
+        let tasks = presentation.groups.flatMap(\.tasks)
+        let standup = try XCTUnwrap(tasks.first { $0.title.contains("Standup") })
+        let lunch = try XCTUnwrap(tasks.first { $0.title.contains("Lunch with Kelly") })
+
+        let standupRow = try XCTUnwrap(standup.fullRows.first)
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: standupRow.text).text,
+            "Standup 📅 📹 📍"
+        )
+        XCTAssertEqual(
+            standupRow.accessibilityLabel,
+            "Task 1, Next, **0930-1000** Standup 📅 📹 📍"
+        )
+        XCTAssertEqual(standupRow.numberBadge, 1)
+        XCTAssertEqual(standupRow.statusGlyph, "*")
+
+        let lunchRow = try XCTUnwrap(lunch.fullRows.first)
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: lunchRow.text).text,
+            "Lunch with Kelly 📅 #untracked"
+        )
+        XCTAssertEqual(
+            lunchRow.accessibilityLabel,
+            "Task 2, Todo, **1200-1300** Lunch with Kelly 📅 #untracked"
+        )
+        XCTAssertEqual(lunchRow.numberBadge, 2)
+        XCTAssertEqual(lunchRow.statusGlyph, " ")
+
+        let standupDisplay = CaptureAgendaInlineText(parsing: standupRow.text).text
+        let lunchDisplay = CaptureAgendaInlineText(parsing: lunchRow.text).text
+        let standupAccessibility = try XCTUnwrap(standupRow.accessibilityLabel)
+        let lunchAccessibility = try XCTUnwrap(lunchRow.accessibilityLabel)
+        for text in [
+            standupDisplay,
+            lunchDisplay,
+            standupAccessibility,
+            lunchAccessibility,
+        ] {
+            XCTAssertFalse(text.contains("]("))
+            XCTAssertFalse(text.contains("https://"))
+            XCTAssertFalse(text.contains("Open in Google Calendar"))
+            XCTAssertFalse(text.contains("Join call"))
+        }
     }
 }

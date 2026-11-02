@@ -25,7 +25,8 @@ public struct CaptureAgendaInlineSegment: Equatable, Sendable {
 }
 
 /// Parses agenda display text for inline styling: code spans, wikilink
-/// display text, Keep `[💡](url)` source links, `**strong**`, `*`/`_`
+/// display text, icon links such as Keep `[💡](url)` and Calendar
+/// `[📅](url)`/`[📹](url)`/`[📍](url)`, `**strong**`, `*`/`_`
 /// emphasis, dimmed `[key:: value]` fields, and `#tags` become styled
 /// segments with their delimiters dropped or kept per kind, and
 /// everything else stays literal plain text. A trailing `^block-id` is
@@ -72,7 +73,7 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
             } else if chars[index] == "_" {
                 index = Self.parseUnderscoreEmphasis(chars: chars, from: index, append: append)
             } else if chars[index] == "[" {
-                index = Self.parseKeepSourceLinkOrField(
+                index = Self.parseIconLinkOrField(
                     chars: chars,
                     from: index,
                     append: append
@@ -88,11 +89,11 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
         self.segments = segments
     }
 
-    /// Replaces each complete Keep source link with a bare `💡` and
+    /// Replaces each complete icon link with its bare icon and
     /// leaves every other character unchanged, including code spans
     /// and wikilink aliases, which stay opaque. Used for accessibility
     /// labels and one-row summaries so truncation cannot cut a URL.
-    public static func projectingKeepSourceLinks(_ source: String) -> String {
+    public static func projectingIconLinks(_ source: String) -> String {
         let chars = Array(source)
         var text = ""
         var index = 0
@@ -122,9 +123,9 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
                     text += "[["
                     index += 2
                 }
-            } else if let end = keepSourceLinkEnd(chars: chars, from: index) {
-                text += "💡"
-                index = end
+            } else if let iconLink = iconLinkEnd(chars: chars, from: index) {
+                text += iconLink.icon
+                index = iconLink.end
             } else {
                 text.append(chars[index])
                 index += 1
@@ -302,31 +303,47 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
         return index + 1
     }
 
-    /// A complete Keep source link `[💡](destination)` or
-    /// `[💡](destination "title")` becomes one link-tinted `💡`. The
-    /// destination is the nonempty percent-encoded form bob emits
-    /// (no spaces, parens, quotes, or angle brackets). Tooltip and
-    /// closing `)` are consumed together. Malformed or other-label
-    /// Markdown links remain verbatim via `parseField`.
-    static func parseKeepSourceLinkOrField(
+    /// A complete icon link `[📅](destination)` or
+    /// `[📅](destination "title")` becomes one link-tinted icon. The
+    /// destination is nonempty and stops at Markdown delimiters or
+    /// whitespace. Tooltip and closing `)` are consumed together.
+    /// Malformed or text-labeled links remain verbatim via `parseField`.
+    static func parseIconLinkOrField(
         chars: [Character],
         from index: Int,
         append: (String, CaptureAgendaInlineSegment.Kind) -> Void
     ) -> Int {
-        if let end = keepSourceLinkEnd(chars: chars, from: index) {
-            append("💡", .link)
-            return end
+        if let iconLink = iconLinkEnd(chars: chars, from: index) {
+            append(iconLink.icon, .link)
+            return iconLink.end
         }
         return parseField(chars: chars, from: index, append: append)
     }
 
-    /// Index after a complete Keep source link starting at `index`, or
-    /// `nil` when the span is missing, empty, or unclosed.
-    static func keepSourceLinkEnd(chars: [Character], from index: Int) -> Int? {
-        guard startsWith(chars, index, "[💡](") else {
+    /// A grapheme is an icon when Unicode marks it emoji-presentation,
+    /// or it is an emoji scalar above U+238C (including variation
+    /// selectors and keycaps). This excludes ASCII symbols and text
+    /// presentation emoji such as ©, ®, and ™.
+    static func isIconLabel(_ char: Character) -> Bool {
+        let scalars = Array(char.unicodeScalars)
+        guard let first = scalars.first else {
+            return false
+        }
+        return first.properties.isEmojiPresentation
+            || (first.properties.isEmoji && (scalars.count > 1 || first.value > 0x238C))
+    }
+
+    /// Returns the icon and index after a complete icon link, or `nil`
+    /// when the label, destination, title, or closing delimiter is invalid.
+    static func iconLinkEnd(chars: [Character], from index: Int) -> (icon: String, end: Int)? {
+        guard index + 3 < chars.count, chars[index] == "[",
+            isIconLabel(chars[index + 1]), chars[index + 2] == "]",
+            chars[index + 3] == "("
+        else {
             return nil
         }
-        var cursor = index + Array("[💡](").count
+        let icon = String(chars[index + 1])
+        var cursor = index + 4
         let destStart = cursor
         while cursor < chars.count {
             let char = chars[cursor]
@@ -341,7 +358,7 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
             return nil
         }
         if cursor < chars.count, chars[cursor] == ")" {
-            return cursor + 1
+            return (icon, cursor + 1)
         }
         guard cursor < chars.count, chars[cursor] == " " else {
             return nil
@@ -361,7 +378,7 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
         guard cursor < chars.count, chars[cursor] == ")" else {
             return nil
         }
-        return cursor + 1
+        return (icon, cursor + 1)
     }
 
     /// `[key:: value]` fields: the whole bracketed span (brackets kept)

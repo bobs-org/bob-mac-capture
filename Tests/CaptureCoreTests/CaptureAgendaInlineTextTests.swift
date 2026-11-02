@@ -157,7 +157,7 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         assertTilesExactly(parsed)
     }
 
-    // MARK: - Keep source links
+    // MARK: - Icon links
 
     private let keepExample =
         "[💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")"
@@ -165,7 +165,7 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
     private let keepEncoded =
         "[💡](https://example.test/a%28%22b%5Cc%29?q=x#frag \"Open in Google Keep\")"
 
-    func testKeepSourceLinkRendersAsLightbulb() {
+    func testIconLinksRenderAsTheirLabel() {
         let cases: [(source: String, text: String, kinds: [CaptureAgendaInlineSegment.Kind])] = [
             (
                 "Call dentist \(keepExample)",
@@ -193,6 +193,34 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
                 [.plain, .link]
             ),
             (
+                "Lincoln Park w/ Abby [📅](https://www.google.com/calendar/event?eid=example "
+                    + "\"Open in Google Calendar\")",
+                "Lincoln Park w/ Abby 📅",
+                [.plain, .link]
+            ),
+            (
+                "**0930-1000** Standup [📅](https://example.test/cal?eid=example "
+                    + "\"Open in Google Calendar\") [📹](https://example.test/meet "
+                    + "\"Join call\") [📍](https://example.test/maps "
+                    + "\"Office\")",
+                "0930-1000 Standup 📅 📹 📍",
+                [.strong, .plain, .link, .plain, .link, .plain, .link]
+            ),
+            (
+                "Lunch with Kelly [📅](https://example.test/cal?eid=example "
+                    + "\"Open in Google Calendar\") #untracked",
+                "Lunch with Kelly 📅 #untracked",
+                [.plain, .link, .plain, .tag]
+            ),
+            (
+                "[📍](https://www.google.com/maps/search/?api=1&query=Lincoln%20Park "
+                    + "\"Lincoln Park (north) &quot;gate&quot;\")",
+                "📍",
+                [.link]
+            ),
+            ("[🗓️](https://example.test/cal)", "🗓️", [.link]),
+            ("[🗓](https://example.test/cal)", "🗓", [.link]),
+            (
                 "Fix `deep` bug \(keepExample) [[ref/chat/ux|UX chat]] [due:: 2026-08-28] #gtd",
                 "Fix deep bug 💡 UX chat [due:: 2026-08-28] #gtd",
                 [.plain, .code, .plain, .link, .plain, .link, .plain, .field, .plain, .tag]
@@ -211,6 +239,15 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
             "[💡](",
             "[💡]()",
             "[💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\"",
+            "[📅](",
+            "[📅]()",
+            "[📅](https://example.test/cal \"Open in Google Calendar\"",
+            "[x](https://example.com)",
+            "[1](https://example.com)",
+            "[#](https://example.com)",
+            "[©](https://example.com)",
+            "[📅 Calendar](https://example.com)",
+            "[📅📹](https://example.com)",
             "[docs](https://example.com)",
             "[note](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")",
             "see [the docs](https://example.com/path)",
@@ -226,23 +263,28 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         }
     }
 
-    func testKeepSourceLinkInsideCodeSpanIsPreserved() {
-        let source = "`\(keepExample)`"
+    func testIconLinkInsideCodeSpanIsPreserved() {
+        let source = "`[📅](https://example.test/e?eid=example \"Open in Google Calendar\")`"
         let parsed = CaptureAgendaInlineText(parsing: source)
-        XCTAssertEqual(parsed.text, keepExample)
+        XCTAssertEqual(
+            parsed.text,
+            "[📅](https://example.test/e?eid=example \"Open in Google Calendar\")"
+        )
         XCTAssertEqual(kindList(parsed), [.code])
         assertTilesExactly(parsed)
         XCTAssertEqual(
-            CaptureAgendaInlineText.projectingKeepSourceLinks(source),
+            CaptureAgendaInlineText.projectingIconLinks(source),
             source
         )
     }
 
-    func testProjectingKeepSourceLinksLeavesUnrelatedText() {
-        let source = "Call dentist \(keepExample) and [[tasks|tasks file]]"
+    func testProjectingIconLinksLeavesUnrelatedText() {
+        let source =
+            "Standup [📅](https://example.test/e?eid=example) "
+            + "[📹](https://example.test/m) and [[tasks|tasks file]] [docs](https://example.com)"
         XCTAssertEqual(
-            CaptureAgendaInlineText.projectingKeepSourceLinks(source),
-            "Call dentist 💡 and [[tasks|tasks file]]"
+            CaptureAgendaInlineText.projectingIconLinks(source),
+            "Standup 📅 📹 and [[tasks|tasks file]] [docs](https://example.com)"
         )
     }
 
@@ -250,7 +292,7 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         // TaskDisplayText renders every Markdown link by its label —
         // including the titled form Keep captures are stored in — so
         // picker rows read "Call dentist 💡" instead of a raw URL. (The
-        // agenda parser above keeps its own Keep-only contract.)
+        // agenda parser keeps its icon-only contract.)
         let source = "Call dentist \(keepExample)"
         let parsed = TaskDisplayText(parsing: source)
         XCTAssertEqual(parsed.text, "Call dentist 💡")

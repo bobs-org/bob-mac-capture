@@ -64,6 +64,12 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 expanded: []
             )
             try assertConsistent(
+                fixture: "agenda-events.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            try assertConsistent(
                 fixture: "agenda-homes.json",
                 contentWidth: width,
                 budget: 2_000,

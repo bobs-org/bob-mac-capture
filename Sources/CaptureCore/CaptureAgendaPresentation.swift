@@ -673,7 +673,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 depth: note.depth,
                 lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                 statusGlyph: note.statusSymbol,
-                accessibilityLabel: spokenKeepText(note.text)
+                accessibilityLabel: spokenIconText(note.text)
             )
         }
         let chip: String? = entry.notes.isEmpty ? nil : "\(entry.notes.count) notes"
@@ -873,7 +873,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         themeRefs: [CapturePomodoroThemeRef] = [],
         spoken: String
     ) -> CaptureAgendaRow {
-        let titles = tasks.map { spokenKeepText($0.title) }.joined(separator: " · ")
+        let titles = tasks.map { spokenIconText($0.title) }.joined(separator: " · ")
         let joined = titles.isEmpty ? name : "\(name) · \(titles)"
         let text = truncate(joined, to: CaptureAgendaLayoutMetrics.maxOneRowLength)
         let chip = tasks.count == 1 ? "1 task" : "\(tasks.count) tasks"
@@ -904,7 +904,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     ) -> CaptureAgendaTask {
         let id = CaptureAgendaUnitID.task(ledgerLine: item.ledgerLine)
         let title = item.text ?? item.blockLink
-        let spokenTitle = spokenKeepText(title)
+        let spokenTitle = spokenIconText(title)
         let status = item.statusName ?? "Unknown"
         let baseLabel: String
         if let index = item.index {
@@ -1015,7 +1015,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 depth: max(1, note.depth),
                 lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                 statusGlyph: note.statusSymbol,
-                accessibilityLabel: spokenKeepText(note.text)
+                accessibilityLabel: spokenIconText(note.text)
             )
         }
         let childRows = childRowsForLines(item.lines)
@@ -1104,7 +1104,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     text: line.text,
                     depth: line.depth,
                     lineLimit: 1,
-                    accessibilityLabel: spokenKeepText(line.text)
+                    accessibilityLabel: spokenIconText(line.text)
                 )
             case (_, .work), (_, .schedule), (_, .rotten):
                 return CaptureAgendaRow(
@@ -1113,7 +1113,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     depth: line.depth,
                     lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                     statusGlyph: line.statusSymbol,
-                    accessibilityLabel: spokenKeepText(line.text)
+                    accessibilityLabel: spokenIconText(line.text)
                 )
             case (_, _):
                 return CaptureAgendaRow(
@@ -1122,7 +1122,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     depth: line.depth,
                     lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                     statusGlyph: line.statusSymbol,
-                    accessibilityLabel: spokenKeepText(line.text)
+                    accessibilityLabel: spokenIconText(line.text)
                 )
             }
         }
@@ -1219,11 +1219,11 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         return String(text.prefix(length - 1)) + "…"
     }
 
-    /// Narrow Keep-link projection for spoken labels and one-row
-    /// summaries. Ordinary row source text stays raw so the inline
-    /// renderer still sees a complete `[💡](url)` span.
-    static func spokenKeepText(_ source: String) -> String {
-        CaptureAgendaInlineText.projectingKeepSourceLinks(source)
+    /// Icon-link projection for spoken labels and one-row summaries.
+    /// Ordinary row source text stays raw so the inline renderer still
+    /// sees each complete Markdown link span.
+    static func spokenIconText(_ source: String) -> String {
+        CaptureAgendaInlineText.projectingIconLinks(source)
     }
 
     private static var maxWarningLength: Int {
