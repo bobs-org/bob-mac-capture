@@ -192,7 +192,9 @@ A Pomodoro close instead shows its own card whenever
   the remaining `work_log` entries in secondary text capped at two —
   then a notes row (`1 note stays`), a next-session footer row, and an
   empty state (`No Task Links — the session simply closes`) when there are no
-  task rows. Numbered rows start with a fixed-width badge — a filled
+  task rows. When Bob reports the created continuation was placed last
+  (`next_pomodoro.placed_last`), the footer reads `Next: MEET · new ·
+  placed last · carries 1 link`. Numbered rows start with a fixed-width badge — a filled
   `N.circle.fill` when the row is listed, an open `N.circle` otherwise (monospaced
   digits in a capsule past 50), tinted orange for in progress, green for
   complete, and secondary for deferred, with unlisted rows dimmed so chosen rows

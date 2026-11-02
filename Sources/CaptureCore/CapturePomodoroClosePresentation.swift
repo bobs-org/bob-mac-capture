@@ -205,7 +205,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     public let notesText: String?
     /// `"Next: CAPTURE · new · carries 2 links"`, or
     /// `"Next: SASE · line 14"` for a pre-existing entry; nil when Bob
-    /// reports no next session.
+    /// reports no next session. A created MEET continuation Bob placed
+    /// last reads `"Next: MEET · new · placed last · carries 1 link"`.
     public let nextText: String?
     /// `"No Task Links — the session simply closes"`, shown when `taskRows`
     /// is empty.
@@ -348,8 +349,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             let nextName = next.name ?? summary.pomodoroName ?? "session"
             if next.created {
                 let carriedCount = summary.carried.count
+                let placedLastText = next.placedLast ? " · placed last" : ""
                 nextText =
-                    "Next: \(nextName) · new · carries \(carriedCount) link\(carriedCount == 1 ? "" : "s")"
+                    "Next: \(nextName) · new\(placedLastText) · carries \(carriedCount) link\(carriedCount == 1 ? "" : "s")"
             } else {
                 nextText = "Next: \(nextName) · line \(next.line)"
             }

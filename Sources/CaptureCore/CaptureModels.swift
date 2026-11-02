@@ -2265,6 +2265,10 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
     public let name: String?
     public let timeRange: String?
     public let created: Bool
+    /// True when Bob moved the created MEET continuation after the last
+    /// open Pomodoro below the closed entry. Older Bob omits this
+    /// additive field.
+    public let placedLast: Bool
     /// Type components Bob removed from the carried session name. Older Bob
     /// omits this additive field.
     public let shed: [CapturePomodoroThemeRef]
@@ -2274,12 +2278,14 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
         name: String? = nil,
         timeRange: String? = nil,
         created: Bool = false,
+        placedLast: Bool = false,
         shed: [CapturePomodoroThemeRef] = []
     ) {
         self.line = line
         self.name = name
         self.timeRange = timeRange
         self.created = created
+        self.placedLast = placedLast
         self.shed = shed
     }
 
@@ -2289,6 +2295,8 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
         created = try container.decodeIfPresent(Bool.self, forKey: .created) ?? false
+        placedLast =
+            try container.decodeIfPresent(Bool.self, forKey: .placedLast) ?? false
         shed =
             (try? container.decodeIfPresent(
                 [CapturePomodoroThemeRef].self,
@@ -2301,6 +2309,7 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
         case name
         case timeRange = "time_range"
         case created
+        case placedLast = "placed_last"
         case shed
     }
 }

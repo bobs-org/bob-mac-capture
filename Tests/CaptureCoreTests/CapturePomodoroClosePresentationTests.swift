@@ -389,6 +389,42 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.nextText, "Next: SASE · line 14")
     }
 
+    func testPlacedLastMeetContinuationNamesLast() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "x",
+            pomodoroLine: 7,
+            pomodoroName: "MEET",
+            carried: [PomodoroCloseCarriedItem(kind: "deferred", text: "[[#^lincoln]]")],
+            nextPomodoro: PomodoroCloseNext(
+                line: 12,
+                name: "MEET",
+                created: true,
+                placedLast: true
+            )
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        XCTAssertEqual(
+            presentation.nextText,
+            "Next: MEET · new · placed last · carries 1 link"
+        )
+    }
+
+    func testCreatedContinuationWithoutPlacedLastOmitsTheCaption() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "x",
+            pomodoroLine: 2,
+            pomodoroName: "MEET",
+            carried: [PomodoroCloseCarriedItem(kind: "deferred", text: "[[#^lincoln]]")],
+            nextPomodoro: PomodoroCloseNext(line: 3, name: "MEET", created: true)
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        XCTAssertEqual(presentation.nextText, "Next: MEET · new · carries 1 link")
+    }
+
     func testParseSpecDecodesRawCloseToken() throws {
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
