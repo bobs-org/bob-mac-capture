@@ -7,8 +7,8 @@ BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-drawer-fixtures.sh
 ```
 
-Generated with `bob 0.4.0` built from bob-cli revision `c7afa6d0a11609a23c4b6d6e1341a967f01e4bc3`
-(grammar revision 3, `schema_version` 1). The script requires commit `c7afa6d0`
+Generated with `bob 0.4.0` built from bob-cli revision `971d864f6c8ca91ed78f01aca41c0f4d93643efa`
+(grammar revision 4, `schema_version` 1). The script requires commit `971d864f`
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-drawer-fixture`.
 
@@ -36,6 +36,10 @@ Inputs use an isolated vault with task `^bar`, task `^plain`, a project-note
 | `drawer-capture-new.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#perf-budget` |
 | `drawer-capture-plain-child.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar` |
 | `drawer-capture-new-retype.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#perf-budget #fix` |
+| `drawer-capture-multi-note.json` | `capture --dry-run --no-clip` | `@foo+bar\n- Ping Alice about the cutover\n- REQUIREMENTS\n  - Postgres 17 minimum\n- RISKS\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms` |
+| `drawer-bullet-complete-existing-empty.json` | `capture-complete --cursor 12` | `@foo+bar\n- #` |
+| `drawer-bullet-complete-new-task-empty.json` | `capture-complete --cursor 12` | `New task\n- #` |
+| `drawer-bullet-complete-existing-typed.json` | `capture-complete --cursor 15` | `@foo+bar\n- #req` |
 | `drawer-parse-project.json` | `capture-parse` | `Review release criteria @project+prj#requirements` |
 | `drawer-complete-project-empty.json` | `capture-complete --cursor 37` | `Review release criteria @project+prj#` |
 | `drawer-complete-project-typed.json` | `capture-complete --cursor 40` | `Review release criteria @project+prj#req` |

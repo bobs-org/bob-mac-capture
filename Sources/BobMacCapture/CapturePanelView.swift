@@ -4859,6 +4859,7 @@ struct PreviewPane: View {
         .lineLimit(1)
     }
 
+    @ViewBuilder
     private func subBulletHeader(
         _ subBullet: CaptureSubBulletPresentation,
         success: CaptureCommandSuccess,
@@ -4869,7 +4870,7 @@ struct PreviewPane: View {
         // A covered sub-bullet item names what it did; the task card below
         // names where it landed. Wire words (`placement`, `kind`) and the
         // route label stay off: the caption names the note.
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        let header = HStack(alignment: .firstTextBaseline, spacing: 8) {
             if total > 1 {
                 Text("\(index + 1)")
                     .font(.caption)
@@ -4882,7 +4883,11 @@ struct PreviewPane: View {
                 .fontWeight(.semibold)
             Text(subBullet.headerDetail)
                 .foregroundStyle(.secondary)
-            if subBullet.createsDrawer {
+            if subBullet.isMultiNote {
+                ForEach(subBullet.drawerCapsules) { drawer in
+                    subBulletDrawerCapsule(drawer)
+                }
+            } else if subBullet.createsDrawer {
                 Text(CaptureSubBulletPresentation.newDrawerBadge)
                     .font(.caption2)
                     .padding(.horizontal, 5)
@@ -4907,6 +4912,37 @@ struct PreviewPane: View {
             }
         }
         .lineLimit(1)
+
+        if subBullet.isMultiNote {
+            header
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(subBullet.accessibilityText)
+        } else {
+            header
+        }
+    }
+
+    private func subBulletDrawerCapsule(
+        _ drawer: CaptureSubBulletPresentation.DrawerCapsule
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text(drawer.title)
+            if drawer.creates {
+                Text(CaptureSubBulletPresentation.newDrawerBadge)
+                    .font(.caption2)
+                    .foregroundStyle(CaptureEditorPalette.color(for: .priority))
+            }
+        }
+        .font(.caption2)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1)
+        .overlay(
+            Capsule().strokeBorder(
+                CaptureEditorPalette.color(for: .section).opacity(0.7), lineWidth: 0.7
+            )
+        )
+        .foregroundStyle(CaptureEditorPalette.color(for: .section))
+        .accessibilityHidden(true)
     }
 
     private func taskDependencyHeader(

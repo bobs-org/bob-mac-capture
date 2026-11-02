@@ -3843,6 +3843,13 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// when the commit adds the drawer's header line. Null for plain
     /// `@route+id` children and absent from older Bob.
     public let drawer: CaptureDrawerSummary?
+    /// Additive multi-note details on a note-less `@route+id` item. Older Bob
+    /// and single-note captures omit the field; a present empty array remains
+    /// distinguishable from an older response.
+    public let notes: [CaptureNoteSummary]?
+    /// Drawers touched by a multi-note item, in first-touch order. Older Bob
+    /// and ordinary single-note captures omit this field.
+    public let drawers: [CaptureDrawerSummary]?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
     // Additive: only present when `kind == "task_toggle"`. Bob always populates every
@@ -4000,6 +4007,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         parentLine: Int? = nil,
         parentText: String? = nil,
         drawer: CaptureDrawerSummary? = nil,
+        notes: [CaptureNoteSummary]? = nil,
+        drawers: [CaptureDrawerSummary]? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
         toggleDirection: String? = nil,
@@ -4079,6 +4088,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.parentLine = parentLine
         self.parentText = parentText
         self.drawer = drawer
+        self.notes = notes
+        self.drawers = drawers
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
         self.toggleDirection = toggleDirection
@@ -4162,6 +4173,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         parentLine = try container.decodeIfPresent(Int.self, forKey: .parentLine)
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
         drawer = (try? container.decodeIfPresent(CaptureDrawerSummary.self, forKey: .drawer)) ?? nil
+        notes = (try? container.decodeIfPresent([CaptureNoteSummary].self, forKey: .notes)) ?? nil
+        drawers = (try? container.decodeIfPresent([CaptureDrawerSummary].self, forKey: .drawers)) ?? nil
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
         toggleDirection = try container.decodeIfPresent(String.self, forKey: .toggleDirection)
@@ -4363,6 +4376,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case parentLine = "parent_line"
         case parentText = "parent_text"
         case drawer
+        case notes
+        case drawers
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
         case toggleDirection = "toggle_direction"
@@ -7055,6 +7070,43 @@ public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
         case title
         case key
         case created
+    }
+}
+
+/// One authored note from the additive multi-note capture output. The drawer
+/// summary is nil for a plain note and populated when the note was filed into a
+/// drawer.
+public struct CaptureNoteSummary: Codable, Equatable, Sendable {
+    public let text: String
+    public let taskLine: String
+    public let subBullets: [String]
+    public let drawer: CaptureDrawerSummary?
+
+    public init(
+        text: String,
+        taskLine: String = "",
+        subBullets: [String] = [],
+        drawer: CaptureDrawerSummary? = nil
+    ) {
+        self.text = text
+        self.taskLine = taskLine
+        self.subBullets = subBullets
+        self.drawer = drawer
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        taskLine = try container.decodeIfPresent(String.self, forKey: .taskLine) ?? ""
+        subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
+        drawer = (try? container.decodeIfPresent(CaptureDrawerSummary.self, forKey: .drawer)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case taskLine = "task_line"
+        case subBullets = "sub_bullets"
+        case drawer
     }
 }
 

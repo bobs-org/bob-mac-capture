@@ -68,9 +68,9 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
          "global_route", "task_toggle_route",
          "active_task_route":
         return .route
-    case "section", "drawer", "pomodoro_name", "task_toggle_pomodoro_name":
-        // A `drawer` span (`#NAME` glued after `@route+id`) takes the section
-        // color family: it names a place inside the destination.
+    case "section", "drawer", "drawer_bullet", "pomodoro_name", "task_toggle_pomodoro_name":
+        // Drawer names, including first-level bullet titles, take the section
+        // color family because they name a place inside the destination.
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
          "task_toggle_block_id", "active_task_block_id",

@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Generate drawer (`@route+id#drawer`) fixtures from a real Bob.
+# Generate drawer and first-level bullet drawer fixtures from a real Bob.
 #
 #   BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
 #     Scripts/generate-drawer-fixtures.sh
 #
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
-# checkout must contain the landed grammar-3 drawer work (commit c7afa6d0) with a clean
+# checkout must contain the grammar-4 capture drawer work (commit 971d864f) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies it
-# reports `grammar >= 3`, then persists, from one isolated vault, config, cache, state,
+# reports `grammar >= 4`, then persists, from one isolated vault, config, cache, state,
 # HOME, and pinned clock:
 #
-#   drawer-parse-*.json      bob capture-parse
-#   drawer-complete-*.json   bob capture-complete (the `drawer` context)
-#   drawer-capture-*.json    bob capture --dry-run
+#   drawer-parse-*.json           bob capture-parse
+#   drawer-complete-*.json        bob capture-complete (the `drawer` context)
+#   drawer-bullet-complete-*.json bob capture-complete (bullet drawer context)
+#   drawer-capture-*.json         bob capture --dry-run
 #   drawer-list-*.json       bob capture-drawers (task drawers plus catalog recents)
 #
 # Every capture is a dry run, so Bob writes nothing, and the scratch directory is removed
@@ -24,7 +25,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
 cli_dir="${BOB_CLI_DIR:-}"
-prerequisite_commit="c7afa6d0"
+prerequisite_commit="971d864f"
 if [[ -z "$bob_bin" || ! -x "$bob_bin" ]]; then
   echo "Set BOB_BIN to a bob binary built from BOB_CLI_DIR (for example CARGO_TARGET_DIR/debug/bob)." >&2
   exit 1
@@ -34,7 +35,7 @@ if [[ -z "$cli_dir" ]] || ! git -C "$cli_dir" rev-parse --git-dir >/dev/null 2>&
   exit 1
 fi
 if ! git -C "$cli_dir" merge-base --is-ancestor "$prerequisite_commit" HEAD; then
-  echo "BOB_CLI_DIR does not contain the grammar-3 prerequisite $prerequisite_commit." >&2
+  echo "BOB_CLI_DIR does not contain the grammar-4 prerequisite $prerequisite_commit." >&2
   exit 1
 fi
 if [[ -n "$(git -C "$cli_dir" status --porcelain)" ]]; then
@@ -159,8 +160,8 @@ import pathlib
 import sys
 
 grammar = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar")
-if not isinstance(grammar, int) or grammar < 3:
-    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 3")
+if not isinstance(grammar, int) or grammar < 4:
+    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 4")
 PY
 
 manifest="$scratch_root/manifest.md"
@@ -243,6 +244,14 @@ capture drawer-capture-plain-child.json 'Postgres 17 minimum @foo+bar'
 # --- capture --dry-run: retype an existing task beside a new drawer ---
 capture drawer-capture-new-retype.json 'Postgres 17 minimum @foo+bar#perf-budget #fix'
 
+# --- Several notes on one existing task: new drawer and plain-note summaries ---
+capture drawer-capture-multi-note.json $'@foo+bar\n- Ping Alice about the cutover\n- REQUIREMENTS\n  - Postgres 17 minimum\n- RISKS\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms'
+
+# --- Bullet drawer menus: existing task, new task, and a typed query ---
+complete drawer-bullet-complete-existing-empty.json $'@foo+bar\n- #'
+complete drawer-bullet-complete-new-task-empty.json $'New task\n- #'
+complete drawer-bullet-complete-existing-typed.json $'@foo+bar\n- #req'
+
 # --- ^prj drawers: project H2s and their creation behavior ---
 parse drawer-parse-project.json 'Review release criteria @project+prj#requirements'
 complete drawer-complete-project-empty.json 'Review release criteria @project+prj#'
@@ -275,7 +284,7 @@ parsed = load("drawer-parse-empty.json")
 assert parsed["needs"] == ["drawer"]
 new_span = next(span for span in load("drawer-parse-new.json")["spans"] if span["kind"] == "drawer")
 assert new_span["title"] == "PERF BUDGET" and new_span["key"] == "PERF BUDGET"
-assert parsed["grammar"] >= 3
+assert parsed["grammar"] >= 4
 
 empty = load("drawer-complete-empty.json")
 assert empty["context"] == "drawer" and empty["target"]["block_id"] == "bar"
@@ -306,6 +315,23 @@ assert project_menu["candidates"][0]["title"] == "Requirements"
 assert load("drawer-capture-project-existing.json")["drawer"]["title"] == "Requirements"
 assert load("drawer-capture-project-new.json")["drawer"]["created"] is True
 assert load("drawer-list-project.json")["count"] == 2
+
+multi = load("drawer-capture-multi-note.json")
+assert len(multi["notes"]) == 4
+assert [drawer["title"] for drawer in multi["drawers"]] == ["REQUIREMENTS", "RISKS"]
+assert [drawer["created"] for drawer in multi["drawers"]] == [False, True]
+
+bullet_existing = load("drawer-bullet-complete-existing-empty.json")
+assert bullet_existing["context"] == "drawer"
+assert bullet_existing["target"]["block_id"] == "bar"
+assert bullet_existing["initial_selection"] == "none"
+assert any("\n  - " in row["replacement"] for row in bullet_existing["candidates"])
+bullet_new = load("drawer-bullet-complete-new-task-empty.json")
+assert bullet_new["context"] == "drawer"
+assert bullet_new["target"]["block_id"] is None
+assert bullet_new["target"]["text"] == "New task"
+typed_bullet = load("drawer-bullet-complete-existing-typed.json")
+assert typed_bullet["context"] == "drawer" and typed_bullet["query"] == "req"
 PY
 
 {
@@ -319,7 +345,7 @@ PY
   echo '```'
   echo
   echo "Generated with \`${version_line}\` built from bob-cli revision \`${cli_revision}\`"
-  echo "(grammar revision 3, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
+  echo "(grammar revision 4, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
   echo "and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only"
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo

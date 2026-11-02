@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"grammar":3,"cursor":30,"replacement":{"start":29,"end":30},"context":"drawer","initial_selection":"none","candidates":[],"target":{"route":"foo.md","block_id":"nope","text":""},"warnings":["no task with block ID ^nope in foo.md"],"query":""}
+{"ok":true,"schema_version":1,"grammar":4,"cursor":30,"replacement":{"start":29,"end":30},"context":"drawer","initial_selection":"none","candidates":[],"target":{"route":"foo.md","block_id":"nope","text":""},"warnings":["no task with block ID ^nope in foo.md"],"query":""}

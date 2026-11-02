@@ -52,6 +52,18 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
         XCTAssertEqual(response.candidates.first?.consequence, "Adds to ## Requirements")
     }
 
+    func testNewTaskBulletMenuCaptionIncludesTextAndRouteWithoutBlockID() throws {
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(contentsOf: fixtureURL("drawer-bullet-complete-new-task-empty.json"))
+        )
+        let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: nil)
+
+        XCTAssertNil(response.target?.blockID)
+        XCTAssertEqual(menu.headerCaption, "New task (mac_inbox)")
+        XCTAssertFalse(menu.rows.isEmpty)
+    }
+
     func testNonDrawerContextsHaveNoDrawerPresentation() async throws {
         let model = try makeModel()
         XCTAssertNil(model.drawerMenuPresentation())
@@ -126,6 +138,31 @@ final class CaptureDrawerMenuHostedTests: XCTestCase {
         // The row's replacement starts at the `#`, so the splice never doubles it.
         XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#perf")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 33)
+        XCTAssertNil(model.completionResponse)
+    }
+
+    func testAcceptingBulletDrawerContinuationSplicesNewlinesAndLandsCaret() throws {
+        let model = CapturePanelModel()
+        let draft = "@foo+bar\n- #"
+        try installDrawerMenu(
+            on: model,
+            fixture: "drawer-bullet-complete-existing-empty.json",
+            draft: draft
+        )
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        let candidateIndex = try XCTUnwrap(
+            candidates.firstIndex(where: { $0.replacement == "FUTURE WORK\n  - " })
+        )
+        let candidate = candidates[candidateIndex]
+        model.selectedCompletionIndex = candidateIndex
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+
+        let accepted = "@foo+bar\n- FUTURE WORK\n  - "
+        let cursorAfter = try XCTUnwrap(candidate.cursorAfter)
+        XCTAssertEqual(model.plainDraft, accepted)
+        XCTAssertEqual(cursorAfter, accepted.utf8.count)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), cursorAfter)
         XCTAssertNil(model.completionResponse)
     }
 

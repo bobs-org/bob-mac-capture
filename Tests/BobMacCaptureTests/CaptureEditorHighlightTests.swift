@@ -7,6 +7,29 @@ import XCTest
 
 @MainActor
 final class CaptureEditorHighlightTests: XCTestCase {
+    func testDrawerBulletSpanUsesDrawerPalette() throws {
+        let draft = "- REQUIREMENTS"
+        let span = CaptureSpan(start: 2, end: 14, kind: "drawer_bullet")
+        let parse = Self.parse(draft: draft, spans: [span])
+        var text = AttributedString(draft)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+
+        XCTAssertEqual(captureSemanticCategory(forSpan: span), .section)
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        let drawerColor = NSColor(CaptureEditorPalette.color(for: .section))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                guard let color = run.foregroundColor else {
+                    return false
+                }
+                return NSColor(color) == drawerColor
+            }),
+            ["REQUIREMENTS"]
+        )
+    }
+
     func testThemeTintDoesNotLeakPastNameDuringRepaint() throws {
         let draft = "Add bar @bob:theme-day-strip-bar#vibe=\n\nFix theme highlighting! @bob"
         let theme = CapturePomodoroThemeRef(

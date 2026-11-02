@@ -55,6 +55,17 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.listAccessibilityLabel, "Drawer suggestions, 3 results")
     }
 
+    func testBulletDrawerTypedQueryUsesBobRowsAndContinuation() throws {
+        let response = try completion("drawer-bullet-complete-existing-typed.json")
+        let menu = CaptureDrawerMenuPresentation(
+            response: response, selectedIndex: 0, query: "req")
+
+        XCTAssertEqual(menu.headerCaption, "^bar Upgrade Postgres (foo)")
+        XCTAssertEqual(menu.rows.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
+        XCTAssertEqual(response.candidates.first?.replacement, "REQUIREMENTS\n  - ")
+    }
+
     func testProjectTaskUsesH2DrawersAndBobConsequence() throws {
         let response = try completion("drawer-complete-project-empty.json")
         let menu = CaptureDrawerMenuPresentation(response: response, selectedIndex: 0)
@@ -160,6 +171,11 @@ final class CaptureDrawerMenuPresentationTests: XCTestCase {
             CaptureDrawerMenuPresentation.caption(
                 for: CaptureDrawerTarget(route: "foo.md", blockID: nil, text: "")),
             "(foo)")
+        XCTAssertEqual(
+            CaptureDrawerMenuPresentation.caption(
+                for: CaptureDrawerTarget(
+                    route: "mac_inbox.md", blockID: nil, text: "Review launch checklist")),
+            "Review launch checklist (mac_inbox)")
         XCTAssertEqual(
             CaptureDrawerMenuPresentation.caption(
                 for: CaptureDrawerTarget(route: "dir/foo.md", blockID: "x", text: "  Spaced  ")),

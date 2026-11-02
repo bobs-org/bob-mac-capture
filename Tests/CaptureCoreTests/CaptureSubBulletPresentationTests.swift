@@ -74,13 +74,53 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
                 capture: try successFixture("drawer-capture-existing.json")))
         XCTAssertEqual(existing.drawerTitle, "REQUIREMENTS")
         XCTAssertFalse(existing.createsDrawer)
+        XCTAssertNil(existing.noteCount)
+        XCTAssertTrue(existing.drawerCapsules.isEmpty)
         XCTAssertEqual(existing.headerDetail, "under ^bar › REQUIREMENTS")
+        let legacyCapture = try successFixture("drawer-capture-existing.json")
+        XCTAssertNil(legacyCapture.notes)
+        XCTAssertNil(legacyCapture.drawers)
 
         let created = try XCTUnwrap(
             CaptureSubBulletPresentation(
                 capture: try successFixture("drawer-capture-new.json")))
         XCTAssertEqual(created.drawerTitle, "PERF BUDGET")
         XCTAssertTrue(created.createsDrawer)
+        XCTAssertFalse(created.isMultiNote)
+        XCTAssertTrue(created.drawerCapsules.isEmpty)
+    }
+
+    func testRealBobMultiNoteCaptureShowsCountAndDrawerCapsules() throws {
+        let success = try successFixture("drawer-capture-multi-note.json")
+        let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
+
+        XCTAssertEqual(success.notes?.count, 4)
+        XCTAssertEqual(
+            success.notes?.map(\.text),
+            [
+                "Ping Alice about the cutover",
+                "Postgres 17 minimum",
+                "Try logical replication",
+                "Benchmarks look fine",
+            ]
+        )
+        XCTAssertEqual(success.notes?[2].drawer?.created, true)
+        XCTAssertEqual(success.notes?[3].subBullets, ["\t- p99 under 40 ms"])
+        XCTAssertEqual(success.drawers?.map(\.title), ["REQUIREMENTS", "RISKS"])
+        XCTAssertEqual(presented.noteCount, 4)
+        XCTAssertTrue(presented.isMultiNote)
+        XCTAssertEqual(presented.headerDetail, "4 notes under ^bar")
+        XCTAssertEqual(
+            presented.drawerCapsules,
+            [
+                .init(title: "REQUIREMENTS", creates: false),
+                .init(title: "RISKS", creates: true),
+            ]
+        )
+        XCTAssertEqual(
+            presented.accessibilityText,
+            "4 notes under ^bar, in REQUIREMENTS and new drawer RISKS"
+        )
     }
 
     func testNewDrawerObjectAddsTheCapsuleAndTheRetypeRowTravelsWithIt() throws {

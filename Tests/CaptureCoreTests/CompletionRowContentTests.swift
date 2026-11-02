@@ -1208,6 +1208,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "drawer"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "drawer_bullet"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
