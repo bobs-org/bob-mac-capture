@@ -4588,6 +4588,15 @@ struct PreviewPane: View {
                     conflict: conflict
                 )
             }
+            if let warning = start.startsDuringEventWarning {
+                eventWarningBanner(
+                    headline: warning,
+                    detail: nil,
+                    fit: nil,
+                    accessibilityText: warning,
+                    interpretingInlineMarkdown: true
+                )
+            }
             if let warning = start.pomodoroClockMixedWarning {
                 Text(warning)
                     .font(.caption)

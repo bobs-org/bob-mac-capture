@@ -139,6 +139,36 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.accessibilitySummary.contains("Warning: MEET stays on the clock"))
     }
 
+    func testStartsDuringEventWarningStripsMarkAndSpeaks() throws {
+        let success = try decodeCaptureSuccess(
+            #"""
+            {
+              "ok":true,"dry_run":true,"routed":false,"route_label":"",
+              "relative_target":"2026/20261102.md","target":"/tmp/day.md",
+              "text":"=build","task_line":"- [ ] session","kind":"pomodoro_start",
+              "created":"2026-11-02","placement":"started",
+              "pomodoro_start":{"start":"0805","end":"0830","duration_minutes":25,
+                "offset_units":0,"pomodoro_name":"BUILD","pomodoro_line":8,
+                "created_pomodoro":false,"time_range":"(**0805-0830** [t:: 25m])",
+                "event_in_progress":{"event":{"title":"Swings!","time_range":"0800-0815",
+                  "line":2,"off_clock":true}}},
+              "warnings":[{"code":"pomodoro_starts_during_event",
+                "message":"⚠ BUILD 0805-0830 starts during Swings! (0800-0815)"}]
+            }
+            """#
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(
+            presentation.startsDuringEventWarning,
+            "BUILD 0805-0830 starts during Swings! (0800-0815)"
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains(
+                "Warning: BUILD 0805-0830 starts during Swings! (0800-0815)"
+            )
+        )
+    }
+
     func testInitReturnsNilWithoutStartSummary() throws {
         let success = try decodeCaptureSuccess(
             """

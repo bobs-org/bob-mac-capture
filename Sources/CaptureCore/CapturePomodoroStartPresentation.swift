@@ -153,6 +153,9 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     public let eventConflict: CaptureEventConflictPresentation?
     /// Bob's structured explanation when the kept Task Links mix clocks.
     public let pomodoroClockMixedWarning: String?
+    /// Bob's mid-meeting start warning, without a leading `⚠ ` — the
+    /// banner draws its own triangle.
+    public let startsDuringEventWarning: String?
 
     /// `"Start CAPTURE"` (dry run) or `"Started CAPTURE"`.
     public let title: String
@@ -232,7 +235,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             captureText: capture.text,
             pomodoroClockMixedWarning: capture.warnings.first(
                 where: \.isPomodoroClockMixed
-            )?.message
+            )?.message,
+            startsDuringEventWarning: Self.bannerWarningText(
+                capture.warnings.first(
+                    where: \.isPomodoroStartsDuringEvent
+                )?.message
+            )
         )
     }
 
@@ -241,7 +249,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         dryRun: Bool,
         relativeTarget: String = "",
         captureText: String = "",
-        pomodoroClockMixedWarning: String? = nil
+        pomodoroClockMixedWarning: String? = nil,
+        startsDuringEventWarning: String? = nil
     ) {
         isDryRun = dryRun
         let override = summary.overrideOutcome
@@ -263,6 +272,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             CaptureEventConflictPresentation($0, sessionName: resolvedName)
         }
         self.pomodoroClockMixedWarning = pomodoroClockMixedWarning
+        self.startsDuringEventWarning = startsDuringEventWarning
 
         switch override?.action {
         case "restart":
@@ -427,6 +437,9 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         if let eventConflict {
             spoken += ". \(eventConflict.accessibilityText)"
         }
+        if let startsDuringEventWarning {
+            spoken += ". Warning: \(startsDuringEventWarning)"
+        }
         if let pomodoroClockMixedWarning {
             spoken += ". Warning: \(pomodoroClockMixedWarning)"
         }
@@ -539,6 +552,17 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             closeFirst: close,
             accessibilityText: spoken
         )
+    }
+
+    /// Strip a leading `⚠ ` so the orange banner's triangle is the only mark.
+    private static func bannerWarningText(_ message: String?) -> String? {
+        guard let message, !message.isEmpty else {
+            return nil
+        }
+        if message.hasPrefix("⚠ ") {
+            return String(message.dropFirst(2))
+        }
+        return message
     }
 
     private static func eventRunText(_ run: PomodoroEventRun?, name: String) -> String? {

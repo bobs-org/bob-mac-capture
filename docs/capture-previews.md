@@ -29,9 +29,9 @@ A `=` override restart or swap previews on the same start card with an orange
 
 ## Calendar-aware start previews
 
-Bob supplies buffered MEET runs, far-run warnings, and event-conflict fit
-drafts. Both start and close cards show the `pomodoro_clock_mixed` warning
-in orange and VoiceOver.
+Bob supplies buffered MEET runs, far-run warnings, event-conflict fit
+drafts, and a start-card `pomodoro_starts_during_event` orange banner.
+Both cards show `pomodoro_clock_mixed` in orange and VoiceOver.
 
 ## Templates
 

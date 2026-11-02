@@ -3698,6 +3698,14 @@ public enum CaptureWarning: Codable, Equatable, Sendable {
         return false
     }
 
+    /// A non-MEET start whose written start sits inside an open meeting.
+    public var isPomodoroStartsDuringEvent: Bool {
+        if case .structured(let warning) = self {
+            return warning.code == "pomodoro_starts_during_event"
+        }
+        return false
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let message = try? container.decode(String.self) {
