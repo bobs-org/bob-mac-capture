@@ -3651,6 +3651,10 @@ struct PreviewPane: View {
             )
         } else if let reset = CapturePomodoroResetPresentation(capture: success) {
             resetPreviewItem(reset, success: success, index: index, total: total)
+        } else if let split = CapturePomodoroSplitPresentation(capture: success) {
+            splitPreviewItem(split, index: index, total: total)
+        } else if let merge = CapturePomodoroMergePresentation(capture: success) {
+            mergePreviewItem(merge, index: index, total: total)
         } else if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
         } else if CapturePomodoroStartPresentation.isSessionStart(success),
@@ -3905,6 +3909,144 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder
+    private func splitPreviewItem(
+        _ split: CapturePomodoroSplitPresentation,
+        index: Int,
+        total: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "scissors")
+                    .foregroundStyle(CaptureEditorPalette.color(for: .pomodoroStart))
+                    .accessibilityHidden(true)
+                Text(split.before)
+                    .fontWeight(.semibold)
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(split.after)
+                    .fontWeight(.semibold)
+                PomodoroThemePillView(
+                    name: split.base.name,
+                    swatch: CaptureThemeSwatch(split.base)
+                )
+                Spacer(minLength: 4)
+            }
+            if let destinationText = split.destinationText {
+                Text(destinationText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            ForEach(Array(split.createdRows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    PomodoroThemePillView(
+                        name: row.type.name,
+                        swatch: CaptureThemeSwatch(row.type)
+                    )
+                    Text(
+                        row.movedLinks == 0
+                            ? "no links"
+                            : "\(row.movedLinks) link\(row.movedLinks == 1 ? "" : "s")"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    if row.line > 0 {
+                        Text("line \(row.line)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if split.stayedLinks > 0 {
+                Text("\(split.stayedLinks) links stay under \(split.after)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(split.previewAccessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func mergePreviewItem(
+        _ merge: CapturePomodoroMergePresentation,
+        index: Int,
+        total: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "arrow.triangle.merge")
+                    .foregroundStyle(CaptureEditorPalette.color(for: .pomodoroStart))
+                    .accessibilityHidden(true)
+                Text(merge.before)
+                    .fontWeight(.semibold)
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(merge.after)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+            }
+            if let destinationText = merge.destinationText {
+                Text(destinationText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            ForEach(Array(merge.absorbedRows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    PomodoroThemePillView(
+                        name: row.name,
+                        swatch: CaptureThemeSwatch(
+                            CapturePomodoroThemeRef(
+                                key: row.name.lowercased(),
+                                name: row.name,
+                                known: false
+                            )
+                        )
+                    )
+                    let movedLineNoun = row.movedLines == 1 ? "line" : "lines"
+                    Text("\(row.movedLines) \(movedLineNoun) moved")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if row.droppedDuplicates > 0 {
+                        let duplicate = row.droppedDuplicates == 1 ? "duplicate" : "duplicates"
+                        Text("\(row.droppedDuplicates) \(duplicate) dropped")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if row.fromLine > 0 {
+                        Text("from line \(row.fromLine)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(merge.previewAccessibilitySummary)
+    }
+
+    @ViewBuilder
     private func closePreviewItem(
         _ close: CapturePomodoroClosePresentation,
         success: CaptureCommandSuccess,
@@ -3960,6 +4102,26 @@ struct PreviewPane: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
+            }
+
+            if let closedNameText = close.closedNameText {
+                Text(closedNameText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if !close.shedTypes.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Shed")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(close.shedTypes.enumerated()), id: \.offset) { _, theme in
+                        PomodoroThemePillView(
+                            name: theme.name,
+                            swatch: CaptureThemeSwatch(theme)
+                        )
+                    }
+                }
             }
 
             if let viaText = close.viaText {
@@ -5784,6 +5946,12 @@ struct PreviewPane: View {
             Text(link.ledgerText)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
+            if let mergedText = link.mergedText {
+                Text(mergedText)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             taskTypePreviewRows(success)
             if !link.chips.isEmpty {
                 HStack(spacing: 6) {
@@ -5856,6 +6024,12 @@ struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let resetSummary = CapturePomodoroResetPresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
+        let splitSummary =
+            CapturePomodoroSplitPresentation(capture: success)
+            .map { ", \($0.previewAccessibilitySummary)" } ?? ""
+        let mergeSummary =
+            CapturePomodoroMergePresentation(capture: success)
+            .map { ", \($0.previewAccessibilitySummary)" } ?? ""
         let closeSummary = CapturePomodoroClosePresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let projectNoteSummary = CaptureProjectNotePresentation(capture: success)
@@ -5866,7 +6040,8 @@ struct PreviewPane: View {
         let relocationSummary = CaptureTaskThemePresentation.relocationLine(
             for: success.typeRelocation)
             .map { ", \($0)" } ?? ""
-        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(resetSummary)\(closeSummary)\(projectNoteSummary)\(typeSummary)\(relocationSummary)"
+        let summary =
+            "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(resetSummary)\(splitSummary)\(mergeSummary)\(closeSummary)\(projectNoteSummary)\(typeSummary)\(relocationSummary)"
         guard includeBlockLines else {
             return summary
         }

@@ -3,7 +3,7 @@ import XCTest
 
 @testable import CaptureCore
 
-/// Decodes the current grammar-3 wire, using fixtures that
+/// Decodes the captured grammar-3 wire, using fixtures that
 /// `Scripts/generate-directive-fixtures.sh` captures from a real Bob (see
 /// `Tests/Fixtures/directive-fixtures-README.md`).
 final class CaptureDirectiveWireTests: XCTestCase {

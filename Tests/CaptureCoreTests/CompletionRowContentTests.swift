@@ -391,6 +391,33 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityHint, "Inserts this Pomodoro name.")
     }
 
+    func testSplitAndMergeContextsPresentBobPomodoroCandidates() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "fix",
+            childCount: 2,
+            name: "FIX",
+            themes: [CapturePomodoroThemeRef(key: "fix", name: "FIX")]
+        )
+
+        let splitType = completionRowContent(
+            for: candidate,
+            context: "pomodoro_split_type",
+            query: "fi"
+        )
+        let mergeDestination = completionRowContent(
+            for: candidate,
+            context: "pomodoro_merge_dest",
+            query: "fi"
+        )
+
+        XCTAssertEqual(splitType.contextLabel, "Split type")
+        XCTAssertEqual(splitType.primaryText, "FIX")
+        XCTAssertEqual(splitType.themeSwatches.count, 1)
+        XCTAssertEqual(mergeDestination.contextLabel, "Merge")
+        XCTAssertEqual(mergeDestination.primaryText, "FIX")
+        XCTAssertEqual(mergeDestination.themeSwatches.count, 1)
+    }
+
     func testPomodoroNameNameableRowUsesPriorityCategoryAndNameItBadge() {
         let candidate = CaptureCompletionCandidate(
             replacement: "",
@@ -1245,6 +1272,8 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_adjust"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_shift"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_close"), .pomodoroStart)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_split"), .pomodoroStart)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_merge"), .pomodoroStart)
         XCTAssertEqual(
             captureSemanticCategory(forSpanKind: "pomodoro_close_in_progress"),
             .pomodoroCloseInProgress
@@ -1434,6 +1463,22 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "project_task_block_id"), .projectTaskBlockID)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_start_name"), .pomodoroStartName)
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "pomodoro_split_base"),
+            .pomodoroSplitBase
+        )
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "pomodoro_split_type"),
+            .pomodoroSplitType
+        )
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "pomodoro_merge_src"),
+            .pomodoroMergeSource
+        )
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "pomodoro_merge_dest"),
+            .pomodoroMergeDestination
+        )
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "drawer"), .drawer)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)

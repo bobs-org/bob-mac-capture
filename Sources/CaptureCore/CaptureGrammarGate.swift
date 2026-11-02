@@ -1,13 +1,12 @@
 import Foundation
 
 /// Capture-language revision the Mac requires before it will submit.
-/// Grammar 2 added `%` directives; grammar 3 added glued `#drawer` capture
-/// and retired attached `#type` on `+id`/`^id`. `schema_version` stays 1.
+/// Grammar 5 adds Pomodoro split and merge tokens. `schema_version` stays 1.
 public enum CaptureGrammarGate: Sendable {
-    public static let minimumRevision = 3
+    public static let minimumRevision = 5
 
     /// Exact copy shown when `capture-parse` grammar is missing or too low.
-    public static let blockedMessage = "Update bob to use drawers and % directives"
+    public static let blockedMessage = "Update bob to use Pomodoro split and merge syntax"
 
     /// True when Bob reported a revision this client can capture with.
     /// A missing value is incompatible: the gate cannot tell an older Bob

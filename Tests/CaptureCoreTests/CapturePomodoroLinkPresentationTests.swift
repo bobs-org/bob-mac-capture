@@ -74,6 +74,18 @@ final class CapturePomodoroLinkPresentationTests: XCTestCase {
         )
     }
 
+    func testMergedDestinationReportsAddedPomodoroTypes() throws {
+        let capture = try decodeFixture("pomodoro-link-merged.json")
+        let presentation = try XCTUnwrap(CapturePomodoroLinkPresentation(capture: capture))
+
+        XCTAssertEqual(presentation.destinationLabel, "BUGS + FIX")
+        XCTAssertEqual(presentation.mergedText, "merged FIX into BUGS + FIX")
+        XCTAssertTrue(presentation.notificationBody.contains("merged FIX into BUGS + FIX"))
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("merged FIX into BUGS + FIX")
+        )
+    }
+
     func testCommittedAlreadyCurrentUsesLinkTense() throws {
         let capture = linkCapture(
             dryRun: false,

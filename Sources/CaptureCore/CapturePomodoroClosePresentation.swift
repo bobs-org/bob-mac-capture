@@ -159,6 +159,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     public let variant: Variant
     public let isDryRun: Bool
     public let pomodoroName: String
+    /// The after-close name from Bob's R6 report. Nil for older Bob.
+    public let closedNameText: String?
+    /// Types removed from the carried session's name, from Bob's R6 report.
+    public let shedText: String?
+    public let shedTypes: [CapturePomodoroThemeRef]
     /// `"Close CAPTURE"`, or `"Close session"` when Bob named no session.
     /// Link and new-task closes keep the same title; their "via" data lives
     /// in `viaText` and the tagged row instead.
@@ -240,6 +245,10 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         }
         isDryRun = capture.dryRun
         pomodoroName = summary.pomodoroName ?? "session"
+        closedNameText = summary.closedName.map { "Closed name: \($0)" }
+        shedTypes = summary.nextPomodoro?.shed ?? []
+        let shedNames = shedTypes.map(\.name)
+        shedText = shedNames.isEmpty ? nil : "Shed \(shedNames.joined(separator: ", "))"
         title = "Close \(pomodoroName)"
 
         let plannedRange = summary.planned.timeRange
@@ -410,6 +419,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         if let nextText {
             bodyLines.append(nextText)
         }
+        if let closedNameText {
+            bodyLines.append(closedNameText)
+        }
+        if let shedText {
+            bodyLines.append(shedText)
+        }
         // One extra notification line when anything was linked or the
         // breaker fired; with only recovered rows the body is unchanged.
         if let successorLine = SuccessorRows.notificationLine(
@@ -425,6 +440,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         batchSuffix = " (closed \(pomodoroName))"
 
         var summaryParts = [title, sessionText, timingText, destinationText]
+        if let closedNameText {
+            summaryParts.append(closedNameText)
+        }
+        if let shedText {
+            summaryParts.append(shedText)
+        }
         if let viaText {
             summaryParts.append(viaText)
         }

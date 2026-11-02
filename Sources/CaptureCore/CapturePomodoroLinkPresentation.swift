@@ -35,6 +35,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     /// an appended ` · <label>` when Bob placed the destination by type.
     /// (`Linked under CHORE · default type`).
     public let ledgerText: String
+    /// Bob's R2 report, for example `merged FIX into BUGS + FIX`.
+    /// Nil when landing added no type components.
+    public let mergedText: String?
     /// The resolved destination entry name (`"BUGS"`), used for notification
     /// titles and the day-file destination line.
     public let destinationLabel: String
@@ -95,6 +98,15 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
             ?? CaptureTogglePresentation.endpointLabel(capture.pomodoroLinkDestination)
             ?? "today's Pomodoro"
         destinationLabel = destination
+        if let merge = capture.pomodoroLinkDestination?.merged,
+            !merge.added.isEmpty
+        {
+            let names = merge.added.map(\.name).joined(separator: ", ")
+            let mergedName = merge.after.isEmpty ? destination : merge.after
+            mergedText = "merged \(names) into \(mergedName)"
+        } else {
+            mergedText = nil
+        }
 
         // Additive D7 label: Bob appends ` · <label>` (`from dev`,
         // `default type`) to the destination it placed by type. Older Bob
@@ -191,6 +203,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
             bodyLines.append(dayFileDestinationLabel)
         }
         bodyLines.append(ledgerText)
+        if let mergedText {
+            bodyLines.append(mergedText)
+        }
         if let taskThemeLine {
             bodyLines.append(taskThemeLine)
         }
@@ -206,6 +221,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         notificationBody = bodyLines.joined(separator: "\n")
 
         var previewParts = [routeDestinationLabel, transitionText, ledgerText]
+        if let mergedText {
+            previewParts.append(mergedText)
+        }
         if let dayFileDestinationLabel {
             previewParts.append(dayFileDestinationLabel)
         }

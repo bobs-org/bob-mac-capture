@@ -4,7 +4,7 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Grammar ≥ 3 gate: missing/1/2 block capture and keep the draft; 3/4
+/// Grammar ≥ 5 gate: missing/1–4 block capture and keep the draft; 5+
 /// submit; a pending parse stays quiet; Recheck Bob invalidates evidence.
 @MainActor
 final class CaptureGrammarGateHostedTests: XCTestCase {
@@ -72,10 +72,22 @@ final class CaptureGrammarGateHostedTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture "), record)
     }
 
-    func testGrammarThreeAllowsSubmit() async throws {
+    func testGrammarFourBlocksSubmitAndKeepsTheDraft() throws {
         let model = try makeModel()
         model.plainDraft = "Inbox task"
-        model.installCaptureGrammarForTests(3)
+        model.installCaptureGrammarForTests(4)
+
+        XCTAssertFalse(model.captureGrammarAllowsSubmit)
+        XCTAssertFalse(model.primaryActionEnabled)
+        XCTAssertEqual(model.captureGrammarWarning, CaptureGrammarGate.blockedMessage)
+        model.submit(openAfterCapture: false)
+        XCTAssertEqual(model.plainDraft, "Inbox task")
+    }
+
+    func testGrammarFiveAllowsSubmit() async throws {
+        let model = try makeModel()
+        model.plainDraft = "Inbox task"
+        model.installCaptureGrammarForTests(5)
 
         XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertTrue(model.primaryActionEnabled)
@@ -156,15 +168,15 @@ final class CaptureGrammarGateHostedTests: XCTestCase {
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_PARSE_GRAMMAR": "3",
+                "FAKE_BOB_PARSE_GRAMMAR": "5",
             ]
         )
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
-        await waitUntil { model.latestParse?.grammar == 3 }
+        await waitUntil { model.latestParse?.grammar == 5 }
         try await Task.sleep(nanoseconds: 400_000_000)
 
-        XCTAssertEqual(model.latestParse?.grammar, 3)
+        XCTAssertEqual(model.latestParse?.grammar, 5)
         XCTAssertTrue(model.captureGrammarAllowsSubmit)
         XCTAssertNil(model.captureGrammarWarning)
         XCTAssertEqual(model.plainDraft, draft)

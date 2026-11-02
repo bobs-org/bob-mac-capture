@@ -815,6 +815,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case pomodoroID
     case blockID
     case pomodoroStart
+    case pomodoroSplitType
+    case pomodoroMergeDestination
     case templateRow
 
     public var statusText: String {
@@ -847,6 +849,10 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Type a new block ID — press Tab for suggestions"
         case .pomodoroStart:
             return "Pick a Pomodoro to start, or type a new name"
+        case .pomodoroSplitType:
+            return "Pick a type to split out — press Tab to browse"
+        case .pomodoroMergeDestination:
+            return "Pick a Pomodoro to merge in — press Tab to browse"
         case .templateRow:
             return "Add a blank line, then one row per capture"
         }

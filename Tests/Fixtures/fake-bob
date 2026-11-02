@@ -3,7 +3,7 @@ set -euo pipefail
 fixtures_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # capture-parse JSON from fixtures and inline bodies may omit `grammar`.
-# Inject 3 unless FAKE_BOB_PARSE_GRAMMAR=omit (missing) or a number (1/2/3).
+# Inject 5 unless FAKE_BOB_PARSE_GRAMMAR=omit (missing) or a number.
 # A fixture that already has `grammar` keeps its value.
 inject_parse_grammar() {
   python3 -c '
@@ -11,7 +11,7 @@ import json, os, sys
 raw = sys.stdin.read()
 obj = json.loads(raw)
 if "grammar" not in obj:
-    spec = os.environ.get("FAKE_BOB_PARSE_GRAMMAR", "3")
+    spec = os.environ.get("FAKE_BOB_PARSE_GRAMMAR", "5")
     if spec != "omit":
         obj["grammar"] = int(spec)
 json.dump(obj, sys.stdout, separators=(",", ":"))

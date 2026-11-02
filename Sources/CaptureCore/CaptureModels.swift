@@ -210,10 +210,10 @@ public struct CaptureParseTemplate: Codable, Equatable {
 public struct CaptureParseResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
-    /// Top-level capture-language revision. Bob reports `grammar: 3` or later for
-    /// glued `#drawer` capture (2 added `%` directives); a Bob that predates the field omits it. Decoding keeps a missing
-    /// or mistyped value as nil, never a guessed revision, so the compatibility gate can
-    /// tell "older than grammar" from "grammar 1".
+    /// Top-level capture-language revision. Grammar 5 adds whole-item
+    /// Pomodoro split/merge syntax. A Bob that predates the field omits it.
+    /// Missing or mistyped values stay nil, never a guessed revision, so the
+    /// compatibility gate can tell "older than grammar" from "grammar 1".
     public let grammar: Int?
     public let input: String
     public let body: String
@@ -2224,12 +2224,22 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
     public let name: String?
     public let timeRange: String?
     public let created: Bool
+    /// Type components Bob removed from the carried session name. Older Bob
+    /// omits this additive field.
+    public let shed: [CapturePomodoroThemeRef]
 
-    public init(line: Int, name: String? = nil, timeRange: String? = nil, created: Bool = false) {
+    public init(
+        line: Int,
+        name: String? = nil,
+        timeRange: String? = nil,
+        created: Bool = false,
+        shed: [CapturePomodoroThemeRef] = []
+    ) {
         self.line = line
         self.name = name
         self.timeRange = timeRange
         self.created = created
+        self.shed = shed
     }
 
     public init(from decoder: Decoder) throws {
@@ -2238,6 +2248,11 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
         name = try container.decodeIfPresent(String.self, forKey: .name)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
         created = try container.decodeIfPresent(Bool.self, forKey: .created) ?? false
+        shed =
+            (try? container.decodeIfPresent(
+                [CapturePomodoroThemeRef].self,
+                forKey: .shed
+            )) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2245,6 +2260,173 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
         case name
         case timeRange = "time_range"
         case created
+        case shed
+    }
+}
+
+/// One new Pomodoro entry Bob created while splitting a merged session.
+/// Additive to capture schema v1; every field decodes with a safe fallback.
+public struct PomodoroSplitCreated: Codable, Equatable, Sendable {
+    public let typeRef: CapturePomodoroThemeRef
+    public let line: Int
+    public let name: String
+    public let movedLinks: Int
+
+    public init(
+        typeRef: CapturePomodoroThemeRef,
+        line: Int = 0,
+        name: String = "",
+        movedLinks: Int = 0
+    ) {
+        self.typeRef = typeRef
+        self.line = line
+        self.name = name
+        self.movedLinks = movedLinks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        typeRef =
+            (try? container.decode(CapturePomodoroThemeRef.self, forKey: .typeRef))
+            ?? CapturePomodoroThemeRef(key: "", name: "")
+        line = (try? container.decode(Int.self, forKey: .line)) ?? 0
+        name = (try? container.decode(String.self, forKey: .name)) ?? ""
+        movedLinks = (try? container.decode(Int.self, forKey: .movedLinks)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case typeRef = "type"
+        case line
+        case name
+        case movedLinks = "moved_links"
+    }
+}
+
+/// Bob's resolved preview for `=/`: the source block after splitting and each
+/// created entry, in Bob's type order. Older Bob omits the whole object.
+public struct PomodoroSplitSummary: Codable, Equatable, Sendable {
+    public let path: String
+    public let entryLine: Int
+    public let before: String
+    public let after: String
+    public let base: CapturePomodoroThemeRef
+    public let created: [PomodoroSplitCreated]
+    public let stayedLinks: Int
+
+    public init(
+        path: String = "",
+        entryLine: Int = 0,
+        before: String = "",
+        after: String = "",
+        base: CapturePomodoroThemeRef = CapturePomodoroThemeRef(key: "", name: ""),
+        created: [PomodoroSplitCreated] = [],
+        stayedLinks: Int = 0
+    ) {
+        self.path = path
+        self.entryLine = entryLine
+        self.before = before
+        self.after = after
+        self.base = base
+        self.created = created
+        self.stayedLinks = stayedLinks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decode(String.self, forKey: .path)) ?? ""
+        entryLine = (try? container.decode(Int.self, forKey: .entryLine)) ?? 0
+        before = (try? container.decode(String.self, forKey: .before)) ?? ""
+        after = (try? container.decode(String.self, forKey: .after)) ?? ""
+        base =
+            (try? container.decode(CapturePomodoroThemeRef.self, forKey: .base))
+            ?? CapturePomodoroThemeRef(key: "", name: "")
+        created = (try? container.decode([PomodoroSplitCreated].self, forKey: .created)) ?? []
+        stayedLinks = (try? container.decode(Int.self, forKey: .stayedLinks)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case entryLine = "entry_line"
+        case before
+        case after
+        case base
+        case created
+        case stayedLinks = "stayed_links"
+    }
+}
+
+/// One source entry absorbed by Bob's resolved `=*` merge.
+public struct PomodoroMergeAbsorbed: Codable, Equatable, Sendable {
+    public let name: String
+    public let fromLine: Int
+    public let movedLines: Int
+    public let droppedDuplicates: Int
+
+    public init(
+        name: String = "",
+        fromLine: Int = 0,
+        movedLines: Int = 0,
+        droppedDuplicates: Int = 0
+    ) {
+        self.name = name
+        self.fromLine = fromLine
+        self.movedLines = movedLines
+        self.droppedDuplicates = droppedDuplicates
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? container.decode(String.self, forKey: .name)) ?? ""
+        fromLine = (try? container.decode(Int.self, forKey: .fromLine)) ?? 0
+        movedLines = (try? container.decode(Int.self, forKey: .movedLines)) ?? 0
+        droppedDuplicates = (try? container.decode(Int.self, forKey: .droppedDuplicates)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case fromLine = "from_line"
+        case movedLines = "moved_lines"
+        case droppedDuplicates = "dropped_duplicates"
+    }
+}
+
+/// Bob's resolved preview for `=*`: the survivor and absorbed planned entries.
+public struct PomodoroMergeSummary: Codable, Equatable, Sendable {
+    public let path: String
+    public let entryLine: Int
+    public let before: String
+    public let after: String
+    public let absorbed: [PomodoroMergeAbsorbed]
+
+    public init(
+        path: String = "",
+        entryLine: Int = 0,
+        before: String = "",
+        after: String = "",
+        absorbed: [PomodoroMergeAbsorbed] = []
+    ) {
+        self.path = path
+        self.entryLine = entryLine
+        self.before = before
+        self.after = after
+        self.absorbed = absorbed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decode(String.self, forKey: .path)) ?? ""
+        entryLine = (try? container.decode(Int.self, forKey: .entryLine)) ?? 0
+        before = (try? container.decode(String.self, forKey: .before)) ?? ""
+        after = (try? container.decode(String.self, forKey: .after)) ?? ""
+        absorbed = (try? container.decode([PomodoroMergeAbsorbed].self, forKey: .absorbed)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case entryLine = "entry_line"
+        case before
+        case after
+        case absorbed
     }
 }
 
@@ -2267,6 +2449,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let log: [PomodoroCloseLogEntry]
     public let pomodoroLine: Int
     public let pomodoroName: String?
+    /// Name Bob assigned to the just-closed entry after narrowing its types.
+    /// Older Bob omits this additive field.
+    public let closedName: String?
     public let dayRelative: String?
     public let entryLine: String
     public let planned: PomodoroCloseTiming
@@ -2295,6 +2480,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         log: [PomodoroCloseLogEntry] = [],
         pomodoroLine: Int = 0,
         pomodoroName: String? = nil,
+        closedName: String? = nil,
         dayRelative: String? = nil,
         entryLine: String = "",
         planned: PomodoroCloseTiming = PomodoroCloseTiming(
@@ -2332,6 +2518,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.log = log
         self.pomodoroLine = pomodoroLine
         self.pomodoroName = pomodoroName
+        self.closedName = closedName
         self.dayRelative = dayRelative
         self.entryLine = entryLine
         self.planned = planned
@@ -2362,6 +2549,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        closedName = try container.decodeIfPresent(String.self, forKey: .closedName)
         dayRelative = try container.decodeIfPresent(String.self, forKey: .dayRelative)
         entryLine = try container.decodeIfPresent(String.self, forKey: .entryLine) ?? ""
         planned =
@@ -2437,6 +2625,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case log
         case pomodoroLine = "pomodoro_line"
         case pomodoroName = "pomodoro_name"
+        case closedName = "closed_name"
         case dayRelative = "day_relative"
         case entryLine = "entry_line"
         case planned
@@ -2764,19 +2953,24 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
     // destinations leave this unset. Older Bob omits the whole object and
     // it decodes as nil.
     public let placedType: CapturePlacedType?
+    /// Additive R2 report when landing merged a task type into this name.
+    /// Older Bob omits it; malformed values degrade to nil.
+    public let merged: PomodoroLinkMerge?
 
     public init(
         line: Int,
         name: String? = nil,
         timeRange: String? = nil,
         role: String? = nil,
-        placedType: CapturePlacedType? = nil
+        placedType: CapturePlacedType? = nil,
+        merged: PomodoroLinkMerge? = nil
     ) {
         self.line = line
         self.name = name
         self.timeRange = timeRange
         self.role = role
         self.placedType = placedType
+        self.merged = merged
     }
 
     public init(from decoder: Decoder) throws {
@@ -2788,6 +2982,11 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
         placedType =
             (try? container.decodeIfPresent(
                 CapturePlacedType.self, forKey: .placedType)) ?? nil
+        merged =
+            (try? container.decodeIfPresent(
+                PomodoroLinkMerge.self,
+                forKey: .merged
+            )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2796,6 +2995,34 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
         case timeRange = "time_range"
         case role
         case placedType = "type"
+        case merged
+    }
+}
+
+/// Bob's additive link-landing merge report: the name before and after
+/// landing, plus the newly added type components.
+public struct PomodoroLinkMerge: Codable, Equatable, Sendable {
+    public let before: String
+    public let after: String
+    public let added: [CapturePomodoroThemeRef]
+
+    public init(before: String = "", after: String = "", added: [CapturePomodoroThemeRef] = []) {
+        self.before = before
+        self.after = after
+        self.added = added
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        before = (try? container.decode(String.self, forKey: .before)) ?? ""
+        after = (try? container.decode(String.self, forKey: .after)) ?? ""
+        added = (try? container.decode([CapturePomodoroThemeRef].self, forKey: .added)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case before
+        case after
+        case added
     }
 }
 
@@ -3898,6 +4125,12 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // Additive session-close result for whole-item `x` and task-link `=x` closes. Older Bob
     // binaries omit it entirely; decode as nil.
     public let pomodoroClose: PomodoroCloseSummary?
+    /// Additive `=/` split result. Older Bob binaries omit it; malformed
+    /// values are ignored so the rest of capture still previews.
+    public let pomodoroSplit: PomodoroSplitSummary?
+    /// Additive `=*` merge result. Older Bob binaries omit it; malformed
+    /// values are ignored so the rest of capture still previews.
+    public let pomodoroMerge: PomodoroMergeSummary?
     // Additive note-free `x0` reset result. Mutually exclusive with
     // `pomodoroClose`. Older Bob binaries omit it entirely; decode as nil.
     public let pomodoroReset: PomodoroResetSummary?
@@ -4041,6 +4274,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
+        pomodoroSplit: PomodoroSplitSummary? = nil,
+        pomodoroMerge: PomodoroMergeSummary? = nil,
         pomodoroReset: PomodoroResetSummary? = nil,
         dependencyUpdate: DependencyUpdateSummary? = nil,
         dependencyUpdates: [DependencyUpdateSummary]? = nil,
@@ -4122,6 +4357,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.pomodoroSplit = pomodoroSplit
+        self.pomodoroMerge = pomodoroMerge
         self.pomodoroReset = pomodoroReset
         self.dependencyUpdate = dependencyUpdate
         self.dependencyUpdates = dependencyUpdates ?? dependencyUpdate.map { [$0] } ?? []
@@ -4226,6 +4463,16 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             PomodoroCloseSummary.self,
             forKey: .pomodoroClose
         )
+        pomodoroSplit =
+            (try? container.decodeIfPresent(
+                PomodoroSplitSummary.self,
+                forKey: .pomodoroSplit
+            )) ?? nil
+        pomodoroMerge =
+            (try? container.decodeIfPresent(
+                PomodoroMergeSummary.self,
+                forKey: .pomodoroMerge
+            )) ?? nil
         pomodoroReset = try container.decodeIfPresent(
             PomodoroResetSummary.self,
             forKey: .pomodoroReset
@@ -4410,6 +4657,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case pomodoroSplit = "pomodoro_split"
+        case pomodoroMerge = "pomodoro_merge"
         case pomodoroReset = "pomodoro_reset"
         case dependencyUpdate = "dependency_update"
         case dependencyUpdates = "dependency_updates"

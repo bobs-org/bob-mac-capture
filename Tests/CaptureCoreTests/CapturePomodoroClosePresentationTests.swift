@@ -4,6 +4,19 @@ import XCTest
 @testable import CaptureCore
 
 final class CapturePomodoroClosePresentationTests: XCTestCase {
+    func testMergedCloseShowsClosedNameAndShedTypes() throws {
+        let success = try decodeFixture("pomodoro-close-merged-names.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertEqual(presentation.pomodoroName, "BUILD + FIX")
+        XCTAssertEqual(presentation.closedNameText, "Closed name: FIX")
+        XCTAssertEqual(presentation.shedText, "Shed FIX")
+        XCTAssertTrue(presentation.notificationBody.contains("Closed name: FIX"))
+        XCTAssertTrue(presentation.notificationBody.contains("Shed FIX"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Closed name: FIX"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Shed FIX"))
+    }
+
     func testRealBobWorkedClosePresentsSessionTimingTasksAndNext() throws {
         let success = try decodeFixture("pomodoro-close-worked.json")
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))

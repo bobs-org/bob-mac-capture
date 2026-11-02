@@ -154,6 +154,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // session, so they share the Pomodoro-session highlight with the start
         // and adjust spans.
         return .pomodoroStart
+    case "pomodoro_split", "pomodoro_merge":
+        // Whole-item split/merge gestures select Pomodoros, so Bob's tokens
+        // share the established session highlight.
+        return .pomodoroStart
     case "pomodoro_close_in_progress":
         // The `<N>` digits select the rows that stay in progress, so they
         // share the badge color of an in-progress outcome.
@@ -234,6 +238,10 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case projectTaskBlockID
     case pomodoroName
     case pomodoroStartName
+    case pomodoroSplitBase
+    case pomodoroSplitType
+    case pomodoroMergeSource
+    case pomodoroMergeDestination
     case task
     case drawer
     case activeTask
@@ -262,6 +270,10 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "project_task_block_id": self = .projectTaskBlockID
         case "pomodoro_name": self = .pomodoroName
         case "pomodoro_start_name": self = .pomodoroStartName
+        case "pomodoro_split_base": self = .pomodoroSplitBase
+        case "pomodoro_split_type": self = .pomodoroSplitType
+        case "pomodoro_merge_src": self = .pomodoroMergeSource
+        case "pomodoro_merge_dest": self = .pomodoroMergeDestination
         case "task": self = .task
         case "drawer": self = .drawer
         case "active_task": self = .activeTask
@@ -549,7 +561,8 @@ public func completionRowContent(
             ? "Adds a block ID, then selects this task."
             : "Nests the capture under this task."
 
-    case .pomodoroName:
+    case .pomodoroName, .pomodoroSplitBase, .pomodoroSplitType,
+        .pomodoroMergeSource, .pomodoroMergeDestination:
         if candidate.origin == "history", candidate.createsPomodoro {
             category = .pomodoroStart
             symbolName = "timer"
@@ -560,7 +573,7 @@ public func completionRowContent(
         } else if candidate.createsPomodoro {
             category = .priority
             symbolName = "timer.badge.plus"
-            contextLabel = "Pomodoro"
+            contextLabel = completionPomodoroContextLabel(context)
             if let name = candidate.name, !name.isEmpty {
                 primaryText = name
             } else {
@@ -576,7 +589,7 @@ public func completionRowContent(
             let needsName = candidate.requiresName
             category = needsName ? .priority : .section
             symbolName = needsName ? "square.and.pencil" : "timer"
-            contextLabel = "Pomodoro"
+            contextLabel = completionPomodoroContextLabel(context)
             if let name = candidate.name, !name.isEmpty {
                 primaryText = name
             } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
@@ -983,6 +996,8 @@ public func completionRowContent(
     }
 
     let themeContext = context == .pomodoroName || context == .pomodoroStartName
+        || context == .pomodoroSplitBase || context == .pomodoroSplitType
+        || context == .pomodoroMergeSource || context == .pomodoroMergeDestination
         || context == .taskType
     let themeSwatches = themeContext
         ? candidate.themes.map { CaptureThemeSwatch($0) }
@@ -1008,7 +1023,9 @@ public func completionRowContent(
         }
     }
     let isHideableTheme =
-        ((context == .pomodoroName || context == .pomodoroStartName)
+        ((context == .pomodoroName || context == .pomodoroStartName
+            || context == .pomodoroSplitBase || context == .pomodoroSplitType
+            || context == .pomodoroMergeSource || context == .pomodoroMergeDestination)
             && candidate.origin == "history")
         || (context == .taskType
             && (candidate.origin == "history" || candidate.origin == "configured"))
@@ -1092,6 +1109,19 @@ public func completionRowContent(
         detailText: detailText,
         isDisabled: CaptureCompletionMenu.isDisabled(candidate)
     )
+}
+
+private func completionPomodoroContextLabel(_ context: CaptureCompletionContext?) -> String {
+    switch context {
+    case .pomodoroSplitBase:
+        return "Split"
+    case .pomodoroSplitType:
+        return "Split type"
+    case .pomodoroMergeSource, .pomodoroMergeDestination:
+        return "Merge"
+    default:
+        return "Pomodoro"
+    }
 }
 
 private func themeHistorySummary(lastUsed: String?, daysUsed: Int?) -> String? {

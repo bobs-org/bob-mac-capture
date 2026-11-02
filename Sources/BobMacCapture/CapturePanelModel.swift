@@ -1673,6 +1673,22 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroLinkPresentation(capture: previewResult)
     }
 
+    /// Split/merge previews are single-item cards; batches retain the generic
+    /// Capture footer wording.
+    var pomodoroSplitPresentation: CapturePomodoroSplitPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroSplitPresentation(capture: previewResult)
+    }
+
+    var pomodoroMergePresentation: CapturePomodoroMergePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroMergePresentation(capture: previewResult)
+    }
+
     /// The live preview's reference presentation, when the current draft is
     /// exactly one `ref` item — the same single-item gate as the toggle
     /// presentation. Batches keep today's footer title.
@@ -1758,6 +1774,12 @@ final class CapturePanelModel: ObservableObject {
     var primaryActionTitle: String {
         if resetPresentation != nil {
             return "Reset"
+        }
+        if pomodoroSplitPresentation != nil {
+            return "Split"
+        }
+        if pomodoroMergePresentation != nil {
+            return "Merge"
         }
         if closePresentation != nil {
             return "Close"
@@ -7163,6 +7185,12 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("pomodoro_id") {
             return .pomodoroID
+        }
+        if needs("pomodoro_split_type") {
+            return .pomodoroSplitType
+        }
+        if needs("pomodoro_merge_dest") {
+            return .pomodoroMergeDestination
         }
         if needs("block_id") {
             return .blockID
