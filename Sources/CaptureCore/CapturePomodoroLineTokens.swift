@@ -315,9 +315,11 @@ private struct LineScanner {
     }
 
     mutating func scanHeadlineBody() {
-        // Timed `(**HHMM-HHMM** [t:: Nm])` or placeholder `()` headline,
-        // then optionally ` — name`. Anything else is legacy or
-        // unrecognized and stays one plain-text tail after the checkbox.
+        // Timed `(**HHMM-HHMM** [field:: Nm])` or placeholder `()` headline,
+        // then optionally ` — name`. The tokenizer treats duration fields as
+        // generic fields, so `[t::]` and `[off::]` share the same shape.
+        // Anything else is legacy or unrecognized and stays one plain-text
+        // tail after the checkbox.
         let gapStart = index
         while starts(with: " ") || starts(with: "\t") {
             advance()

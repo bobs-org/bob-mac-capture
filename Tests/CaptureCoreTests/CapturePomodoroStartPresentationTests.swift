@@ -36,7 +36,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             presentation.eventRunText,
-            "MEET · 12:00–13:00 · from your calendar · Lunch with Kelly · untracked"
+            "MEET · 12:00–13:00 · from your calendar · Lunch with Kelly · off-clock"
         )
         XCTAssertEqual(
             presentation.eventConflict?.headline,
@@ -85,10 +85,58 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
                 """.utf8
             )
         )
-        XCTAssertEqual(adjust.eventConflict?.event.untracked, true)
+        XCTAssertEqual(adjust.eventConflict?.event.offClock, true)
         XCTAssertEqual(adjust.eventConflict?.fit, "+1")
         XCTAssertEqual(shift.eventConflict?.more, 2)
         XCTAssertEqual(shift.eventConflict?.fit, "+1")
+    }
+
+    func testNewOffClockKeysTakePrecedenceOverLegacyKeys() throws {
+        let json = #"""
+            {
+              "time_range": "1200-1300", "start": "1200", "end": "1300",
+              "off_clock": true, "untracked": false, "source": "calendar",
+              "events": [{"index":1,"title":"Lunch","time_range":"1200-1300",
+                "line":8,"off_clock":true,"untracked":false}]
+            }
+            """#
+        let run = try JSONDecoder().decode(PomodoroEventRun.self, from: Data(json.utf8))
+        XCTAssertTrue(run.offClock)
+        XCTAssertTrue(run.events[0].offClock)
+
+        let conflict = #"""
+            {"event":{"title":"Lunch","time_range":"1200-1300","line":8,
+              "off_clock":true,"untracked":false},"overlap_minutes":5,"more":0}
+            """#
+        let decoded = try JSONDecoder().decode(
+            PomodoroEventConflict.self,
+            from: Data(conflict.utf8)
+        )
+        XCTAssertTrue(decoded.event.offClock)
+    }
+
+    func testMixedClockStructuredWarningAppearsInStartPreview() throws {
+        let success = try decodeCaptureSuccess(
+            #"""
+            {
+              "ok":true,"dry_run":true,"routed":false,"route_label":"",
+              "relative_target":"2026/20261102.md","target":"/tmp/day.md",
+              "text":"=MEET","task_line":"- [ ] session","kind":"pomodoro_start",
+              "created":"2026-11-02","placement":"updated",
+              "pomodoro_start":{"start":"1200","end":"1300","duration_minutes":60,
+                "offset_units":0,"pomodoro_name":"MEET","pomodoro_line":14,
+                "created_pomodoro":false,"time_range":"(**1200-1300** [t:: 60m])"},
+              "warnings":[{"code":"pomodoro_clock_mixed",
+                "message":"MEET stays on the clock: it also links Fix the parser"}]
+            }
+            """#
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(
+            presentation.pomodoroClockMixedWarning,
+            "MEET stays on the clock: it also links Fix the parser"
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Warning: MEET stays on the clock"))
     }
 
     func testInitReturnsNilWithoutStartSummary() throws {

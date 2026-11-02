@@ -225,6 +225,17 @@ public enum CaptureAgendaClock {
         return "\(minutes)m"
     }
 
+    /// Compact duration used by the agenda's off-clock chip: `1h`,
+    /// `1h 30m`, or `45m`.
+    public static func offClockDurationText(minutes: Int) -> String {
+        guard minutes >= 60 else {
+            return "\(minutes)m"
+        }
+        let hours = minutes / 60
+        let rest = minutes % 60
+        return rest == 0 ? "\(hours)h" : "\(hours)h \(rest)m"
+    }
+
     /// `"in 38m"` / `"in 1h 05m"` until a naive local datetime starts.
     /// Nil when the datetime is missing or unparseable, `"now"` once
     /// the start minute is reached.

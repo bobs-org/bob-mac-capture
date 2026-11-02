@@ -682,20 +682,48 @@ struct CaptureAgendaRowView: View {
 
     @ViewBuilder
     private var titleAccessoryView: some View {
-        if let accessory = row.accessoryText {
-            if accessory == CaptureAgendaPresentation.staleSuffix {
-                staleMarkerView(summary: nil)
-            } else if accessory.hasSuffix(titleStaleSuffix) {
+        let accessory = row.accessoryText ?? ""
+        let isStale = accessory == CaptureAgendaPresentation.staleSuffix
+            || accessory.hasSuffix(titleStaleSuffix)
+        let summary: String? = {
+            guard !accessory.isEmpty, accessory != CaptureAgendaPresentation.staleSuffix else {
+                return nil
+            }
+            if accessory.hasSuffix(titleStaleSuffix) {
                 let cut = accessory.index(
                     accessory.endIndex,
                     offsetBy: -titleStaleSuffix.count
                 )
-                staleMarkerView(summary: String(accessory[..<cut]))
-            } else {
-                Text(accessory)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                return String(accessory[..<cut])
+            }
+            return accessory
+        }()
+        if summary != nil || row.titleOffClockText != nil || isStale {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                if let offClockText = row.titleOffClockText {
+                    Text(offClockText)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                                )
+                                .foregroundStyle(.secondary)
+                        )
+                        .accessibilityHidden(true)
+                }
+                if isStale {
+                    staleMarkerView()
+                }
             }
         }
     }
@@ -704,14 +732,8 @@ struct CaptureAgendaRowView: View {
         " · \(CaptureAgendaPresentation.staleSuffix)"
     }
 
-    private func staleMarkerView(summary: String?) -> some View {
+    private func staleMarkerView() -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            if let summary, !summary.isEmpty {
-                Text(summary)
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
             Image(systemName: "clock.badge.exclamationmark")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
@@ -845,8 +867,8 @@ struct CaptureAgendaRowView: View {
             if let chip = row.homeChip {
                 PomodoroHomeChipView(chip: chip, hue: row.homeHue, hollow: row.homeIsForecast)
             }
-            if row.sessionUntracked {
-                Text("untracked")
+            if row.sessionOffClock {
+                Text("off-clock")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
@@ -1187,14 +1209,14 @@ struct CaptureAgendaRowView: View {
         let capsuleWidth = railWidth(event, width: width)
         let strokeWidth: CGFloat = colorSchemeContrast == .increased ? 1.5 : 1
         return RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(event.untracked || event.maybe ? .clear : color.opacity(0.9))
+            .fill(event.offClock || event.maybe ? .clear : color.opacity(0.9))
             .overlay {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .stroke(
                         color,
                         style: StrokeStyle(
                             lineWidth: strokeWidth,
-                            dash: event.maybe ? [1, 2] : event.untracked ? [3, 2] : []
+                            dash: event.maybe ? [1, 2] : event.offClock ? [3, 2] : []
                         )
                     )
             }
@@ -1216,7 +1238,7 @@ struct CaptureAgendaRowView: View {
 
     /// A buffer wing fused to a rail capsule: thinner than the capsule,
     /// in the event's home hue at low opacity, dashed when the event is
-    /// untracked or Maybe/free, and outlined in the hue while the
+    /// off-clock or Maybe/free, and outlined in the hue while the
     /// buffer is in progress.
     private func railWingView(
         _ wing: CaptureAgendaRailWing,
@@ -1224,7 +1246,7 @@ struct CaptureAgendaRowView: View {
         width: CGFloat
     ) -> some View {
         let color = PomodoroHomeColor.color(for: event.hue, scheme: colorScheme)
-        let dashed = event.untracked || event.maybe
+        let dashed = event.offClock || event.maybe
         return RoundedRectangle(cornerRadius: 1.5, style: .continuous)
             .fill(color.opacity(0.35))
             .overlay {
@@ -1266,8 +1288,8 @@ struct CaptureAgendaRowView: View {
                     CaptureAgendaRowInlineText.text(row.text, base: .callout, color: .primary)
                         .lineLimit(row.lineLimit)
                 }
-                if data.untracked {
-                    Text("untracked")
+                if data.offClock {
+                    Text("off-clock")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1342,7 +1364,7 @@ struct CaptureAgendaRowView: View {
     @ViewBuilder
     private func calendarDotView(data: CaptureAgendaCalendarRowData) -> some View {
         Group {
-            if data.untracked {
+            if data.offClock {
                 Circle()
                     .stroke(
                         PomodoroHomeColor.color(for: data.hue, scheme: colorScheme),

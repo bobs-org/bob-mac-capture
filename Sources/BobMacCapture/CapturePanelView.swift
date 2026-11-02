@@ -4585,6 +4585,13 @@ struct PreviewPane: View {
                     conflict: conflict
                 )
             }
+            if let warning = start.pomodoroClockMixedWarning {
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Warning: \(warning)")
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
                     Text("\(index + 1)")

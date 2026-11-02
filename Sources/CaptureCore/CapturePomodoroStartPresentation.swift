@@ -151,6 +151,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// Compact, Bob-authored calendar context for a MEET event run.
     public let eventRunText: String?
     public let eventConflict: CaptureEventConflictPresentation?
+    /// Bob's structured explanation when the kept Task Links mix clocks.
+    public let pomodoroClockMixedWarning: String?
 
     /// `"Start CAPTURE"` (dry run) or `"Started CAPTURE"`.
     public let title: String
@@ -227,7 +229,10 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             summary: summary,
             dryRun: capture.dryRun,
             relativeTarget: capture.relativeTarget,
-            captureText: capture.text
+            captureText: capture.text,
+            pomodoroClockMixedWarning: capture.warnings.first(
+                where: \.isPomodoroClockMixed
+            )?.message
         )
     }
 
@@ -235,7 +240,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         summary: PomodoroStartSummary,
         dryRun: Bool,
         relativeTarget: String = "",
-        captureText: String = ""
+        captureText: String = "",
+        pomodoroClockMixedWarning: String? = nil
     ) {
         isDryRun = dryRun
         let override = summary.overrideOutcome
@@ -256,6 +262,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         eventConflict = summary.eventConflict.map {
             CaptureEventConflictPresentation($0, sessionName: resolvedName)
         }
+        self.pomodoroClockMixedWarning = pomodoroClockMixedWarning
 
         switch override?.action {
         case "restart":
@@ -420,6 +427,9 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         if let eventConflict {
             spoken += ". \(eventConflict.accessibilityText)"
         }
+        if let pomodoroClockMixedWarning {
+            spoken += ". Warning: \(pomodoroClockMixedWarning)"
+        }
         accessibilitySummary = spoken
         notificationDetail = statusText
 
@@ -548,8 +558,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         if !titles.isEmpty {
             parts.append(titles)
         }
-        if run.untracked {
-            parts.append("untracked")
+        if run.offClock {
+            parts.append("off-clock")
         }
         return parts.joined(separator: " · ")
     }

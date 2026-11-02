@@ -1237,7 +1237,7 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
     public let timeRange: String
     public let line: Int
     public let blockID: String?
-    public let untracked: Bool
+    public let offClock: Bool
     /// The event's pre/post-event buffer; nil on an older bob and when
     /// the event carries none. A malformed buffer decodes as nil.
     public let buffer: CaptureEventBuffer?
@@ -1248,7 +1248,7 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         timeRange: String = "",
         line: Int = 0,
         blockID: String? = nil,
-        untracked: Bool = false,
+        offClock: Bool = false,
         buffer: CaptureEventBuffer? = nil
     ) {
         self.index = index
@@ -1256,18 +1256,20 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         self.timeRange = timeRange
         self.line = line
         self.blockID = blockID
-        self.untracked = untracked
+        self.offClock = offClock
         self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
         line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
-        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? legacy.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
@@ -1277,8 +1279,12 @@ public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
         case timeRange = "time_range"
         case line
         case blockID = "block_id"
-        case untracked
+        case offClock = "off_clock"
         case buffer
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case untracked
     }
 }
 
@@ -1288,7 +1294,7 @@ public struct PomodoroEventRun: Codable, Equatable, Sendable {
     public let timeRange: String
     public let start: String
     public let end: String
-    public let untracked: Bool
+    public let offClock: Bool
     public let source: String
     public let events: [PomodoroEventRunEvent]
 
@@ -1296,24 +1302,26 @@ public struct PomodoroEventRun: Codable, Equatable, Sendable {
         timeRange: String = "",
         start: String = "",
         end: String = "",
-        untracked: Bool = false,
+        offClock: Bool = false,
         source: String = "",
         events: [PomodoroEventRunEvent] = []
     ) {
         self.timeRange = timeRange
         self.start = start
         self.end = end
-        self.untracked = untracked
+        self.offClock = offClock
         self.source = source
         self.events = events
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
         start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
         end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
-        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? legacy.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
         events = try container.decodeIfPresent([PomodoroEventRunEvent].self, forKey: .events) ?? []
     }
@@ -1322,9 +1330,13 @@ public struct PomodoroEventRun: Codable, Equatable, Sendable {
         case timeRange = "time_range"
         case start
         case end
-        case untracked
+        case offClock = "off_clock"
         case source
         case events
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case untracked
     }
 }
 
@@ -1333,7 +1345,7 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
     public let title: String
     public let timeRange: String
     public let line: Int
-    public let untracked: Bool
+    public let offClock: Bool
     /// The event's pre/post-event buffer; nil on an older bob and when
     /// the event carries none. A malformed buffer decodes as nil.
     public let buffer: CaptureEventBuffer?
@@ -1342,22 +1354,24 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
         title: String = "",
         timeRange: String = "",
         line: Int = 0,
-        untracked: Bool = false,
+        offClock: Bool = false,
         buffer: CaptureEventBuffer? = nil
     ) {
         self.title = title
         self.timeRange = timeRange
         self.line = line
-        self.untracked = untracked
+        self.offClock = offClock
         self.buffer = buffer
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
         line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
-        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? legacy.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
 
@@ -1365,8 +1379,12 @@ public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
         case title
         case timeRange = "time_range"
         case line
-        case untracked
+        case offClock = "off_clock"
         case buffer
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case untracked
     }
 }
 
@@ -3667,6 +3685,15 @@ public enum CaptureWarning: Codable, Equatable, Sendable {
     public var isThemeNotConfigured: Bool {
         if case .structured(let warning) = self {
             return warning.code == CaptureUnconfiguredThemePresentation.warningCode
+        }
+        return false
+    }
+
+    /// A mixed lineup stays worked in full; the start preview surfaces
+    /// Bob's structured explanation in its warning style.
+    public var isPomodoroClockMixed: Bool {
+        if case .structured(let warning) = self {
+            return warning.code == "pomodoro_clock_mixed"
         }
         return false
     }

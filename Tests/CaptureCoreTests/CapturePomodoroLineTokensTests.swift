@@ -106,6 +106,16 @@ final class CapturePomodoroLineTokensTests: XCTestCase {
         XCTAssertTrue(tokens.allSatisfy { !$0.struck })
     }
 
+    func testOffClockHeadlineTokenizesDurationKeyAsAField() {
+        let tokens = checkInvariant(
+            "- [x] (**1200-1300** [off:: 60m]) — MEET",
+            isHeadline: true
+        )
+
+        XCTAssertTrue(tokens.contains { $0.text == "[off:: 60m]" && $0.role == .field })
+        XCTAssertTrue(tokens.contains { $0.text == "MEET" && $0.role == .name })
+    }
+
     func testPlaceholderHeadlineTokenizes() throws {
         let tokens = checkInvariant("- [ ] () — GTD", isHeadline: true)
 

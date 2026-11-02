@@ -276,10 +276,11 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertTrue(missingNote.pomodoros.isEmpty)
     }
 
-    func testEventsBlockDecodesWithUntrackedAndTrackedFlags() throws {
+    func testEventsBlockDecodesOffClockFlagsAndSummary() throws {
         let snapshot = try decodeFixture("agenda-events.json")
 
-        XCTAssertEqual(snapshot.completedSummary.untrackedCount, 1)
+        XCTAssertEqual(snapshot.completedSummary.offClock.count, 1)
+        XCTAssertEqual(snapshot.completedSummary.offClock.minutes, 30)
         let events = try XCTUnwrap(snapshot.events)
         XCTAssertEqual(events.syncedAt, "2026-08-28T08:02")
         XCTAssertEqual(events.refreshAt, "2026-08-28T09:30")
@@ -292,7 +293,7 @@ final class CaptureAgendaModelsTests: XCTestCase {
         let standup = events.rows[0]
         XCTAssertEqual(standup.kind, .task)
         XCTAssertEqual(standup.phase, .upcoming)
-        XCTAssertFalse(standup.untracked)
+        XCTAssertFalse(standup.offClock)
         XCTAssertEqual(standup.home?.label, "job")
         XCTAssertEqual(standup.home?.hue, .green)
         XCTAssertEqual(standup.joinURL, "https://meet.google.com/abc")
@@ -300,7 +301,7 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertEqual(standup.pomodoro?.role, .next)
 
         let lunch = events.rows[2]
-        XCTAssertTrue(lunch.untracked)
+        XCTAssertTrue(lunch.offClock)
         XCTAssertNil(lunch.home)
         XCTAssertNil(lunch.joinURL)
 
@@ -316,23 +317,81 @@ final class CaptureAgendaModelsTests: XCTestCase {
         let meet = snapshot.pomodoros.first(where: { $0.name == "MEET" })
         let linked = try XCTUnwrap(meet?.items.first(where: { $0.event != nil }))
         XCTAssertEqual(linked.event?.title, "Standup")
-        XCTAssertFalse(linked.event?.untracked ?? true)
+        XCTAssertFalse(linked.event?.offClock ?? true)
         let lunchItem = try XCTUnwrap(meet?.items.first(where: { $0.blockID == "lunch" }))
-        XCTAssertTrue(lunchItem.event?.untracked ?? false)
+        XCTAssertTrue(lunchItem.event?.offClock ?? false)
 
-        let untrackedEntry = snapshot.pomodoros.first(where: { $0.name == "UNTRACKED BREAK" })
-        XCTAssertEqual(untrackedEntry?.tracked, false)
+        let offClockEntry = snapshot.pomodoros.first(where: { $0.name == "OFF-CLOCK BREAK" })
+        XCTAssertEqual(offClockEntry?.offClock, true)
+        XCTAssertEqual(offClockEntry?.homes?.offClock, true)
     }
 
     func testOlderPayloadsDecodeWithoutEvents() throws {
         let current = try decodeFixture("agenda-current.json")
         XCTAssertNil(current.events)
-        XCTAssertEqual(current.completedSummary.untrackedCount, 0)
-        XCTAssertTrue(current.pomodoros.allSatisfy({ $0.tracked == nil }))
+        XCTAssertEqual(current.completedSummary.offClock.count, 0)
+        XCTAssertTrue(current.pomodoros.allSatisfy({ $0.offClock == nil }))
         XCTAssertTrue(current.pomodoros.allSatisfy({ $0.items.allSatisfy({ $0.event == nil }) }))
 
         let empty = try decodeFixture("agenda-empty.json")
         XCTAssertNil(empty.events)
+    }
+
+    func testLegacyOffClockKeysDecodeAndNewKeysTakePrecedence() throws {
+        let legacy = #"""
+            {
+              "completed_summary": {"count": 2, "minutes": 55, "untracked_count": 3},
+              "pomodoros": [
+                {"line": 1, "tracked": false, "homes": {"untracked": true}},
+                {"line": 2, "tracked": true},
+                {"line": 3}
+              ],
+              "events": {"rows": [
+                {"line": 1, "title": "Lunch", "untracked": true}
+              ]}
+            }
+            """#
+        let old = try JSONDecoder().decode(CaptureAgendaSnapshot.self, from: Data(legacy.utf8))
+        XCTAssertEqual(old.completedSummary.offClock.count, 3)
+        XCTAssertEqual(old.completedSummary.offClock.minutes, 0)
+        XCTAssertEqual(old.pomodoros[0].offClock, true)
+        XCTAssertEqual(old.pomodoros[0].homes?.offClock, true)
+        XCTAssertEqual(old.pomodoros[1].offClock, false)
+        XCTAssertNil(old.pomodoros[2].offClock)
+        XCTAssertTrue(old.events?.rows.first?.offClock ?? false)
+        let oldItemEvent = try JSONDecoder().decode(
+            CaptureAgendaItemEvent.self,
+            from: Data(#"{"untracked":true,"title":"Lunch"}"#.utf8)
+        )
+        XCTAssertTrue(oldItemEvent.offClock)
+
+        let current = #"""
+            {
+              "completed_summary": {
+                "count": 0, "minutes": 0,
+                "off_clock": {"count": 1, "minutes": 25},
+                "untracked_count": 9
+              },
+              "pomodoros": [{
+                "line": 1, "off_clock": false, "tracked": false,
+                "homes": {"off_clock": false, "untracked": true}
+              }],
+              "events": {"rows": [
+                {"line": 1, "title": "Lunch", "off_clock": false, "untracked": true}
+              ]}
+            }
+            """#
+        let new = try JSONDecoder().decode(CaptureAgendaSnapshot.self, from: Data(current.utf8))
+        XCTAssertEqual(new.completedSummary.offClock.count, 1)
+        XCTAssertEqual(new.completedSummary.offClock.minutes, 25)
+        XCTAssertEqual(new.pomodoros.first?.offClock, false)
+        XCTAssertEqual(new.pomodoros.first?.homes?.offClock, false)
+        XCTAssertEqual(new.events?.rows.first?.offClock, false)
+        let newItemEvent = try JSONDecoder().decode(
+            CaptureAgendaItemEvent.self,
+            from: Data(#"{"off_clock":false,"untracked":true,"title":"Lunch"}"#.utf8)
+        )
+        XCTAssertFalse(newItemEvent.offClock)
     }
 
     func testUnknownEventEnumsDecodeToOther() throws {

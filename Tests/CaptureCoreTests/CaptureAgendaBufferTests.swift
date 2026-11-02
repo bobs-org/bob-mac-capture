@@ -40,7 +40,7 @@ final class CaptureAgendaBufferTests: XCTestCase {
         startsAt: String? = "2026-08-28T12:00",
         endsAt: String? = "2026-08-28T13:00",
         phase: CaptureAgendaEventPhase? = .upcoming,
-        untracked: Bool = false,
+        offClock: Bool = false,
         buffer: CaptureEventBuffer? = nil
     ) -> CaptureAgendaEventRow {
         CaptureAgendaEventRow(
@@ -56,7 +56,7 @@ final class CaptureAgendaBufferTests: XCTestCase {
             phase: phase,
             statusSymbol: " ",
             statusType: "TODO",
-            untracked: untracked,
+            offClock: offClock,
             root: nil,
             home: nil,
             joinURL: nil,
@@ -119,7 +119,7 @@ final class CaptureAgendaBufferTests: XCTestCase {
         XCTAssertEqual(standup.buffer?.endsAt, "2026-08-28T09:25")
 
         let lunch = events.rows[1]
-        XCTAssertTrue(lunch.untracked)
+        XCTAssertTrue(lunch.offClock)
         XCTAssertEqual(lunch.buffer?.beforeMinutes, 30)
         XCTAssertEqual(lunch.buffer?.afterMinutes, 15)
         XCTAssertEqual(lunch.buffer?.label(), "\u{2212}30m +15m")
@@ -453,13 +453,13 @@ final class CaptureAgendaBufferTests: XCTestCase {
             timeRange: "1130-1315",
             start: "1130",
             end: "1315",
-            untracked: true,
+            offClock: true,
             source: "calendar",
             events: [
                 PomodoroEventRunEvent(
                     title: "Lunch with Kelly",
                     timeRange: "1200-1300",
-                    untracked: true,
+                    offClock: true,
                     buffer: CaptureEventBuffer(beforeMinutes: 30, afterMinutes: 15)
                 )
             ]
@@ -482,7 +482,7 @@ final class CaptureAgendaBufferTests: XCTestCase {
         )
         let expected =
             "MEET · 11:30–13:15 · from your calendar · Lunch with Kelly "
-            + "\u{2212}30m +15m · untracked"
+            + "\u{2212}30m +15m · off-clock"
         XCTAssertEqual(presentation.eventRunText, expected)
     }
 
@@ -492,7 +492,7 @@ final class CaptureAgendaBufferTests: XCTestCase {
                 event: PomodoroEventConflictEvent(
                     title: "Lunch",
                     timeRange: "1200-1300",
-                    untracked: true,
+                    offClock: true,
                     buffer: CaptureEventBuffer(beforeMinutes: 30, afterMinutes: 15)
                 ),
                 overlapMinutes: 10,

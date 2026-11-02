@@ -58,6 +58,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let homeChip: String?
     public let homeHue: PomodoroHomeHue?
     public let homeIsForecast: Bool
+    /// The title's decorative off-clock summary chip. Its spoken form is
+    /// folded into the title row's accessibility label.
+    public let titleOffClockText: String?
     /// Theme hues for a group header or one-row name, in component
     /// order. Part of the measure key so a hue change re-measures.
     public let themeHues: [PomodoroHomeHue?]
@@ -65,7 +68,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// URL, and countdown all affect measurement.
     public let calendar: CaptureAgendaCalendarRowData?
     public let calendarRail: CaptureAgendaRailData?
-    public let sessionUntracked: Bool
+    public let sessionOffClock: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -78,10 +81,11 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
+        titleOffClockText: String? = nil,
         themeHues: [PomodoroHomeHue?] = [],
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
-        sessionUntracked: Bool = false
+        sessionOffClock: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -93,10 +97,11 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.homeChip = homeChip
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
+        self.titleOffClockText = titleOffClockText
         self.themeHues = themeHues
         self.calendar = calendar
         self.calendarRail = calendarRail
-        self.sessionUntracked = sessionUntracked
+        self.sessionOffClock = sessionOffClock
     }
 }
 
@@ -130,6 +135,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// True when the chip's homes state is forecast: the view draws a
     /// hollow ring (R7) instead of a filled dot.
     public let homeIsForecast: Bool
+    /// The title's decorative off-clock summary chip. Its spoken form is
+    /// folded into the title row's accessibility label.
+    public let titleOffClockText: String?
     /// Bob-owned theme refs for a group header or one-row name, in
     /// component order. Empty for every other row and on an older Bob.
     public let themeRefs: [CapturePomodoroThemeRef]
@@ -138,9 +146,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     public let calendar: CaptureAgendaCalendarRowData?
     /// Normalized positions for the decorative day rail.
     public let calendarRail: CaptureAgendaRailData?
-    /// True only for an entry Bob explicitly reports as an untracked
+    /// True only for an entry Bob explicitly reports as off-clock
     /// session; older Bob leaves the Now header unchanged.
-    public let sessionUntracked: Bool
+    public let sessionOffClock: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -158,10 +166,11 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
+        titleOffClockText: String? = nil,
         themeRefs: [CapturePomodoroThemeRef] = [],
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
-        sessionUntracked: Bool = false
+        sessionOffClock: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -178,25 +187,28 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.homeChip = homeChip
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
+        self.titleOffClockText = titleOffClockText
         self.themeRefs = themeRefs
         self.calendar = calendar
         self.calendarRail = calendarRail
-        self.sessionUntracked = sessionUntracked
+        self.sessionOffClock = sessionOffClock
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
-            hasAccessory: numberBadge != nil || accessoryText != nil || sessionUntracked,
+            hasAccessory: numberBadge != nil || accessoryText != nil
+                || titleOffClockText != nil || sessionOffClock,
             notesChip: notesChip,
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
+            titleOffClockText: titleOffClockText,
             themeHues: themeRefs.map(\.hue),
             calendar: calendar,
             calendarRail: calendarRail,
-            sessionUntracked: sessionUntracked
+            sessionOffClock: sessionOffClock
         )
     }
 
@@ -352,6 +364,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             rawDate: snapshot.date,
             nothingRunning: nothingRunning,
             summaryText: summaryText,
+            offClockMinutes: snapshot.completedSummary.offClock.minutes,
             locale: locale,
             stale: isStale
         )
@@ -489,6 +502,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         rawDate: String?,
         nothingRunning: Bool,
         summaryText: String?,
+        offClockMinutes: Int = 0,
         locale: Locale,
         stale: Bool = false
     ) -> CaptureAgendaRow {
@@ -508,13 +522,23 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 accessory = staleSuffix
             }
         }
+        let offClockDuration = offClockMinutes > 0
+            ? CaptureAgendaClock.offClockDurationText(minutes: offClockMinutes)
+            : nil
+        let offClockChipText = offClockDuration.map { "◌ \($0) off-clock" }
+        let spokenAccessory = [
+            summaryText,
+            offClockDuration.map { "\($0) off-clock" },
+            stale ? staleSuffix : nil,
+        ].compactMap { $0 }.joined(separator: ", ")
         return CaptureAgendaRow(
             kind: .title,
             text: text,
             depth: 0,
             lineLimit: 1,
             accessoryText: accessory,
-            accessibilityLabel: accessory == nil ? text : "\(text). \(accessory ?? "")"
+            accessibilityLabel: spokenAccessory.isEmpty ? text : "\(text). \(spokenAccessory)",
+            titleOffClockText: offClockChipText
         )
     }
 
@@ -743,8 +767,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             }
             accessory = [range, countdown].compactMap { $0 }.joined(separator: " · ")
             label =
-                entry.tracked == false
-                ? "Header, \(spoken), untracked session"
+                entry.offClock == true
+                ? "Header, \(spoken), off-clock session"
                 : "Header, \(spoken)"
         case .open:
             let range = CaptureAgendaClock.timeRangeText(
@@ -791,7 +815,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
             themeRefs: themeRefs,
-            sessionUntracked: entry.role == .current && entry.tracked == false
+            sessionOffClock: entry.role == .current && entry.offClock == true
         )
     }
 
@@ -1229,9 +1253,9 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     /// `"13:00–13:30"` for the monospaced time column.
     public let timeText: String
     public let hue: PomodoroHomeHue?
-    /// True for `#untracked` events: the dot is hollow and dashed and
-    /// a dashed "untracked" capsule follows the title.
-    public let untracked: Bool
+    /// True for off-clock events: the dot is hollow and dashed and a
+    /// dashed "off-clock" capsule follows the title.
+    public let offClock: Bool
     /// True for Maybe/free rows: the title renders italic and dimmed.
     public let dimmed: Bool
     /// The join target behind the row's join button. Nil when the
@@ -1252,7 +1276,7 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     public init(
         timeText: String = "",
         hue: PomodoroHomeHue? = nil,
-        untracked: Bool = false,
+        offClock: Bool = false,
         dimmed: Bool = false,
         joinURL: String? = nil,
         countdownText: String? = nil,
@@ -1262,7 +1286,7 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     ) {
         self.timeText = timeText
         self.hue = hue
-        self.untracked = untracked
+        self.offClock = offClock
         self.dimmed = dimmed
         self.joinURL = joinURL
         self.countdownText = countdownText
@@ -1295,7 +1319,7 @@ public struct CaptureAgendaRailEvent: Hashable, Equatable, Sendable {
     public let start: Double
     public let end: Double
     public let hue: PomodoroHomeHue?
-    public let untracked: Bool
+    public let offClock: Bool
     public let maybe: Bool
     public let leadingWing: CaptureAgendaRailWing?
     public let trailingWing: CaptureAgendaRailWing?
@@ -1304,7 +1328,7 @@ public struct CaptureAgendaRailEvent: Hashable, Equatable, Sendable {
         start: Double,
         end: Double,
         hue: PomodoroHomeHue? = nil,
-        untracked: Bool = false,
+        offClock: Bool = false,
         maybe: Bool = false,
         leadingWing: CaptureAgendaRailWing? = nil,
         trailingWing: CaptureAgendaRailWing? = nil
@@ -1312,7 +1336,7 @@ public struct CaptureAgendaRailEvent: Hashable, Equatable, Sendable {
         self.start = start
         self.end = end
         self.hue = hue
-        self.untracked = untracked
+        self.offClock = offClock
         self.maybe = maybe
         self.leadingWing = leadingWing
         self.trailingWing = trailingWing
@@ -1818,7 +1842,7 @@ extension CaptureAgendaPresentation {
                 start: position(meetingStart),
                 end: position(meetingEnd),
                 hue: row.home?.hue,
-                untracked: row.untracked,
+                offClock: row.offClock,
                 maybe: qualifier == "maybe" || qualifier == "free",
                 leadingWing: leadingWing,
                 trailingWing: trailingWing
@@ -2019,7 +2043,7 @@ extension CaptureAgendaPresentation {
         let data = CaptureAgendaCalendarRowData(
             timeText: timeText,
             hue: row.home?.hue,
-            untracked: row.untracked,
+            offClock: row.offClock,
             dimmed: dimmed,
             joinURL: row.joinURL,
             countdownText: countdown,
@@ -2033,8 +2057,8 @@ extension CaptureAgendaPresentation {
                 endsAt: row.endsAt
             ) ?? timeText
         var labelParts = ["\(row.title), \(spokenRange)"]
-        if row.untracked {
-            labelParts.append("untracked")
+        if row.offClock {
+            labelParts.append("off-clock")
         }
         if let buffer = row.buffer, let spoken = buffer.spoken() {
             var bufferPart = spoken

@@ -2,6 +2,7 @@
   "completed_summary": {
     "count": 0,
     "minutes": 0,
+    "off_clock": {"count": 1, "minutes": 30},
     "untracked_count": 1
   },
   "count": 3,
@@ -50,6 +51,7 @@
         "status_type": "ON_HOLD",
         "time_range": "0930-1000",
         "title": "Standup",
+        "off_clock": false,
         "untracked": false
       },
       {
@@ -71,6 +73,7 @@
         "status_type": null,
         "time_range": "1100-1130",
         "title": "Class meeting",
+        "off_clock": false,
         "untracked": false
       },
       {
@@ -96,6 +99,7 @@
         "status_type": "TODO",
         "time_range": "1200-1300",
         "title": "Lunch with Kelly",
+        "off_clock": true,
         "untracked": true
       }
     ],
@@ -134,19 +138,20 @@
           }
         ],
         "state": "attributed",
+        "off_clock": true,
         "untracked": true
       },
       "is_current": false,
       "items": [],
       "line": 11,
-      "name": "UNTRACKED BREAK",
+      "name": "OFF-CLOCK BREAK",
       "notes": [],
       "placeholder": false,
       "ref": "11:f6189f36",
       "retired_link_count": 0,
       "role": "completed",
       "selectable": true,
-      "slug": "untracked-break",
+      "slug": "off-clock-break",
       "starts_at": "2026-08-28T07:30",
       "state": "completed",
       "status_symbol": "x",
@@ -155,11 +160,12 @@
         {
           "hue": "red",
           "hue_source": "hash",
-          "key": "untracked break",
-          "name": "UNTRACKED BREAK"
+            "key": "off-clock break",
+            "name": "OFF-CLOCK BREAK"
         }
       ],
       "time_range": "0730-0800",
+      "off_clock": true,
       "tracked": false
     },
     {
@@ -240,6 +246,7 @@
             "starts_at": "2026-08-28T09:30",
             "time_range": "0930-1000",
             "title": "Standup",
+            "off_clock": false,
             "untracked": false
           },
           "index": 1,
@@ -266,6 +273,7 @@
             "starts_at": "2026-08-28T12:00",
             "time_range": "1200-1300",
             "title": "Lunch with Kelly",
+            "off_clock": true,
             "untracked": true
           },
           "index": 2,

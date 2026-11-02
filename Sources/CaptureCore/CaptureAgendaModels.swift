@@ -192,30 +192,60 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
 public struct CaptureAgendaCompletedSummary: Decodable, Equatable, Sendable {
     public let count: Int
     public let minutes: Int
-    /// Closed untracked sessions in today's ledger. Older bob omits
-    /// the field; it decodes as 0.
-    public let untrackedCount: Int
+    /// Closed Off-Clock Pomodoros in today's ledger. Older bob may only
+    /// report their count through the deprecated `untracked_count` key.
+    public let offClock: CaptureAgendaOffClockSummary
 
-    public init(count: Int = 0, minutes: Int = 0, untrackedCount: Int = 0) {
+    public init(
+        count: Int = 0,
+        minutes: Int = 0,
+        offClock: CaptureAgendaOffClockSummary = CaptureAgendaOffClockSummary()
+    ) {
         self.count = count
         self.minutes = minutes
-        self.untrackedCount = untrackedCount
+        self.offClock = offClock
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         count = try container.decodeIfPresent(Int.self, forKey: .count) ?? 0
         minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
-        untrackedCount = try container.decodeIfPresent(
-            Int.self,
-            forKey: .untrackedCount
-        ) ?? 0
+        offClock = try container.decodeIfPresent(
+            CaptureAgendaOffClockSummary.self,
+            forKey: .offClock
+        ) ?? CaptureAgendaOffClockSummary(
+            count: container.decodeIfPresent(Int.self, forKey: .untrackedCount) ?? 0
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
         case count
         case minutes
+        case offClock = "off_clock"
         case untrackedCount = "untracked_count"
+    }
+}
+
+/// The additive `completed_summary.off_clock` object. Older bob exposes
+/// only `untracked_count`, so its fallback has no minute total.
+public struct CaptureAgendaOffClockSummary: Decodable, Equatable, Sendable {
+    public let count: Int
+    public let minutes: Int
+
+    public init(count: Int = 0, minutes: Int = 0) {
+        self.count = count
+        self.minutes = minutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        count = try container.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case count
+        case minutes
     }
 }
 
@@ -235,9 +265,9 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let slug: String?
     public let selectable: Bool
     public let homes: CaptureAgendaHomes?
-    /// Whether the entry's session counts as tracked time. Nil on an
-    /// older bob, which predates untracked sessions.
-    public let tracked: Bool?
+    /// Whether the entry's session is off the clock. Nil when an older
+    /// bob reports neither `off_clock` nor the deprecated `tracked` key.
+    public let offClock: Bool?
     /// Bob-owned theme refs for the entry name (`capture-pomodoros
     /// --tasks` `themes`). Older Bob omits the array; it decodes as
     /// empty and the agenda renders the plain name.
@@ -257,7 +287,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         slug: String? = nil,
         selectable: Bool = false,
         homes: CaptureAgendaHomes? = nil,
-        tracked: Bool? = nil,
+        offClock: Bool? = nil,
         themes: [CapturePomodoroThemeRef] = []
     ) {
         self.line = line
@@ -273,7 +303,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.slug = slug
         self.selectable = selectable
         self.homes = homes
-        self.tracked = tracked
+        self.offClock = offClock
         self.themes = themes
     }
 
@@ -294,7 +324,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
         homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
-        tracked = try container.decodeIfPresent(Bool.self, forKey: .tracked)
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? container.decodeIfPresent(Bool.self, forKey: .tracked).map { !$0 }
         themes =
             (try? container.decodeIfPresent(
                 [CapturePomodoroThemeRef].self,
@@ -316,6 +347,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case slug
         case selectable
         case homes
+        case offClock = "off_clock"
         case tracked
         case themes
     }
@@ -629,7 +661,7 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
     public let timeRange: String?
     public let startsAt: String?
     public let endsAt: String?
-    public let untracked: Bool
+    public let offClock: Bool
     public let title: String
     /// The event's pre/post-event buffer; nil on an older bob and when
     /// the event carries none. A malformed buffer decodes as nil.
@@ -639,14 +671,14 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
         timeRange: String? = nil,
         startsAt: String? = nil,
         endsAt: String? = nil,
-        untracked: Bool = false,
+        offClock: Bool = false,
         title: String = "",
         buffer: CaptureEventBuffer? = nil
     ) {
         self.timeRange = timeRange
         self.startsAt = startsAt
         self.endsAt = endsAt
-        self.untracked = untracked
+        self.offClock = offClock
         self.title = title
         self.buffer = buffer
     }
@@ -656,7 +688,8 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
         startsAt = try container.decodeIfPresent(String.self, forKey: .startsAt)
         endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt)
-        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
     }
@@ -665,6 +698,7 @@ public struct CaptureAgendaItemEvent: Decodable, Equatable, Sendable {
         case timeRange = "time_range"
         case startsAt = "starts_at"
         case endsAt = "ends_at"
+        case offClock = "off_clock"
         case untracked
         case title
         case buffer
@@ -777,7 +811,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
     public let phase: CaptureAgendaEventPhase?
     public let statusSymbol: String?
     public let statusType: String?
-    public let untracked: Bool
+    public let offClock: Bool
     public let root: String?
     public let home: CaptureAgendaEventHome?
     public let joinURL: String?
@@ -801,7 +835,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         phase: CaptureAgendaEventPhase? = nil,
         statusSymbol: String? = nil,
         statusType: String? = nil,
-        untracked: Bool = false,
+        offClock: Bool = false,
         root: String? = nil,
         home: CaptureAgendaEventHome? = nil,
         joinURL: String? = nil,
@@ -822,7 +856,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         self.phase = phase
         self.statusSymbol = statusSymbol
         self.statusType = statusType
-        self.untracked = untracked
+        self.offClock = offClock
         self.root = root
         self.home = home
         self.joinURL = joinURL
@@ -849,7 +883,8 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         phase = try container.decodeIfPresent(CaptureAgendaEventPhase.self, forKey: .phase)
         statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
         statusType = try container.decodeIfPresent(String.self, forKey: .statusType)
-        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
         root = try container.decodeIfPresent(String.self, forKey: .root)
         home = try container.decodeIfPresent(CaptureAgendaEventHome.self, forKey: .home)
         joinURL = try container.decodeIfPresent(String.self, forKey: .joinURL)
@@ -875,6 +910,7 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         case phase
         case statusSymbol = "status_symbol"
         case statusType = "status_type"
+        case offClock = "off_clock"
         case untracked
         case root
         case home

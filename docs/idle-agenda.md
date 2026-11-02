@@ -21,8 +21,10 @@ the Later strip use the same names. An older bob that omits `homes` is unchanged
 those task titles and details display as a lightbulb. The `x` and `=`
 numbers match the ones `bob` will use: the current entry shows its `x` numbers and
 every other open entry shows its `=` lineup number. When Bob reports a future start
-on the current entry, its time reads "starts in 10m"; `tracked: false` adds a dashed
-untracked pill to the Now header.
+on the current entry, its time reads "starts in 10m"; `off_clock: true` adds a dashed
+off-clock pill to the Now header. The title line keeps its Worked summary and adds a
+dashed `◌ 1h off-clock` chip when Bob reports off-clock minutes in
+`completed_summary.off_clock`.
 
 The row directly under `Today` shows the saved daily meters (`Themes N/C` and
 `Links N/C`); their caps come from bob's plan config. An older `bob` that omits
@@ -54,7 +56,7 @@ including the next panel show.
   the focus event ("Standup at 13:00 · in 38m") with the remaining count, total
   minutes, and sync stamp ("4 left · 2h 30m · ↻ 08:02", with the weekday when the
   stamp is from another day). Event rows show the time, a home-hue dot (hollow and
-  dashed for `#untracked` events, with a dashed "untracked" capsule), the title
+  dashed for off-clock events, with a dashed "off-clock" capsule), the title
   (italic and dimmed for Maybe/free rows), a quiet buffer capsule ("−30m +15m",
   tinted with the event hue while its buffer is in progress) when the event
   reserves one, a join button when the event carries one,
@@ -73,9 +75,9 @@ including the next panel show.
   refresh at the next event boundary while the agenda is visible. A decorative day
   rail runs from the current hour through at least three hours and extends through the
   last remaining event or running session, extending through buffered ends. It
-  shows hour ticks, filled event capsules, dashed untracked capsules, dotted
+  shows hour ticks, filled event capsules, dashed off-clock capsules, dotted
   Maybe/free capsules, thinner buffer wings fused to each buffered capsule (in the
-  event hue, dashed when untracked, outlined in the hue while the buffer is in
+  event hue, dashed when off-clock, outlined in the hue while the buffer is in
   progress), the pink running-session
   sublane, a now hairline, and the first gap (over buffered spans, so it agrees
   with bob's gap) when it has room; VoiceOver gets these

@@ -503,14 +503,22 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
                   "label": "SNACK",
                   "message": "SNACK isn't one of your configured themes"
                 },
+                {
+                  "code": "pomodoro_clock_mixed",
+                  "message": "MEET stays on the clock: it also links Fix the parser"
+                },
                 "other warning"
               ]
             }
             """#
         )
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
-        XCTAssertEqual(presentation.warnings, ["other warning"])
+        XCTAssertEqual(
+            presentation.warnings,
+            ["MEET stays on the clock: it also links Fix the parser", "other warning"]
+        )
         XCTAssertFalse(presentation.accessibilitySummary.contains("SNACK"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("MEET stays on the clock"))
         XCTAssertTrue(presentation.accessibilitySummary.contains("other warning"))
     }
 

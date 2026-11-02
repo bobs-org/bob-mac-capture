@@ -131,6 +131,24 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.titleRow.accessoryText, "1 done · 2h 40m")
     }
 
+    func testTitleShowsOffClockChipAfterWorkedSummary() {
+        let summary = CaptureAgendaCompletedSummary(
+            count: 1,
+            minutes: 160,
+            offClock: CaptureAgendaOffClockSummary(count: 1, minutes: 60)
+        )
+        let presentation = present(makeSnapshot(summary: summary))
+
+        XCTAssertEqual(presentation.titleRow.accessoryText, "1 done · 2h 40m")
+        XCTAssertEqual(presentation.titleRow.titleOffClockText, "◌ 1h off-clock")
+        XCTAssertEqual(presentation.titleRow.key.titleOffClockText, "◌ 1h off-clock")
+        XCTAssertTrue(
+            presentation.titleRow.accessibilityLabel?.contains(
+                "1 done · 2h 40m, 1h off-clock"
+            ) == true
+        )
+    }
+
     func testPomodoroTypeColorsUseTypeWordingForVoiceOver() {
         let presentation = present(makeSnapshot(entries: [
             makeEntry(

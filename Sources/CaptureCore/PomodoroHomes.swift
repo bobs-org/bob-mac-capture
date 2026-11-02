@@ -10,6 +10,9 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
     public let chip: String?
     public let hue: PomodoroHomeHue?
     public let parts: [CaptureAgendaHomePart]
+    /// Whether this session's home minutes are off the work clock.
+    /// Older Bob used the deprecated `untracked` key.
+    public let offClock: Bool?
 
     public init(
         state: CaptureAgendaHomesState = .other(""),
@@ -17,7 +20,8 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
         label: String = "",
         chip: String? = nil,
         hue: PomodoroHomeHue? = nil,
-        parts: [CaptureAgendaHomePart] = []
+        parts: [CaptureAgendaHomePart] = [],
+        offClock: Bool? = nil
     ) {
         self.state = state
         self.kind = kind
@@ -25,6 +29,7 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
         self.chip = chip
         self.hue = hue
         self.parts = parts
+        self.offClock = offClock
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +49,8 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
             [CaptureAgendaHomePart].self,
             forKey: .parts
         ) ?? []
+        offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
+            ?? container.decodeIfPresent(Bool.self, forKey: .untracked)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -54,6 +61,7 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
         try container.encodeIfPresent(chip, forKey: .chip)
         try container.encodeIfPresent(hue, forKey: .hue)
         try container.encode(parts, forKey: .parts)
+        try container.encodeIfPresent(offClock, forKey: .offClock)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -63,6 +71,8 @@ public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
         case chip
         case hue
         case parts
+        case offClock = "off_clock"
+        case untracked
     }
 }
 

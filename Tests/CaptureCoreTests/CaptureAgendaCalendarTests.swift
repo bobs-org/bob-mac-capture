@@ -22,7 +22,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         endsAt: String? = nil,
         durationMinutes: Int? = 30,
         phase: CaptureAgendaEventPhase? = .upcoming,
-        untracked: Bool = false,
+        offClock: Bool = false,
         qualifier: String? = nil,
         hue: PomodoroHomeHue? = nil,
         joinURL: String? = nil
@@ -40,7 +40,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
             phase: phase,
             statusSymbol: " ",
             statusType: "TODO",
-            untracked: untracked,
+            offClock: offClock,
             root: nil,
             home: hue.map { CaptureAgendaEventHome(label: "job", hue: $0) },
             joinURL: joinURL,
@@ -142,7 +142,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         XCTAssertEqual(calendar.focusJoinURL, "https://meet.google.com/abc")
         let rail = try XCTUnwrap(calendar.railRow.calendarRail)
         XCTAssertEqual(rail.events.count, 3)
-        XCTAssertEqual(rail.events.last?.untracked, true)
+        XCTAssertEqual(rail.events.last?.offClock, true)
         XCTAssertNotNil(rail.runningSession)
         XCTAssertEqual(rail.firstGap?.minutes, 60)
 
@@ -153,10 +153,10 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         XCTAssertEqual(focus.calendar?.startHint, "=meet")
         XCTAssertEqual(focus.calendar?.joinURL, "https://meet.google.com/abc")
         XCTAssertEqual(focus.calendar?.hue, .green)
-        XCTAssertFalse(focus.calendar?.untracked ?? true)
+        XCTAssertFalse(focus.calendar?.offClock ?? true)
 
         let lunch = calendar.upcomingRows[2]
-        XCTAssertEqual(lunch.calendar?.untracked, true)
+        XCTAssertEqual(lunch.calendar?.offClock, true)
         let timeless = calendar.upcomingRows[1]
         XCTAssertEqual(timeless.calendar?.dimmed, true)
 
@@ -166,7 +166,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         )
     }
 
-    func testNowCardShowsFutureStartAndUntrackedSession() {
+    func testNowCardShowsFutureStartAndOffClockSession() {
         let current = CaptureAgendaPomodoro(
             line: 12,
             name: "BOB",
@@ -174,7 +174,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
             role: .current,
             startsAt: "2026-08-28T09:00",
             endsAt: "2026-08-28T09:40",
-            tracked: false
+            offClock: true
         )
         let presentation = CaptureAgendaPresentation(
             snapshot: makeSnapshot(events: nil, pomodoros: [current]),
@@ -184,8 +184,8 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         )
         let header = presentation.groups[0].headerRow
         XCTAssertEqual(header.accessoryText, "09:00–09:40 · starts in 8m")
-        XCTAssertTrue(header.sessionUntracked)
-        XCTAssertTrue(header.accessibilityLabel?.contains("untracked session") == true)
+        XCTAssertTrue(header.sessionOffClock)
+        XCTAssertTrue(header.accessibilityLabel?.contains("off-clock session") == true)
         XCTAssertTrue(presentation.hasLiveCountdown)
     }
 
@@ -387,7 +387,7 @@ final class CaptureAgendaCalendarTests: XCTestCase {
             timeRange: "0930-1000",
             startsAt: "2026-08-28T09:30",
             endsAt: "2026-08-28T10:00",
-            untracked: false,
+            offClock: false,
             title: "Standup"
         )
         let item = makeItem(
