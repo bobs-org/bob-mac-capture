@@ -3998,6 +3998,16 @@ struct PreviewPane: View {
                     .accessibilityHidden(true)
                 Text(merge.before)
                     .fontWeight(.semibold)
+                if merge.sourceIsImplied {
+                    Text("Current")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.pink)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.pink.opacity(0.15), in: Capsule())
+                        .accessibilityHidden(true)
+                }
                 Image(systemName: "arrow.right")
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -4010,6 +4020,16 @@ struct PreviewPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+            }
+            if let hint = merge.teachingHint {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "number.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(mergeHintText(hint))
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
             }
             ForEach(Array(merge.absorbedRows.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 7) {
@@ -4026,6 +4046,16 @@ struct PreviewPane: View {
                             )
                         )
                     )
+                    if row.isNext {
+                        Text("Next")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.pink)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(.pink.opacity(0.15), in: Capsule())
+                            .accessibilityHidden(true)
+                    }
                     let movedLineNoun = row.movedLines == 1 ? "line" : "lines"
                     Text("\(row.movedLines) \(movedLineNoun) moved")
                         .font(.caption)
@@ -4967,6 +4997,21 @@ struct PreviewPane: View {
             part.foregroundColor = token.category == .neutral
                 ? .secondary
                 : CaptureEditorPalette.color(for: token.category)
+            return part
+        }.reduce(AttributedString()) { $0 + $1 }
+    }
+
+    private func mergeHintText(
+        _ hint: CapturePomodoroMergePresentation.TeachingHint
+    ) -> AttributedString {
+        hint.tokens.map { token in
+            var part = AttributedString(token.text)
+            part.foregroundColor = token.category == .neutral
+                ? .secondary
+                : CaptureEditorPalette.color(for: token.category)
+            if token.category == .pomodoroStart {
+                part.font = .system(.caption, design: .monospaced)
+            }
             return part
         }.reduce(AttributedString()) { $0 + $1 }
     }

@@ -263,29 +263,32 @@ A whole-item `=`/`=<X>` start instead shows its own card
   half. An empty lineup keeps the quiet `Type #name to start a specific Pomodoro`
   caption, and named starts with an empty lineup show no hint. Dropped rows read
   "Task 2, …, drops from today" and queued rows "Task 1, …, queued" for VoiceOver.
-  A `=` that overrides the running session shows the orange banner on the start
-  card instead of a still-running error, and an override commits only after its
-  warning was on screen. The footer's primary action
-  becomes **Start** (**Restart** for a restart, **Swap** for a swap), the live-preview, preview, and submit status read
-  `Would start …` / `Started …` with the session and line (plus ` · drops 2` /
-  ` · dropped 2` once a drop is typed), `Would restart …` / `Restarted …` with
-  the before → after range for a restart, and `Would swap in …` /
-  `Swapped in …` with the takeover or fresh range for a swap, and the notification
-  reads `Started NAME` with the session and queued-task count (counting `tasks`
-  only, plus ` · dropped 2`), `Restarted NAME` with the en-dash session, queued
-  count, and ` · was 0920–0945`, or `Swapped in NAME` with the taken range and the demoted
-  session back to first future. One item stays compact; a batch renders an ordered stack with item count,
+  Override banners and commit guards are in [Start overrides](#start-overrides).
+  The footer's primary action becomes **Start** (**Restart** / **Swap**), and
+  status reads `Would start …` / `Started …` with the session and line (plus
+  ` · drops 2` / ` · dropped 2` once a drop is typed), `Would restart …` with
+  the before → after range, or `Would swap in …` with the takeover or fresh
+  range. Notifications read `Started NAME` with session and queued count,
+  `Restarted NAME` with the en-dash session and ` · was 0920–0945`, or
+  `Swapped in NAME` with the taken range and demoted session. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global route, preview and the destination
   detail show one compact line (`All items → foo.md`) and mark item-level deviations as
-  local overrides instead of repeating the shared route on every item. The outer auxiliary detail region
-  owns scrolling, so preview itself never nests another scroll view. The preview card
-  always takes its natural height: the window grows to show it in full up to the screen
-  limit before the auxiliary region scrolls, and the card keeps its last rendered height
-  while a live preview reloads. Continuous live
-  preview passes `--no-clip` unless the draft has a `%c` directive (see [Live
-  preview](#live-preview) and [Clip card](#clip-card)); the explicit **Preview**
-  button and **Capture** always resolve the clipboard and therefore mirror the full block.
+  local overrides instead of repeating the shared route on every item. The outer auxiliary
+  region owns scrolling; the preview card takes its natural height up to the screen
+  limit, then the auxiliary region scrolls, and the card keeps that height while a
+  live preview reloads.
+
+### Merge card
+
+`kind: pomodoro_merge` shows an `arrow.triangle.merge` header, the destination,
+  and absorbed rows (theme pill, lines moved, duplicates dropped, source line).
+  Implied source (`source_role` `current` or `next_up`) adds a pink **Current**
+  capsule after the before name; each `role: next` row adds **Next** after its
+  pill. Implied picks add a caption under the destination: `Same as =*plan#fix`
+  in the merge-span tint (monospaced), then ` · Type #name to absorb a specific
+  Pomodoro` (`#name` in the name tint). Missing `explicit` leaves only the
+  `#name` line; `=*#fix` keeps **Current** and `Same as`.
 
 ### Pomodoro and task blocks
 

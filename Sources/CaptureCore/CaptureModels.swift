@@ -2411,17 +2411,21 @@ public struct PomodoroMergeAbsorbed: Codable, Equatable, Sendable {
     public let fromLine: Int
     public let movedLines: Int
     public let droppedDuplicates: Int
+    /// `"named"` or `"next"`. Older Bob omits it; decode as nil.
+    public let role: String?
 
     public init(
         name: String = "",
         fromLine: Int = 0,
         movedLines: Int = 0,
-        droppedDuplicates: Int = 0
+        droppedDuplicates: Int = 0,
+        role: String? = nil
     ) {
         self.name = name
         self.fromLine = fromLine
         self.movedLines = movedLines
         self.droppedDuplicates = droppedDuplicates
+        self.role = role
     }
 
     public init(from decoder: Decoder) throws {
@@ -2430,6 +2434,7 @@ public struct PomodoroMergeAbsorbed: Codable, Equatable, Sendable {
         fromLine = (try? container.decode(Int.self, forKey: .fromLine)) ?? 0
         movedLines = (try? container.decode(Int.self, forKey: .movedLines)) ?? 0
         droppedDuplicates = (try? container.decode(Int.self, forKey: .droppedDuplicates)) ?? 0
+        role = try container.decodeIfPresent(String.self, forKey: .role)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2437,6 +2442,7 @@ public struct PomodoroMergeAbsorbed: Codable, Equatable, Sendable {
         case fromLine = "from_line"
         case movedLines = "moved_lines"
         case droppedDuplicates = "dropped_duplicates"
+        case role
     }
 }
 
@@ -2447,19 +2453,28 @@ public struct PomodoroMergeSummary: Codable, Equatable, Sendable {
     public let before: String
     public let after: String
     public let absorbed: [PomodoroMergeAbsorbed]
+    /// `"current"`, `"next_up"`, or `"named"`. Older Bob omits it; decode as nil.
+    public let sourceRole: String?
+    /// Fully spelled token this merge resolved to, when an implied pick round-trips.
+    /// Older Bob omits it; decode as nil. Swift never splits or parses this string.
+    public let explicit: String?
 
     public init(
         path: String = "",
         entryLine: Int = 0,
         before: String = "",
         after: String = "",
-        absorbed: [PomodoroMergeAbsorbed] = []
+        absorbed: [PomodoroMergeAbsorbed] = [],
+        sourceRole: String? = nil,
+        explicit: String? = nil
     ) {
         self.path = path
         self.entryLine = entryLine
         self.before = before
         self.after = after
         self.absorbed = absorbed
+        self.sourceRole = sourceRole
+        self.explicit = explicit
     }
 
     public init(from decoder: Decoder) throws {
@@ -2469,6 +2484,8 @@ public struct PomodoroMergeSummary: Codable, Equatable, Sendable {
         before = (try? container.decode(String.self, forKey: .before)) ?? ""
         after = (try? container.decode(String.self, forKey: .after)) ?? ""
         absorbed = (try? container.decode([PomodoroMergeAbsorbed].self, forKey: .absorbed)) ?? []
+        sourceRole = try container.decodeIfPresent(String.self, forKey: .sourceRole)
+        explicit = try container.decodeIfPresent(String.self, forKey: .explicit)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2477,6 +2494,8 @@ public struct PomodoroMergeSummary: Codable, Equatable, Sendable {
         case before
         case after
         case absorbed
+        case sourceRole = "source_role"
+        case explicit
     }
 }
 

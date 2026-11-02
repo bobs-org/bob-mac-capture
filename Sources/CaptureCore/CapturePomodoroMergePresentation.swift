@@ -2,12 +2,40 @@ import Foundation
 
 /// Presentation of Bob's resolved `pomodoro_merge` object. Swift does not
 /// resolve selectors or infer which child lines move; it only words the result.
+/// It never splits or parses `explicit`.
 public struct CapturePomodoroMergePresentation: Equatable, Sendable {
     public struct AbsorbedRow: Equatable, Sendable {
         public let name: String
         public let fromLine: Int
         public let movedLines: Int
         public let droppedDuplicates: Int
+        public let role: String?
+        /// True when Bob implied this destination (`role == "next"`).
+        public var isNext: Bool { role == "next" }
+    }
+
+    /// One segment of the teaching hint: example tokens carry the editor span
+    /// category whose color they share, and prose carries `.neutral`.
+    public struct HintToken: Equatable, Sendable {
+        public let text: String
+        public let category: CaptureSemanticCategory
+
+        public init(text: String, category: CaptureSemanticCategory) {
+            self.text = text
+            self.category = category
+        }
+    }
+
+    /// The teaching hint shown under the destination when Bob implied a pick:
+    /// structured `tokens` for tinted rendering plus the joined `text`.
+    public struct TeachingHint: Equatable, Sendable {
+        public let tokens: [HintToken]
+        public let text: String
+
+        public init(tokens: [HintToken]) {
+            self.tokens = tokens
+            self.text = tokens.map(\.text).joined()
+        }
     }
 
     public let isDryRun: Bool
@@ -20,6 +48,14 @@ public struct CapturePomodoroMergePresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
+    /// True when Bob chose the source (`source_role` is `current` or
+    /// `next_up`). Unknown values count as named.
+    public let sourceIsImplied: Bool
+    /// The fully spelled token Bob resolved this merge to, when present.
+    public let explicitToken: String?
+    /// Caption under the destination when anything was implied. Nil for a
+    /// fully named merge and for older Bob that omits the new fields.
+    public let teachingHint: TeachingHint?
 
     public init?(capture: CaptureCommandSuccess) {
         guard let merge = capture.pomodoroMerge else {
@@ -33,7 +69,8 @@ public struct CapturePomodoroMergePresentation: Equatable, Sendable {
                 name: $0.name,
                 fromLine: $0.fromLine,
                 movedLines: $0.movedLines,
-                droppedDuplicates: $0.droppedDuplicates
+                droppedDuplicates: $0.droppedDuplicates,
+                role: $0.role
             )
         }
         let path = merge.path.isEmpty ? capture.relativeTarget : merge.path
@@ -59,6 +96,57 @@ public struct CapturePomodoroMergePresentation: Equatable, Sendable {
                 return detail
             })
         notificationBody = body.joined(separator: "\n")
-        previewAccessibilitySummary = body.joined(separator: ", ")
+
+        let sourceRole = merge.sourceRole
+        sourceIsImplied = sourceRole == "current" || sourceRole == "next_up"
+        let trimmedExplicit = merge.explicit.flatMap { $0.isEmpty ? nil : $0 }
+        explicitToken = trimmedExplicit
+        let anyNext = absorbedRows.contains(where: \.isNext)
+        if sourceIsImplied || anyNext {
+            if let explicit = trimmedExplicit {
+                var tokens = [
+                    HintToken(text: "Same as ", category: .neutral),
+                    HintToken(text: explicit, category: .pomodoroStart),
+                ]
+                if anyNext {
+                    tokens += [
+                        HintToken(text: " · Type ", category: .neutral),
+                        HintToken(text: "#name", category: .section),
+                        HintToken(
+                            text: " to absorb a specific Pomodoro",
+                            category: .neutral
+                        ),
+                    ]
+                }
+                teachingHint = TeachingHint(tokens: tokens)
+            } else {
+                teachingHint = TeachingHint(
+                    tokens: [
+                        HintToken(text: "Type ", category: .neutral),
+                        HintToken(text: "#name", category: .section),
+                        HintToken(
+                            text: " to absorb a specific Pomodoro",
+                            category: .neutral
+                        ),
+                    ]
+                )
+            }
+        } else {
+            teachingHint = nil
+        }
+
+        var spoken = body
+        if sourceIsImplied {
+            spoken.append("\(before) is the current Pomodoro")
+        }
+        spoken.append(
+            contentsOf: absorbedRows.filter(\.isNext).map {
+                "\($0.name) is the next planned Pomodoro"
+            }
+        )
+        if let explicitToken {
+            spoken.append("same as \(explicitToken)")
+        }
+        previewAccessibilitySummary = spoken.joined(separator: ", ")
     }
 }
