@@ -148,6 +148,9 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     public let pomodoroLine: Int
     public let createdPomodoro: Bool
     public let timeRange: String
+    /// Compact, Bob-authored calendar context for a MEET event run.
+    public let eventRunText: String?
+    public let eventConflict: CaptureEventConflictPresentation?
 
     /// `"Start CAPTURE"` (dry run) or `"Started CAPTURE"`.
     public let title: String
@@ -240,7 +243,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         let restartName = override?.action == "restart"
             ? overrideHomesDisplayName(override?.previous?.homes)
             : nil
-        pomodoroName = authoredName ?? restartName ?? "next session"
+        let resolvedName = authoredName ?? restartName ?? "next session"
+        pomodoroName = resolvedName
         start = summary.start
         end = summary.end
         durationMinutes = summary.durationMinutes
@@ -248,6 +252,10 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         pomodoroLine = summary.pomodoroLine
         createdPomodoro = summary.createdPomodoro
         timeRange = summary.timeRange
+        eventRunText = Self.eventRunText(summary.eventRun, name: resolvedName)
+        eventConflict = summary.eventConflict.map {
+            CaptureEventConflictPresentation($0, sessionName: resolvedName)
+        }
 
         switch override?.action {
         case "restart":
@@ -406,6 +414,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         if let overrideWarning {
             spoken = "\(overrideWarning.accessibilityText). \(spoken)"
         }
+        if let eventRunText {
+            spoken += ". \(eventRunText)"
+        }
+        if let eventConflict {
+            spoken += ". \(eventConflict.accessibilityText)"
+        }
         accessibilitySummary = spoken
         notificationDetail = statusText
 
@@ -515,6 +529,24 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             closeFirst: close,
             accessibilityText: spoken
         )
+    }
+
+    private static func eventRunText(_ run: PomodoroEventRun?, name: String) -> String? {
+        guard let run else {
+            return nil
+        }
+        let titles = run.events.map(\.title).filter { !$0.isEmpty }.joined(separator: " · ")
+        var parts = [name, eventClockRange(run.timeRange)]
+        if !run.source.isEmpty {
+            parts.append(run.source == "calendar" ? "from your calendar" : "calendar run")
+        }
+        if !titles.isEmpty {
+            parts.append(titles)
+        }
+        if run.untracked {
+            parts.append("untracked")
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Kept (`tasks`) and dropped (`dropped`) rows merged in lineup order:
@@ -650,6 +682,46 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             accessibilityLabel: accessibilityLabel
         )
     }
+}
+
+/// Event collision details shown on start, adjust, and shift previews.
+public struct CaptureEventConflictPresentation: Equatable, Sendable {
+    public let headline: String
+    public let detail: String
+    public let fit: String?
+    public let accessibilityText: String
+
+    public init(_ conflict: PomodoroEventConflict, sessionName: String) {
+        let event = conflict.event
+        headline = "\(sessionName) runs \(conflict.overlapMinutes)m into \(event.title)"
+        var details = [eventClockRange(event.timeRange)]
+        if conflict.more > 0 {
+            details.append("and \(conflict.more) more")
+        }
+        detail = details.filter { !$0.isEmpty }.joined(separator: " · ")
+        fit = conflict.fit
+        if let fit {
+            accessibilityText = "\(headline), \(detail), \(fit) ends at event start"
+        } else {
+            accessibilityText = "\(headline), \(detail)"
+        }
+    }
+}
+
+private func eventClockRange(_ raw: String) -> String {
+    guard let separator = raw.firstIndex(of: "-") else {
+        return raw
+    }
+    let start = String(raw[..<separator])
+    let end = String(raw[raw.index(after: separator)...])
+    func clock(_ value: String) -> String {
+        let digits = Array(value)
+        guard digits.count == 4, digits.allSatisfy(\.isNumber) else {
+            return value
+        }
+        return "\(digits[0])\(digits[1]):\(digits[2])\(digits[3])"
+    }
+    return "\(clock(start))–\(clock(end))"
 }
 
 /// Display name for an override previous/demoted session: Bob's canonical

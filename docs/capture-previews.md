@@ -27,6 +27,12 @@ A `=` override restart or swap previews on the same start card with an orange
   draft, re-previews, and asks for Return again. An older bob that rejects the
   flag is retried without it and that answer is remembered for that executable.
 
+## Calendar-aware start previews
+
+MEET starts show event runs (range, titles, source, untracked) and far-run warning.
+Non-MEET starts/adjusts/shifts show conflict banners and optional fit drafts; older Bob
+omits them.
+
 ## Templates
 
   Template fields decode tolerantly: an older Bob omits them and keeps ordinary drafts

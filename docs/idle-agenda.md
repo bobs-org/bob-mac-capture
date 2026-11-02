@@ -20,7 +20,9 @@ bob supplies a chip, a muted home chip with an area-hue dot. The one-row fold an
 the Later strip use the same names. An older bob that omits `homes` is unchanged. Keep source links in
 those task titles and details display as a lightbulb. The `x` and `=`
 numbers match the ones `bob` will use: the current entry shows its `x` numbers and
-every other open entry shows its `=` lineup number.
+every other open entry shows its `=` lineup number. When Bob reports a future start
+on the current entry, its time reads "starts in 10m"; `tracked: false` adds a dashed
+untracked pill to the Now header.
 
 The row directly under `Today` shows the saved daily meters (`Themes N/C` and
 `Links N/C`); their caps come from bob's plan config. An older `bob` that omits
@@ -62,8 +64,13 @@ including the next panel show.
   until expanded. When every event has ended, one quiet row reads "Calendar clear
   for the rest of the day". Command-J joins the focus event from an empty draft.
   The band's countdowns tick every minute, and the store schedules one extra
-  refresh at the next event boundary while the agenda is visible. MEET group items
-  linked to an Event Task show a time chip instead of the bold span.
+  refresh at the next event boundary while the agenda is visible. A decorative day
+  rail runs from the current hour through at least three hours and extends through the
+  last remaining event or running session. It shows hour ticks, filled event capsules,
+  dashed untracked capsules, dotted Maybe/free capsules, the pink running-session
+  sublane, a now hairline, and the first gap when it has room; VoiceOver gets these
+  facts from the event rows instead. MEET group items linked to an Event Task show a
+  time chip instead of the bold span.
 - Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
   then collapse to one line per task, one row per Pomodoro, and finally into a Later
   name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`, `4 tasks`)

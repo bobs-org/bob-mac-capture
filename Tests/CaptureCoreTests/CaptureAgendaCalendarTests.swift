@@ -72,13 +72,16 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         )
     }
 
-    private func makeSnapshot(events: CaptureAgendaEvents?) -> CaptureAgendaSnapshot {
+    private func makeSnapshot(
+        events: CaptureAgendaEvents?,
+        pomodoros: [CaptureAgendaPomodoro] = []
+    ) -> CaptureAgendaSnapshot {
         CaptureAgendaSnapshot(
             ok: true,
             schemaVersion: 1,
             date: today,
             completedSummary: CaptureAgendaCompletedSummary(),
-            pomodoros: [],
+            pomodoros: pomodoros,
             warnings: [],
             planBudget: nil,
             events: events
@@ -137,6 +140,11 @@ final class CaptureAgendaCalendarTests: XCTestCase {
         XCTAssertNil(calendar.clearRow)
         XCTAssertEqual(calendar.refreshAt, "2026-08-28T09:30")
         XCTAssertEqual(calendar.focusJoinURL, "https://meet.google.com/abc")
+        let rail = try XCTUnwrap(calendar.railRow.calendarRail)
+        XCTAssertEqual(rail.events.count, 3)
+        XCTAssertEqual(rail.events.last?.untracked, true)
+        XCTAssertNotNil(rail.runningSession)
+        XCTAssertEqual(rail.firstGap?.minutes, 60)
 
         let focus = try XCTUnwrap(calendar.focusRow)
         XCTAssertEqual(focus.text, "Standup")
@@ -156,6 +164,29 @@ final class CaptureAgendaCalendarTests: XCTestCase {
             calendar.oneRowRow.text,
             "Standup at 09:30 · in 38m · then Class meeting 11:00 · +1"
         )
+    }
+
+    func testNowCardShowsFutureStartAndUntrackedSession() {
+        let current = CaptureAgendaPomodoro(
+            line: 12,
+            name: "BOB",
+            isCurrent: true,
+            role: .current,
+            startsAt: "2026-08-28T09:00",
+            endsAt: "2026-08-28T09:40",
+            tracked: false
+        )
+        let presentation = CaptureAgendaPresentation(
+            snapshot: makeSnapshot(events: nil, pomodoros: [current]),
+            today: today,
+            now: dateAt("2026-08-28T08:52"),
+            locale: locale
+        )
+        let header = presentation.groups[0].headerRow
+        XCTAssertEqual(header.accessoryText, "09:00–09:40 · starts in 8m")
+        XCTAssertTrue(header.sessionUntracked)
+        XCTAssertTrue(header.accessibilityLabel?.contains("untracked session") == true)
+        XCTAssertTrue(presentation.hasLiveCountdown)
     }
 
     func testFixtureFullRowsOrder() throws {

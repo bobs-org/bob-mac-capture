@@ -3,6 +3,93 @@ import XCTest
 @testable import CaptureCore
 
 final class CapturePomodoroStartPresentationTests: XCTestCase {
+    func testEventRunAndConflictDecodeIntoCalendarPreview() throws {
+        let json = """
+                    {
+                      "start":"1200","end":"1300","duration_minutes":60,
+                      "offset_units":0,"pomodoro_name":"MEET","pomodoro_line":14,
+                      "created_pomodoro":false,"time_range":"(**1200-1300**)",
+                      "event_run":{
+                        "time_range":"1200-1300","start":"1200","end":"1300",
+                        "untracked":true,"source":"calendar",
+                        "events":[
+                          {"index":1,"title":"Lunch with Kelly","time_range":"1200-1300",
+                           "line":8,"block_id":"lunch","untracked":true}
+                        ]
+                      },
+                      "event_conflict":{
+                        "event":{"title":"Standup","time_range":"1230-1300",
+                          "line":9,"untracked":false},
+                        "overlap_minutes":15,"more":1,"fit":"=2"
+                      }
+                    }
+            """
+        let summary = try JSONDecoder().decode(
+            PomodoroStartSummary.self,
+            from: Data(json.utf8)
+        )
+        let presentation = CapturePomodoroStartPresentation(
+            summary: summary,
+            dryRun: true,
+            captureText: "="
+        )
+
+        XCTAssertEqual(
+            presentation.eventRunText,
+            "MEET · 12:00–13:00 · from your calendar · Lunch with Kelly · untracked"
+        )
+        XCTAssertEqual(
+            presentation.eventConflict?.headline,
+            "MEET runs 15m into Standup"
+        )
+        XCTAssertEqual(presentation.eventConflict?.detail, "12:30–13:00 · and 1 more")
+        XCTAssertEqual(presentation.eventConflict?.fit, "=2")
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Lunch with Kelly"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("=2 ends at event start"))
+    }
+
+    func testEventConflictsDecodeForAdjustAndShift() throws {
+        let conflict = #"""
+                      "event":{"title":"Standup","time_range":"1200-1230","line":9,
+                        "untracked":true},
+                      "overlap_minutes":10,"more":2,"fit":"+1"
+                    }
+            """#
+        let adjust = try JSONDecoder().decode(
+            PomodoroAdjustSummary.self,
+            from: Data(
+                """
+                {
+                  "direction":"later","requested_units":1,"requested_minutes":5,
+                  "delta_minutes":5,"before_start":"1130","before_end":"1200",
+                  "before_duration_minutes":30,"after_start":"1135","after_end":"1205",
+                  "after_duration_minutes":30,"pomodoro_line":12,"pomodoro_name":"BOB",
+                  "time_range":"(**1135-1205** [t:: 30m])","clamped":false,
+                  "event_conflict":\(conflict)
+                }
+                """.utf8
+            )
+        )
+        let shift = try JSONDecoder().decode(
+            PomodoroShiftSummary.self,
+            from: Data(
+                """
+                {
+                  "direction":"later","requested_units":1,"delta_minutes":5,
+                  "before_start":"1130","before_end":"1200","after_start":"1135",
+                  "after_end":"1205","duration_minutes":25,"pomodoro_line":12,
+                  "pomodoro_name":"BOB","time_range":"(**1135-1205** [t:: 25m])",
+                  "event_conflict":\(conflict)
+                }
+                """.utf8
+            )
+        )
+        XCTAssertEqual(adjust.eventConflict?.event.untracked, true)
+        XCTAssertEqual(adjust.eventConflict?.fit, "+1")
+        XCTAssertEqual(shift.eventConflict?.more, 2)
+        XCTAssertEqual(shift.eventConflict?.fit, "+1")
+    }
+
     func testInitReturnsNilWithoutStartSummary() throws {
         let success = try decodeCaptureSuccess(
             """

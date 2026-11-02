@@ -4366,6 +4366,33 @@ struct PreviewPane: View {
             if let warning = start.overrideWarning {
                 overrideWarningBanner(warning, sessionTint: sessionTint)
             }
+            if let eventRunText = start.eventRunText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "calendar")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(eventRunText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(eventRunText)
+            }
+            if let warning = eventRunLaterWarning(in: success) {
+                eventWarningBanner(
+                    headline: warning.message,
+                    detail: nil,
+                    fit: nil,
+                    accessibilityText: warning.message
+                )
+            }
+            if let conflict = start.eventConflict {
+                eventWarningBanner(
+                    conflict: conflict
+                )
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
                     Text("\(index + 1)")
@@ -4628,6 +4655,81 @@ struct PreviewPane: View {
                 .stroke(Color.orange.opacity(0.4))
         )
         .accessibilityHidden(true)
+    }
+
+    private func eventRunLaterWarning(
+        in success: CaptureCommandSuccess
+    ) -> StructuredCaptureWarning? {
+        success.warnings.lazy.compactMap { warning -> StructuredCaptureWarning? in
+            guard case .structured(let structured) = warning,
+                structured.code == "pomodoro_event_run_later"
+            else {
+                return nil
+            }
+            return structured
+        }.first
+    }
+
+    private func eventWarningBanner(
+        conflict: CaptureEventConflictPresentation
+    ) -> some View {
+        eventWarningBanner(
+            headline: conflict.headline,
+            detail: conflict.detail,
+            fit: conflict.fit,
+            accessibilityText: conflict.accessibilityText
+        )
+    }
+
+    private func eventWarningBanner(
+        headline: String,
+        detail: String?,
+        fit: String?,
+        accessibilityText: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(headline)
+                    .fontWeight(.semibold)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let detail, !detail.isEmpty {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let fit, !fit.isEmpty {
+                HStack(spacing: 5) {
+                    Text("Fit draft")
+                    Text(fit)
+                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(
+                            Color.orange.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        )
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.orange.opacity(0.4))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
     }
 
     /// Renders the start-card teaching-hint tokens: example tokens share the
@@ -4961,6 +5063,14 @@ struct PreviewPane: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(pomodoroAdjust.accessibilitySummary)
+            if let conflict = success.pomodoroAdjust?.eventConflict {
+                eventWarningBanner(
+                    conflict: CaptureEventConflictPresentation(
+                        conflict,
+                        sessionName: success.pomodoroAdjust?.pomodoroName ?? "Session"
+                    )
+                )
+            }
         }
 
         // The whole-session shift comes straight from Bob's resolved
@@ -4983,6 +5093,14 @@ struct PreviewPane: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(pomodoroShift.accessibilitySummary)
+            if let conflict = success.pomodoroShift?.eventConflict {
+                eventWarningBanner(
+                    conflict: CaptureEventConflictPresentation(
+                        conflict,
+                        sessionName: success.pomodoroShift?.pomodoroName ?? "Session"
+                    )
+                )
+            }
         }
 
         // A project note that links tasks into the Pomodoro names them from

@@ -495,6 +495,7 @@ struct CaptureAgendaRowView: View {
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
     var onJoinEvent: (URL) -> Void = { _ in }
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     /// Whether the row's accessory renders as a chip button: every
     /// row whose presentation names an expansion action, plus the
@@ -844,6 +845,21 @@ struct CaptureAgendaRowView: View {
             if let chip = row.homeChip {
                 PomodoroHomeChipView(chip: chip, hue: row.homeHue, hollow: row.homeIsForecast)
             }
+            if row.sessionUntracked {
+                Text("untracked")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                            )
+                            .foregroundStyle(.secondary)
+                    )
+                    .accessibilityHidden(true)
+            }
             Spacer(minLength: 12)
             headerAccessoryView
         }
@@ -1095,9 +1111,98 @@ struct CaptureAgendaRowView: View {
     }
 
     private var calendarRailView: some View {
-        Color.clear
-            .frame(height: CGFloat(CaptureAgendaLayoutMetrics.calendarRailHeight))
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            ZStack(alignment: .topLeading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(height: 2)
+                    .offset(y: 10)
+                if let rail = row.calendarRail {
+                    ForEach(Array(rail.ticks.enumerated()), id: \.offset) { _, tick in
+                        let x = railX(tick.position, width: width)
+                        Text(tick.label)
+                            .font(.system(size: 7, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                            .position(x: x, y: 3.5)
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.45))
+                            .frame(width: 1, height: 4)
+                            .position(x: x, y: 10)
+                    }
+                    ForEach(Array(rail.events.enumerated()), id: \.offset) { _, event in
+                        railEventCapsule(event, width: width)
+                    }
+                    if let gap = rail.firstGap, gap.end - gap.start > 0.08 {
+                        Text("\(gap.minutes)m")
+                            .font(.system(size: 8, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .position(
+                                x: railX((gap.start + gap.end) / 2, width: width),
+                                y: 8
+                            )
+                    }
+                    if let session = rail.runningSession {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(CaptureEditorPalette.color(for: .pomodoroStart))
+                            .frame(width: railWidth(session, width: width), height: 2)
+                            .position(
+                                x: railX((session.start + session.end) / 2, width: width),
+                                y: 14
+                            )
+                    }
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.8))
+                        .frame(
+                            width: 1,
+                            height: CGFloat(CaptureAgendaLayoutMetrics.calendarRailHeight)
+                        )
+                        .position(x: railX(rail.now, width: width), y: 8)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
+        }
+        .frame(height: CGFloat(CaptureAgendaLayoutMetrics.calendarRailHeight))
+        .accessibilityHidden(true)
+    }
+
+    private func railEventCapsule(
+        _ event: CaptureAgendaRailEvent,
+        width: CGFloat
+    ) -> some View {
+        let color = PomodoroHomeColor.color(for: event.hue, scheme: colorScheme)
+        let capsuleWidth = railWidth(event, width: width)
+        let strokeWidth: CGFloat = colorSchemeContrast == .increased ? 1.5 : 1
+        return RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(event.untracked || event.maybe ? .clear : color.opacity(0.9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .stroke(
+                        color,
+                        style: StrokeStyle(
+                            lineWidth: strokeWidth,
+                            dash: event.maybe ? [1, 2] : event.untracked ? [3, 2] : []
+                        )
+                    )
+            }
+            .frame(width: capsuleWidth, height: 5)
+            .position(
+                x: railX((event.start + event.end) / 2, width: width),
+                y: 10
+            )
             .accessibilityHidden(true)
+    }
+
+    private func railWidth(_ event: CaptureAgendaRailEvent, width: CGFloat) -> CGFloat {
+        max(2, CGFloat(max(0, event.end - event.start)) * width)
+    }
+
+    private func railX(_ position: Double, width: CGFloat) -> CGFloat {
+        min(width, max(0, CGFloat(position) * width))
     }
 
     private var calendarRowView: some View {

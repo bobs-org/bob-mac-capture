@@ -64,6 +64,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// Calendar event facts for a `.calendarRow`: time text, join
     /// URL, and countdown all affect measurement.
     public let calendar: CaptureAgendaCalendarRowData?
+    public let calendarRail: CaptureAgendaRailData?
+    public let sessionUntracked: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -77,7 +79,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
         themeHues: [PomodoroHomeHue?] = [],
-        calendar: CaptureAgendaCalendarRowData? = nil
+        calendar: CaptureAgendaCalendarRowData? = nil,
+        calendarRail: CaptureAgendaRailData? = nil,
+        sessionUntracked: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -91,6 +95,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.homeIsForecast = homeIsForecast
         self.themeHues = themeHues
         self.calendar = calendar
+        self.calendarRail = calendarRail
+        self.sessionUntracked = sessionUntracked
     }
 }
 
@@ -130,6 +136,11 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// Calendar event facts for a `.calendarRow`. Nil for every other
     /// kind: the view renders the row from these, never from JSON.
     public let calendar: CaptureAgendaCalendarRowData?
+    /// Normalized positions for the decorative day rail.
+    public let calendarRail: CaptureAgendaRailData?
+    /// True only for an entry Bob explicitly reports as an untracked
+    /// session; older Bob leaves the Now header unchanged.
+    public let sessionUntracked: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -148,7 +159,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         homeHue: PomodoroHomeHue? = nil,
         homeIsForecast: Bool = false,
         themeRefs: [CapturePomodoroThemeRef] = [],
-        calendar: CaptureAgendaCalendarRowData? = nil
+        calendar: CaptureAgendaCalendarRowData? = nil,
+        calendarRail: CaptureAgendaRailData? = nil,
+        sessionUntracked: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -167,19 +180,23 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.homeIsForecast = homeIsForecast
         self.themeRefs = themeRefs
         self.calendar = calendar
+        self.calendarRail = calendarRail
+        self.sessionUntracked = sessionUntracked
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
-            hasAccessory: numberBadge != nil || accessoryText != nil,
+            hasAccessory: numberBadge != nil || accessoryText != nil || sessionUntracked,
             notesChip: notesChip,
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
             themeHues: themeRefs.map(\.hue),
-            calendar: calendar
+            calendar: calendar,
+            calendarRail: calendarRail,
+            sessionUntracked: sessionUntracked
         )
     }
 
@@ -328,7 +345,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         let openCount = entries.filter { $0.role == .open }.count
         let nothingRunning = currentCount == 0 && openCount == 0
         hasLiveCountdown = entries.contains {
-            $0.role == .current && !($0.endsAt ?? "").isEmpty
+            $0.role == .current
+                && (!($0.startsAt ?? "").isEmpty || !($0.endsAt ?? "").isEmpty)
         }
         titleRow = Self.makeTitleRow(
             rawDate: snapshot.date,
@@ -711,10 +729,23 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 endsAt: entry.endsAt
             )
             let countdown = now.flatMap {
-                CaptureAgendaClock.remainingText(endsAt: entry.endsAt, now: $0)
+                if let start = entry.startsAt,
+                    let startDate = CaptureAgendaClock.date(fromNaiveLocal: start),
+                    startDate > $0,
+                    let until = CaptureAgendaClock.countdownUntilText(
+                        startsAt: entry.startsAt,
+                        now: $0
+                    )
+                {
+                    return "starts \(until)"
+                }
+                return CaptureAgendaClock.remainingText(endsAt: entry.endsAt, now: $0)
             }
             accessory = [range, countdown].compactMap { $0 }.joined(separator: " · ")
-            label = "Header, \(spoken)"
+            label =
+                entry.tracked == false
+                ? "Header, \(spoken), untracked session"
+                : "Header, \(spoken)"
         case .open:
             let range = CaptureAgendaClock.timeRangeText(
                 startsAt: entry.startsAt,
@@ -759,7 +790,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
-            themeRefs: themeRefs
+            themeRefs: themeRefs,
+            sessionUntracked: entry.role == .current && entry.tracked == false
         )
     }
 
@@ -1230,6 +1262,77 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     }
 }
 
+/// A visible event capsule on the normalized day rail.
+public struct CaptureAgendaRailEvent: Hashable, Equatable, Sendable {
+    public let start: Double
+    public let end: Double
+    public let hue: PomodoroHomeHue?
+    public let untracked: Bool
+    public let maybe: Bool
+
+    public init(
+        start: Double,
+        end: Double,
+        hue: PomodoroHomeHue? = nil,
+        untracked: Bool = false,
+        maybe: Bool = false
+    ) {
+        self.start = start
+        self.end = end
+        self.hue = hue
+        self.untracked = untracked
+        self.maybe = maybe
+    }
+}
+
+/// One hour tick on the rail.
+public struct CaptureAgendaRailTick: Hashable, Equatable, Sendable {
+    public let position: Double
+    public let label: String
+
+    public init(position: Double, label: String) {
+        self.position = position
+        self.label = label
+    }
+}
+
+/// The first open gap after Now or the running session.
+public struct CaptureAgendaRailGap: Hashable, Equatable, Sendable {
+    public let start: Double
+    public let end: Double
+    public let minutes: Int
+
+    public init(start: Double, end: Double, minutes: Int) {
+        self.start = start
+        self.end = end
+        self.minutes = minutes
+    }
+}
+
+/// Time-domain geometry for the decorative rail. Bob supplies the
+/// event and session timestamps; this model only normalizes them for drawing.
+public struct CaptureAgendaRailData: Hashable, Equatable, Sendable {
+    public let now: Double
+    public let ticks: [CaptureAgendaRailTick]
+    public let events: [CaptureAgendaRailEvent]
+    public let runningSession: CaptureAgendaRailEvent?
+    public let firstGap: CaptureAgendaRailGap?
+
+    public init(
+        now: Double,
+        ticks: [CaptureAgendaRailTick],
+        events: [CaptureAgendaRailEvent],
+        runningSession: CaptureAgendaRailEvent?,
+        firstGap: CaptureAgendaRailGap?
+    ) {
+        self.now = now
+        self.ticks = ticks
+        self.events = events
+        self.runningSession = runningSession
+        self.firstGap = firstGap
+    }
+}
+
 /// Fold level of the Calendar band. `full` shows every remaining row;
 /// `compact` shows the focus row behind a `+N` chip; `oneRow` merges
 /// the header and the next event into one line.
@@ -1421,12 +1524,18 @@ extension CaptureAgendaPresentation {
             stamp: stamp,
             now: now
         )
+        let railData = Self.makeCalendarRail(
+            events: events,
+            entries: entries,
+            now: now
+        )
         let railRow = CaptureAgendaRow(
             kind: .calendarRail,
             text: "",
             depth: 0,
             lineLimit: 1,
-            accessibilityLabel: "Day timeline"
+            accessibilityLabel: "Day timeline",
+            calendarRail: railData
         )
         if upcoming.isEmpty {
             let clearText: String
@@ -1506,6 +1615,126 @@ extension CaptureAgendaPresentation {
             refreshAt: events.refreshAt,
             hasTickingEvent: true,
             accessibilityLabel: header.accessibilityLabel ?? "Calendar"
+        )
+    }
+
+    static func makeCalendarRail(
+        events: CaptureAgendaEvents,
+        entries: [CaptureAgendaPomodoro],
+        now: Date?,
+        calendar: Calendar = .current
+    ) -> CaptureAgendaRailData? {
+        guard let now else {
+            return nil
+        }
+        let hour = calendar.component(.hour, from: now)
+        var startComponents = calendar.dateComponents([.year, .month, .day], from: now)
+        startComponents.hour = hour
+        startComponents.minute = 0
+        startComponents.second = 0
+        guard let domainStart = calendar.date(from: startComponents) else {
+            return nil
+        }
+
+        func parsedRange(_ startsAt: String?, _ endsAt: String?) -> (Date, Date)? {
+            guard let startsAt,
+                let endsAt,
+                let start = CaptureAgendaClock.date(
+                    fromNaiveLocal: startsAt,
+                    calendar: calendar
+                ),
+                let rawEnd = CaptureAgendaClock.date(
+                    fromNaiveLocal: endsAt,
+                    calendar: calendar
+                )
+            else {
+                return nil
+            }
+            let end =
+                rawEnd <= start
+                ? calendar.date(byAdding: .day, value: 1, to: rawEnd) ?? rawEnd
+                : rawEnd
+            return (start, end)
+        }
+
+        let remainingRows = events.rows.filter { $0.phase != .ended }
+        let eventRanges = remainingRows.compactMap { row -> (CaptureAgendaEventRow, Date, Date)? in
+            guard let (start, end) = parsedRange(row.startsAt, row.endsAt) else {
+                return nil
+            }
+            return (row, start, end)
+        }.sorted { $0.1 < $1.1 }
+        let current = entries.first(where: { $0.role == .current })
+        let sessionRange = current.flatMap { parsedRange($0.startsAt, $0.endsAt) }
+        var domainEnd = domainStart.addingTimeInterval(180 * 60)
+        for (_, _, end) in eventRanges {
+            domainEnd = max(domainEnd, end)
+        }
+        if let sessionRange {
+            domainEnd = max(domainEnd, sessionRange.1)
+        }
+        let span = max(1, domainEnd.timeIntervalSince(domainStart))
+        func position(_ date: Date) -> Double {
+            min(1, max(0, date.timeIntervalSince(domainStart) / span))
+        }
+
+        let railEvents = eventRanges.map { row, start, end in
+            let qualifier = (row.qualifier ?? "").lowercased()
+            return CaptureAgendaRailEvent(
+                start: position(start),
+                end: position(end),
+                hue: row.home?.hue,
+                untracked: row.untracked,
+                maybe: qualifier == "maybe" || qualifier == "free"
+            )
+        }
+        let runningSession = sessionRange.map { start, end in
+            CaptureAgendaRailEvent(
+                start: position(start),
+                end: position(end),
+                hue: nil
+            )
+        }
+        var ticks: [CaptureAgendaRailTick] = []
+        var tickDate = domainStart
+        while tickDate <= domainEnd {
+            ticks.append(
+                CaptureAgendaRailTick(
+                    position: position(tickDate),
+                    label: String(format: "%02d", calendar.component(.hour, from: tickDate))
+                )
+            )
+            guard let next = calendar.date(byAdding: .hour, value: 1, to: tickDate) else {
+                break
+            }
+            tickDate = next
+        }
+
+        var cursor = max(now, sessionRange?.1 ?? now)
+        var firstGap: CaptureAgendaRailGap?
+        for (_, start, end) in eventRanges {
+            if end <= cursor {
+                continue
+            }
+            if start > cursor {
+                let minutes = Int(start.timeIntervalSince(cursor) / 60)
+                if minutes > 0 {
+                    firstGap = CaptureAgendaRailGap(
+                        start: position(cursor),
+                        end: position(start),
+                        minutes: minutes
+                    )
+                }
+                break
+            }
+            cursor = max(cursor, end)
+        }
+        return CaptureAgendaRailData(
+            now: position(now),
+            ticks: ticks,
+            events: railEvents,
+            runningSession: runningSession,
+            firstGap: firstGap
         )
     }
 

@@ -184,6 +184,7 @@
       "role": "current",
       "selectable": true,
       "slug": "bob",
+      "tracked": false,
       "starts_at": "2026-08-28T09:00",
       "state": "open",
       "status_symbol": " ",

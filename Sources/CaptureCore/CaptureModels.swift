@@ -1230,6 +1230,171 @@ public struct PomodoroStartOverride: Codable, Equatable, Sendable {
     }
 }
 
+/// One Event Task used to form an event run for a MEET start.
+public struct PomodoroEventRunEvent: Codable, Equatable, Sendable {
+    public let index: Int
+    public let title: String
+    public let timeRange: String
+    public let line: Int
+    public let blockID: String?
+    public let untracked: Bool
+
+    public init(
+        index: Int = 0,
+        title: String = "",
+        timeRange: String = "",
+        line: Int = 0,
+        blockID: String? = nil,
+        untracked: Bool = false
+    ) {
+        self.index = index
+        self.title = title
+        self.timeRange = timeRange
+        self.line = line
+        self.blockID = blockID
+        self.untracked = untracked
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case title
+        case timeRange = "time_range"
+        case line
+        case blockID = "block_id"
+        case untracked
+    }
+}
+
+/// The calendar run Bob used to plan a MEET session. The app presents these
+/// returned facts and never resolves event links or calculates the span.
+public struct PomodoroEventRun: Codable, Equatable, Sendable {
+    public let timeRange: String
+    public let start: String
+    public let end: String
+    public let untracked: Bool
+    public let source: String
+    public let events: [PomodoroEventRunEvent]
+
+    public init(
+        timeRange: String = "",
+        start: String = "",
+        end: String = "",
+        untracked: Bool = false,
+        source: String = "",
+        events: [PomodoroEventRunEvent] = []
+    ) {
+        self.timeRange = timeRange
+        self.start = start
+        self.end = end
+        self.untracked = untracked
+        self.source = source
+        self.events = events
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+        start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
+        end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
+        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        events = try container.decodeIfPresent([PomodoroEventRunEvent].self, forKey: .events) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timeRange = "time_range"
+        case start
+        case end
+        case untracked
+        case source
+        case events
+    }
+}
+
+/// Event Task details attached to a non-MEET session that runs past it.
+public struct PomodoroEventConflictEvent: Codable, Equatable, Sendable {
+    public let title: String
+    public let timeRange: String
+    public let line: Int
+    public let untracked: Bool
+
+    public init(
+        title: String = "",
+        timeRange: String = "",
+        line: Int = 0,
+        untracked: Bool = false
+    ) {
+        self.title = title
+        self.timeRange = timeRange
+        self.line = line
+        self.untracked = untracked
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        untracked = try container.decodeIfPresent(Bool.self, forKey: .untracked) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case timeRange = "time_range"
+        case line
+        case untracked
+    }
+}
+
+public struct PomodoroEventConflict: Codable, Equatable, Sendable {
+    public let event: PomodoroEventConflictEvent
+    public let overlapMinutes: Int
+    public let more: Int
+    public let fit: String?
+
+    public init(
+        event: PomodoroEventConflictEvent = PomodoroEventConflictEvent(),
+        overlapMinutes: Int = 0,
+        more: Int = 0,
+        fit: String? = nil
+    ) {
+        self.event = event
+        self.overlapMinutes = overlapMinutes
+        self.more = more
+        self.fit = fit
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        event =
+            try container.decodeIfPresent(
+                PomodoroEventConflictEvent.self,
+                forKey: .event
+            )
+            ?? PomodoroEventConflictEvent()
+        overlapMinutes = try container.decodeIfPresent(Int.self, forKey: .overlapMinutes) ?? 0
+        more = try container.decodeIfPresent(Int.self, forKey: .more) ?? 0
+        fit = try container.decodeIfPresent(String.self, forKey: .fit)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case event
+        case overlapMinutes = "overlap_minutes"
+        case more
+        case fit
+    }
+}
+
 /// Resolved atomic start from `bob capture --format json`: the 5-minute-rounded
 /// `start`/`end` clock times, duration, destination ledger line, and whether Bob
 /// created the entry. Omitted when the draft carries no `=<X>` suffix, so older
@@ -1258,6 +1423,10 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
     /// older Bob builds; an unknown action decodes as nil so a future
     /// outcome previews as a plain start instead of failing the whole capture.
     public let overrideOutcome: PomodoroStartOverride?
+    /// Additive calendar context Bob used to choose this MEET span.
+    public let eventRun: PomodoroEventRun?
+    /// Additive conflict details for a non-MEET start that crosses an event.
+    public let eventConflict: PomodoroEventConflict?
 
     public init(
         start: String,
@@ -1271,7 +1440,9 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         tasks: [PomodoroStartTask]? = nil,
         drop: [Int] = [],
         dropped: [PomodoroStartTask] = [],
-        overrideOutcome: PomodoroStartOverride? = nil
+        overrideOutcome: PomodoroStartOverride? = nil,
+        eventRun: PomodoroEventRun? = nil,
+        eventConflict: PomodoroEventConflict? = nil
     ) {
         self.start = start
         self.end = end
@@ -1285,6 +1456,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         self.drop = drop
         self.dropped = dropped
         self.overrideOutcome = overrideOutcome
+        self.eventRun = eventRun
+        self.eventConflict = eventConflict
     }
 
     public init(from decoder: Decoder) throws {
@@ -1307,6 +1480,12 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         } else {
             overrideOutcome = nil
         }
+        eventRun = (try? container.decodeIfPresent(PomodoroEventRun.self, forKey: .eventRun)) ?? nil
+        eventConflict =
+            (try? container.decodeIfPresent(
+                PomodoroEventConflict.self,
+                forKey: .eventConflict
+            )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1322,6 +1501,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         case drop
         case dropped
         case overrideOutcome = "override"
+        case eventRun = "event_run"
+        case eventConflict = "event_conflict"
     }
 }
 
@@ -1367,6 +1548,7 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
     public let pomodoroName: String?
     public let timeRange: String
     public let clamped: Bool
+    public let eventConflict: PomodoroEventConflict?
 
     public init(
         direction: String,
@@ -1382,7 +1564,8 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
         pomodoroLine: Int,
         pomodoroName: String? = nil,
         timeRange: String,
-        clamped: Bool
+        clamped: Bool,
+        eventConflict: PomodoroEventConflict? = nil
     ) {
         self.direction = direction
         self.requestedUnits = requestedUnits
@@ -1398,6 +1581,7 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
         self.pomodoroName = pomodoroName
         self.timeRange = timeRange
         self.clamped = clamped
+        self.eventConflict = eventConflict
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1415,6 +1599,7 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
         case pomodoroName = "pomodoro_name"
         case timeRange = "time_range"
         case clamped
+        case eventConflict = "event_conflict"
     }
 }
 
@@ -1456,6 +1641,7 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
     public let pomodoroLine: Int
     public let pomodoroName: String?
     public let timeRange: String
+    public let eventConflict: PomodoroEventConflict?
 
     public init(
         direction: String,
@@ -1468,7 +1654,8 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
         durationMinutes: Int,
         pomodoroLine: Int,
         pomodoroName: String? = nil,
-        timeRange: String
+        timeRange: String,
+        eventConflict: PomodoroEventConflict? = nil
     ) {
         self.direction = direction
         self.requestedUnits = requestedUnits
@@ -1481,6 +1668,7 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
         self.pomodoroLine = pomodoroLine
         self.pomodoroName = pomodoroName
         self.timeRange = timeRange
+        self.eventConflict = eventConflict
     }
 
     public init(from decoder: Decoder) throws {
@@ -1496,6 +1684,11 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+        eventConflict =
+            (try? container.decodeIfPresent(
+                PomodoroEventConflict.self,
+                forKey: .eventConflict
+            )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1510,6 +1703,7 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
         case pomodoroLine = "pomodoro_line"
         case pomodoroName = "pomodoro_name"
         case timeRange = "time_range"
+        case eventConflict = "event_conflict"
     }
 }
 

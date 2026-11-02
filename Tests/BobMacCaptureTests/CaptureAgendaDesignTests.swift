@@ -102,6 +102,38 @@ final class CaptureAgendaDesignTests: XCTestCase {
             budget: 2_000
         )
 
+        let calendarSnapshot = try agendaSnapshot("agenda-events.json")
+        let calendarNow = Calendar.current.date(
+            from: DateComponents(
+                year: 2_026,
+                month: 8,
+                day: 28,
+                hour: 8,
+                minute: 52
+            )
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: calendarSnapshot,
+                today: calendarSnapshot.date ?? "",
+                now: calendarNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-events",
+            budget: 2_000
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: calendarSnapshot,
+                today: calendarSnapshot.date ?? "",
+                now: calendarNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-events-high-contrast",
+            budget: 2_000,
+            contrast: .increased
+        )
+
         let withinCap = try budgetedSnapshot(
             "agenda-current.json",
             links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
@@ -150,7 +182,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
         presentation: CaptureAgendaPresentation,
         base: String,
         budget: Double,
-        expanded: Set<CaptureAgendaUnitID> = []
+        expanded: Set<CaptureAgendaUnitID> = [],
+        contrast: ColorSchemeContrast = .standard
     ) throws {
         for width in [760, 620] as [CGFloat] {
             let rowsWidth = width - 36
@@ -167,6 +200,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
                 plan: plan,
                 presentation: presentation
             )
+            .environment(\.colorSchemeContrast, contrast)
             for appearance in [
                 NSAppearance.Name.aqua,
                 NSAppearance.Name.darkAqua,
