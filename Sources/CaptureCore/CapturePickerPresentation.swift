@@ -818,6 +818,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case pomodoroSplitType
     case pomodoroMergeDestination
     case templateRow
+    /// A lone `@file` or `@file#section` header with no bullet under it yet.
+    case listItem
 
     public var statusText: String {
         switch self {
@@ -855,6 +857,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick a Pomodoro to merge in — press Tab to browse"
         case .templateRow:
             return "Add a blank line, then one row per capture"
+        case .listItem:
+            return "Add a bullet under the header \u{2014} Shift-Return starts one"
         }
     }
 }

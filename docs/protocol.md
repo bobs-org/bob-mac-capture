@@ -79,6 +79,11 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   The block-ID `project_note` completion intent now comes from either separator
   followed by the seal, with no new intent value, because an older Mac would read
   an unknown intent as `link`.
+  Lists under a lone `@file` or `@file#section` header (grammar 6; the gate stays at
+  grammar 3) add the `list` object on `capture` results and `capture-parse` items,
+  the `list_item` need, and `block_id.owner_line` / `block_id.splice` on
+  `project_task_block_id` completions. The app applies the splice and groups results
+  by `list` ([Capture lists](capture-lists.md)); it never splits a draft or places an ID itself.
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
@@ -377,6 +382,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `drawer` completion context, `target`, candidate `group` / `detail` / `entry_count` / `note_count` / `last_seen` / `creates` / `refused` / `consequence` | Drawer menu: On this task and Recent groups, a New drawer row, Bob's `detail` counts, dimmed refused rows (Return is a no-op), and Bob's `consequence` as the footer for the selected row | Older bob omits the context (grammar 5 is required to capture at all); fields Bob omits render nothing, so a Bob without `consequence` shows the key hint and one without `detail` shows no counts | Upgrade `bob` for the full menu |
 | `drawer` object on a sub-bullet capture item (`title`, `key`, `created`) | `new drawer` capsule beside the item header and the drawer title in summaries | Older Bob responses omit drawer-specific header details and the capsule | Upgrade `bob` for the capsule |
 | `directive` completion context, `initial_selection: none` | `%` menu with Bob's token, name, summary, and detail; Return captures as typed; Tab takes the first row | Older bob omits the context, so `%` stays ordinary text; omitted `initial_selection` keeps first-row selection | Upgrade `bob` for `%` menus |
+| `block_id.owner_line`, `block_id.splice` on `project_task_block_id` | An accepted ID lands on the owning task's line even from a nested line, the caret returns to where typing was, and the card names the owner | The ID inserts at the `replacement` range on the typing line, as it did before | Upgrade `bob` for nested-line prompts |
+| `list` object on `capture` results and `capture-parse` items | One capsule per list (`3 tasks → dev.md`) with the list's results stacked beneath it | Results stack with dividers and no capsule | Upgrade `bob` for list capsules |
+| `list_item` need | A lone header over no bullets shows a calm hint, and the newline key starts the first bullet | An older bob never reports it (a lone header is a literal inbox task there), so the newline key inserts a bare newline | Upgrade `bob` for lists |
 | `type` on `pomodoro_link_destination` | ` · <label>` suffix on the ledger and day-file destination rows (`Linked under CHORE · default type`) | Destination rows without the label | Upgrade `bob` for typed placement |
 | `merged` on `pomodoro_link_destination` | Link preview reports the added type and merged destination (`merged FIX into BUGS + FIX`) | No merge row | Upgrade `bob` for merged landing details |
 | `theme_suggestion` on `ref today`, `suggested` + `suggestion_label` on rows | Suggested row preselected with reason in `rowMeta`; synthetic `New X Pomodoro` row first when `create`; Return on a suggested non-default row sends its entry | Default row selected; Return sends `.automatic`; no synthetic row | Upgrade `bob` for suggestions |

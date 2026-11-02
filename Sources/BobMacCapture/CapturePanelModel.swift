@@ -1615,6 +1615,26 @@ final class CapturePanelModel: ObservableObject {
         parsedTemplate != nil && lastAppliedParseDraft == plainDraft
     }
 
+    /// What the newline key inserts instead of a bare newline: `\n- ` when
+    /// Bob's parse of this exact draft reports `list_item` for the lone
+    /// `@file` header the caret ends, so the next keystroke is the first
+    /// bullet. Nil for every other caret, draft, and stale parse, which keep
+    /// the plain newline. `caretUTF8` is the collapsed caret as a UTF-8 offset.
+    func listHeaderNewlineInsertion(caretUTF8: Int) -> String? {
+        guard picker == nil,
+              let parse = latestParse,
+              lastAppliedParseDraft == plainDraft,
+              CaptureListHeaderNewline.startsFirstBullet(
+                  parse: parse,
+                  draft: plainDraft,
+                  caretUTF8: caretUTF8
+              )
+        else {
+            return nil
+        }
+        return CaptureListHeaderNewline.insertion
+    }
+
     var destinationSummary: String? {
         if !previewResults.isEmpty {
             return captureSummary(
@@ -4369,7 +4389,8 @@ final class CapturePanelModel: ObservableObject {
                 field: field,
                 candidates: candidates,
                 route: route,
-                scope: source.blockIDScope
+                scope: source.blockIDScope,
+                markerLine: field?.markerLine(in: draft ?? "")
             )
         )
         installPickerSessionForPreviews(
@@ -4803,7 +4824,8 @@ final class CapturePanelModel: ObservableObject {
                 field: completion.blockID,
                 candidates: completion.candidates,
                 route: context.route,
-                scope: context.scope
+                scope: context.scope,
+                markerLine: completion.blockID?.markerLine(in: draft)
             )
         )
         presentPicker(
@@ -5804,6 +5826,17 @@ final class CapturePanelModel: ObservableObject {
         return context.field?.markerRange
     }
 
+    /// Bob's `block_id.splice` for a project-task session, which an accept
+    /// writes in place of the ID-only `replacement` range. Nil for every other
+    /// source and for an older Bob that sends no splice, which keep the
+    /// ordinary insertion.
+    private static func blockIDSplice(for source: CapturePickerSource) -> CaptureBlockIDSplice? {
+        guard case .blockID(let context) = source, context.scope == .projectTask else {
+            return nil
+        }
+        return context.field?.splice
+    }
+
     /// Washes the picker's marker token in accent inside the dimmed editor.
     /// Attribute-only: `plainDraft`, the selection, and undo are untouched,
     /// and the characters-change callback that drives `editorTextDidChange`
@@ -5988,8 +6021,20 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         var text = plainDraft
-        text.replaceSubrange(idRange, with: id + remainder)
-        let caret = openPicker.replacementRange.start + (id + remainder).utf8.count
+        let caret: Int
+        if let splice = Self.blockIDSplice(for: openPicker.source) {
+            // The ID goes on the owning task's line; the remainder stays where
+            // the user was typing, after what the splice wrote there.
+            guard let applied = splice.applied(id: id, remainder: remainder, to: plainDraft) else {
+                closePickerAfterStaleDraft()
+                return
+            }
+            text = applied.draft
+            caret = applied.caret
+        } else {
+            text.replaceSubrange(idRange, with: id + remainder)
+            caret = openPicker.replacementRange.start + (id + remainder).utf8.count
+        }
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             closePickerAfterStaleDraft()
             return
@@ -6216,17 +6261,31 @@ final class CapturePanelModel: ObservableObject {
             insertionText = insertion
         }
         var text = plainDraft
-        text.replaceSubrange(range, with: insertionText)
         let caret: Int
-        if picker.source.isWikilinkTask,
-           let match = picker.candidates.first(where: {
-               Self.wikilinkTaskKey(for: $0) == row.id
-           }),
-           let after = match.cursorAfter
-        {
-            caret = after
+        if let splice = Self.blockIDSplice(for: picker.source) {
+            // A project-task prompt sends Bob's splice: the ID goes on the
+            // owning task's line, which is not the caret's line when the prompt
+            // opened on a nested line, and the caret ends where the user was
+            // typing. A same-line splice is the ID-only range, so this is the
+            // ordinary insertion there.
+            guard let applied = splice.applied(id: insertionText, to: plainDraft) else {
+                closePickerAfterStaleDraft()
+                return
+            }
+            text = applied.draft
+            caret = applied.caret
         } else {
-            caret = picker.replacementRange.start + insertionText.utf8.count
+            text.replaceSubrange(range, with: insertionText)
+            if picker.source.isWikilinkTask,
+               let match = picker.candidates.first(where: {
+                   Self.wikilinkTaskKey(for: $0) == row.id
+               }),
+               let after = match.cursorAfter
+            {
+                caret = after
+            } else {
+                caret = picker.replacementRange.start + insertionText.utf8.count
+            }
         }
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             closePickerAfterStaleDraft()
@@ -6247,11 +6306,9 @@ final class CapturePanelModel: ObservableObject {
         // announcement matches the pre-epic "Inserted ^route:block-id".
         // Task-link and dependency insertions already include their sigil.
         if case .blockID(let context) = source {
-            if context.scope == .projectTask {
-                announceStatus("Inserted \(context.marker)\(insertionText)")
-            } else {
-                announceStatus("Inserted @\(context.route)\(context.marker)\(insertionText)")
-            }
+            announceStatus(
+                context.insertedAnnouncement(id: insertionText, markerLine: picker.scopeLineNumber)
+            )
         } else if source == .taskLink || source.isRelationshipModifier || source == .taskComplete || source.isWikilinkTask {
             announceStatus("Inserted \(insertionText)")
         } else if case .parentTask = source {
@@ -7082,7 +7139,8 @@ final class CapturePanelModel: ObservableObject {
                         field: context.field,
                         candidates: chip.candidates,
                         route: context.route,
-                        scope: context.scope
+                        scope: context.scope,
+                        markerLine: context.field?.markerLine(in: draft)
                     )
                 ),
                 candidates: chip.candidates,
@@ -7141,11 +7199,11 @@ final class CapturePanelModel: ObservableObject {
     /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
     /// `task_parent`, then `task_dependency`, then `blocked_task`, then
     /// `task_complete`, then `dependency_target`, then `pomodoro_id`, then
-    /// `block_id`, then `template_row`, then the `=<X>#` named-start
-    /// incomplete, checked top-level or in any item.
+    /// `block_id`, then `template_row`, then `list_item`, then the `=<X>#`
+    /// named-start incomplete, checked top-level or in any item.
     /// Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
     /// `pomodoro_start` object) keep today's behavior.
-    private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
+    static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
         let itemNeeds = parse.items.flatMap { $0.needs }
         func needs(_ need: String) -> Bool {
             parse.needs.contains(need) || itemNeeds.contains(need)
@@ -7197,6 +7255,11 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("template_row") {
             return .templateRow
+        }
+        // A lone `@file` or `@file#section` header has no bullet to file yet:
+        // a state to finish, not a refusal to flash.
+        if needs("list_item") {
+            return .listItem
         }
         // A `=<X>#` draft (or chain token) is `incomplete` with a
         // `pomodoro_name` need and a partial `pomodoro_start` spec. It keeps

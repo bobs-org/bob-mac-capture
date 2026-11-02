@@ -849,6 +849,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
 
         model.dismissCompletion()
+        // A caret that ends a lone `@file` header Bob says still needs its
+        // first bullet starts that bullet instead of a bare newline.
+        let selection = textView.selectedRange()
+        if selection.length == 0,
+           !textView.hasMarkedText(),
+           let caret = utf8Offset(in: textView.string, utf16Offset: selection.location),
+           let insertion = model.listHeaderNewlineInsertion(caretUTF8: caret)
+        {
+            textView.insertText(insertion, replacementRange: selection)
+            return true
+        }
         textView.doCommand(by: #selector(NSResponder.insertNewline(_:)))
         return true
     }

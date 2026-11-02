@@ -178,6 +178,11 @@ struct CapturePickerCard: View {
                       let relationship = context.relationship
             {
                 parentOwnerHeader(relationship: relationship)
+            } else if case .blockID = source,
+                      let status = presentation?.blockIDStatus,
+                      let caption = status.ownerCaption
+            {
+                blockIDOwnerHeader(caption: caption, outcome: status.ownerOutcome)
             }
 
             Divider()
@@ -319,6 +324,36 @@ struct CapturePickerCard: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title)
+    }
+
+    /// Names the task a Project task ID prompt writes to when the prompt
+    /// opened on one of that task's nested lines (`ID for ‘Fix flaky gkeep
+    /// test’`), with what accepting does for it. Absent when the caret is on
+    /// the task's own line.
+    @ViewBuilder
+    private func blockIDOwnerHeader(caption: String, outcome: String?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: "link")
+                    .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                    .accessibilityHidden(true)
+                Text(caption)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            if let outcome {
+                Text(outcome)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(outcome.map { "\(caption). \($0)" } ?? caption)
     }
 
     @ViewBuilder

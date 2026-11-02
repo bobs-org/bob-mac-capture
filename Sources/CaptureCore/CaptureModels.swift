@@ -4272,6 +4272,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Link agrees with its new type. Older Bob omits it; malformed values
     /// decode as nil.
     public let typeRelocation: CaptureTypeRelocation?
+    /// Additive list membership for a bullet filed under a lone `@file` or
+    /// `@file#section` header: its kind, route, section, header line, position,
+    /// and the list's bullet count. Older Bob and non-list results omit it.
+    public let list: CaptureListContext?
 
     public init(
         ok: Bool,
@@ -4355,7 +4359,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         templateRow: CaptureTemplateRow? = nil,
         openNotes: [CaptureOpenNote]? = nil,
         taskTheme: CaptureTaskThemeChange? = nil,
-        typeRelocation: CaptureTypeRelocation? = nil
+        typeRelocation: CaptureTypeRelocation? = nil,
+        list: CaptureListContext? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -4439,6 +4444,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.openNotes = openNotes?.filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
         self.taskTheme = taskTheme
         self.typeRelocation = typeRelocation
+        self.list = list
     }
 
     public init(from decoder: Decoder) throws {
@@ -4637,6 +4643,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         typeRelocation =
             (try? container.decodeIfPresent(CaptureTypeRelocation.self, forKey: .typeRelocation))
             ?? nil
+        list = (try? container.decodeIfPresent(CaptureListContext.self, forKey: .list)) ?? nil
         if container.contains(.openNotes) {
             if try container.decodeNil(forKey: .openNotes) {
                 openNotes = []
@@ -4739,6 +4746,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case openNotes = "open_notes"
         case taskTheme = "task_theme"
         case typeRelocation = "type_relocation"
+        case list
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the
@@ -9051,6 +9059,14 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
     public let allowedDescription: String
     public let suggestions: [String]
     public let used: [CaptureUsedBlockID]
+    /// Additive 1-based draft line of the task that owns the ID. A prompt on a
+    /// nested line of a list or project-note task names its owner here; older
+    /// Bob omits it.
+    public let ownerLine: Int?
+    /// Additive edit that puts the accepted ID on the owning line, so a prompt
+    /// opened on a nested line still writes the ID where the task ends. Older
+    /// Bob omits it and the accept falls back to the `replacement` range.
+    public let splice: CaptureBlockIDSplice?
 
     public init(
         route: String,
@@ -9063,7 +9079,9 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         allowedCharacter: String,
         allowedDescription: String,
         suggestions: [String] = [],
-        used: [CaptureUsedBlockID] = []
+        used: [CaptureUsedBlockID] = [],
+        ownerLine: Int? = nil,
+        splice: CaptureBlockIDSplice? = nil
     ) {
         self.route = route
         self.relativeTarget = relativeTarget
@@ -9076,6 +9094,8 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         self.allowedDescription = allowedDescription
         self.suggestions = suggestions
         self.used = used
+        self.ownerLine = ownerLine
+        self.splice = splice
     }
 
     public init(from decoder: Decoder) throws {
@@ -9092,6 +9112,10 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
             try container.decodeIfPresent(String.self, forKey: .allowedDescription) ?? ""
         suggestions = try container.decodeIfPresent([String].self, forKey: .suggestions) ?? []
         used = try container.decodeIfPresent([CaptureUsedBlockID].self, forKey: .used) ?? []
+        ownerLine = (try? container.decodeIfPresent(Int.self, forKey: .ownerLine)) ?? nil
+        // A malformed splice must never break the picker: it decodes as nil and
+        // the accept falls back to the ID-only `replacement` range.
+        splice = (try? container.decodeIfPresent(CaptureBlockIDSplice.self, forKey: .splice)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -9106,6 +9130,8 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         case allowedDescription = "allowed_description"
         case suggestions
         case used
+        case ownerLine = "owner_line"
+        case splice
     }
 }
 

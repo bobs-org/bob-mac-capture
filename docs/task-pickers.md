@@ -202,7 +202,13 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   Accept inserts the row's ID into Bob's range with the stale-draft guard, announces
   `Inserted @route:id`, and runs an `.edit` analysis without completion;
   Command-accept also captures, and a missing selection announces why instead of
-  inserting. In the New ID composer the field only ever holds ID characters: typing a
+  inserting. A Project task prompt also carries Bob's `block_id.splice` and
+  `owner_line`: accept writes `before + ID + after` over the splice's range and puts
+  the caret at the end of what it wrote, so a prompt on a nested line puts the ID on
+  the owning task's line ([Capture lists](capture-lists.md)). A same-line splice is
+  the ID-only range, a Bob that sends none falls back to that range, and a
+  type-through remainder lands after the text the splice wrote. Undo follows the
+  same path as every other picker accept. In the New ID composer the field only ever holds ID characters: typing a
   character outside Bob's allowed set (space, `#`, `=`, `@`, `+`, `.`, …) at the end of the
   field commits the typed ID and keeps typing that character in the editor, so `#`
   after a commit opens `task_type` completion naturally. The Link picker keeps
@@ -303,6 +309,10 @@ Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   - a bare `:` link: "Then type #name or = to start".
 
   Project notes and Project tasks teach no follow-up.
+
+  When `owner_line` names a different line than the caret's, a header row above
+  the list reads `ID for ‘Fix flaky gkeep test’` with what accepting does, and the
+  detail strip and announcement name the owner too.
   Empty states cover no linkable tasks, a missing note, no matches, and the
   empty composer. While any picker is open, the marker token being completed
   carries an accent wash in the dimmed editor (`marker_range` for block IDs,

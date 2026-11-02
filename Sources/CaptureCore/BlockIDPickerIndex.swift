@@ -12,6 +12,12 @@ public struct CapturePickerBlockIDStatus: Equatable, Sendable {
     public let relativeTarget: String
     public let marker: String
     public let isProjectNote: Bool
+    /// `ID for ‘Fix flaky gkeep test’` when the ID lands on a task whose line
+    /// is not the one the caret is on (a prompt opened on a nested line).
+    /// Nil when the owner is the caret's own line.
+    public let ownerCaption: String?
+    /// What accepting does for that owner, shown under `ownerCaption`.
+    public let ownerOutcome: String?
 
     public init(
         availability: CapturePickerAvailability,
@@ -20,7 +26,9 @@ public struct CapturePickerBlockIDStatus: Equatable, Sendable {
         route: String,
         relativeTarget: String,
         marker: String,
-        isProjectNote: Bool
+        isProjectNote: Bool,
+        ownerCaption: String? = nil,
+        ownerOutcome: String? = nil
     ) {
         self.availability = availability
         self.usedCount = usedCount
@@ -29,6 +37,8 @@ public struct CapturePickerBlockIDStatus: Equatable, Sendable {
         self.relativeTarget = relativeTarget
         self.marker = marker
         self.isProjectNote = isProjectNote
+        self.ownerCaption = ownerCaption
+        self.ownerOutcome = ownerOutcome
     }
 }
 
@@ -47,6 +57,9 @@ public struct BlockIDPickerIndex: Sendable {
     private let field: CaptureBlockIDField?
     private let route: String
     private let scope: CaptureBlockIDScope
+    /// 1-based draft line the caret's marker token sits on, when known. With
+    /// `field.ownerLine` it tells a nested-line prompt from a same-line one.
+    private let markerLine: Int?
     private let entries: [BlockIDLinkEntry]
     private let rules: BlockIDRules?
     private let usedByID: [String: CaptureUsedBlockID]
@@ -60,9 +73,11 @@ public struct BlockIDPickerIndex: Sendable {
         field: CaptureBlockIDField?,
         candidates: [CaptureCompletionCandidate],
         route: String,
-        scope: CaptureBlockIDScope = .note
+        scope: CaptureBlockIDScope = .note,
+        markerLine: Int? = nil
     ) {
         self.field = field
+        self.markerLine = markerLine
         if let fieldRoute = field?.route, !fieldRoute.isEmpty {
             self.route = fieldRoute
         } else {
@@ -129,8 +144,21 @@ public struct BlockIDPickerIndex: Sendable {
             route: route,
             relativeTarget: noteTarget(),
             marker: field.marker,
-            isProjectNote: field.intent == .projectNote
+            isProjectNote: field.intent == .projectNote,
+            ownerCaption: ownerCaption,
+            ownerOutcome: ownerCaption == nil ? nil : newIDOutcome(for: field)
         )
+    }
+
+    /// `ID for ‘<owner task>’`, only when the owner is on another line than
+    /// the caret. A same-line prompt, an owner with no text yet, a Link
+    /// prompt, and a response without `owner_line` all return nil, so the
+    /// card reads exactly as before.
+    private var ownerCaption: String? {
+        guard isNewIDMode, let owner = field?.ownerTaskText(markerLine: markerLine) else {
+            return nil
+        }
+        return "ID for \u{2018}\(owner)\u{2019}"
     }
 
     /// Live availability of one ID string: project-note IDs are unchecked
@@ -775,24 +803,8 @@ public struct BlockIDPickerIndex: Sendable {
         let title: String
         let outcome: String
         if let field {
-            title = field.body.isEmpty ? "New task" : "“\(field.body)”"
-            if field.intent == .projectNote {
-                // The offer form (`@route:id@`) ends in a choice card, so the
-                // strip says what follows the name.
-                outcome = field.marker == ":"
-                    ? "Names the new project note, then choose which tasks to link"
-                    : "Names the new project note"
-            } else if isProjectTask {
-                if field.marker == ":" {
-                    outcome = "Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
-                } else {
-                    outcome = "Task in ▣ \(noteTarget())"
-                }
-            } else if field.marker == ":" {
-                outcome = "New Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
-            } else {
-                outcome = "New task in ▣ \(noteTarget())"
-            }
+            title = ownerCaption ?? (field.body.isEmpty ? "New task" : "“\(field.body)”")
+            outcome = newIDOutcome(for: field)
         } else {
             title = "New task"
             outcome = "New task in ▣ \(noteTarget())"
@@ -804,6 +816,27 @@ public struct BlockIDPickerIndex: Sendable {
             summary: "\(outcome) · \(availabilitySummary(for: availability, id: id))",
             insertionPrefix: rowInsertionPrefix
         )
+    }
+
+    /// What accepting a New ID does, in the strip's wording.
+    private func newIDOutcome(for field: CaptureBlockIDField) -> String {
+        if field.intent == .projectNote {
+            // The offer form (`@route:id@`) ends in a choice card, so the
+            // strip says what follows the name.
+            return field.marker == ":"
+                ? "Names the new project note, then choose which tasks to link"
+                : "Names the new project note"
+        }
+        if isProjectTask {
+            if field.marker == ":" {
+                return "Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
+            }
+            return "Task in ▣ \(noteTarget())"
+        }
+        if field.marker == ":" {
+            return "New Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
+        }
+        return "New task in ▣ \(noteTarget())"
     }
 
     // MARK: - Shared presentation helpers

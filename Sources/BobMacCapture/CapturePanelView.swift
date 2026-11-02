@@ -3498,9 +3498,16 @@ struct PreviewPane: View {
             CaptureThemeNotConfiguredCaption(warning: warning)
         }
 
+        // A list's bullets are separate results; one capsule heads each list and
+        // its results stack beneath it without dividers. A batch with no lists
+        // gets no capsule and keeps every divider.
+        let listPreview = CaptureListPreview(captures: captures)
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
-            if index > 0 {
+            if index > 0, !listPreview.continuesGroup(at: index) {
                 Divider()
+            }
+            if let group = listPreview.group(startingAt: index) {
+                CaptureListGroupCapsule(group: group)
             }
             previewItem(
                 capture,
