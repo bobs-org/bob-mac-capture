@@ -72,7 +72,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     public init(
         block: CaptureTaskBlock,
         dryRun: Bool,
-        suppressRelationshipLines: Bool = false
+        suppressRelationshipLines: Bool = false,
+        keepMovingRows: [TaskCompleteUnblocked] = []
     ) {
         let symbol = block.statusSymbol.isEmpty ? nil : block.statusSymbol
         status = CapturePickerTaskStatus(symbol: symbol, name: block.statusName)
@@ -105,7 +106,12 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                     content,
                     isHeadline: isHeadline
                 ),
-                isUnblocked: line.change == .added && line.reason == "unblocked"
+                isUnblocked: line.change == .added && line.reason == "unblocked",
+                isKeepMoving: line.change == .added && line.reason == "keep_moving",
+                keepMovingProjectName: Self.keepMovingProjectName(
+                    in: line,
+                    rows: keepMovingRows
+                )
             )
         }
 
@@ -116,6 +122,9 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         let spokenRows = rows.map { row -> String in
             switch row.change {
             case .added:
+                if row.isKeepMoving {
+                    return "added \(row.content), keep-moving offer"
+                }
                 return "added \(row.content)"
             case .removed:
                 return "removed \(row.content)"
@@ -132,6 +141,22 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
             summary += ": " + spokenRows.joined(separator: "; ")
         }
         accessibilitySummary = summary
+    }
+
+    private static func keepMovingProjectName(
+        in line: CaptureBlockLine,
+        rows: [TaskCompleteUnblocked]
+    ) -> String? {
+        guard line.reason == "keep_moving",
+              let row = rows.first(where: { !$0.text.isEmpty && line.text.contains($0.text) })
+        else {
+            return nil
+        }
+        let path = row.offer?.project ?? row.notePath
+        guard !path.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
     }
 
     private static func isManagedRelationshipLine(_ line: String) -> Bool {

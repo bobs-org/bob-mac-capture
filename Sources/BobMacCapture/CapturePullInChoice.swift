@@ -76,6 +76,26 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         offerRow?.trigger == "project_created"
     }
 
+    var isKeepMoving: Bool {
+        offerRow?.offer?.group == "keep_moving"
+    }
+
+    var laneText: String? {
+        guard isKeepMoving, let offerRow else {
+            return nil
+        }
+        if !offerRow.statusName.isEmpty {
+            return offerRow.statusName
+        }
+        switch offerRow.statusSymbol {
+        case "/": return "Pending"
+        case "*": return "Next"
+        case " ": return "Ready"
+        case "?": return "Blocked"
+        default: return nil
+        }
+    }
+
     /// Presentation-only meta fragments for offer rows. Unlike `detailText`,
     /// this never includes the recovered "Ready · not pulled in" caption.
     var metaDetails: [String] {
@@ -91,7 +111,7 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
                 if group != "project_finished" {
                     details.append("project finished")
                 }
-            } else if trigger != "project_created" {
+            } else if trigger != "project_created" && trigger != "last_planned" {
                 details.append("trigger: \(trigger)")
             }
         }
@@ -113,9 +133,13 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
                 details.append("project finished")
             } else if let trigger = offerRow.trigger,
                       !trigger.isEmpty,
-                      trigger != "project_created"
+                      trigger != "project_created",
+                      trigger != "last_planned"
             {
                 details.append("trigger: \(trigger)")
+            }
+            if offerRow.trigger == "last_planned" {
+                return laneText
             }
             return details.isEmpty ? nil : details.joined(separator: " · ")
         }
@@ -168,6 +192,53 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
             && offers.allSatisfy { $0.trigger == "project_created" }
     }
 
+    var isKeepMoving: Bool {
+        group == "keep_moving"
+    }
+
+    var caption: String? {
+        guard isKeepMoving, let first = keepMovingCauses.first else {
+            return nil
+        }
+        let projectName = project.map(Self.projectLabel) ?? "project"
+        let task = SuccessorRows.truncate(first.text)
+        if keepMovingCauses.count == 1 {
+            return "✓ \(task) was the last \(projectName) task planned today"
+        }
+        return "✓ \(task) and \(keepMovingCauses.count - 1) more were the last \(projectName) tasks planned today"
+    }
+
+    var contextCaption: String? {
+        guard isKeepMoving, let first = keepMovingCauses.first else {
+            return nil
+        }
+        let projectName = project.map(Self.projectLabel) ?? "project"
+        let task = SuccessorRows.truncate(first.text)
+        if keepMovingCauses.count == 1 {
+            return "\(task) was the last \(projectName) task planned today"
+        }
+        return "\(task) and \(keepMovingCauses.count - 1) more were the last \(projectName) tasks planned today"
+    }
+
+    var contrastTag: String? {
+        guard isKeepMoving else {
+            return nil
+        }
+        let projectName = project.map(Self.projectLabel) ?? "project"
+        return "ready in \(projectName) · not dependents"
+    }
+
+    private var keepMovingCauses: [TaskCompleteUnblockedCause] {
+        var seen = Set<String>()
+        return rows
+            .compactMap(\.offerRow)
+            .flatMap(\.unblockedBy)
+            .filter { cause in
+                let key = "\(cause.notePath)\u{1F}\(cause.blockID)"
+                return seen.insert(key).inserted
+            }
+    }
+
     var title: String {
         switch group {
         case "hand_off":
@@ -177,6 +248,9 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
             return label.isEmpty ? "Project" : "Project \(label)"
         case "project_finished":
             return "Project finished"
+        case "keep_moving":
+            let label = project.map(Self.projectLabel) ?? "project"
+            return "Keep \(label) moving"
         default:
             return group.isEmpty ? "Successor offers" : group
         }
@@ -273,7 +347,7 @@ struct CapturePullInChoiceState: Equatable {
     var causes: [TaskCompleteUnblockedCause] {
         var seen = Set<String>()
         var ordered: [TaskCompleteUnblockedCause] = []
-        for row in rows {
+        for row in rows where !row.isKeepMoving {
             guard let offerRow = row.offerRow else {
                 continue
             }
@@ -293,12 +367,28 @@ struct CapturePullInChoiceState: Equatable {
         return !offers.isEmpty && offers.allSatisfy { $0.trigger == "project_created" }
     }
 
+    var isOnlyKeepMoving: Bool {
+        let offers = rows.compactMap(\.offerRow)
+        return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "keep_moving" }
+    }
+
     var promptStatusText: String {
-        isNewProjectPrompt ? "Choose tasks to pull in" : "Choose successor offers"
+        if isNewProjectPrompt {
+            return "Choose tasks to pull in"
+        }
+        return isOnlyKeepMoving ? "Choose tasks to keep moving" : "Choose successor offers"
     }
 
     /// "Unblocked by X" / "Unblocked by X and N more" / nil.
     var contextText: String? {
+        if isOnlyKeepMoving {
+            guard let section = sections.first(where: \.isKeepMoving),
+                  let why = section.contextCaption
+            else {
+                return nil
+            }
+            return "\(why) · ready tasks, not dependents"
+        }
         if isNewProjectPrompt {
             if let cause = rows.first(where: \.isNewProjectOffer)?.offerRow?.unblockedBy.first,
                !cause.text.isEmpty
@@ -418,9 +508,14 @@ struct CapturePullInChoiceState: Equatable {
                 rows: sectionRows
             )
         }.sorted { left, right in
-            let rank: [String: Int] = ["hand_off": 0, "project": 1, "project_finished": 2]
-            let l = rank[left.group] ?? 3
-            let r = rank[right.group] ?? 3
+            let rank: [String: Int] = [
+                "hand_off": 0,
+                "project": 1,
+                "project_finished": 2,
+                "keep_moving": 3,
+            ]
+            let l = rank[left.group] ?? 4
+            let r = rank[right.group] ?? 4
             if l != r {
                 return l < r
             }

@@ -8,8 +8,16 @@ import SwiftUI
 struct PomodoroBlockView: View {
     let presentation: CapturePomodoroBlockPresentation
 
-    init(block: CapturePomodoroBlock, dryRun: Bool) {
-        presentation = CapturePomodoroBlockPresentation(block: block, dryRun: dryRun)
+    init(
+        block: CapturePomodoroBlock,
+        dryRun: Bool,
+        keepMovingRows: [TaskCompleteUnblocked] = []
+    ) {
+        presentation = CapturePomodoroBlockPresentation(
+            block: block,
+            dryRun: dryRun,
+            keepMovingRows: keepMovingRows
+        )
     }
 
     private var statusTint: Color {

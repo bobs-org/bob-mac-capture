@@ -20,12 +20,14 @@ struct TaskBlockView: View {
         block: CaptureTaskBlock,
         dryRun: Bool,
         suppressRelationshipLines: Bool = false,
+        keepMovingRows: [TaskCompleteUnblocked] = [],
         onExpandFold: @escaping () -> Void = {}
     ) {
         presentation = CaptureTaskBlockPresentation(
             block: block,
             dryRun: dryRun,
-            suppressRelationshipLines: suppressRelationshipLines
+            suppressRelationshipLines: suppressRelationshipLines,
+            keepMovingRows: keepMovingRows
         )
         self.onExpandFold = onExpandFold
     }

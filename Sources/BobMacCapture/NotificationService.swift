@@ -835,6 +835,10 @@ final class NotificationService: NSObject, ObservableObject {
         let count = captures.reduce(into: 0) { total, capture in
             let rows = (capture.taskComplete?.unblocked ?? [])
                 + (capture.pomodoroClose?.unblocked ?? [])
+                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.unblocked)
+                + (capture.taskComplete?.keepMoving ?? [])
+                + (capture.pomodoroClose?.keepMoving ?? [])
+                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
             var selectedKeys = Set<String>()
             var unkeyedSelectedCount = 0
             for row in rows where row.offer?.selected == true {
@@ -847,6 +851,40 @@ final class NotificationService: NSObject, ObservableObject {
             total += selectedKeys.count + unkeyedSelectedCount
         }
         guard count > 0 else { return "" }
+        let keepMovingRows = captures.flatMap { capture in
+            (capture.taskComplete?.keepMoving ?? [])
+                + (capture.pomodoroClose?.keepMoving ?? [])
+                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
+        }.filter { $0.offer?.selected == true }
+        if !keepMovingRows.isEmpty {
+            let movingKeys = Set(keepMovingRows.compactMap { row -> String? in
+                guard let key = row.offer?.key, !key.isEmpty else { return nil }
+                return key
+            })
+            let unkeyedMovingCount = keepMovingRows.filter {
+                $0.offer?.key.isEmpty != false
+            }.count
+            let movingCount = movingKeys.count + unkeyedMovingCount
+            var seen = Set<String>()
+            let projects = keepMovingRows.compactMap { row -> String? in
+                let path = row.offer?.project ?? row.notePath
+                guard !path.isEmpty else { return nil }
+                let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+                return seen.insert(name).inserted ? name : nil
+            }
+            let projectText = projects.count == 1
+                ? (projects.first ?? "the project")
+                : "\(projects.count) projects"
+            let otherCount = max(0, count - movingCount)
+            if otherCount > 0 {
+                let successorOffers =
+                    "\(otherCount) successor offer\(otherCount == 1 ? "" : "s")"
+                let movingOffers =
+                    "\(movingCount) keep-moving offer\(movingCount == 1 ? "" : "s") for \(projectText)"
+                return "⏭ Pulled in \(successorOffers) · \(movingOffers)"
+            }
+            return "⏭ Pulled in \(count) · keeps \(projectText) moving"
+        }
         return "Pulled in \(count) successor offer\(count == 1 ? "" : "s")"
     }
 

@@ -18,6 +18,12 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
     /// True for an added line Bob marked `reason == "unblocked"`: a
     /// surviving successor link. Renders a trailing badge.
     public let isUnblocked: Bool
+    /// True for an added keep-moving link. Its separate glyph avoids
+    /// presenting it as an unblocked dependent.
+    public let isKeepMoving: Bool
+    /// Leaf-project label for the keep-moving badge tooltip, when the
+    /// matching offer row was available to the caller.
+    public let keepMovingProjectName: String?
 
     public init(
         content: String,
@@ -26,7 +32,9 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         beforeContent: String? = nil,
         isHeadline: Bool,
         tokens: [CapturePomodoroLineToken],
-        isUnblocked: Bool = false
+        isUnblocked: Bool = false,
+        isKeepMoving: Bool = false,
+        keepMovingProjectName: String? = nil
     ) {
         self.content = content
         self.depth = depth
@@ -35,5 +43,7 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         self.isHeadline = isHeadline
         self.tokens = tokens
         self.isUnblocked = isUnblocked
+        self.isKeepMoving = isKeepMoving
+        self.keepMovingProjectName = keepMovingProjectName
     }
 }

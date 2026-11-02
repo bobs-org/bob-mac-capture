@@ -175,6 +175,38 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
         }
     }
 
+    func testKeepMovingTaskBlockLineHasItsOwnBadgeAndVoiceOver() {
+        let offer = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep-moving#^ship",
+                n: 1,
+                group: "keep_moving",
+                project: "projects/sase_badges.md"
+            ),
+            trigger: "last_planned"
+        )
+        let presented = CaptureTaskBlockPresentation(
+            block: block(lines: [
+                CaptureBlockLine(
+                    text: "- [[sase_badges#^ship]] Ship the badge renderer",
+                    change: .added,
+                    reason: "keep_moving"
+                )
+            ]),
+            dryRun: true,
+            keepMovingRows: [offer]
+        )
+
+        let row = presented.rows[0]
+        XCTAssertTrue(row.isKeepMoving)
+        XCTAssertFalse(row.isUnblocked)
+        XCTAssertEqual(row.keepMovingProjectName, "sase_badges")
+        XCTAssertTrue(presented.accessibilitySummary.contains("keep-moving offer"))
+    }
+
     func testDepthClampsToMaxDepth() throws {
         let presented = CaptureTaskBlockPresentation(
             block: block(lines: [

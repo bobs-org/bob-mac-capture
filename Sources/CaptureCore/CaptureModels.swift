@@ -2280,6 +2280,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let notes: [String]
     public let nextPomodoro: PomodoroCloseNext?
     public let unblocked: [TaskCompleteUnblocked]
+    public let keepMoving: [TaskCompleteUnblocked]
     public let stillBlocked: [TaskCompleteStillBlocked]
     public let unblockedCheck: String?
 
@@ -2317,6 +2318,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         notes: [String] = [],
         nextPomodoro: PomodoroCloseNext? = nil,
         unblocked: [TaskCompleteUnblocked] = [],
+        keepMoving: [TaskCompleteUnblocked] = [],
         stillBlocked: [TaskCompleteStillBlocked] = [],
         unblockedCheck: String? = nil
     ) {
@@ -2343,6 +2345,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.notes = notes
         self.nextPomodoro = nextPomodoro
         self.unblocked = unblocked
+        self.keepMoving = keepMoving
         self.stillBlocked = stillBlocked
         self.unblockedCheck = unblockedCheck
     }
@@ -2406,6 +2409,11 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
                 [TaskCompleteUnblocked].self,
                 forKey: .unblocked
             )) ?? []
+        keepMoving =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .keepMoving
+            )) ?? []
         stillBlocked =
             (try? container.decodeIfPresent(
                 [TaskCompleteStillBlocked].self,
@@ -2442,6 +2450,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case notes
         case nextPomodoro = "next_pomodoro"
         case unblocked
+        case keepMoving = "keep_moving"
         case stillBlocked = "still_blocked"
         case unblockedCheck = "unblocked_check"
     }
@@ -5723,11 +5732,21 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
 }
 
 public struct CapturePullInFolded: Codable, Equatable, Sendable {
+    public let blocked: Int
+    public let scheduled: Int
     public let hidden: Int
     public let alreadyPlanned: Int
     public let subProjects: Int
 
-    public init(hidden: Int = 0, alreadyPlanned: Int = 0, subProjects: Int = 0) {
+    public init(
+        blocked: Int = 0,
+        scheduled: Int = 0,
+        hidden: Int = 0,
+        alreadyPlanned: Int = 0,
+        subProjects: Int = 0
+    ) {
+        self.blocked = blocked
+        self.scheduled = scheduled
         self.hidden = hidden
         self.alreadyPlanned = alreadyPlanned
         self.subProjects = subProjects
@@ -5735,12 +5754,16 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        blocked = (try? container.decodeIfPresent(Int.self, forKey: .blocked)) ?? 0
+        scheduled = (try? container.decodeIfPresent(Int.self, forKey: .scheduled)) ?? 0
         hidden = (try? container.decodeIfPresent(Int.self, forKey: .hidden)) ?? 0
         alreadyPlanned = (try? container.decodeIfPresent(Int.self, forKey: .alreadyPlanned)) ?? 0
         subProjects = (try? container.decodeIfPresent(Int.self, forKey: .subProjects)) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
+        case blocked
+        case scheduled
         case hidden
         case alreadyPlanned = "already_planned"
         case subProjects = "sub_projects"
@@ -6022,6 +6045,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
     public let subtasksLeftOpen: [TaskCompleteLeftOpen]
     public let ledger: TaskCompleteLedger?
     public let unblocked: [TaskCompleteUnblocked]
+    public let keepMoving: [TaskCompleteUnblocked]
     public let stillBlocked: [TaskCompleteStillBlocked]
     public let unblockedCheck: String?
 
@@ -6037,6 +6061,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         subtasksLeftOpen: [TaskCompleteLeftOpen] = [],
         ledger: TaskCompleteLedger? = nil,
         unblocked: [TaskCompleteUnblocked] = [],
+        keepMoving: [TaskCompleteUnblocked] = [],
         stillBlocked: [TaskCompleteStillBlocked] = [],
         unblockedCheck: String? = nil
     ) {
@@ -6051,6 +6076,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         self.subtasksLeftOpen = subtasksLeftOpen
         self.ledger = ledger
         self.unblocked = unblocked
+        self.keepMoving = keepMoving
         self.stillBlocked = stillBlocked
         self.unblockedCheck = unblockedCheck
     }
@@ -6084,6 +6110,11 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
                 [TaskCompleteUnblocked].self,
                 forKey: .unblocked
             )) ?? []
+        keepMoving =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .keepMoving
+            )) ?? []
         stillBlocked =
             (try? container.decodeIfPresent(
                 [TaskCompleteStillBlocked].self,
@@ -6108,6 +6139,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         case subtasksLeftOpen = "subtasks_left_open"
         case ledger
         case unblocked
+        case keepMoving = "keep_moving"
         case stillBlocked = "still_blocked"
         case unblockedCheck = "unblocked_check"
     }

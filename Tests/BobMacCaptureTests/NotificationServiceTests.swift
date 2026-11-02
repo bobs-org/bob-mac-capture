@@ -1533,6 +1533,85 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.body.components(separatedBy: "Pulled in 2 successor offers").count - 1, 1)
     }
 
+    func testTaskCompleteKeepMovingNotificationNamesProject() {
+        let selectedOffer = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            statusSymbol: "*",
+            statusName: "Next",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep-moving#^ship",
+                n: 1,
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                selected: true
+            ),
+            trigger: "last_planned"
+        )
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "sase_badges.md",
+            relativeTarget: "projects/sase_badges.md",
+            target: "/tmp/sase_badges.md",
+            text: "Wire badges into the README",
+            taskLine: "- [ ] Wire badges into the README",
+            kind: "task_complete",
+            created: "2026-10-05",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(keepMoving: [selectedOffer])
+        )
+
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertTrue(content.body.contains("⏭ Pulled in 1 · keeps sase_badges moving"), content.body)
+    }
+
+    func testMixedNotificationSeparatesKeepMovingOfferCount() {
+        let successor = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:handoff", n: 1, group: "hand_off", selected: true)
+        )
+        let keepMoving = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep-moving#^ship",
+                n: 1,
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                selected: true
+            ),
+            trigger: "last_planned"
+        )
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "sase_badges.md",
+            relativeTarget: "projects/sase_badges.md",
+            target: "/tmp/sase_badges.md",
+            text: "Complete trip prep",
+            taskLine: "- [ ] Complete trip prep",
+            kind: "task_complete",
+            created: "2026-10-05",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(unblocked: [successor], keepMoving: [keepMoving])
+        )
+
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertTrue(
+            content.body.contains("⏭ Pulled in 1 successor offer · 1 keep-moving offer for sase_badges"),
+            content.body
+        )
+    }
+
     private func projectOfferRow(_ id: String, selected: Bool) -> TaskCompleteUnblocked {
         TaskCompleteUnblocked(
             notePath: "cash_goog_exit.md",

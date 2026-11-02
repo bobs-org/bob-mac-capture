@@ -32,7 +32,11 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
     public let rows: [Row]
     public let accessibilitySummary: String
 
-    public init(block: CapturePomodoroBlock, dryRun: Bool) {
+    public init(
+        block: CapturePomodoroBlock,
+        dryRun: Bool,
+        keepMovingRows: [TaskCompleteUnblocked] = []
+    ) {
         status = block.status
         isRemoved = block.removed
         let statusText: String
@@ -68,7 +72,12 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
                 beforeContent: line.before.map(Self.stripped),
                 isHeadline: isHeadline,
                 tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline),
-                isUnblocked: line.change == .added && line.reason == "unblocked"
+                isUnblocked: line.change == .added && line.reason == "unblocked",
+                isKeepMoving: line.change == .added && line.reason == "keep_moving",
+                keepMovingProjectName: Self.keepMovingProjectName(
+                    in: line,
+                    rows: keepMovingRows
+                )
             )
         }
 
@@ -81,6 +90,9 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
             case .added:
                 if row.isUnblocked {
                     return "added \(row.content), unblocked successor"
+                }
+                if row.isKeepMoving {
+                    return "added \(row.content), keep-moving offer"
                 }
                 return "added \(row.content)"
             case .removed:
@@ -98,6 +110,22 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
             summary += ": " + spokenRows.joined(separator: "; ")
         }
         accessibilitySummary = summary
+    }
+
+    private static func keepMovingProjectName(
+        in line: CapturePomodoroBlockLine,
+        rows: [TaskCompleteUnblocked]
+    ) -> String? {
+        guard line.reason == "keep_moving",
+              let row = rows.first(where: { !$0.text.isEmpty && line.text.contains($0.text) })
+        else {
+            return nil
+        }
+        let path = row.offer?.project ?? row.notePath
+        guard !path.isEmpty else {
+            return nil
+        }
+        return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
     }
 
     /// True when the blocks already show every verbatim preview line, so the

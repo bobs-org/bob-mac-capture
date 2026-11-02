@@ -11911,10 +11911,12 @@ final class CapturePanelModel: ObservableObject {
         for capture in captures {
             if let complete = capture.taskComplete {
                 offers.append(contentsOf: complete.unblocked)
+                offers.append(contentsOf: complete.keepMoving)
                 stillBlocked.append(contentsOf: complete.stillBlocked)
             }
             if let close = capture.pomodoroClose {
                 offers.append(contentsOf: close.unblocked)
+                offers.append(contentsOf: close.keepMoving)
                 stillBlocked.append(contentsOf: close.stillBlocked)
             }
             if let projectNote = capture.projectNote, projectNote.form == "offer" {
@@ -11927,6 +11929,7 @@ final class CapturePanelModel: ObservableObject {
                     continue
                 }
                 offers.append(contentsOf: complete.unblocked)
+                offers.append(contentsOf: complete.keepMoving)
                 stillBlocked.append(contentsOf: complete.stillBlocked)
             }
         }

@@ -183,9 +183,32 @@ public enum SuccessorRows {
     /// The one notification line from the §12.6 notice-text table, or nil
     /// when nothing was linked and the breaker did not fire (the caller
     /// then keeps its existing `· unblocked A, B` body).
-    public static func notificationLine(unblocked: [TaskCompleteUnblocked]) -> String? {
-        let pulledInCount = unblocked.filter { $0.offer?.selected == true }.count
+    public static func notificationLine(
+        unblocked: [TaskCompleteUnblocked],
+        keepMoving: [TaskCompleteUnblocked] = []
+    ) -> String? {
+        let selectedKeepMoving = keepMoving.filter { $0.offer?.selected == true }
+        let selectedSuccessorCount = unblocked.filter { $0.offer?.selected == true }.count
+        let pulledInCount = selectedSuccessorCount + selectedKeepMoving.count
         if pulledInCount > 0 {
+            if !selectedKeepMoving.isEmpty {
+                let projects = orderedUnique(selectedKeepMoving.compactMap { row in
+                    let path = row.offer?.project ?? row.notePath
+                    guard !path.isEmpty else { return nil }
+                    return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+                })
+                let projectText = projects.count == 1
+                    ? (projects.first ?? "the project")
+                    : "\(projects.count) projects"
+                if selectedSuccessorCount > 0 {
+                    let successorOffers =
+                        "\(selectedSuccessorCount) successor offer\(selectedSuccessorCount == 1 ? "" : "s")"
+                    let movingOffers =
+                        "\(selectedKeepMoving.count) keep-moving offer\(selectedKeepMoving.count == 1 ? "" : "s") for \(projectText)"
+                    return "⏭ Pulled in \(successorOffers) · \(movingOffers)"
+                }
+                return "⏭ Pulled in \(pulledInCount) · keeps \(projectText) moving"
+            }
             return "🔓 Pulled in \(pulledInCount) successor offer\(pulledInCount == 1 ? "" : "s")"
         }
         let linked: [LinkedRow] = unblocked.compactMap { item in

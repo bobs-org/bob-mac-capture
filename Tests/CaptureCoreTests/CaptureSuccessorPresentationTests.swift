@@ -164,6 +164,56 @@ final class CaptureSuccessorPresentationTests: XCTestCase {
         )
     }
 
+    func testNotificationLineNamesSelectedKeepMovingOffer() {
+        let keepMoving = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            statusSymbol: "*",
+            statusName: "Next",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep-moving#^ship",
+                n: 1,
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                selected: true
+            ),
+            trigger: "last_planned"
+        )
+
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [], keepMoving: [keepMoving]),
+            "⏭ Pulled in 1 · keeps sase_badges moving"
+        )
+    }
+
+    func testNotificationLineSeparatesKeepMovingFromOtherSelectedOffers() {
+        let successor = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:handoff", n: 1, group: "hand_off", selected: true)
+        )
+        let keepMoving = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep-moving#^ship",
+                n: 1,
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                selected: true
+            ),
+            trigger: "last_planned"
+        )
+
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [successor], keepMoving: [keepMoving]),
+            "⏭ Pulled in 1 successor offer · 1 keep-moving offer for sase_badges"
+        )
+    }
+
     func testNotificationLineForCreatedContinuation() throws {
         XCTAssertEqual(
             SuccessorRows.notificationLine(unblocked: [

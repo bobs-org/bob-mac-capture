@@ -9,6 +9,7 @@ extension CapturePanelLayout {
     static let pullInBarHeight: CGFloat = 46
     static let pullInContextHeight: CGFloat = 26
     static let pullInSectionHeaderHeight: CGFloat = 28
+    static let pullInKeepMovingHeaderHeight: CGFloat = 48
     static let pullInFoldRowHeight: CGFloat = 22
     static let pullInRowHeight: CGFloat = 44
     static let pullInListPadding: CGFloat = 6
@@ -21,6 +22,7 @@ extension CapturePanelLayout {
 /// never resizes the panel, matching the picker's contract.
 struct CapturePullInChoiceHeightPolicy: Equatable {
     var sectionCount: Int
+    var keepMovingSectionCount: Int
     var foldRowCount: Int
     var rowCount: Int
     var hasContextLine: Bool
@@ -31,9 +33,11 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         foldRowCount: Int,
         rowCount: Int,
         hasContextLine: Bool,
+        keepMovingSectionCount: Int = 0,
         displayScale: CGFloat = 1
     ) {
         self.sectionCount = sectionCount
+        self.keepMovingSectionCount = keepMovingSectionCount
         self.foldRowCount = foldRowCount
         self.rowCount = rowCount
         self.hasContextLine = hasContextLine
@@ -46,7 +50,8 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
             guard let folded = section.folded else {
                 return false
             }
-            return folded.hidden > 0 || folded.alreadyPlanned > 0 || folded.subProjects > 0
+            return folded.blocked > 0 || folded.scheduled > 0 || folded.hidden > 0
+                || folded.alreadyPlanned > 0 || folded.subProjects > 0
         }.count
         let hasContext = choice.contextText != nil || choice.planBudget != nil
         self.init(
@@ -54,6 +59,7 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
             foldRowCount: folds,
             rowCount: choice.rows.count,
             hasContextLine: hasContext,
+            keepMovingSectionCount: sections.filter(\.isKeepMoving).count,
             displayScale: displayScale
         )
     }
@@ -62,6 +68,9 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CGFloat(sectionCount) * CapturePanelLayout.pullInSectionHeaderHeight
+                + CGFloat(keepMovingSectionCount)
+                    * (CapturePanelLayout.pullInKeepMovingHeaderHeight
+                        - CapturePanelLayout.pullInSectionHeaderHeight)
                 + CGFloat(foldRowCount) * CapturePanelLayout.pullInFoldRowHeight
                 + CGFloat(rowCount) * CapturePanelLayout.pullInRowHeight
         )
@@ -71,6 +80,10 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CapturePanelLayout.pullInSectionHeaderHeight
+                + (keepMovingSectionCount > 0
+                    ? CapturePanelLayout.pullInKeepMovingHeaderHeight
+                        - CapturePanelLayout.pullInSectionHeaderHeight
+                    : 0)
                 + CGFloat(CapturePanelLayout.pullInMaxVisibleRows) * CapturePanelLayout.pullInRowHeight
         )
     }
@@ -79,6 +92,10 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CapturePanelLayout.pullInSectionHeaderHeight
+                + (keepMovingSectionCount > 0
+                    ? CapturePanelLayout.pullInKeepMovingHeaderHeight
+                        - CapturePanelLayout.pullInSectionHeaderHeight
+                    : 0)
                 + CGFloat(CapturePanelLayout.pullInMinVisibleRows) * CapturePanelLayout.pullInRowHeight
         )
     }
@@ -229,10 +246,10 @@ struct CapturePullInChoiceCard: View {
     private var pullInFilterBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                Image(systemName: choice.isNewProjectPrompt ? "folder.badge.plus" : "lock.open.fill")
-                    .foregroundStyle(choice.isNewProjectPrompt ? Color.brown : Color.green)
+                Image(systemName: filterCapsuleGlyph)
+                    .foregroundStyle(filterCapsuleColor)
                     .accessibilityHidden(true)
-                Text(choice.isNewProjectPrompt ? "New project" : "Successors")
+                Text(filterCapsuleTitle)
                     .font(.caption.weight(.semibold))
             }
             .padding(.horizontal, 8)
@@ -270,12 +287,43 @@ struct CapturePullInChoiceCard: View {
         .accessibilityLabel("Filter successor offers")
     }
 
+    private var filterCapsuleGlyph: String {
+        if choice.isNewProjectPrompt {
+            return "folder.badge.plus"
+        }
+        return choice.isOnlyKeepMoving ? "forward.end.fill" : "lock.open.fill"
+    }
+
+    private var filterCapsuleColor: Color {
+        if choice.isNewProjectPrompt {
+            return .brown
+        }
+        return choice.isOnlyKeepMoving
+            ? CaptureEditorPalette.checkboxSymbolColor("*")
+            : .green
+    }
+
+    private var filterCapsuleTitle: String {
+        if choice.isNewProjectPrompt {
+            return "New project"
+        }
+        return choice.isOnlyKeepMoving ? "Keep moving" : "Successors"
+    }
+
     private var pullInContextLine: some View {
         HStack(spacing: 6) {
             if let context = choice.contextText {
                 if !choice.isNewProjectPrompt {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                    Image(
+                        systemName: choice.isOnlyKeepMoving
+                            ? "forward.end.fill"
+                            : "checkmark.circle.fill"
+                    )
+                        .foregroundStyle(
+                            choice.isOnlyKeepMoving
+                                ? CaptureEditorPalette.checkboxSymbolColor("*")
+                                : .green
+                        )
                         .accessibilityHidden(true)
                 }
                 Text(context)
@@ -442,6 +490,21 @@ struct CapturePullInChoiceCard: View {
             return nil
         }
         var parts: [String] = []
+        if section.isKeepMoving {
+            if folded.blocked > 0 {
+                parts.append("\(folded.blocked) blocked")
+            }
+            if folded.scheduled > 0 {
+                parts.append("\(folded.scheduled) scheduled later")
+            }
+            if folded.hidden > 0 {
+                parts.append("\(folded.hidden) hidden")
+            }
+            guard !parts.isEmpty else {
+                return nil
+            }
+            return parts.joined(separator: " · ")
+        }
         if folded.hidden > 0 {
             parts.append("\(folded.hidden) hidden")
         }
@@ -488,40 +551,71 @@ struct CapturePullInSectionHeader: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCollapsed)
-                    .accessibilityHidden(true)
-                Image(systemName: glyph)
-                    .foregroundStyle(glyphColor)
-                    .accessibilityHidden(true)
-                Text(section.title)
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Text("\(section.rows.filter(\.isSelectable).count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                Spacer(minLength: 8)
-                if marked > 0 {
-                    Text("\(marked) marked")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                        .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCollapsed)
+                        .accessibilityHidden(true)
+                    Image(systemName: glyph)
+                        .foregroundStyle(glyphColor)
+                        .accessibilityHidden(true)
+                    Text(section.title)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text("\(section.rows.filter(\.isSelectable).count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
+                    Spacer(minLength: 8)
+                    if marked > 0 {
+                        Text("\(marked) marked")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .monospacedDigit()
+                    }
+                    if let tag = section.contrastTag {
+                        Text(tag)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(glyphColor)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                if let caption = section.caption {
+                    HStack(spacing: 6) {
+                        Text(caption)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 4)
+                    }
+                    .padding(.leading, 42)
                 }
             }
-            .frame(height: CapturePanelLayout.pullInSectionHeaderHeight)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
         }
+        .frame(height: section.isKeepMoving
+            ? CapturePanelLayout.pullInKeepMovingHeaderHeight
+            : CapturePanelLayout.pullInSectionHeaderHeight)
+        .padding(.horizontal, 8)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
         .background(.regularMaterial)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(section.title), \(section.rows.filter(\.isSelectable).count) offers")
+        .accessibilityLabel(
+            [
+                section.title,
+                "\(section.rows.filter(\.isSelectable).count) offers",
+                section.caption,
+                section.contrastTag,
+            ]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+        )
     }
 
     private var glyph: String {
@@ -532,6 +626,8 @@ struct CapturePullInSectionHeader: View {
             return section.isNewProject ? "folder.badge.plus" : "folder"
         case "project_finished":
             return "checkmark.circle"
+        case "keep_moving":
+            return "forward.end.fill"
         default:
             return "lock.open"
         }
@@ -540,6 +636,9 @@ struct CapturePullInSectionHeader: View {
     private var glyphColor: Color {
         if section.isNewProject {
             return .brown
+        }
+        if section.isKeepMoving {
+            return CaptureEditorPalette.checkboxSymbolColor("*")
         }
         return section.group == "project_finished" ? .green : .secondary
     }
@@ -685,7 +784,11 @@ struct CapturePullInOfferRow: View {
         for detail in row.metaDetails {
             parts.append((detail, nil))
         }
-        if choice.showsRowCauses,
+        if row.isKeepMoving, let lane = row.laneText {
+            parts.append((lane, nil))
+        }
+        if !row.isKeepMoving,
+            choice.showsRowCauses,
             let cause = row.offerRow?.unblockedBy.first,
             !cause.text.isEmpty
         {

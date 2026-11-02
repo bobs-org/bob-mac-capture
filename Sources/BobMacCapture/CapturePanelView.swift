@@ -3446,6 +3446,11 @@ struct PreviewPane: View {
     @ViewBuilder
     private func previewContent(_ success: CaptureCommandSuccess) -> some View {
         let captures = success.normalizedCaptures
+        let keepMovingRows = captures.flatMap { capture in
+            (capture.taskComplete?.keepMoving ?? [])
+                + (capture.pomodoroClose?.keepMoving ?? [])
+                + capture.relationCompletes.compactMap(\.taskComplete).flatMap(\.keepMoving)
+        }
         let orderedTaskBlocks = taskBlocksForPreview(
             captures: captures,
             blocks: success.taskBlocks
@@ -3518,7 +3523,8 @@ struct PreviewPane: View {
                     TaskBlockView(
                         block: block,
                         dryRun: success.dryRun,
-                        suppressRelationshipLines: suppressRelationshipLines
+                        suppressRelationshipLines: suppressRelationshipLines,
+                        keepMovingRows: keepMovingRows
                     ) {
                         model.requestFocus(.editor)
                     }
@@ -3536,7 +3542,11 @@ struct PreviewPane: View {
         if !success.pomodoroBlocks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(success.pomodoroBlocks.enumerated()), id: \.offset) { _, block in
-                    PomodoroBlockView(block: block, dryRun: success.dryRun)
+                    PomodoroBlockView(
+                        block: block,
+                        dryRun: success.dryRun,
+                        keepMovingRows: keepMovingRows
+                    )
                 }
             }
             .padding(.top, 4)
@@ -3608,10 +3618,25 @@ struct PreviewPane: View {
             inboxRoutePreviewSummary
         }
         if let complete = success.taskComplete {
-            pullInPreviewSummary(for: complete.unblocked)
+            pullInPreviewSummary(
+                for: complete.unblocked + complete.keepMoving,
+                pullIn: success.pullIn
+            )
         }
         if let close = success.pomodoroClose {
-            pullInPreviewSummary(for: close.unblocked)
+            pullInPreviewSummary(
+                for: close.unblocked + close.keepMoving,
+                pullIn: success.pullIn
+            )
+        }
+        for relationComplete in success.relationCompletes {
+            guard let complete = relationComplete.taskComplete else {
+                continue
+            }
+            pullInPreviewSummary(
+                for: complete.unblocked + complete.keepMoving,
+                pullIn: success.pullIn
+            )
         }
         if let project = CaptureProjectNoteSuccessorPresentation(capture: success) {
             projectNoteSuccessorsPreview(for: project)
@@ -3710,6 +3735,7 @@ struct PreviewPane: View {
     @ViewBuilder
     private func pullInPreviewSummary(
         for items: [TaskCompleteUnblocked],
+        pullIn: CapturePullIn? = nil,
         showsInvitation: Bool = true
     ) -> some View {
         let offers = items.filter { $0.offer?.key.isEmpty == false }
@@ -3729,7 +3755,7 @@ struct PreviewPane: View {
                 priorityRollSeed: "",
                 generation: 0,
                 requestID: nil,
-                pullIn: CapturePullIn(supported: true, offerCount: offers.count),
+                pullIn: pullIn ?? CapturePullIn(supported: true, offerCount: offers.count),
                 planBudget: nil,
                 rows: rows,
                 highlightedKey: nil

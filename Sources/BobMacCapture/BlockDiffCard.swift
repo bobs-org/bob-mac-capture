@@ -207,7 +207,17 @@ struct BlockDiffCard: View {
 
     @ViewBuilder
     private func rowContent(_ row: CaptureBlockDiffRow) -> some View {
-        if row.isUnblocked {
+        if row.isKeepMoving {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                diffText(row)
+                Image(systemName: "forward.end.fill")
+                    .font(.caption2)
+                    .foregroundStyle(CaptureEditorPalette.checkboxSymbolColor("*"))
+                    .accessibilityLabel("Keep-moving offer")
+            }
+            .help("Keeps \(row.keepMovingProjectName ?? "the project") moving")
+            .textSelection(.enabled)
+        } else if row.isUnblocked {
             // A surviving successor link: the verbatim line plus a small
             // trailing badge naming what it is, with hover and VoiceOver
             // text to match the card's accessibility summary.

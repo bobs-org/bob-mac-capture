@@ -195,7 +195,10 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         // One extra notification line when anything was linked or the
         // breaker fired; with only recovered rows the body keeps today's
         // `· unblocked A, B` form.
-        if let line = SuccessorRows.notificationLine(unblocked: summary.unblocked) {
+        if let line = SuccessorRows.notificationLine(
+            unblocked: summary.unblocked,
+            keepMoving: summary.keepMoving
+        ) {
             body += "\n\(line)"
         } else {
             let unblockedNames = summary.unblocked.map(\.text).filter { !$0.isEmpty }

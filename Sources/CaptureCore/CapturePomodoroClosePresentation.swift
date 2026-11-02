@@ -412,7 +412,10 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         }
         // One extra notification line when anything was linked or the
         // breaker fired; with only recovered rows the body is unchanged.
-        if let successorLine = SuccessorRows.notificationLine(unblocked: summary.unblocked) {
+        if let successorLine = SuccessorRows.notificationLine(
+            unblocked: summary.unblocked,
+            keepMoving: summary.keepMoving
+        ) {
             bodyLines.append(successorLine)
         }
         if let droppedDependenciesChip {

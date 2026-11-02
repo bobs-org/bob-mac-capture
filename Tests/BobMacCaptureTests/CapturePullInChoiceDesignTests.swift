@@ -166,6 +166,35 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         }
     }
 
+    func testRenderKeepMovingCard() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-keep-moving") { model in
+            model.installPullInChoiceForPreviews(
+                offers: [
+                    cardOffer(
+                        n: 1,
+                        text: "Ship the badge renderer",
+                        group: "keep_moving",
+                        project: "projects/sase_badges.md",
+                        cause: "Wire badges into the README",
+                        trigger: "last_planned"
+                    )
+                ],
+                pullIn: CapturePullIn(
+                    supported: true,
+                    offerCount: 1,
+                    groups: [
+                        CapturePullInGroup(
+                            group: "keep_moving",
+                            project: "projects/sase_badges.md",
+                            folded: CapturePullInFolded(blocked: 2, scheduled: 1, hidden: 3)
+                        )
+                    ]
+                ),
+                draft: "!sase_badges:t"
+            )
+        }
+    }
+
     func testRenderFilteredCard() throws {
         try writeCardFixtures(name: "capture-pull-in-choice-filtered") { model in
             model.installPullInChoiceForPreviews(

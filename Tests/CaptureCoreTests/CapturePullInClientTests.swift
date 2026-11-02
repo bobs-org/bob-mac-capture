@@ -13,7 +13,11 @@ final class CapturePullInClientTests: XCTestCase {
             draft,
             readClipboard: false,
             priorityRollSeed: "stable-seed",
-            pullInSelection: .keys(["digest#one^suffix:2", "opaque:second#^key"]),
+            pullInSelection: .keys([
+                "digest#one^suffix:2",
+                "opaque:second#^key",
+                "opaque:keep-moving#^ship",
+            ]),
             pullInCapabilityAdvertised: true
         )
         _ = try await client.capture(
@@ -23,7 +27,7 @@ final class CapturePullInClientTests: XCTestCase {
         )
 
         let calls = try recordText(record)
-        XCTAssertTrue(calls.contains("argv=capture --format json --no-clip --pull-in digest#one^suffix:2,opaque:second#^key -- \(draft)"))
+        XCTAssertTrue(calls.contains("argv=capture --format json --no-clip --pull-in digest#one^suffix:2,opaque:second#^key,opaque:keep-moving#^ship -- \(draft)"))
         XCTAssertTrue(calls.contains("argv=capture --format json --pull-in none -- "))
         XCTAssertTrue(calls.contains(draft))
         XCTAssertTrue(calls.contains("BOB_PRIORITY_ROLL_SEED=stable-seed"))

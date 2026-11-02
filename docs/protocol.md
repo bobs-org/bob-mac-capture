@@ -397,6 +397,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `override`, guard flags | Orange banner; guarded commit; choice card | Plain start; retry without the flag is remembered | Upgrade `bob` for overrides |
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |
 | `task_complete.unblocked`, `pomodoro_close.unblocked`, `project_note.successors` | Grouped Pull-In choice card; project offers show a New project context and task preview rows | Single legacy wording | Upgrade `bob` for offers |
+| `task_complete.keep_moving`, `pomodoro_close.keep_moving` | ⏭ Keep-moving section with the last-planned caption, ready-task lanes, folded reasons, choice keys, and `forward.end.fill` block-diff badge; notifications name the project | Missing arrays decode empty; existing successor offers keep working | Upgrade `bob` for keep-moving offers |
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
 | `sub_bullet_depths`, route-only `global_destination`, `items` | Exact children; batch route declaration and per-item route overrides | Depth 1; per-item targets | Upgrade `bob` for global declarations |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |

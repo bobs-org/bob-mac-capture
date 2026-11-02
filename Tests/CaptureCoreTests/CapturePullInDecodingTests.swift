@@ -27,6 +27,7 @@ final class CapturePullInDecodingTests: XCTestCase {
                 "picked_count": 0,
                 "groups": [
                   {"group":"project","project":"projects/sase_foo.md","folded":{"hidden":2,"already_planned":1,"sub_projects":3}},
+                  {"group":"keep_moving","project":"projects/sase_foo.md","folded":{"blocked":2,"scheduled":1,"hidden":4}},
                   {"group":"future_group","project":"future.md","folded":{}}
                 ]
               },
@@ -70,6 +71,10 @@ final class CapturePullInDecodingTests: XCTestCase {
         XCTAssertEqual(response.pullIn?.groups.first?.folded.hidden, 2)
         XCTAssertEqual(response.pullIn?.groups.first?.folded.alreadyPlanned, 1)
         XCTAssertEqual(response.pullIn?.groups.first?.folded.subProjects, 3)
+        let movingFold = try XCTUnwrap(response.pullIn?.groups.first(where: { $0.group == "keep_moving" })?.folded)
+        XCTAssertEqual(movingFold.blocked, 2)
+        XCTAssertEqual(movingFold.scheduled, 1)
+        XCTAssertEqual(movingFold.hidden, 4)
         XCTAssertEqual(response.pullIn?.groups.last?.group, "future_group")
         XCTAssertEqual(response.taskComplete?.unblocked.first?.offer?.key, "digest#^suffix:2")
         XCTAssertEqual(response.taskComplete?.unblocked.first?.offer?.destination.entryRole, "next_up")
@@ -77,9 +82,60 @@ final class CapturePullInDecodingTests: XCTestCase {
         XCTAssertEqual(response.taskComplete?.unblocked.first?.offer?.blockIDNeeded, true)
         XCTAssertEqual(response.taskComplete?.unblocked.first?.trigger, "project_empty")
         XCTAssertEqual(response.taskComplete?.unblocked.first?.hideRemoved, true)
+        XCTAssertTrue(response.taskComplete?.keepMoving.isEmpty == true)
         XCTAssertEqual(response.taskComplete?.stillBlocked.first?.project, "projects/sase_foo.md")
         XCTAssertEqual(response.taskComplete?.stillBlocked.first?.trigger, "dependency")
         XCTAssertEqual(response.pomodoroClose?.unblocked.first?.offer?.key, "opaque:offer#11")
+        XCTAssertTrue(response.pomodoroClose?.keepMoving.isEmpty == true)
+    }
+
+    func testKeepMovingArraysDecodeOnBothCloseSurfacesAndNestedRelationCompletes() throws {
+        let row = #"{"note_path":"projects/sase_badges.md","block_id":"ship","line":5,"text":"Ship the badge renderer","previous_status_symbol":"/","previous_status_name":"Pending","status_symbol":"/","status_name":"Pending","unblocked_by":[{"note_path":"projects/sase_badges.md","block_id":"draft","text":"Draft the badge spec"}],"trigger":"last_planned","offer":{"key":"opaque:keep-moving#^ship","n":1,"group":"keep_moving","project":"projects/sase_badges.md","selected":false}}"#
+        let json = """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"day.md","target":"/tmp/day.md","text":"",
+             "task_line":"","kind":"task_complete","created":"2026-11-02",
+             "placement":"updated",
+             "task_complete":{"raw":"!sase_badges:draft","keep_moving":[\(row)]},
+             "pomodoro_close":{"raw":"x!1","keep_moving":[]},
+             "relation_completes":[{"task_complete":{"raw":"!sase_badges:draft","keep_moving":[\(row)]}}]}
+            """
+        guard case .success(let response) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(json.utf8)
+        ) else {
+            return XCTFail("Expected capture success")
+        }
+
+        XCTAssertEqual(response.taskComplete?.keepMoving.first?.trigger, "last_planned")
+        XCTAssertEqual(response.taskComplete?.keepMoving.first?.offer?.group, "keep_moving")
+        XCTAssertTrue(response.pomodoroClose?.keepMoving.isEmpty == true)
+        XCTAssertEqual(
+            response.relationCompletes.first?.taskComplete?.keepMoving.first?.offer?.key,
+            "opaque:keep-moving#^ship"
+        )
+    }
+
+    func testRealBobKeepMovingFixturesDecodeForTaskAndPomodoroClose() throws {
+        for (name, keyPath) in [
+            ("task-complete-keep-moving.json", "task_complete"),
+            ("pomodoro-close-keep-moving.json", "pomodoro_close"),
+        ] {
+            let fixtures = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .appendingPathComponent("../Fixtures", isDirectory: true)
+                .standardizedFileURL
+            let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+            let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(text.utf8))
+            guard case .success(let response) = decoded else {
+                return XCTFail("Expected real-bob success fixture: \(name)")
+            }
+            let rows = keyPath == "task_complete"
+                ? response.taskComplete?.keepMoving
+                : response.pomodoroClose?.keepMoving
+            XCTAssertFalse(rows?.isEmpty ?? true, "\(name) must contain real keep-moving rows")
+            XCTAssertTrue(rows?.allSatisfy { $0.trigger == "last_planned" } == true)
+        }
     }
 
     func testFailureRefusalKeepsTopLevelOffersAndUnknownStrings() throws {

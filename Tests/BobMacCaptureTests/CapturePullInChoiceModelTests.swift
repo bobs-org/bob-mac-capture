@@ -57,6 +57,104 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testRealKeepMovingFixtureOpensChoiceAndSubmitsItsOpaqueKey() async throws {
+        let record = temporaryRecordURL()
+        let fixture = try fixtureText("task-complete-keep-moving.json")
+        let success = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: Data(fixture.utf8)
+        )
+        let key = try XCTUnwrap(success.taskComplete?.keepMoving.first?.offer?.key)
+        let model = makeModel(record: record, stdout: fixture)
+        model.plainDraft = "!sase_badges:t"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.isOnlyKeepMoving)
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to keep moving")
+        XCTAssertEqual(choice.selectableKeys, [key])
+        XCTAssertEqual(choice.effectiveSelectionKeys, [key])
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let calls = try recordText(record)
+        XCTAssertEqual(captureCallCount(calls), 2)
+        XCTAssertTrue(calls.contains("--pull-in \(key)"), calls)
+    }
+
+    func testKeepMovingChoiceHasDistinctContextAndRanksLast() throws {
+        let model = CapturePanelModel()
+        model.installPullInChoiceForPreviews(
+            offers: [
+                cardOffer(n: 1, text: "Hand-off", group: "hand_off"),
+                cardOffer(
+                    n: 2,
+                    text: "Project task",
+                    group: "project",
+                    project: "projects/sase_badges.md"
+                ),
+                cardOffer(
+                    n: 3,
+                    text: "Keep the renderer moving",
+                    group: "keep_moving",
+                    project: "projects/sase_badges.md",
+                    cause: "Wire badges into the README",
+                    trigger: "last_planned"
+                ),
+            ],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 3,
+                groups: [
+                    CapturePullInGroup(
+                        group: "keep_moving",
+                        project: "projects/sase_badges.md",
+                        folded: CapturePullInFolded(blocked: 2, scheduled: 1, hidden: 3)
+                    )
+                ]
+            ),
+            draft: "complete task"
+        )
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        let section = try XCTUnwrap(choice.sections.last)
+        let row = try XCTUnwrap(section.rows.first)
+        XCTAssertEqual(section.group, "keep_moving")
+        XCTAssertEqual(section.title, "Keep sase_badges moving")
+        XCTAssertEqual(section.caption, "✓ Wire badges into the README was the last sase_badges task planned today")
+        XCTAssertEqual(section.contrastTag, "ready in sase_badges · not dependents")
+        XCTAssertEqual(section.folded?.blocked, 2)
+        XCTAssertEqual(section.folded?.scheduled, 1)
+        XCTAssertEqual(section.folded?.hidden, 3)
+        XCTAssertEqual(row.detailText, "Ready")
+        XCTAssertFalse(row.metaDetails.contains(where: { $0.hasPrefix("trigger:") }))
+        XCTAssertTrue(choice.isOnlyKeepMoving == false)
+        XCTAssertFalse(choice.contextText?.contains("Unblocked by") == true)
+
+        let onlyMoving = CapturePanelModel()
+        onlyMoving.installPullInChoiceForPreviews(
+            offers: [cardOffer(
+                n: 1,
+                text: "Keep the renderer moving",
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                cause: "Wire badges into the README",
+                trigger: "last_planned"
+            )],
+            pullIn: CapturePullIn(supported: true, offerCount: 1),
+            draft: "complete task"
+        )
+        let movingChoice = try XCTUnwrap(onlyMoving.pullInChoice)
+        XCTAssertTrue(movingChoice.isOnlyKeepMoving)
+        XCTAssertEqual(movingChoice.contextText, "Wire badges into the README was the last sase_badges task planned today · ready tasks, not dependents")
+    }
+
     func testProjectNoteOfferSkipSubmitsExplicitNoneWithoutPickedLinks() async throws {
         let record = temporaryRecordURL()
         let model = try await openProjectOfferChoice(record: record)
