@@ -569,13 +569,13 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             destination: nil,
             includeProposalDetails: false
         )
-        let text = presentation.linksCapsuleText
+        let text = presentation.today.text
         return CaptureAgendaRow(
             kind: .planBudget,
             text: text,
             depth: 0,
             lineLimit: 1,
-            accessibilityLabel: "Plan budget: \(text)",
+            accessibilityLabel: "Plan budget: \(presentation.today.spokenText)",
             planBudget: presentation
         )
     }

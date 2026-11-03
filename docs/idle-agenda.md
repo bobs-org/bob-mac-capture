@@ -27,8 +27,8 @@ off-clock pill to the Now header. The title line keeps its Worked summary and ad
 dashed `◌ 1h off-clock` chip when Bob reports off-clock minutes in
 `completed_summary.off_clock`.
 
-The row directly under `Today` shows the saved daily meters (`Themes N/C` and
-`Links N/C`); their caps come from bob's plan config. An older `bob` that omits
+The row directly under `Today` shows the single saved `TODAY N/C` badge; its cap
+comes from bob's plan config. An older `bob` that omits
 `plan_budget` simply omits this row. A typed capture preview still shows the proposed
 budget for that draft. Plan-config edits appear on the next ordinary agenda refresh,
 including the next panel show.

@@ -81,18 +81,18 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
 
     // MARK: - Meter row
 
-    func testOlderBobTypeCapBudgetRendersOnlyTheLinksCapsule() throws {
+    func testOlderBobTypeCapBudgetRendersOnlyTheTodayBadge() throws {
         // `plan-budget-over.json` is an older Bob's payload: a `themes` meter, `added_themes`,
         // and a `plan_theme_cap_exceeded` warning. None of it reaches the presentation.
         let success = try decodeCaptureSuccess(fixtureText("plan-budget-over.json"))
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ new Pomodoro NEWT")
-        XCTAssertEqual(presentation.linksCapsuleText, "Links 4/10")
-        XCTAssertFalse(presentation.linksOverCap)
+        XCTAssertEqual(presentation.today.text, "TODAY 4/10")
+        XCTAssertEqual(presentation.today.tone, .green)
         XCTAssertTrue(presentation.warningTexts.isEmpty)
         XCTAssertTrue(presentation.accessibilitySummary.contains("→ new Pomodoro NEWT"))
-        XCTAssertTrue(presentation.accessibilitySummary.contains("Links 4/10"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("TODAY 4 of 10 links"))
         XCTAssertFalse(presentation.accessibilitySummary.contains("Types"))
         XCTAssertFalse(presentation.accessibilitySummary.contains("+1"))
         XCTAssertFalse(presentation.accessibilitySummary.contains("themes"))
@@ -111,9 +111,9 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         )
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
-        XCTAssertEqual(presentation.linksCapsuleText, "Links 2/10")
+        XCTAssertEqual(presentation.today.text, "TODAY 2/10")
         XCTAssertTrue(presentation.warningTexts.isEmpty)
-        XCTAssertEqual(presentation.accessibilitySummary, "Links 2/10")
+        XCTAssertEqual(presentation.accessibilitySummary, "TODAY 2 of 10 links")
     }
 
     func testQuietBudgetRendersNoWarnings() throws {
@@ -123,7 +123,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CapturePlanBudgetPresentation(capture: success))
 
         XCTAssertEqual(presentation.destinationRowText, "→ GOALS · named")
-        XCTAssertFalse(presentation.linksOverCap)
+        XCTAssertEqual(presentation.today.text, "TODAY 4/10")
         XCTAssertTrue(presentation.warningTexts.isEmpty)
     }
 
@@ -140,7 +140,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertNil(CapturePlanBudgetPresentation(capture: success))
     }
 
-    func testLinkCapBudgetShowsLinksCapsuleAndWarning() throws {
+    func testLinkCapBudgetShowsTodayBadgeAndWarning() throws {
         let budget = CapturePlanBudget(
             status: "over",
             links: CapturePlanBudgetMeter(count: 11, cap: 10, over: true, before: 10),
@@ -153,11 +153,11 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         let presentation = CapturePlanBudgetPresentation(budget: budget, destination: nil)
 
         XCTAssertNil(presentation.destinationRowText)
-        XCTAssertEqual(presentation.linksCapsuleText, "Links 11/10")
-        XCTAssertTrue(presentation.linksOverCap)
+        XCTAssertEqual(presentation.today.text, "TODAY 11/10")
+        XCTAssertEqual(presentation.today.tone, .red)
         XCTAssertEqual(
             presentation.accessibilitySummary,
-            "Links 11/10, today's plan now has 11/10 links"
+            "TODAY 11 of 10 links, over cap, today's plan now has 11/10 links"
         )
     }
 

@@ -200,7 +200,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   An older Bob that omits `plan_budget`, `role`,
   `added_theme_refs`, span or entry `themes`, or `code` still previews and
   captures; the Mac app decodes each as absent and renders the destination row as
-  `→ NAME`, omitting only the links capsule and the theme tints. Agenda and Refs rows from an older Bob render
+  `→ NAME`, omitting only the TODAY badge and the theme tints. Agenda and Refs rows from an older Bob render
   the plain name with no pills. A trailing `#now` tag is the ordinary trailing-tag error like any
   other `#tag`, and `#now` typed before the route is plain body text. The `^`
   active-task picker lists In Progress and Next tasks only. An older Bob that
@@ -340,7 +340,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `pomodoro_close` with `log` entries | Close card with typed Work Log | Standard card; no close preview | Upgrade `bob` before `x` |
 | `pomodoro_close.closed_name`, `next_pomodoro.shed` | Close card names the narrowed closed session and the types shed from its continuation | Older Bob omits these details | Upgrade `bob` for merged-session close names |
 | `toggle_behavior` | Ensure Next vs Set Next / Open labels | Two-way labels; status and relocation still exact | Upgrade `bob` for exact labels |
-| `plan_budget`, `role` | Links capsule and link-cap warnings | Destination row only (`-> NAME`) | Upgrade `bob` for the links meter |
+| `plan_budget`, `role` | TODAY badge and link-cap warnings | Destination row only (`-> NAME`) | Upgrade `bob` for the TODAY badge |
 | `added_theme_refs`, span/entry/row `themes` | Pill and swatch tints in the editor, agenda, previews, and Refs Today | Plain names; neutral pills only where a budget exists | Upgrade `bob` for theme tints |
 | `configured`, `configured_themes`, `hue_source` `config`/`unconfigured` | Dashed unconfigured pills, Name-it chips from the vocabulary, `theme_not_configured` captions | Today's pills; Name-it shows Recent as before; no unconfigured warning | Upgrade `bob` for configured themes |
 | structured `theme_not_configured` warning | Orange caption with the unconfigured pill in every settled preview and in Name-it | Absent; start/close cards still show other warning strings | Upgrade `bob` for the warning |

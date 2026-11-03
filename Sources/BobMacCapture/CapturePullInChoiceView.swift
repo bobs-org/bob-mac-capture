@@ -353,32 +353,13 @@ struct CapturePullInChoiceCard: View {
                     .layoutPriority(1)
             }
             Spacer(minLength: 8)
-            if choice.planBudget != nil,
-                let capsule = choice.projectedLinksCapsuleText
-            {
-                Text(capsule)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        (choice.projectedLinksOverCap ? Color.red : Color.green).opacity(0.15),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(choice.projectedLinksOverCap ? Color.red : Color.green)
-                    .contentTransition(.numericText())
-                    .animation(snappy(0.15), value: capsule)
-                    .accessibilityLabel(projectedLinksAccessibilityLabel)
+            if let today = choice.projectedTodayBadge {
+                TodayBadge(
+                    presentation: today,
+                    accessibilityLabel: projectedLinksAccessibilityLabel
+                )
                 if let delta = choice.projectedLinksDeltaText {
-                    Text(delta)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                        .animation(snappy(0.15), value: delta)
+                    TodayBadgeDeltaChip(text: delta)
                 }
             }
         }
@@ -388,14 +369,15 @@ struct CapturePullInChoiceCard: View {
     }
 
     private var projectedLinksAccessibilityLabel: String {
-        guard let capsule = choice.projectedLinksCapsuleText,
-            let budget = choice.planBudget,
+        guard let budget = choice.planBudget,
             let projected = choice.projectedLinkCount
         else {
-            return choice.projectedLinksCapsuleText ?? ""
+            return ""
         }
         let base = "Projected links \(projected) of \(budget.links.cap)"
-        return choice.projectedLinksOverCap ? "Warning: \(base)" : base
+        let warning = choice.projectedLinksOverCap ? "Warning: " : ""
+        let atCap = choice.projectedTodayBadge?.tone == .magenta ? ", at cap" : ""
+        return "\(warning)\(base)\(atCap)"
     }
 
     private var contextAccessibilityLabel: String {
@@ -407,10 +389,6 @@ struct CapturePullInChoiceCard: View {
             parts.append(projectedLinksAccessibilityLabel)
         }
         return parts.joined(separator: ", ")
-    }
-
-    private func snappy(_ duration: Double) -> Animation? {
-        reduceMotion ? nil : .snappy(duration: duration)
     }
 
     private var choiceSections: some View {

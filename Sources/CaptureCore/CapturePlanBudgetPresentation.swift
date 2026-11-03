@@ -17,7 +17,7 @@ import Foundation
 /// when an older Bob still sends `themes` / `added_themes` / a
 /// `plan_theme_cap_exceeded` warning (all ignored). The Mac destination row
 /// shortens the CLI's arrow to the row form (`→ GOALS · next up`,
-/// `→ running GOALS 0945–1015`, `→ new Pomodoro BOB`); the links capsule and
+/// `→ running GOALS 0945–1015`, `→ new Pomodoro BOB`); the TODAY badge and
 /// warning captions carry the same numbers.
 public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// `"→ GOALS · next up"`, `"→ running GOALS 0945–1015"`,
@@ -25,9 +25,8 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// destination. The time range uses an en dash; Bob's wire
     /// `time_range` uses a hyphen.
     public let destinationRowText: String?
-    /// `"Links 8/10"` — always present when the budget is present.
-    public let linksCapsuleText: String
-    public let linksOverCap: Bool
+    /// The shared TODAY badge, including its spoken and tooltip descriptions.
+    public let today: TodayBadgePresentation
     /// Link-cap warning messages in Bob's order, rendered as orange captions.
     public let warningTexts: [String]
     public let accessibilitySummary: String
@@ -48,8 +47,7 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         includeProposalDetails: Bool = true
     ) {
         destinationRowText = Self.destinationRowText(for: destination)
-        linksCapsuleText = "Links \(budget.links.count)/\(budget.links.cap)"
-        linksOverCap = budget.links.over
+        today = TodayBadgePresentation(count: budget.links.count, cap: budget.links.cap)
         warningTexts = includeProposalDetails
             ? budget.warnings
                 .filter { $0.code != Self.retiredTypeCapWarningCode }
@@ -60,7 +58,7 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         if let destinationRowText {
             parts.append(destinationRowText)
         }
-        parts.append(linksCapsuleText)
+        parts.append(today.spokenText)
         parts.append(contentsOf: warningTexts)
         accessibilitySummary = parts.joined(separator: ", ")
     }

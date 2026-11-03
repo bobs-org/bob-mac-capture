@@ -164,8 +164,8 @@ Preview shows every block Bob will write, in Bob's own order: each item's parent
   shows a destination row above it (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
   `→ new Pomodoro BOB`, with a `timer` symbol) from the destination `role`, and a
   batch that changed today's Pomodoros section shows one plan-budget meter row above
-  the items (a `Links 8/10` capsule — green within the cap, red over — and orange
-  link-cap warning captions). The daily plan caps Task Links only: there is no type
+  the items: a `TODAY 8/10` badge mirroring Obsidian's daily chip (grey at 0; blue,
+  green, yellow, orange by fifths; magenta at cap; red over; [plan contract](https://bobs-org.github.io/plan/)) and orange link-cap captions. The daily plan caps Task Links only: there is no type
   capsule, `+N` type delta chip, or type-cap warning, and an older Bob's `themes`
   meter, `added_themes`, and `plan_theme_cap_exceeded` warning are ignored.
   Both rows join the VoiceOver summary.

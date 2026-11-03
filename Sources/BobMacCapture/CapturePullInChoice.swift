@@ -563,11 +563,14 @@ struct CapturePullInChoiceState: Equatable {
         return projectedLinkCount > planBudget.links.cap
     }
 
-    var projectedLinksText: String? {
+    var projectedTodayBadge: TodayBadgePresentation? {
         guard let planBudget, let projectedLinkCount else {
             return nil
         }
-        return "Projected links \(projectedLinkCount)/\(planBudget.links.cap)"
+        return TodayBadgePresentation(
+            count: projectedLinkCount,
+            cap: planBudget.links.cap
+        )
     }
 
     /// Distinct `unblockedBy` causes across offer rows, in first-seen order.
@@ -710,14 +713,6 @@ struct CapturePullInChoiceState: Equatable {
     /// "Pull In N" / "Pull In" when nothing would be picked.
     var pullInActionTitle: String {
         effectivePickCount == 0 ? "Pull In" : "Pull In \(effectivePickCount)"
-    }
-
-    /// "Links 6/10" when Bob supplied the budget.
-    var projectedLinksCapsuleText: String? {
-        guard let planBudget, let projectedLinkCount else {
-            return nil
-        }
-        return "Links \(projectedLinkCount)/\(planBudget.links.cap)"
     }
 
     /// "+N" when the budget is present and something would be picked.

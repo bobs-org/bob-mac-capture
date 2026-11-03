@@ -329,12 +329,12 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.state, .noOpen)
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
         XCTAssertEqual(row.kind, .planBudget)
-        XCTAssertEqual(row.text, "Links 8/10")
-        XCTAssertEqual(row.key.text, "Links 8/10")
-        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Links 8/10")
+        XCTAssertEqual(row.text, "TODAY 8/10")
+        XCTAssertEqual(row.key.text, "TODAY 8/10")
+        XCTAssertEqual(row.accessibilityLabel, "Plan budget: TODAY 8 of 10 links")
         XCTAssertNil(row.planBudget?.destinationRowText)
         XCTAssertTrue(row.planBudget?.warningTexts.isEmpty == true)
-        XCTAssertEqual(row.planBudget?.linksOverCap, false)
+        XCTAssertEqual(row.planBudget?.today.tone, .orange)
     }
 
     func testEmptyLedgerShowsZeroBudgetMeters() {
@@ -347,7 +347,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(presentation.state, .noOpen)
-        XCTAssertEqual(presentation.planBudgetRow?.text, "Links 0/7")
+        XCTAssertEqual(presentation.planBudgetRow?.text, "TODAY 0/7")
         XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
     }
 
@@ -363,23 +363,23 @@ final class CaptureAgendaPresentationTests: XCTestCase {
     }
 
     func testBudgetRowsRepublishOverStateChangesAndKeyCountsAndCaps() throws {
-        func row(over: Bool, count: Int = 8, cap: Int = 10) throws -> CaptureAgendaRow {
+        func row(count: Int = 8, cap: Int = 10) throws -> CaptureAgendaRow {
             let snapshot = makeSnapshot(
                 entries: [],
                 planBudget: CapturePlanBudget(
                     status: "ok",
-                    links: CapturePlanBudgetMeter(count: count, cap: cap, over: over)
+                    links: CapturePlanBudgetMeter(count: count, cap: cap, over: count > cap)
                 )
             )
             return try XCTUnwrap(present(snapshot).planBudgetRow)
         }
 
-        let within = try row(over: false)
-        let over = try row(over: true)
-        XCTAssertEqual(within.key, over.key)
+        let within = try row()
+        let over = try row(count: 11)
+        XCTAssertNotEqual(within.key, over.key)
         XCTAssertNotEqual(within, over)
-        XCTAssertNotEqual(within.key, try row(over: false, count: 2).key)
-        XCTAssertNotEqual(within.key, try row(over: false, cap: 4).key)
+        XCTAssertNotEqual(within.key, try row(count: 2).key)
+        XCTAssertNotEqual(within.key, try row(cap: 4).key)
     }
 
     // MARK: - Groups and headers

@@ -950,7 +950,7 @@ final class CapturePullInChoiceTests: XCTestCase {
         empty.updateFilter("zzz")
         XCTAssertEqual(empty.effectivePickCount, 0)
         XCTAssertEqual(empty.pullInActionTitle, "Pull In")
-        XCTAssertNil(empty.projectedLinksCapsuleText)
+        XCTAssertNil(empty.projectedTodayBadge)
         XCTAssertNil(empty.projectedLinksDeltaText)
 
         let budgeted = choiceState(
@@ -960,7 +960,7 @@ final class CapturePullInChoiceTests: XCTestCase {
                 links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
             )
         )
-        XCTAssertEqual(budgeted.projectedLinksCapsuleText, "Links 5/10")
+        XCTAssertEqual(budgeted.projectedTodayBadge?.text, "TODAY 5/10")
         XCTAssertEqual(budgeted.projectedLinksDeltaText, "+1")
 
         var over = choiceState(
@@ -972,8 +972,18 @@ final class CapturePullInChoiceTests: XCTestCase {
         )
         over.markAll()
         XCTAssertTrue(over.projectedLinksOverCap)
-        XCTAssertEqual(over.projectedLinksCapsuleText, "Links 6/5")
+        XCTAssertEqual(over.projectedTodayBadge?.text, "TODAY 6/5")
         XCTAssertEqual(over.projectedLinksDeltaText, "+2")
+
+        let atCap = choiceState(
+            offers: offers(count: 2),
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                links: CapturePlanBudgetMeter(count: 9, cap: 10, over: false)
+            )
+        )
+        XCTAssertEqual(atCap.projectedTodayBadge?.text, "TODAY 10/10")
+        XCTAssertEqual(atCap.projectedTodayBadge?.tone, .magenta)
     }
 
     func testFilterMatchRangeIsCaseInsensitiveAndNilWhenEmpty() {
