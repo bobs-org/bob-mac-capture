@@ -138,6 +138,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
     var pickerSourceIsTaskGoto = false
+    var pickerSourceIsProjectTaskMove = false
     var pickerDispatchInFlight = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
@@ -763,6 +764,9 @@ struct CaptureKeyCommandRouter {
                     return .acceptPickerRowAndStart
                 }
                 if context.pickerSourceIsTaskComplete {
+                    return .acceptPickerRowAndContinue
+                }
+                if context.pickerSourceIsProjectTaskMove {
                     return .acceptPickerRowAndContinue
                 }
                 if context.pickerSourceIsRelation {

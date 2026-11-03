@@ -97,6 +97,81 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
     }
 }
 
+/// Server-authored move picker context for `project_task_move`: the move
+/// sigil (`^` or `:`), the parent note filename (`cash.md`), the new-note
+/// destination (`cash_goog_exit.md`), and Bob's shift-return continuation.
+/// Swift never parses the draft from these keys; it only routes and inserts.
+public struct ProjectTaskMovePickerContext: Equatable, Sendable {
+    public let scopeToken: String
+    public let noteTarget: String?
+    public let destination: String?
+    public let continuation: String?
+    public let markerRange: CaptureRange
+    public let triggerRemovalRange: CaptureRange
+    public let openCount: Int?
+
+    public init(
+        scopeToken: String,
+        noteTarget: String? = nil,
+        destination: String? = nil,
+        continuation: String? = nil,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        openCount: Int? = nil
+    ) {
+        self.scopeToken = scopeToken
+        self.noteTarget = noteTarget
+        self.destination = destination
+        self.continuation = continuation
+        self.markerRange = markerRange
+        self.triggerRemovalRange = triggerRemovalRange
+        self.openCount = openCount
+    }
+
+    /// True when the `:` lane also links (Move & link).
+    public var isLinkMove: Bool {
+        scopeToken == ":"
+    }
+
+    /// Parent filename for the scope capsule and empty state (`cash.md`).
+    public var noteFileName: String {
+        if let noteTarget, !noteTarget.isEmpty {
+            return noteTarget
+        }
+        return "this note"
+    }
+
+    /// Destination filename for the picker title (`cash_goog_exit.md`).
+    public var destinationFileName: String? {
+        guard let destination, !destination.isEmpty else {
+            return nil
+        }
+        return destination
+    }
+
+    /// Picker title: `Move into <destination>` or `Move & link into <destination>`.
+    public var pickerTitle: String {
+        if let destinationFileName {
+            return isLinkMove ? "Move & link into \(destinationFileName)" : "Move into \(destinationFileName)"
+        }
+        return isLinkMove ? "Move & link" : "Move"
+    }
+
+    /// Trailing header: `from <parent> · <open> open` when Bob reported a count.
+    public func headerSuffix(openCount: Int?) -> String {
+        if let openCount {
+            let noun = openCount == 1 ? "1 open" : "\(openCount) open"
+            return "from \(noteFileName) · \(noun)"
+        }
+        return "from \(noteFileName)"
+    }
+
+    /// Calm Esc status text that leaves the lone sigil in the draft.
+    public var escStatusText: String {
+        "Pick a task to move from \(noteFileName), or delete the \(scopeToken)"
+    }
+}
+
 /// One fetched parent-task snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
 /// Vault empty-query rows keep the colon groups; scoped empty-query rows

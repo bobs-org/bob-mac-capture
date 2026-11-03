@@ -99,6 +99,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case wikilinkTask(WikilinkTaskPickerContext)
     case blockID(BlockIDPickerContext)
     case parentTask(ParentTaskPickerContext)
+    case projectTaskMove(ProjectTaskMovePickerContext)
 
     /// True for `~` / `~~` relation pickers.
     public var isRelation: Bool {
@@ -132,6 +133,14 @@ public enum CapturePickerSource: Equatable, Sendable {
     /// Server-authored parent-task context when this source is `.parentTask`.
     public var parentTaskContext: ParentTaskPickerContext? {
         if case .parentTask(let context) = self {
+            return context
+        }
+        return nil
+    }
+
+    /// Server-authored move context when this source is `.projectTaskMove`.
+    public var projectTaskMoveContext: ProjectTaskMovePickerContext? {
+        if case .projectTaskMove(let context) = self {
             return context
         }
         return nil
@@ -195,6 +204,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return context.marker == "^" ? 94 : 58 // `^` or `:`
         case .parentTask:
             return 43 // `+`
+        case .projectTaskMove(let context):
+            return context.scopeToken == "^" ? 94 : 58 // `^` or `:`
         }
     }
 
@@ -227,6 +238,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             if context.isVault {
                 return "Search tasks by text, note, or +id"
             }
+            return "Filter \(context.noteFileName) tasks"
+        case .projectTaskMove(let context):
             return "Filter \(context.noteFileName) tasks"
         }
     }
@@ -262,6 +275,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Search open tasks across capture notes"
             }
             return "Filter \(context.noteFileName) tasks"
+        case .projectTaskMove(let context):
+            return "Filter \(context.noteFileName) tasks to move"
         }
     }
 
@@ -289,6 +304,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .blockID(let context):
             return context.scopeToken
         case .parentTask(let context):
+            return context.scopeToken
+        case .projectTaskMove(let context):
             return context.scopeToken
         }
     }
@@ -334,6 +351,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return context.isNewIDMode ? "New ID" : "Tasks"
         case .parentTask(let context):
             return context.isVault ? "All capture notes" : context.noteFileName
+        case .projectTaskMove(let context):
+            return context.noteFileName
         }
     }
 
@@ -368,6 +387,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return CaptureRelationshipCopy.relateStatusText
             }
             return context.isVault ? "Select a parent task" : "Append to a task"
+        case .projectTaskMove:
+            return "Move a task into the new project"
         }
     }
 
@@ -394,6 +415,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return context.isNewIDMode ? "sparkles" : "list.bullet.rectangle.portrait"
         case .parentTask:
             return "plus"
+        case .projectTaskMove:
+            return "arrow.right.square"
         }
     }
 
@@ -422,6 +445,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the Block ID picker for \(context.scopeToken) (Tab)."
         case .parentTask(let context):
             return "Reopen the parent-task picker for the \(context.scopeToken) item (Tab)."
+        case .projectTaskMove(let context):
+            return "Reopen the move picker for the \(context.scopeToken) item (Tab)."
         }
     }
 
@@ -449,6 +474,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .blockID:
             return chipLabel
         case .parentTask:
+            return chipLabel
+        case .projectTaskMove:
             return chipLabel
         }
     }
@@ -478,6 +505,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the Block ID picker for \(context.scopeToken)."
         case .parentTask(let context):
             return "Opens the parent-task picker for \(context.scopeToken)."
+        case .projectTaskMove(let context):
+            return "Opens the move picker for \(context.scopeToken)."
         }
     }
 
@@ -512,6 +541,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Parent task picker"
             }
             return "Parent task picker for \(context.noteFileName)"
+        case .projectTaskMove(let context):
+            return "Move picker for \(context.noteFileName)"
         }
     }
 
@@ -541,6 +572,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Arrow keys move, Return inserts the task, Control-Return inserts, captures, and opens, Escape cancels."
         case .parentTask:
             return "Arrow keys move, Return inserts the parent task, Control-Return inserts, captures, and opens, Escape cancels."
+        case .projectTaskMove:
+            return "Arrow keys move, Return inserts the task, Shift-Return inserts it and moves another, Escape cancels."
         }
     }
 
@@ -572,6 +605,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "\(context.noteTarget) tasks"
         case .parentTask(let context):
             return context.isVault ? "All capture notes" : "\(context.noteFileName) tasks"
+        case .projectTaskMove(let context):
+            return "\(context.noteFileName) tasks"
         }
     }
 
@@ -705,6 +740,13 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("⌘↩", "Select & Capture"),
                 ("esc", "Clear / Cancel"),
             ]
+        case .projectTaskMove:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Move"),
+                ("⇧↩", "Move & add another"),
+                ("esc", "Close"),
+            ]
         }
     }
 
@@ -734,6 +776,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .parentTask:
             return "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Control Return to select, capture, and open, Escape to clear or cancel."
+        case .projectTaskMove:
+            return "Picker keys: up and down to move, Return to move, Shift Return to move and add another, Escape to close."
         }
     }
 
@@ -763,6 +807,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.block-id-picker-used"
         case .parentTask:
             return "org.bobs.bob-mac-capture.parent-task-picker-used"
+        case .projectTaskMove:
+            return "org.bobs.bob-mac-capture.project-task-move-picker-used"
         }
     }
 
@@ -781,6 +827,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .parentTask:
             return "+"
+        case .projectTaskMove(let context):
+            return context.scopeToken
         case .blockID(let context):
             return context.marker
         case .wikilinkTask(_):
@@ -823,6 +871,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
     /// An unterminated quoted section selector (`@route#"…`): finish the
     /// quoted name instead of flashing Bob's `incomplete_section` refusal.
     case section
+    /// A lone `^` / `:` move bullet in a sealed project-note item.
+    case projectTaskMove
 
     public var statusText: String {
         switch self {
@@ -864,6 +914,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Add a bullet under the header \u{2014} Shift-Return starts one"
         case .section:
             return "Finish the quoted section name \u{2014} pick a section"
+        case .projectTaskMove:
+            return "Pick a task to move — press Tab to browse"
         }
     }
 }

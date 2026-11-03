@@ -171,6 +171,44 @@ Capture, Control-Return Select, Capture & Open, Escape Clear/Cancel, Backspace
 on empty filter removes Bob's trigger range. In the card-mode Add block ID
 prompt, Tab / Shift-Tab cycle suggestions.
 
+## Move Picker
+
+Typing `^` or `:` after `- ` on a first-level bullet of a sealed project-note
+item (`@cash^goog-exit@` or `@cash:goog-exit@`) opens the Move picker
+(`project_task_move` context). Bob lists the parent note's open top-level tasks
+in document order, ID-less rows included, with Bob-authored consequence copy
+and disabled reasons. The header reads `Move into cash_goog_exit.md` (or
+`Move & link into cash_goog_exit.md` for `:`) with trailing
+`from cash.md · 12 open`; rows group under the note's section headings.
+Each row shows the status glyph, the title, a Pomodoro chip, a schedule chip,
+and the `^id` right-aligned in block-ID indigo; ID-less rows show
+`⊕ ^suggestion` in muted indigo. Disabled rows are dimmed with Bob's reason;
+`#hide` rows are muted.
+
+Return inserts the ID into Bob's ID-only range (the typed sigil survives);
+Shift-Return inserts the ID plus Bob's continuation (for example `"\n- ^"`),
+puts the caret at the end, and reopens the picker. On an ID-less row Return
+opens the Add block ID prompt prefilled with Bob's first suggestion; its
+Return runs `bob capture-task-id --route <parent>` then splices the bare
+block ID, and Shift-Return chains via the continuation. Escape leaves the lone
+sigil with `Pick a task to move from cash.md, or delete the ^`; the draft stays
+incomplete and never silently becomes an empty task. Each accept is one undo
+step and never also submits. Results tie to the draft generation and the
+parent route: editing `@cash` to `@work` discards `cash` rows.
+
+When `capture-parse` reports `project_task_move` in `needs`, the app skips the
+doomed live dry run and shows `Pick a task to move — press Tab to browse`;
+after Escape it shows `Pick a task to move from cash.md, or delete the ^`.
+The footer shows the selected row's Bob consequence and the key hints.
+Span colours follow the editor: `project_task_move_marker` (`^`) uses the
+route accent, `project_task_move_link_marker` (`:`) uses the explicit-toggle
+yellow, and `project_task_move_block_id` uses block-ID indigo. Older Bob
+builds never report the need, so behaviour there is unchanged.
+
+Move Picker keys: Return Move, Shift-Return Move & add another, Escape Close,
+Backspace on empty filter removes Bob's trigger range. In the move Add block
+ID prompt, Tab / Shift-Tab cycle suggestions.
+
 ## Block ID Picker
 
 Typing the right-hand side of `@route:` or `@route^` anywhere those markers are

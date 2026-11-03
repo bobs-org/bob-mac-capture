@@ -51,6 +51,16 @@ enum CaptureTaskIDPromptPurpose: Equatable {
         returnPicker: CapturePickerState,
         scope: ParentTaskPickerScope
     )
+    /// Move-picker ID-less row: name the task via `bob capture-task-id`,
+    /// then splice the bare block ID into the picker's replacement range.
+    /// Shift-Return chains via the picker's continuation, never via the prompt.
+    case projectTaskMove(
+        route: String,
+        taskRef: String,
+        suggestions: [String],
+        followUp: CaptureTaskLinkFollowUp,
+        returnPicker: CapturePickerState
+    )
     /// Link mode for an ID-less `:` row: name the task, then splice its link.
     case taskLink(
         route: String,
@@ -160,6 +170,9 @@ struct CaptureTaskIDPromptState: Equatable {
         if case .parentTaskPicker(_, _, let suggestions, _, _, _) = purpose {
             return suggestions
         }
+        if case .projectTaskMove(_, _, let suggestions, _, _) = purpose {
+            return suggestions
+        }
         if case .relation(_, _, let suggestions, _, _, _) = purpose {
             return suggestions
         }
@@ -187,6 +200,9 @@ struct CaptureTaskIDPromptState: Equatable {
             return followUp
         }
         if case .parentTaskPicker(_, _, _, let followUp, _, _) = purpose {
+            return followUp
+        }
+        if case .projectTaskMove(_, _, _, let followUp, _) = purpose {
             return followUp
         }
         if case .relation(_, _, _, let followUp, _, _) = purpose {
@@ -1380,10 +1396,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// True when Tab / Shift-Tab cycle ID suggestions (link, dependency,
-    /// Complete, Task Wikilink, parent-task card, and similar-tasks band).
+    /// Complete, Task Wikilink, parent-task card, move card, and similar-tasks band).
     /// The old inline `.parentTask` path keeps Tab consumed.
     var taskIDPromptCyclesSuggestions: Bool {
-        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsTaskComplete || taskIDPromptIsWikilinkTask || taskIDPromptIsParentTaskPicker || taskIDPromptIsSimilarTask
+        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsTaskComplete || taskIDPromptIsWikilinkTask || taskIDPromptIsParentTaskPicker || taskIDPromptIsProjectTaskMove || taskIDPromptIsSimilarTask
     }
 
     /// True when the Add block ID prompt is open for a similar-tasks row.
@@ -1408,9 +1424,28 @@ final class CapturePanelModel: ObservableObject {
         return false
     }
 
+    /// True when the Add block ID prompt is open for a move card row.
+    var taskIDPromptIsProjectTaskMove: Bool {
+        guard let prompt = taskIDPrompt else {
+            return false
+        }
+        if case .projectTaskMove = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
     /// True when the open picker belongs to the `:` source.
     var pickerSourceIsTaskLink: Bool {
         picker?.source == .taskLink
+    }
+
+    /// True when the open picker belongs to the move (`^` / `:`) source.
+    var pickerSourceIsProjectTaskMove: Bool {
+        if case .projectTaskMove = picker?.source {
+            return true
+        }
+        return false
     }
 
     /// True when the open picker belongs to the `/` source.
@@ -4222,6 +4257,41 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// Move-picker preview hook: mounts the `project_task_move` session
+    /// production presents for a decoded move response.
+    func installProjectTaskMovePickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        context: ProjectTaskMovePickerContext,
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String = "Finish @cash^goog-exit@\n- ^",
+        replacement: CaptureRange = CaptureRange(start: 43, end: 43)
+    ) {
+        let enriched = ProjectTaskMovePickerContext(
+            scopeToken: context.scopeToken,
+            noteTarget: context.noteTarget,
+            destination: context.destination,
+            continuation: context.continuation,
+            markerRange: context.markerRange,
+            triggerRemovalRange: context.triggerRemovalRange,
+            openCount: context.openCount
+        )
+        let index = CapturePickerIndex.projectTaskMove(
+            ProjectTaskMovePickerIndex(candidates: candidates, context: enriched)
+        )
+        installPickerSessionForPreviews(
+            source: .projectTaskMove(enriched),
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
+            filter: filter,
+            snapshotIsPartial: false
+        )
+    }
+
     /// Dependency preview hook: mounts the `&` session production presents
     /// for a decoded `task_dependency` response, so design tests and the
     /// image review render the card production mounts.
@@ -4525,6 +4595,17 @@ final class CapturePanelModel: ObservableObject {
            picker.parentTaskContext != nil
         {
             await handleParentTaskCompletion(
+                completion,
+                draft: draft,
+                cursor: cursor,
+                generation: generation,
+                processClient: processClient,
+                trigger: trigger
+            )
+            return
+        }
+        if completion.context == "project_task_move" {
+            await handleProjectTaskMoveCompletion(
                 completion,
                 draft: draft,
                 cursor: cursor,
@@ -5248,6 +5329,167 @@ final class CapturePanelModel: ObservableObject {
         return String(draft[queryRange])
     }
 
+    /// Routes `project_task_move` responses into the move picker card.
+    /// The replacement covers only the ID; the typed sigil survives. Stale
+    /// drafts never edit: generation, draft-snapshot, and parent-route
+    /// checks all hold before presenting.
+    private func handleProjectTaskMoveCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
+    ) async {
+        dismissCompletion()
+        guard let context = completion.picker?.projectTaskMoveContext else {
+            clearPickerInterruption(trigger: trigger)
+            return
+        }
+        let r = completion.replacement
+        guard stringRange(in: draft, byteRange: r) != nil,
+              stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
+        else {
+            return
+        }
+        let source = CapturePickerSource.projectTaskMove(context)
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            pickerChip = CapturePickerChipState(
+                source: source,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
+            return
+        }
+        let query = completion.query ?? Self.projectTaskMovePickerQuery(
+            in: draft,
+            range: r,
+            cursor: cursor
+        )
+        let needsRefetch = cursor != r.start
+        if needsRefetch {
+            if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
+               isCurrentAnalysis(generation),
+               plainDraft == draft,
+               Self.isMatchingProjectTaskMoveSnapshot(snapshot, expected: completion, context: context),
+               snapshot.replacement == r
+            {
+                presentProjectTaskMovePicker(
+                    snapshot,
+                    context: context,
+                    draft: draft,
+                    range: r,
+                    restoreCursor: cursor,
+                    query: query,
+                    snapshotIsPartial: false
+                )
+                return
+            }
+            guard isCurrentAnalysis(generation), plainDraft == draft else {
+                return
+            }
+            presentProjectTaskMovePicker(
+                completion,
+                context: context,
+                draft: draft,
+                range: r,
+                restoreCursor: cursor,
+                query: query,
+                snapshotIsPartial: true
+            )
+            return
+        }
+        presentProjectTaskMovePicker(
+            completion,
+            context: context,
+            draft: draft,
+            range: r,
+            restoreCursor: cursor,
+            query: query,
+            snapshotIsPartial: false
+        )
+    }
+
+    private static func isMatchingProjectTaskMoveSnapshot(
+        _ snapshot: CaptureCompletionResponse,
+        expected: CaptureCompletionResponse,
+        context: ProjectTaskMovePickerContext
+    ) -> Bool {
+        guard snapshot.context == "project_task_move" else {
+            return false
+        }
+        guard let snapshotContext = snapshot.picker?.projectTaskMoveContext else {
+            return false
+        }
+        if snapshotContext.noteTarget != context.noteTarget {
+            return false
+        }
+        if snapshotContext.scopeToken != context.scopeToken {
+            return false
+        }
+        if let expectedParent = expected.projectTaskMove?.parentRoute,
+           let snapshotParent = snapshot.projectTaskMove?.parentRoute,
+           expectedParent != snapshotParent
+        {
+            return false
+        }
+        return true
+    }
+
+    private func presentProjectTaskMovePicker(
+        _ completion: CaptureCompletionResponse,
+        context: ProjectTaskMovePickerContext,
+        draft: String,
+        range: CaptureRange,
+        restoreCursor: Int,
+        query: String,
+        snapshotIsPartial: Bool
+    ) {
+        let enriched = ProjectTaskMovePickerContext(
+            scopeToken: context.scopeToken,
+            noteTarget: context.noteTarget,
+            destination: context.destination,
+            continuation: context.continuation,
+            markerRange: context.markerRange,
+            triggerRemovalRange: context.triggerRemovalRange,
+            openCount: completion.projectTaskMove?.openCount
+        )
+        presentPicker(
+            source: .projectTaskMove(enriched),
+            index: .projectTaskMove(ProjectTaskMovePickerIndex(candidates: completion.candidates, context: enriched)),
+            candidates: completion.candidates,
+            warnings: completion.warnings,
+            draft: draft,
+            range: range,
+            restoreCursor: restoreCursor,
+            query: query,
+            snapshotIsPartial: snapshotIsPartial,
+            opensWithoutSelection: completion.opensWithoutSelection
+        )
+    }
+
+    /// Move-picker filter seed: the ID-only range, so the typed sigil never
+    /// enters the filter.
+    private static func projectTaskMovePickerQuery(
+        in draft: String,
+        range: CaptureRange,
+        cursor: Int
+    ) -> String {
+        guard let queryRange = stringRange(in: draft, start: range.start, end: min(cursor, range.end)) else {
+            return ""
+        }
+        return String(draft[queryRange])
+    }
+
+    /// Calm Esc status for the move picker: leaves the lone sigil so the
+    /// draft stays incomplete instead of silently becoming an empty task.
+    private func movePickerEscStatus(context: ProjectTaskMovePickerContext) -> String {
+        context.escStatusText
+    }
+
     /// The filter seed: the draft text typed after `^` so far, by UTF-8 byte
     /// range. Text typed before the picker appears seeds the filter.
     private static func pickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
@@ -5806,6 +6048,8 @@ final class CapturePanelModel: ObservableObject {
             return markerRange ?? replacementRange
         case .parentTask(let context):
             return context.markerRange
+        case .projectTaskMove(let context):
+            return context.markerRange
         }
     }
 
@@ -6324,6 +6568,14 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
+        if case .projectTaskMove = picker.source, row.insertion == nil, let pending = row.pendingBlockID {
+            presentProjectTaskMoveIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: followUp
+            )
+            return
+        }
         if picker.source == .dependency, row.insertion == nil, let pending = row.pendingBlockID {
             presentDependencyIDPrompt(
                 pending: pending,
@@ -6377,6 +6629,8 @@ final class CapturePanelModel: ObservableObject {
                 // say why, leaving the picker open.
                 announceStatus(row.badgeText ?? "That task cannot be used yet")
             } else if case .parentTask = picker.source {
+                announceStatus(row.badgeText ?? "That task cannot be used yet")
+            } else if case .projectTaskMove = picker.source {
                 announceStatus(row.badgeText ?? "That task cannot be used yet")
             }
             return
@@ -6775,8 +7029,13 @@ final class CapturePanelModel: ObservableObject {
     /// Shift-Return on a `!` row: insert Bob's replacement, append a blank
     /// line plus `!`, and re-analyse with completion requested so the fresh
     /// item auto-opens a new picker with the just-picked task marked
-    /// "Already in this draft". Only the Complete source maps here.
+    /// "Already in this draft". The move picker also maps here: it inserts
+    /// the ID plus Bob's continuation (for example `"\n- ^"`).
     func acceptPickerRowAndContinue(id: String) {
+        if case .projectTaskMove = picker?.source {
+            acceptProjectTaskMoveRowAndContinue(id: id)
+            return
+        }
         guard let picker = picker,
               picker.source == .taskComplete
         else {
@@ -6905,6 +7164,9 @@ final class CapturePanelModel: ObservableObject {
             candidates: openPicker.candidates,
             warnings: openPicker.warnings
         )
+        if case .projectTaskMove(let context) = openPicker.source {
+            statusText = movePickerEscStatus(context: context)
+        }
     }
 
     /// `~` anywhere in a relation picker filter flips the direction in
@@ -7043,6 +7305,24 @@ final class CapturePanelModel: ObservableObject {
             cancelPicker()
             return
         }
+        if case .projectTaskMove(let context) = picker.source {
+            let removal = context.triggerRemovalRange
+            if plainDraft == picker.draftSnapshot,
+               let deleteRange = stringRange(in: plainDraft, byteRange: removal)
+            {
+                var text = plainDraft
+                text.removeSubrange(deleteRange)
+                let caret = removal.start
+                closePickerForAccept()
+                pickerAutoOpenSuppressedStart = nil
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+                scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+                return
+            }
+            cancelPicker()
+            return
+        }
         if picker.source == .taskLink || picker.source == .taskGoto
             || picker.source == .dependency || picker.source == .blockedTask
             || picker.source == .linksTo || picker.source == .taskComplete
@@ -7140,6 +7420,8 @@ final class CapturePanelModel: ObservableObject {
             query = wikilinkContext.query
         } else if case .parentTask(let context) = chip.source {
             query = Self.parentTaskPickerQuery(in: draft, range: r, cursor: chip.cursor, context: context)
+        } else if case .projectTaskMove = chip.source {
+            query = Self.projectTaskMovePickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else {
             query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
         }
@@ -7157,6 +7439,8 @@ final class CapturePanelModel: ObservableObject {
             needsRefetch = chip.cursor > r.start + direction.leadingSigil.utf8.count
         } else if case .parentTask(let context) = chip.source {
             needsRefetch = context.isVault ? chip.cursor > r.start + 1 : chip.cursor != r.start
+        } else if case .projectTaskMove = chip.source {
+            needsRefetch = chip.cursor != r.start
         } else {
             needsRefetch = chip.cursor != r.start
         }
@@ -7316,6 +7600,23 @@ final class CapturePanelModel: ObservableObject {
                             query: query,
                             snapshotIsPartial: false
                         )
+                    case .projectTaskMove(let context):
+                        guard Self.isMatchingProjectTaskMoveSnapshot(
+                            snapshot,
+                            expected: snapshot,
+                            context: context
+                        ) else {
+                            return
+                        }
+                        self.presentProjectTaskMovePicker(
+                            snapshot,
+                            context: context,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false
+                        )
                     }
                 }
             }
@@ -7433,6 +7734,18 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: false
             )
+        case .projectTaskMove(let context):
+            presentPicker(
+                source: chip.source,
+                index: .projectTaskMove(ProjectTaskMovePickerIndex(candidates: chip.candidates, context: context)),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
         }
     }
 
@@ -7523,6 +7836,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("block_id") {
             return .blockID
+        }
+        if needs("project_task_move") {
+            return .projectTaskMove
         }
         if needs("template_row") {
             return .templateRow
@@ -7939,6 +8255,8 @@ final class CapturePanelModel: ObservableObject {
             returnPicker = pickerSnapshot
         case .parentTaskPicker(_, _, _, _, let pickerSnapshot, _):
             returnPicker = pickerSnapshot
+        case .projectTaskMove(_, _, _, _, let pickerSnapshot):
+            returnPicker = pickerSnapshot
         case .similarTask:
             // No picker to restore: Escape returns to the focused band row.
             returnPicker = nil
@@ -7994,6 +8312,10 @@ final class CapturePanelModel: ObservableObject {
                 index = .parentTask(
                     ParentTaskPickerIndex(candidates: returnPicker.candidates, context: context)
                 )
+            case .projectTaskMove(let context):
+                index = .projectTaskMove(
+                    ProjectTaskMovePickerIndex(candidates: returnPicker.candidates, context: context)
+                )
             }
             let presentation = index.presentation(filter: returnPicker.filterText)
             pickerIndex = index
@@ -8022,6 +8344,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = CapturePickerNeed.taskComplete.statusText
             } else if returnPicker.source == .taskGoto {
                 statusText = CapturePickerNeed.taskGoto.statusText
+            } else if case .projectTaskMove = returnPicker.source {
+                statusText = CapturePickerNeed.projectTaskMove.statusText
             } else {
                 statusText = "Pick any open task — press Tab to browse"
             }
@@ -10689,6 +11013,10 @@ final class CapturePanelModel: ObservableObject {
             route = parentRoute
             taskRef = parentRef
             dependencyNotePath = nil
+        } else if case .projectTaskMove(let moveRoute, let moveRef, _, _, _) = prompt.purpose {
+            route = moveRoute
+            taskRef = moveRef
+            dependencyNotePath = nil
         } else if case .dependency(let notePath, let depRef, _, _, _, let depAllowClosed) = prompt.purpose {
             route = notePath
             taskRef = depRef
@@ -10997,6 +11325,97 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Add block ID"
         requestFocus(.taskIDPromptBlockID)
         editorInputLocked = true
+    }
+
+    /// Move-picker Add block ID prompt for an ID-less move row: prefill with
+    /// the first suggestion, keep the picker snapshot for Escape, and splice
+    /// the bare block ID into the picker's replacement range after the
+    /// draft-snapshot check. Shift-Return chains via the picker's continuation.
+    private func presentProjectTaskMoveIDPrompt(
+        pending: CapturePickerPendingBlockID,
+        pickerSnapshot: CapturePickerState,
+        followUp: CaptureTaskLinkFollowUp
+    ) {
+        clearPomodoroNamePrompt()
+        invalidateAnalysis()
+        activeTaskIDRequestID = nil
+        let candidate = pickerSnapshot.candidates.first {
+            ($0.route ?? "") == pending.route && ($0.taskRef ?? "") == pending.taskRef
+        } ?? CaptureCompletionCandidate(
+            replacement: "",
+            route: pending.route,
+            taskRef: pending.taskRef,
+            requiresBlockID: true,
+            blockIDSuggestions: pending.suggestions
+        )
+        let prefill = pending.suggestions.first ?? ""
+        let returnPicker = pickerSnapshot
+        clearPickerMarkerHighlight(draftSnapshot: pickerSnapshot.draftSnapshot)
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: candidate,
+            draftSnapshot: pickerSnapshot.draftSnapshot,
+            replacementRange: pickerSnapshot.replacementRange,
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredID: prefill,
+            isSaving: false,
+            errorMessage: nil,
+            purpose: .projectTaskMove(
+                route: pending.route,
+                taskRef: pending.taskRef,
+                suggestions: pending.suggestions,
+                followUp: followUp,
+                returnPicker: returnPicker
+            )
+        )
+        statusText = "Add block ID"
+        requestFocus(.taskIDPromptBlockID)
+        editorInputLocked = true
+    }
+
+    /// Shift-Return on a move row: insert the ID plus Bob's continuation,
+    /// put the caret at the end, and re-analyse with completion requested so
+    /// the fresh `- ^` reopens the picker. On an ID-less row it runs after
+    /// the Add block ID prompt names the task.
+    private func acceptProjectTaskMoveRowAndContinue(id: String) {
+        guard let picker = picker,
+              case .projectTaskMove(let context) = picker.source,
+              plainDraft == picker.draftSnapshot,
+              let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id) else {
+            return
+        }
+        if row.insertion == nil, let pending = row.pendingBlockID {
+            presentProjectTaskMoveIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: .start
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
+            announceStatus(row.badgeText ?? "That task cannot be used yet")
+            return
+        }
+        let continued = insertion + (context.continuation ?? "\n- \(context.scopeToken)")
+        var text = plainDraft
+        text.replaceSubrange(range, with: continued)
+        let caret = picker.replacementRange.start + continued.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        announceStatus("Inserted \(insertion) — pick the next task to move")
     }
 
     /// Link-mode Add block ID prompt for an ID-less `:` row: prefill with the
@@ -11370,6 +11789,8 @@ final class CapturePanelModel: ObservableObject {
             suggestions = wikilinkSuggestions
         case .parentTaskPicker(_, _, let parentSuggestions, _, _, _):
             suggestions = parentSuggestions
+        case .projectTaskMove(_, _, let moveSuggestions, _, _):
+            suggestions = moveSuggestions
         case .similarTask(_, _, let similarSuggestions, _, _):
             suggestions = similarSuggestions
         case .parentTask:
@@ -11516,6 +11937,54 @@ final class CapturePanelModel: ObservableObject {
                     followUp: followUp,
                     scope: scope
                 )
+                return
+            }
+            if case .projectTaskMove(_, _, _, let followUp, let returnPicker) = prompt.purpose {
+                let insertion = success.blockID
+                guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                var text = prompt.draftSnapshot
+                text.replaceSubrange(range, with: insertion)
+                var cursor = prompt.replacementRange.start + insertion.utf8.count
+                if followUp == .start,
+                   case .projectTaskMove(let context) = returnPicker.source,
+                   let continuation = context.continuation
+                {
+                    text.replaceSubrange(
+                        stringRange(in: text, start: cursor, end: cursor)!,
+                        with: continuation
+                    )
+                    cursor += continuation.utf8.count
+                }
+                guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion cursor is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                clearTaskIDPrompt()
+                dismissCompletion()
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(
+                    text,
+                    cursorUTF8Offset: cursor,
+                    suppressSelectionCallbacks: true
+                )
+                scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: true, trigger: .edit)
+                statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+                announceStatus("Added ^\(success.blockID) to \(success.route).md and inserted \(insertion)")
+                requestFocus(.editor)
+                if followUp == .submit || followUp == .submitAndOpen {
+                    submitAfterCurrentAnalysis(openAfterCapture: followUp == .submitAndOpen)
+                }
                 return
             }
             if case .taskLink(_, _, _, let followUp, _) = prompt.purpose {
@@ -14231,7 +14700,8 @@ final class CapturePanelModel: ObservableObject {
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "drawer",
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
-            "dependency_target", "task_complete", "wikilink_task", "block_id", "task_type",
+            "dependency_target", "task_complete", "wikilink_task", "block_id", "project_task_move",
+            "task_type",
             "directive",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
@@ -14264,6 +14734,9 @@ final class CapturePanelModel: ObservableObject {
             "pomodoro_block_id",
             "project_task_link_marker",
             "project_task_block_id",
+            "project_task_move_marker",
+            "project_task_move_link_marker",
+            "project_task_move_block_id",
             "pomodoro_name",
             "sub_bullet_route",
             "sub_bullet_block_id",

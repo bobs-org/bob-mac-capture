@@ -5,7 +5,7 @@ description: "Every Bob Mac Capture picker and the shared card lifecycle: browse
 
 Pickers browse what `bob` returns and insert exactly its replacement range. One large elevated card serves every context: a filter bar with a scope token, the task count, a scrollable list with pinned headers, a detail strip with the insert outcome, and key-hint chips. Empty states explain what a task needs to appear. Filtering is local (spaces are AND terms); the snapshot, ordering, replacements, and intents are all `bob`'s.
 
-- [Task pickers](task-pickers.md): Task Link (`:`), Go To (`/`), Parent Task (`@file+` and vault `+`), Active Task (`^`), and Block ID (`@route:` / `@route^`), plus Name Pomodoro and named-start lists.
+- [Task pickers](task-pickers.md): Task Link (`:`), Go To (`/`), Parent Task (`@file+` and vault `+`), Active Task (`^`), Move (`- ^` / `- :` in a project-note item), and Block ID (`@route:` / `@route^`), plus Name Pomodoro and named-start lists.
 - [Relationship pickers](relationship-pickers.md): Dependency (`&`), Blocks (`*`), Complete (`!`), and Relations (`~` / `~~`).
 - [Wikilink completion](wikilink-completion.md): Obsidian note, heading, block, and alias completion, plus the Task Wikilink picker (`((`) that links any task in the vault and names a block ID when the task has none.
 

@@ -1236,6 +1236,14 @@ JSON
       cat "${fixtures_dir}/parent-task-parse-cash.json" | inject_parse_grammar
     elif [[ "${draft}" == "@cash+goog-exit" ]]; then
       cat "${fixtures_dir}/parent-task-parse-scoped-exact.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^' ]]; then
+      cat "${fixtures_dir}/move-parse-mc1.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^dr' ]]; then
+      cat "${fixtures_dir}/move-parse-mc2.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@#admin\n- :' ]]; then
+      cat "${fixtures_dir}/move-parse-mc4.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'Finish it @^x@\n- ^' ]]; then
+      cat "${fixtures_dir}/move-parse-mc5a.json" | inject_parse_grammar
     elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
       cat "${fixtures_dir}/parent-task-parse-later.json" | inject_parse_grammar
     elif [[ "${draft}" == "+2" ]]; then
@@ -3106,6 +3114,16 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-cash.json"
     elif [[ "${draft}" == "@cash+goog-exit" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-exact.json"
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc1.json"
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^dr' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc2.json"
+    elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@#admin\n- :' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc4.json"
+    elif [[ "${draft}" == $'Finish it @^x@\n- ^' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc5a.json"
+    elif [[ "${draft}" == $'Finish it @nope^x@\n- ^' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc5b.json"
     elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
       sed -e "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" \
           -e 's/"start":16/"start":28/g' \

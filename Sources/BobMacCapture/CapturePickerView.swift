@@ -174,6 +174,8 @@ struct CapturePickerCard: View {
 
             if source.isRelationshipModifier {
                 dependencyHeader
+            } else if case .projectTaskMove(let context) = source {
+                moveHeader(context: context)
             } else if case .parentTask(let context) = source, context.isOwnerMode,
                       let relationship = context.relationship
             {
@@ -304,6 +306,33 @@ struct CapturePickerCard: View {
                 }
                 ?? DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil, direction: direction)
         )
+    }
+
+    /// Move-picker header: Bob's title (`Move into <dest>`) plus the
+    /// trailing `from <parent> · <open> open` line. Section group headers
+    /// come from the picker presentation.
+    @ViewBuilder
+    private func moveHeader(context: ProjectTaskMovePickerContext) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.right.square")
+                    .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                    .accessibilityHidden(true)
+                Text(context.pickerTitle)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Text(context.headerSuffix(openCount: context.openCount))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(context.pickerTitle). \(context.headerSuffix(openCount: context.openCount))")
     }
 
     /// Owner-mode `+` / `@route+` header from Bob's `picker.relationship`.
@@ -1064,6 +1093,8 @@ private struct CapturePickerDetailStrip: View {
             return context.teachingLine
         case .parentTask:
             return nil
+        case .projectTaskMove:
+            return nil
         }
     }
 
@@ -1106,6 +1137,11 @@ private struct CapturePickerDetailStrip: View {
             return Text(actionLine).foregroundColor(.secondary)
         }
         if case .parentTask = source,
+           let actionLine = model.pickerActionLine(for: row)
+        {
+            return Text(actionLine).foregroundColor(.secondary)
+        }
+        if case .projectTaskMove = source,
            let actionLine = model.pickerActionLine(for: row)
         {
             return Text(actionLine).foregroundColor(.secondary)

@@ -1599,11 +1599,21 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
+    private var isProjectTaskMovePrompt: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .projectTaskMove = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
     /// Either link-mode prompt (task-link, dependency, Complete, Task
-    /// Wikilink, parent-task card, or similar-tasks band): all show
+    /// Wikilink, parent-task card, move card, or similar-tasks band): all show
     /// suggestion chips and the inserts line.
     private var isIDLinkMode: Bool {
-        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isWikilinkTaskPrompt || isParentTaskPickerPrompt || isSimilarTaskPrompt
+        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isWikilinkTaskPrompt || isParentTaskPickerPrompt || isProjectTaskMovePrompt || isSimilarTaskPrompt
     }
 
     private var wikilinkPromptTitle: String {
@@ -1681,6 +1691,15 @@ private struct TaskIDPromptCard: View {
             case .none, .start:
                 return "Add ID & Select"
             }
+        case .projectTaskMove(_, _, _, let followUp, _):
+            switch followUp {
+            case .submit, .submitAndOpen:
+                return "Add ID & Capture"
+            case .none:
+                return "Add ID & Move"
+            case .start:
+                return "Add ID & Move Another"
+            }
         case .similarTask:
             return "Add ID & Use"
         }
@@ -1707,6 +1726,8 @@ private struct TaskIDPromptCard: View {
             return ""
         case .parentTaskPicker(let route, _, _, _, _, _):
             return "Inserts @\(route)+\(typed)"
+        case .projectTaskMove:
+            return "Inserts \(typed)"
         case .similarTask(let route, _, _, let action, _):
             switch action {
             case .note:
@@ -1754,6 +1775,8 @@ private struct TaskIDPromptCard: View {
             return Text("")
         case .parentTaskPicker(let route, _, _, _, _, _):
             return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text("+").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .projectTaskMove:
+            return Text("\(Text("Inserts ").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .similarTask(let route, _, _, let action, _):
             return similarTaskInsertsText(route: route, typed: typed, action: action)
         }

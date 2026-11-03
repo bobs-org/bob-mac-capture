@@ -128,7 +128,12 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .wikilinkAlias
     case "interactive_placeholder":
         return .interactivePlaceholder
-    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_task_link_marker":
+    case "project_task_move_marker":
+        return .route
+    case "project_task_move_block_id":
+        return .blockID
+    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_task_link_marker",
+         "project_task_move_link_marker":
         return .explicitToggle
     case "project_note_marker":
         // The `@` seal of the create form (`@route^id@`). The separator span
@@ -262,6 +267,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case wikilinkHeading
     case wikilinkBlock
     case wikilinkTask
+    case projectTaskMove
     case directive
 
     public init?(rawContext: String?) {
@@ -294,6 +300,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
         case "wikilink_task": self = .wikilinkTask
+        case "project_task_move": self = .projectTaskMove
         case "directive": self = .directive
         default: return nil
         }
@@ -964,6 +971,33 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts a link to this task."
 
+    case .projectTaskMove:
+        category = .blockID
+        symbolName = bookSymbolName(for: candidate, context: .projectTaskMove) ?? "link"
+        contextLabel = "Move"
+        primaryText = candidate.text ?? candidate.replacement
+        if let route = candidate.route,
+           let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first
+        {
+            var secondary = "\(route)^\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        if let consequence = candidate.consequence, !consequence.isEmpty {
+            accessibilityHint = consequence
+        } else {
+            accessibilityHint = "Moves this task into the new project."
+        }
+
     case .taskType:
         category = .taskType
         symbolName = "tag"
@@ -1173,7 +1207,7 @@ private func bookSymbolName(
         return nil
     }
     switch context {
-    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete, .wikilinkTask:
+    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete, .wikilinkTask, .projectTaskMove:
         return "book"
     default:
         return nil

@@ -2117,6 +2117,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
                 pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
                 pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
+                pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,
                 pickerDispatchInFlight: model.taskGotoDispatchInFlight,
                 pickerFilterIsEmpty: model.pickerFilterIsEmpty,
                 pickerChipVisible: model.pickerChipVisible,

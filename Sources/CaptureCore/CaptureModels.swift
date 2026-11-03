@@ -7375,6 +7375,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// responses. Older Bob omits it; scoped `task` without one keeps the
     /// inline parent-task list.
     public let picker: CapturePickerDescriptor?
+    /// Additive move-picker header on `project_task_move` responses.
+    /// Older Bob omits it; missing decodes as nil so old builds stay calm.
+    public let projectTaskMove: CaptureProjectTaskMoveHeader?
     /// Additive `relation_label` hidden count: how many catalog labels are
     /// hidden from suggestions in this context. Present (possibly 0) on
     /// `relation_label` responses; older Bob omits it.
@@ -7432,7 +7435,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         relationSuccessor: CaptureCompletionRelationSuccessor? = nil,
         themeSuggestion: CaptureThemeSuggestion? = nil,
         subject: String? = nil,
-        target: CaptureDrawerTarget? = nil
+        target: CaptureDrawerTarget? = nil,
+        projectTaskMove: CaptureProjectTaskMoveHeader? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -7457,6 +7461,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.themeSuggestion = themeSuggestion
         self.subject = subject
         self.target = target
+        self.projectTaskMove = projectTaskMove
     }
 
     public init(from decoder: Decoder) throws {
@@ -7503,6 +7508,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
             )) ?? nil
         subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
         target = (try? container.decodeIfPresent(CaptureDrawerTarget.self, forKey: .target)) ?? nil
+        projectTaskMove = (try? container.decodeIfPresent(CaptureProjectTaskMoveHeader.self, forKey: .projectTaskMove)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7529,6 +7535,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case themeSuggestion = "theme_suggestion"
         case subject
         case target
+        case projectTaskMove = "project_task_move"
     }
 
 }
@@ -7819,6 +7826,12 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
     /// Additive owner-mode descriptor on `+` / `@route+` pickers inside a
     /// relationship draft. Older Bob omits it.
     public let relationship: CapturePickerRelationship?
+    /// Additive move-picker destination (`cash_goog_exit.md`). Only the
+    /// `project_task_move` descriptor sends it; older Bob omits it.
+    public let destination: String?
+    /// Additive shift-return continuation (for example `"\n- ^"`). Only the
+    /// `project_task_move` descriptor sends it; older Bob omits it.
+    public let continuation: String?
 
     public init(
         kind: String,
@@ -7828,7 +7841,9 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
         actionContinuationKeys: [String] = [],
-        relationship: CapturePickerRelationship? = nil
+        relationship: CapturePickerRelationship? = nil,
+        destination: String? = nil,
+        continuation: String? = nil
     ) {
         self.kind = kind
         self.scope = scope
@@ -7838,6 +7853,8 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         self.triggerRemovalRange = triggerRemovalRange
         self.actionContinuationKeys = actionContinuationKeys
         self.relationship = relationship
+        self.destination = destination
+        self.continuation = continuation
     }
 
     public init(from decoder: Decoder) throws {
@@ -7863,6 +7880,8 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
             CapturePickerRelationship.self,
             forKey: .relationship
         )
+        destination = try container.decodeIfPresent(String.self, forKey: .destination)
+        continuation = try container.decodeIfPresent(String.self, forKey: .continuation)
     }
 
     /// True when this descriptor is the parent-task picker contract.
@@ -7880,6 +7899,11 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         kind == "wikilink_task"
     }
 
+    /// True when this descriptor is the move (`project_task_move`) picker contract.
+    public var isProjectTaskMove: Bool {
+        kind == "project_task_move"
+    }
+
     public var parentTaskContext: ParentTaskPickerContext? {
         guard isParentTask, let scope = ParentTaskPickerScope(rawValue: scope) else {
             return nil
@@ -7895,6 +7919,20 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         )
     }
 
+    public var projectTaskMoveContext: ProjectTaskMovePickerContext? {
+        guard isProjectTaskMove else {
+            return nil
+        }
+        return ProjectTaskMovePickerContext(
+            scopeToken: scopeToken,
+            noteTarget: noteTarget,
+            destination: destination,
+            continuation: continuation,
+            markerRange: markerRange,
+            triggerRemovalRange: triggerRemovalRange
+        )
+    }
+
     private enum CodingKeys: String, CodingKey {
         case kind
         case scope
@@ -7904,6 +7942,55 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         case triggerRemovalRange = "trigger_removal_range"
         case actionContinuationKeys = "action_continuation_keys"
         case relationship
+        case destination
+        case continuation
+    }
+}
+
+/// Bob-authored parent and destination metadata for one active move picker.
+/// Every field decodes tolerantly so an older Bob that omits the object
+/// leaves the picker header empty rather than failing the completion decode.
+public struct CaptureProjectTaskMoveHeader: Codable, Equatable, Sendable {
+    public let parent: String?
+    public let parentRoute: String?
+    public let destination: String?
+    public let sigil: String?
+    public let openCount: Int
+    public let pomodoroName: String?
+
+    public init(
+        parent: String? = nil,
+        parentRoute: String? = nil,
+        destination: String? = nil,
+        sigil: String? = nil,
+        openCount: Int = 0,
+        pomodoroName: String? = nil
+    ) {
+        self.parent = parent
+        self.parentRoute = parentRoute
+        self.destination = destination
+        self.sigil = sigil
+        self.openCount = openCount
+        self.pomodoroName = pomodoroName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        parent = try container.decodeIfPresent(String.self, forKey: .parent)
+        parentRoute = try container.decodeIfPresent(String.self, forKey: .parentRoute)
+        destination = try container.decodeIfPresent(String.self, forKey: .destination)
+        sigil = try container.decodeIfPresent(String.self, forKey: .sigil)
+        openCount = (try? container.decodeIfPresent(Int.self, forKey: .openCount)) ?? 0
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case parent
+        case parentRoute = "parent_route"
+        case destination
+        case sigil
+        case openCount = "open_count"
+        case pomodoroName = "pomodoro_name"
     }
 }
 
