@@ -22,4 +22,55 @@ extension CaptureCommandSuccess {
         }
         return rows
     }
+
+    /// Relation offers in Bob's deterministic item → task completion → nested
+    /// relation completion → Pomodoro close order. Batch roots mirror the first
+    /// item for legacy compatibility, so normalized children are authoritative.
+    public var allRelationSuccessors: [TaskCompleteUnblocked] {
+        relationItems.flatMap { item in
+            var rows = item.relationSuccessors
+            rows.append(contentsOf: item.taskComplete?.relationSuccessors ?? [])
+            for relationComplete in item.relationCompletes {
+                rows.append(contentsOf: relationComplete.taskComplete?.relationSuccessors ?? [])
+            }
+            rows.append(contentsOf: item.pomodoroClose?.relationSuccessors ?? [])
+            return rows
+        }
+    }
+
+    /// Held relation rows from every payload location, in offer traversal order.
+    public var allRelationHeld: [CaptureRelationHeld] {
+        relationItems.flatMap { item in
+            var rows = item.relationHeld
+            rows.append(contentsOf: item.taskComplete?.relationHeld ?? [])
+            for relationComplete in item.relationCompletes {
+                rows.append(contentsOf: relationComplete.taskComplete?.relationHeld ?? [])
+            }
+            rows.append(contentsOf: item.pomodoroClose?.relationHeld ?? [])
+            return rows
+        }
+    }
+
+    /// Relation lookup state from every summary. An unavailable lookup takes
+    /// precedence; otherwise the last reported state follows Bob's traversal.
+    public var allRelationCheck: String? {
+        var checked: String?
+        for item in relationItems {
+            let values = [item.relationCheck, item.taskComplete?.relationCheck]
+                .compactMap { $0 }
+                + item.relationCompletes.compactMap { $0.taskComplete?.relationCheck }
+                + [item.pomodoroClose?.relationCheck].compactMap { $0 }
+            for value in values {
+                if value == "unavailable" {
+                    return value
+                }
+                checked = value
+            }
+        }
+        return checked
+    }
+
+    private var relationItems: [CaptureCommandSuccess] {
+        captures.isEmpty ? [self] : captures
+    }
 }

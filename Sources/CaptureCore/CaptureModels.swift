@@ -819,6 +819,9 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// Never set alongside `cancelsSource`: one label carries at most one
     /// close effect.
     public let completesSource: Bool
+    /// Additive `offers_source` cue on successor relation labels. Bob omits
+    /// it when false, and older Bob omits it entirely.
+    public let offersSource: Bool
     /// Additive `project_note` modifier (`"create"` or `"offer"`) that Bob puts
     /// on every span of a sealed project-note marker: route, separator, block
     /// ID, seal, and any placeholder standing in for a missing piece. Bob omits
@@ -843,6 +846,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         themes: [CapturePomodoroThemeRef] = [],
         cancelsSource: Bool = false,
         completesSource: Bool = false,
+        offersSource: Bool = false,
         projectNote: String? = nil,
         directive: String? = nil,
         count: Int? = nil
@@ -854,6 +858,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.themes = themes
         self.cancelsSource = cancelsSource
         self.completesSource = completesSource
+        self.offersSource = offersSource
         self.projectNote = projectNote
         self.directive = directive
         self.count = count
@@ -872,6 +877,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
             )) ?? []
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
         completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
+        offersSource = (try? container.decodeIfPresent(Bool.self, forKey: .offersSource)) ?? false
         projectNote = (try? container.decodeIfPresent(String.self, forKey: .projectNote)) ?? nil
         directive = (try? container.decodeIfPresent(String.self, forKey: .directive)) ?? nil
         count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
@@ -885,6 +891,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case themes
         case cancelsSource = "cancels_source"
         case completesSource = "completes_source"
+        case offersSource = "offers_source"
         case projectNote = "project_note"
         case directive
         case count
@@ -1954,6 +1961,9 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
     public let roles: [String]
     public let lines: [CaptureBlockLine]
 
+    /// Bob's additive task-block role for relation successor changes.
+    public var hasRelationSuccessorRole: Bool { roles.contains("relation_successor") }
+
     public init(
         relativeTarget: String,
         route: String,
@@ -2535,6 +2545,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let nextPomodoro: PomodoroCloseNext?
     public let unblocked: [TaskCompleteUnblocked]
     public let keepMoving: [TaskCompleteUnblocked]
+    public let relationSuccessors: [TaskCompleteUnblocked]
+    public let relationHeld: [CaptureRelationHeld]
+    public let relationCheck: String?
     public let stillBlocked: [TaskCompleteStillBlocked]
     public let unblockedCheck: String?
 
@@ -2574,6 +2587,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         nextPomodoro: PomodoroCloseNext? = nil,
         unblocked: [TaskCompleteUnblocked] = [],
         keepMoving: [TaskCompleteUnblocked] = [],
+        relationSuccessors: [TaskCompleteUnblocked] = [],
+        relationHeld: [CaptureRelationHeld] = [],
+        relationCheck: String? = nil,
         stillBlocked: [TaskCompleteStillBlocked] = [],
         unblockedCheck: String? = nil
     ) {
@@ -2602,6 +2618,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.nextPomodoro = nextPomodoro
         self.unblocked = unblocked
         self.keepMoving = keepMoving
+        self.relationSuccessors = relationSuccessors
+        self.relationHeld = relationHeld
+        self.relationCheck = relationCheck
         self.stillBlocked = stillBlocked
         self.unblockedCheck = unblockedCheck
     }
@@ -2671,6 +2690,18 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
                 [TaskCompleteUnblocked].self,
                 forKey: .keepMoving
             )) ?? []
+        relationSuccessors =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .relationSuccessors
+            )) ?? []
+        relationHeld =
+            (try? container.decodeIfPresent(
+                [CaptureRelationHeld].self,
+                forKey: .relationHeld
+            )) ?? []
+        relationCheck =
+            (try? container.decodeIfPresent(String.self, forKey: .relationCheck)) ?? nil
         stillBlocked =
             (try? container.decodeIfPresent(
                 [TaskCompleteStillBlocked].self,
@@ -2709,6 +2740,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case nextPomodoro = "next_pomodoro"
         case unblocked
         case keepMoving = "keep_moving"
+        case relationSuccessors = "relation_successors"
+        case relationHeld = "relation_held"
+        case relationCheck = "relation_check"
         case stillBlocked = "still_blocked"
         case unblockedCheck = "unblocked_check"
     }
@@ -4242,6 +4276,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive per-item complete-label effects. Older Bob omits the key;
     /// missing decodes as empty so the rest of capture still shows.
     public let relationCompletes: [CaptureRelationComplete]
+    /// Additive item-level relation successors from a Pending task toggle.
+    /// Older Bob omits these fields; arrays default empty and check state stays nil.
+    public let relationSuccessors: [TaskCompleteUnblocked]
+    public let relationHeld: [CaptureRelationHeld]
+    public let relationCheck: String?
     public let linkedFromLineUpdates: [CaptureBlocksLineUpdate]
     public let mintedRelationBlockIDs: [CaptureMintedRelationBlockID]
     public let mirrorSkipped: [CaptureMirrorSkipped]
@@ -4374,6 +4413,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         relationUpdates: [CaptureRelationUpdate] = [],
         relationCancels: [CaptureRelationCancel] = [],
         relationCompletes: [CaptureRelationComplete] = [],
+        relationSuccessors: [TaskCompleteUnblocked] = [],
+        relationHeld: [CaptureRelationHeld] = [],
+        relationCheck: String? = nil,
         linkedFromLineUpdates: [CaptureBlocksLineUpdate] = [],
         mintedRelationBlockIDs: [CaptureMintedRelationBlockID] = [],
         mirrorSkipped: [CaptureMirrorSkipped] = [],
@@ -4458,6 +4500,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.relationUpdates = relationUpdates
         self.relationCancels = relationCancels
         self.relationCompletes = relationCompletes
+        self.relationSuccessors = relationSuccessors
+        self.relationHeld = relationHeld
+        self.relationCheck = relationCheck
         self.linkedFromLineUpdates = linkedFromLineUpdates
         self.mintedRelationBlockIDs = mintedRelationBlockIDs
         self.mirrorSkipped = mirrorSkipped
@@ -4607,6 +4652,18 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
                 [CaptureRelationComplete].self,
                 forKey: .relationCompletes
             )) ?? []
+        relationSuccessors =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .relationSuccessors
+            )) ?? []
+        relationHeld =
+            (try? container.decodeIfPresent(
+                [CaptureRelationHeld].self,
+                forKey: .relationHeld
+            )) ?? []
+        relationCheck =
+            (try? container.decodeIfPresent(String.self, forKey: .relationCheck)) ?? nil
         linkedFromLineUpdates =
             (try? container.decodeIfPresent(
                 [CaptureBlocksLineUpdate].self,
@@ -4760,6 +4817,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case relationUpdates = "relation_updates"
         case relationCancels = "relation_cancels"
         case relationCompletes = "relation_completes"
+        case relationSuccessors = "relation_successors"
+        case relationHeld = "relation_held"
+        case relationCheck = "relation_check"
         case linkedFromLineUpdates = "linked_from_line_updates"
         case mintedRelationBlockIDs = "minted_relation_block_ids"
         case mirrorSkipped = "mirror_skipped"
@@ -6026,6 +6086,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     public let n: Int
     public let group: String
     public let project: String?
+    /// Opaque target identity used to join relation rows to their group.
+    public let after: String?
     public let destination: TaskCompleteOfferDestination
     public let selected: Bool
     public let blockIDNeeded: Bool
@@ -6035,6 +6097,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         n: Int = 0,
         group: String = "",
         project: String? = nil,
+        after: String? = nil,
         destination: TaskCompleteOfferDestination = TaskCompleteOfferDestination(),
         selected: Bool = false,
         blockIDNeeded: Bool = false
@@ -6043,6 +6106,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         self.n = n
         self.group = group
         self.project = project
+        self.after = after
         self.destination = destination
         self.selected = selected
         self.blockIDNeeded = blockIDNeeded
@@ -6054,6 +6118,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
         group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
         project = try? container.decodeIfPresent(String.self, forKey: .project)
+        after = try? container.decodeIfPresent(String.self, forKey: .after)
         destination =
             (try? container.decode(
                 TaskCompleteOfferDestination.self,
@@ -6068,6 +6133,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         case n
         case group
         case project
+        case after
         case destination
         case selected
         case blockIDNeeded = "block_id_needed"
@@ -6077,6 +6143,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
 public struct CapturePullInFolded: Codable, Equatable, Sendable {
     public let blocked: Int
     public let scheduled: Int
+    public let alreadyStarted: Int
+    public let waitsFor: Int
     public let hidden: Int
     public let alreadyPlanned: Int
     public let subProjects: Int
@@ -6084,12 +6152,16 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
     public init(
         blocked: Int = 0,
         scheduled: Int = 0,
+        alreadyStarted: Int = 0,
+        waitsFor: Int = 0,
         hidden: Int = 0,
         alreadyPlanned: Int = 0,
         subProjects: Int = 0
     ) {
         self.blocked = blocked
         self.scheduled = scheduled
+        self.alreadyStarted = alreadyStarted
+        self.waitsFor = waitsFor
         self.hidden = hidden
         self.alreadyPlanned = alreadyPlanned
         self.subProjects = subProjects
@@ -6099,6 +6171,8 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         blocked = (try? container.decodeIfPresent(Int.self, forKey: .blocked)) ?? 0
         scheduled = (try? container.decodeIfPresent(Int.self, forKey: .scheduled)) ?? 0
+        alreadyStarted = (try? container.decodeIfPresent(Int.self, forKey: .alreadyStarted)) ?? 0
+        waitsFor = (try? container.decodeIfPresent(Int.self, forKey: .waitsFor)) ?? 0
         hidden = (try? container.decodeIfPresent(Int.self, forKey: .hidden)) ?? 0
         alreadyPlanned = (try? container.decodeIfPresent(Int.self, forKey: .alreadyPlanned)) ?? 0
         subProjects = (try? container.decodeIfPresent(Int.self, forKey: .subProjects)) ?? 0
@@ -6107,6 +6181,8 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case blocked
         case scheduled
+        case alreadyStarted = "already_started"
+        case waitsFor = "waits_for"
         case hidden
         case alreadyPlanned = "already_planned"
         case subProjects = "sub_projects"
@@ -6115,32 +6191,50 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
 
 public struct CapturePullInGroup: Codable, Equatable, Sendable {
     public let group: String
-    public let project: String
-    public let folded: CapturePullInFolded
+    public let project: String?
+    public let after: CapturePullInAfter?
+    public let label: String?
+    public let event: String?
+    public let folded: CapturePullInFolded?
+    public let copy: CapturePullInGroupCopy?
 
     public init(
         group: String = "",
-        project: String = "",
-        folded: CapturePullInFolded = CapturePullInFolded()
+        project: String? = nil,
+        after: CapturePullInAfter? = nil,
+        label: String? = nil,
+        event: String? = nil,
+        folded: CapturePullInFolded? = nil,
+        copy: CapturePullInGroupCopy? = nil
     ) {
         self.group = group
         self.project = project
+        self.after = after
+        self.label = label
+        self.event = event
         self.folded = folded
+        self.copy = copy
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
-        project = (try? container.decodeIfPresent(String.self, forKey: .project)) ?? ""
-        folded =
-            (try? container.decode(CapturePullInFolded.self, forKey: .folded))
-            ?? CapturePullInFolded()
+        project = try? container.decodeIfPresent(String.self, forKey: .project)
+        after = try? container.decodeIfPresent(CapturePullInAfter.self, forKey: .after)
+        label = try? container.decodeIfPresent(String.self, forKey: .label)
+        event = try? container.decodeIfPresent(String.self, forKey: .event)
+        folded = try? container.decodeIfPresent(CapturePullInFolded.self, forKey: .folded)
+        copy = try? container.decodeIfPresent(CapturePullInGroupCopy.self, forKey: .copy)
     }
 
     private enum CodingKeys: String, CodingKey {
         case group
         case project
+        case after
+        case label
+        case event
         case folded
+        case copy
     }
 }
 
@@ -6150,19 +6244,22 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
     public let choice: String?
     public let pickedCount: Int
     public let groups: [CapturePullInGroup]
+    public let copy: CapturePullInCopy?
 
     public init(
         supported: Bool = false,
         offerCount: Int = 0,
         choice: String? = nil,
         pickedCount: Int = 0,
-        groups: [CapturePullInGroup] = []
+        groups: [CapturePullInGroup] = [],
+        copy: CapturePullInCopy? = nil
     ) {
         self.supported = supported
         self.offerCount = offerCount
         self.choice = choice
         self.pickedCount = pickedCount
         self.groups = groups
+        self.copy = copy
     }
 
     public init(from decoder: Decoder) throws {
@@ -6172,6 +6269,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         choice = try? container.decodeIfPresent(String.self, forKey: .choice)
         pickedCount = (try? container.decodeIfPresent(Int.self, forKey: .pickedCount)) ?? 0
         groups = (try? container.decodeIfPresent([CapturePullInGroup].self, forKey: .groups)) ?? []
+        copy = try? container.decodeIfPresent(CapturePullInCopy.self, forKey: .copy)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6180,6 +6278,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         case choice
         case pickedCount = "picked_count"
         case groups
+        case copy
     }
 }
 
@@ -6204,6 +6303,8 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
     public let offer: TaskCompleteOffer?
     public let trigger: String?
     public let hideRemoved: Bool
+    /// Bob's relation reason, either the winning group or a secondary reason.
+    public let relation: CaptureRelationMetadata?
 
     public init(
         notePath: String = "",
@@ -6220,7 +6321,8 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         notLinked: String? = nil,
         offer: TaskCompleteOffer? = nil,
         trigger: String? = nil,
-        hideRemoved: Bool = false
+        hideRemoved: Bool = false,
+        relation: CaptureRelationMetadata? = nil
     ) {
         self.notePath = notePath
         self.blockID = blockID
@@ -6237,6 +6339,7 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         self.offer = offer
         self.trigger = trigger
         self.hideRemoved = hideRemoved
+        self.relation = relation
     }
 
     public init(from decoder: Decoder) throws {
@@ -6272,6 +6375,7 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         offer = (try? container.decodeIfPresent(TaskCompleteOffer.self, forKey: .offer)) ?? nil
         trigger = try? container.decodeIfPresent(String.self, forKey: .trigger)
         hideRemoved = (try? container.decodeIfPresent(Bool.self, forKey: .hideRemoved)) ?? false
+        relation = try? container.decodeIfPresent(CaptureRelationMetadata.self, forKey: .relation)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6290,6 +6394,7 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         case offer
         case trigger
         case hideRemoved = "hide_removed"
+        case relation
     }
 }
 
@@ -6389,6 +6494,9 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
     public let ledger: TaskCompleteLedger?
     public let unblocked: [TaskCompleteUnblocked]
     public let keepMoving: [TaskCompleteUnblocked]
+    public let relationSuccessors: [TaskCompleteUnblocked]
+    public let relationHeld: [CaptureRelationHeld]
+    public let relationCheck: String?
     public let stillBlocked: [TaskCompleteStillBlocked]
     public let unblockedCheck: String?
 
@@ -6405,6 +6513,9 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         ledger: TaskCompleteLedger? = nil,
         unblocked: [TaskCompleteUnblocked] = [],
         keepMoving: [TaskCompleteUnblocked] = [],
+        relationSuccessors: [TaskCompleteUnblocked] = [],
+        relationHeld: [CaptureRelationHeld] = [],
+        relationCheck: String? = nil,
         stillBlocked: [TaskCompleteStillBlocked] = [],
         unblockedCheck: String? = nil
     ) {
@@ -6420,6 +6531,9 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         self.ledger = ledger
         self.unblocked = unblocked
         self.keepMoving = keepMoving
+        self.relationSuccessors = relationSuccessors
+        self.relationHeld = relationHeld
+        self.relationCheck = relationCheck
         self.stillBlocked = stillBlocked
         self.unblockedCheck = unblockedCheck
     }
@@ -6458,6 +6572,18 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
                 [TaskCompleteUnblocked].self,
                 forKey: .keepMoving
             )) ?? []
+        relationSuccessors =
+            (try? container.decodeIfPresent(
+                [TaskCompleteUnblocked].self,
+                forKey: .relationSuccessors
+            )) ?? []
+        relationHeld =
+            (try? container.decodeIfPresent(
+                [CaptureRelationHeld].self,
+                forKey: .relationHeld
+            )) ?? []
+        relationCheck =
+            (try? container.decodeIfPresent(String.self, forKey: .relationCheck)) ?? nil
         stillBlocked =
             (try? container.decodeIfPresent(
                 [TaskCompleteStillBlocked].self,
@@ -6483,6 +6609,9 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         case ledger
         case unblocked
         case keepMoving = "keep_moving"
+        case relationSuccessors = "relation_successors"
+        case relationHeld = "relation_held"
+        case relationCheck = "relation_check"
         case stillBlocked = "still_blocked"
         case unblockedCheck = "unblocked_check"
     }
@@ -7261,6 +7390,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// Present only when at least one complete label is configured. Older
     /// Bob omits it; missing decodes as nil so the card stays inert.
     public let relationComplete: CaptureCompletionRelationComplete?
+    /// Additive Bob-authored successor-label consequence or inverse hint.
+    /// Inverse hints can omit `verdict`; the client preserves both as sent.
+    public let relationSuccessor: CaptureCompletionRelationSuccessor?
     /// Additive task-theme suggestion for the `pomodoro_name` context.
     /// `Some(null)` (no suggestion) and a missing key both decode as nil.
     /// Older Bob omits it; missing keeps today's default.
@@ -7297,6 +7429,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         oneOff: Bool? = nil,
         relationCancel: CaptureCompletionRelationCancel? = nil,
         relationComplete: CaptureCompletionRelationComplete? = nil,
+        relationSuccessor: CaptureCompletionRelationSuccessor? = nil,
         themeSuggestion: CaptureThemeSuggestion? = nil,
         subject: String? = nil,
         target: CaptureDrawerTarget? = nil
@@ -7320,6 +7453,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.oneOff = oneOff
         self.relationCancel = relationCancel
         self.relationComplete = relationComplete
+        self.relationSuccessor = relationSuccessor
         self.themeSuggestion = themeSuggestion
         self.subject = subject
         self.target = target
@@ -7357,6 +7491,11 @@ public struct CaptureCompletionResponse: Codable, Equatable {
                 CaptureCompletionRelationComplete.self,
                 forKey: .relationComplete
             )) ?? nil
+        relationSuccessor =
+            (try? container.decodeIfPresent(
+                CaptureCompletionRelationSuccessor.self,
+                forKey: .relationSuccessor
+            )) ?? nil
         themeSuggestion =
             (try? container.decodeIfPresent(
                 CaptureThemeSuggestion.self,
@@ -7386,6 +7525,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case oneOff = "one_off"
         case relationCancel = "relation_cancel"
         case relationComplete = "relation_complete"
+        case relationSuccessor = "relation_successor"
         case themeSuggestion = "theme_suggestion"
         case subject
         case target
@@ -8604,6 +8744,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     /// Additive `relation_label` overlay flag: true on zero-use rows
     /// synthesized from config. Omitted when false.
     public let configured: Bool
+    /// Additive `offers_source` flag for successor-label candidates. Missing means false.
+    public let offersSource: Bool
     /// Task-aware menu row selected by the shared PT12 preselection rule.
     /// Older Bob omits both; missing decodes as false/nil.
     public let suggested: Bool
@@ -8732,6 +8874,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         cancelsSource: Bool = false,
         completesSource: Bool = false,
         configured: Bool = false,
+        offersSource: Bool = false,
         suggested: Bool = false,
         suggestionLabel: String? = nil,
         current: Bool = false,
@@ -8815,6 +8958,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.cancelsSource = cancelsSource
         self.completesSource = completesSource
         self.configured = configured
+        self.offersSource = offersSource
         self.suggested = suggested
         self.suggestionLabel = suggestionLabel
         self.current = current
@@ -8905,6 +9049,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
         completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
         configured = (try? container.decodeIfPresent(Bool.self, forKey: .configured)) ?? false
+        offersSource = (try? container.decodeIfPresent(Bool.self, forKey: .offersSource)) ?? false
         suggested = (try? container.decodeIfPresent(Bool.self, forKey: .suggested)) ?? false
         suggestionLabel =
             (try? container.decodeIfPresent(String.self, forKey: .suggestionLabel)) ?? nil
@@ -8991,6 +9136,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case cancelsSource = "cancels_source"
         case completesSource = "completes_source"
         case configured
+        case offersSource = "offers_source"
         case suggested
         case suggestionLabel = "suggestion_label"
         case current

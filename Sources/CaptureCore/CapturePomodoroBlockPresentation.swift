@@ -74,6 +74,7 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
                 tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline),
                 isUnblocked: line.change == .added && line.reason == "unblocked",
                 isKeepMoving: line.change == .added && line.reason == "keep_moving",
+                isRelationSuccessor: line.change == .added && line.reason == "relation",
                 keepMovingProjectName: Self.keepMovingProjectName(
                     in: line,
                     rows: keepMovingRows

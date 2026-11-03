@@ -108,6 +108,7 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                 ),
                 isUnblocked: line.change == .added && line.reason == "unblocked",
                 isKeepMoving: line.change == .added && line.reason == "keep_moving",
+                isRelationSuccessor: line.change == .added && line.reason == "relation",
                 keepMovingProjectName: Self.keepMovingProjectName(
                     in: line,
                     rows: keepMovingRows

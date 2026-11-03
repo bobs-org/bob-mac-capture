@@ -499,7 +499,7 @@ struct CapturePullInChoiceState: Equatable {
                 }
             }
             let folded = pullIn.groups.first {
-                $0.group == group && $0.project == (project ?? "")
+                $0.group == group && $0.project == project
             }?.folded
             return CapturePullInChoiceSection(
                 group: group,

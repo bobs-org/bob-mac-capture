@@ -83,4 +83,100 @@ final class CaptureSuccessorOfferRowsTests: XCTestCase {
         XCTAssertTrue(success.allUnblockedRows.isEmpty)
         XCTAssertTrue(success.allKeepMovingRows.isEmpty)
     }
+
+    func testRelationOffersHeldRowsAndCheckStateCoverEveryPayloadLocation() throws {
+        let json = #"""
+            {
+              "ok": true, "dry_run": true, "routed": false, "route_label": "",
+              "relative_target": "day.md", "target": "/tmp/day.md", "text": "batch",
+              "task_line": "- [ ] Task", "kind": "batch", "created": "2026-11-02",
+              "placement": "batch",
+              "relation_successors": [{"text":"item-level","offer":{"key":"opaque:item"}}],
+              "relation_held": [{"text":"item held","reason":"hidden","relation":{"label":"starts after"}}],
+              "relation_check": "checked",
+              "task_complete": {
+                "relation_successors": [{"text":"task-complete"}],
+                "relation_held": [{"text":"task held","reason":"already_started"}],
+                "relation_check": "checked"
+              },
+              "relation_completes": [{"task_complete": {
+                "relation_successors": [{"text":"nested-complete"}],
+                "relation_held": [{"text":"nested held","reason":"waits_for"}],
+                "relation_check": "checked"
+              }}],
+              "pomodoro_close": {
+                "relation_successors": [{"text":"pomodoro-close"}],
+                "relation_held": [{"text":"pomodoro held","reason":"blocked"}],
+                "relation_check": "unavailable"
+              }
+            }
+            """#
+
+        guard case .success(let success) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(json.utf8)
+        ) else {
+            return XCTFail("Expected capture success")
+        }
+
+        XCTAssertEqual(
+            success.allRelationSuccessors.map(\.text),
+            ["item-level", "task-complete", "nested-complete", "pomodoro-close"]
+        )
+        XCTAssertEqual(
+            success.allRelationHeld.map(\.text),
+            ["item held", "task held", "nested held", "pomodoro held"]
+        )
+        XCTAssertEqual(success.allRelationCheck, "unavailable")
+        XCTAssertEqual(success.allRelationSuccessors.first?.offer?.key, "opaque:item")
+        XCTAssertEqual(success.allRelationHeld.first?.relation?.label, "starts after")
+    }
+
+    func testBatchRootMirrorDoesNotDoubleCountNormalizedCaptureRows() throws {
+        let json = #"""
+            {
+              "ok": true, "dry_run": true, "routed": false, "route_label": "",
+              "relative_target": "day.md", "target": "/tmp/day.md", "text": "batch",
+              "task_line": "- [ ] First", "kind": "batch", "created": "2026-11-02",
+              "placement": "batch",
+              "relation_successors": [{"text":"legacy root mirror"}],
+              "captures": [{
+                "ok": true, "dry_run": true, "routed": false, "route_label": "",
+                "relative_target": "day.md", "target": "/tmp/day.md", "text": "First",
+                "task_line": "- [ ] First", "kind": "task", "created": "2026-11-02",
+                "placement": "appended",
+                "relation_successors": [{"text":"canonical item"}]
+              }]
+            }
+            """#
+
+        guard case .success(let success) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(json.utf8)
+        ) else {
+            return XCTFail("Expected capture success")
+        }
+
+        XCTAssertEqual(success.allRelationSuccessors.map(\.text), ["canonical item"])
+    }
+
+    func testOlderBobHasEmptyRelationArraysAndNoCheckState() {
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: false,
+            routeLabel: "",
+            relativeTarget: "day.md",
+            target: "/tmp/day.md",
+            text: "plain",
+            taskLine: "- [ ] Task",
+            kind: "task",
+            created: "2026-11-02",
+            placement: "appended"
+        )
+
+        XCTAssertTrue(success.allRelationSuccessors.isEmpty)
+        XCTAssertTrue(success.allRelationHeld.isEmpty)
+        XCTAssertNil(success.allRelationCheck)
+    }
 }

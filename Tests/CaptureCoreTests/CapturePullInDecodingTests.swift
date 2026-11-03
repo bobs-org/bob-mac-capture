@@ -68,9 +68,9 @@ final class CapturePullInDecodingTests: XCTestCase {
 
         XCTAssertEqual(response.pullIn?.supported, true)
         XCTAssertEqual(response.pullIn?.offerCount, 2)
-        XCTAssertEqual(response.pullIn?.groups.first?.folded.hidden, 2)
-        XCTAssertEqual(response.pullIn?.groups.first?.folded.alreadyPlanned, 1)
-        XCTAssertEqual(response.pullIn?.groups.first?.folded.subProjects, 3)
+        XCTAssertEqual(response.pullIn?.groups.first?.folded?.hidden, 2)
+        XCTAssertEqual(response.pullIn?.groups.first?.folded?.alreadyPlanned, 1)
+        XCTAssertEqual(response.pullIn?.groups.first?.folded?.subProjects, 3)
         let movingFold = try XCTUnwrap(response.pullIn?.groups.first(where: { $0.group == "keep_moving" })?.folded)
         XCTAssertEqual(movingFold.blocked, 2)
         XCTAssertEqual(movingFold.scheduled, 1)

@@ -21,6 +21,8 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
     /// True for an added keep-moving link. Its separate glyph avoids
     /// presenting it as an unblocked dependent.
     public let isKeepMoving: Bool
+    /// True for an added line Bob marked with `reason == "relation"`.
+    public let isRelationSuccessor: Bool
     /// Leaf-project label for the keep-moving badge tooltip, when the
     /// matching offer row was available to the caller.
     public let keepMovingProjectName: String?
@@ -34,6 +36,7 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         tokens: [CapturePomodoroLineToken],
         isUnblocked: Bool = false,
         isKeepMoving: Bool = false,
+        isRelationSuccessor: Bool = false,
         keepMovingProjectName: String? = nil
     ) {
         self.content = content
@@ -44,6 +47,7 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         self.tokens = tokens
         self.isUnblocked = isUnblocked
         self.isKeepMoving = isKeepMoving
+        self.isRelationSuccessor = isRelationSuccessor
         self.keepMovingProjectName = keepMovingProjectName
     }
 }
