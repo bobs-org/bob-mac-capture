@@ -42,7 +42,7 @@ Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or 
 | C | Open the code picker when the reference has saved Markdown and recorded blocks (from Markdown or a web page) |
 | L | Open the link picker when the reference has saved Markdown and recorded links (from Markdown or a web page); Option-U copies the Markdown link |
 | M | Copy the saved Markdown source; Option-M copies its `~` path |
-| 1–9 | Copy that visible note, or that visible code, highlight, or link once a picker is open |
+| 1–9 | Copy the visible note or the picker row matching the keycap currently shown; the hint names that live range |
 | Shift-1–9 / Shift-Return | In a link picker, open that visible / selected web link in the default browser |
 | Return | Copy the selected row, or open the C, H, or L picker when that row is selected |
 | Option-Return | Copy the fenced form of the selected code block, or the Markdown form of the selected link |

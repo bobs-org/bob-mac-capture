@@ -331,6 +331,14 @@ public struct RefsLinkPicker: Equatable, Sendable {
     public var windowRows: [WindowRow] { sectionedWindow.windowRows }
     public var windowEntries: ArraySlice<Entry> { sectionedWindow.windowEntries }
     public var selectedEntry: Entry? { sectionedWindow.selectedEntry }
+    public var scope: RefsPickerScope {
+        sectionedWindow.scope(
+            noun: .link,
+            onPageIndices: entries.enumerated().compactMap { index, entry in
+                entry.isOnPage ? index : nil
+            }
+        )
+    }
 
     public init(
         links: [RefsLink],
@@ -420,11 +428,13 @@ public struct RefsLinkPicker: Equatable, Sendable {
             .joined(separator: ", ")
     }
 
-    public static let openingAnnouncement =
-        "Links. Press a number or Return to copy. Hold Shift to open."
+    public static func openingAnnouncement(count: Int) -> String {
+        let word = RefsPickerNoun.link.spokenNoun(count: count)
+        return "\(count) \(word). Press a number or Return to copy. Hold Shift to open."
+    }
 
     public var openingVoiceOverLabel: String {
-        Self.openingAnnouncement
+        Self.openingAnnouncement(count: entries.count)
     }
 
     public mutating func move(_ delta: Int) { sectionedWindow.move(delta) }
@@ -733,13 +743,15 @@ public struct RefsLinkPreviewLayout: Equatable, Sendable {
         longestURL: String,
         headerHeight: Double = 18,
         lineHeight: Double = 16,
-        entryRowHeight: Double = 36
+        entryRowHeight: Double = 36,
+        footerHeight: Double = 0
     ) -> Self {
         let wrapped = RefsLinkPreview.wrap(longestURL, columns: max(1, columns))
         let bodyLines = min(5, max(2, wrapped.count))
         let height = max(0, headerHeight) + Double(bodyLines) * max(1, lineHeight)
-        let remaining = max(0, availableHeightUnderHeader) - height
-        let rows = entryRowHeight > 0
+        let remaining = max(0, availableHeightUnderHeader - max(0, footerHeight)) - height
+        let rows =
+            entryRowHeight > 0
             ? Int(floor(remaining / entryRowHeight))
             : 2
         return Self(

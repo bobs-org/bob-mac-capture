@@ -93,6 +93,20 @@ public struct RefsSectionedWindow<Entry: RefsSectionedWindowEntry>: Equatable, S
         entries.indices.contains(selectedIndex) ? entries[selectedIndex] : nil
     }
 
+    public func scope(
+        noun: RefsPickerNoun,
+        onPageIndices: [Int] = []
+    ) -> RefsPickerScope {
+        RefsPickerScope(
+            noun: noun,
+            total: entries.count,
+            selectedIndex: selectedIndex,
+            visibleStart: windowStart,
+            visibleCount: windowEntries.count,
+            onPageIndices: onPageIndices
+        )
+    }
+
     public mutating func move(_ delta: Int) {
         guard !entries.isEmpty, delta != 0 else { return }
         let count = entries.count

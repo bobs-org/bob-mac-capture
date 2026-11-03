@@ -18,6 +18,10 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: loadingQueuedCard(), name: "refs-copy-card-notes-loading")
         try write(card: errorCard(), name: "refs-copy-card-error")
         try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
+        try write(
+            card: windowedHighlightPickerCard(),
+            name: "refs-copy-highlight-picker-windowed"
+        )
         try write(card: underlinedPickerCard(), name: "refs-copy-highlight-picker-underline")
         try write(
             card: groupedHighlightPickerCard(),
@@ -30,6 +34,10 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: codeRowsCard(), name: "refs-copy-card-code-rows")
         try write(card: try codePickerCard(), name: "refs-copy-code-picker")
         try write(
+            card: try windowedCodePickerCard(),
+            name: "refs-copy-code-picker-windowed"
+        )
+        try write(
             card: try codePickerCard(), name: "refs-copy-code-picker-fenced", alternates: true)
         try write(card: try mermaidPickerCard(), name: "refs-copy-code-picker-mermaid")
         try write(card: try longLinePickerCard(), name: "refs-copy-code-picker-long-line")
@@ -37,6 +45,10 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: try noCodeCard(), name: "refs-copy-card-no-code")
         try write(card: try linkRowsCard(), name: "refs-copy-card-link-rows")
         try write(card: try linkPickerCard(), name: "refs-copy-link-picker")
+        try write(
+            card: try windowedLinkPickerCard(),
+            name: "refs-copy-link-picker-windowed"
+        )
         try write(
             card: try linkPickerCard(),
             name: "refs-copy-link-picker-open",
@@ -634,6 +646,173 @@ final class RefsCopyCardDesignTests: XCTestCase {
             markerID: .present("example"),
             title: "Why sase ace Is Slow",
             sourceMarkdown: ".bob/ref-sources/chat/example--abc123/source.md"
+        )
+    }
+
+    private func windowedCodePickerCard() throws -> RefsCopyCard {
+        let item = makeCodeItem()
+        var card = RefsCopyCard(
+            token: 35,
+            item: item,
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: item.id)),
+            noteCapacity: 0,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            code: .loaded(try decodeWindowedCode(item: item)),
+            highlightedPage: 13
+        )
+        _ = card.handle(.key(.codePicker))
+        card.setPickerWindowSize(
+            RefsPanelView.copyCardPickerWindowSize(
+                for: card,
+                size: CGSize(width: inspectorColumnWidth, height: 480)
+            )
+        )
+        _ = card.handle(.move(-1))
+        _ = card.handle(.move(1))
+        return card
+    }
+
+    private func windowedLinkPickerCard() throws -> RefsCopyCard {
+        let item = makeLinkItem()
+        var card = RefsCopyCard(
+            token: 36,
+            item: item,
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: item.id)),
+            noteCapacity: 0,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            links: .loaded(try decodeWindowedLinks(item: item)),
+            highlightedPage: 13
+        )
+        _ = card.handle(.key(.linkPicker))
+        card.setPickerWindowSize(
+            RefsPanelView.copyCardPickerWindowSize(
+                for: card,
+                size: CGSize(width: inspectorColumnWidth, height: 480)
+            )
+        )
+        _ = card.handle(.move(-1))
+        _ = card.handle(.move(1))
+        return card
+    }
+
+    private func windowedHighlightPickerCard() -> RefsCopyCard {
+        let item = makeItem(
+            id: "ref/articles/windowed_highlights.md",
+            title: "Windowed Highlight Picker",
+            kind: .article,
+            commentCount: 13
+        )
+        let sections = (1...5).map { section in
+            RefsShowSection(
+                id: "s\(section)",
+                title: "Section 5.\(section).2",
+                tag: "@section\(section)",
+                count: section == 5 ? 1 : 3
+            )
+        }
+        let annotations = (1...13).map { index in
+            let section = (index - 1) / 3 + 1
+            return RefsShowAnnotation(
+                pageLabel: "Page \(index)",
+                kind: "highlight",
+                quote: "Windowed highlight \(index) with enough text to show row truncation.",
+                section: "s\(section)"
+            )
+        }
+        var card = RefsCopyCard(
+            token: 37,
+            item: item,
+            absolutePDFPath: "/vault/lib/articles/windowed_highlights.pdf",
+            pdfExists: true,
+            notes: .loaded(
+                RefsShowRow(path: item.id, sections: sections, annotations: annotations)
+            ),
+            noteCapacity: 0,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+        )
+        _ = card.handle(.key(.highlightPicker))
+        card.setPickerWindowSize(
+            RefsPanelView.copyCardPickerWindowSize(
+                for: card,
+                size: CGSize(width: inspectorColumnWidth, height: 480)
+            )
+        )
+        for _ in 0..<12 { _ = card.handle(.move(1)) }
+        for _ in 0..<6 { _ = card.handle(.move(-1)) }
+        return card
+    }
+
+    private func decodeWindowedCode(item: RefItem) throws -> RefsCodeResponse {
+        let blocks: [[String: Any]] = (1...13).map { index in
+            let section = (index - 1) / 3 + 1
+            let selected = index == 7
+            let text = selected ? "name: secure-api-review" : "const resource\(index) = true"
+            return [
+                "id": "windowed/\(index)",
+                "n": index,
+                "kind": "code",
+                "lang": "javascript",
+                "summary": selected ? text : "Resource \(index)",
+                "caption": selected ? "SKILL.md" : "resource \(index)",
+                "lines": 19,
+                "bytes": text.utf8.count,
+                "text": text,
+                "fenced": "```javascript\n\(text)\n```\n",
+                "section": [
+                    "number": "5.\(section).2",
+                    "title": "Section \(section)",
+                ],
+                "page": index == 7 || index == 8 ? 13 : 20 + index,
+                "page_end": index == 7 || index == 8 ? 13 : 20 + index,
+                "page_source": "anchor",
+            ]
+        }
+        return try JSONDecoder().decode(
+            RefsCodeResponse.self,
+            from: JSONSerialization.data(withJSONObject: [
+                "reference": ["path": item.id, "title": item.rawTitle],
+                "status": "available",
+                "blocks": blocks,
+            ])
+        )
+    }
+
+    private func decodeWindowedLinks(item: RefItem) throws -> RefsLinksResponse {
+        let links: [[String: Any]] = (1...13).map { index in
+            let section = (index - 1) / 3 + 1
+            return [
+                "id": "windowed/\(index)",
+                "n": index,
+                "url": "https://example.com/section-\(index)/resource",
+                "label": index == 7 ? "Selected on page thirteen" : "Resource \(index)",
+                "label_kind": "text",
+                "site": "example.com",
+                "markdown": "[Resource \(index)](https://example.com/section-\(index)/resource)",
+                "section": [
+                    "number": "5.\(section).2",
+                    "title": "Section \(section)",
+                ],
+                "page": index == 7 || index == 8 ? 13 : 20 + index,
+                "page_source": "anchor",
+            ]
+        }
+        return try JSONDecoder().decode(
+            RefsLinksResponse.self,
+            from: JSONSerialization.data(withJSONObject: [
+                "reference": ["path": item.id, "title": item.rawTitle],
+                "status": "available",
+                "links": links,
+            ])
         )
     }
 

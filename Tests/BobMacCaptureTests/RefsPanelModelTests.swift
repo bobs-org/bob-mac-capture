@@ -1383,12 +1383,44 @@ final class RefsPanelModelTests: XCTestCase {
         let highlightSize = RefsCopyCardLayout.highlightWindowSize(
             cardHeight: Double(height),
             metrics: RefsVisualTokens.copyCardMetrics,
-            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            footerHeight: Double(RefsVisualTokens.copyCardPickerScopeLineHeight)
         )
-        let codeSize = RefsPanelView.copyCardPickerWindowSize(for: card, height: height)
+        let codeSize = RefsPanelView.copyCardPickerWindowSize(
+            for: card,
+            size: CGSize(width: 480, height: height)
+        )
         XCTAssertLessThan(codeSize, highlightSize)
         XCTAssertGreaterThanOrEqual(codeSize, 2)
         XCTAssertLessThanOrEqual(codeSize, 9)
+    }
+
+    func testCopyCardPickerWindowSizeIncludesLinkWellAtMeasuredCardWidth() throws {
+        var card = RefsCopyCard(
+            token: 2,
+            item: Self.codeItem(),
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .unavailable,
+            noteCapacity: 0,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            links: .loaded(try Self.linksResponse()),
+            highlightedPage: 7
+        )
+        _ = card.handle(.key(.linkPicker))
+        let size = CGSize(width: 480, height: 480)
+        let highlightSize = RefsCopyCardLayout.highlightWindowSize(
+            cardHeight: Double(size.height),
+            metrics: RefsVisualTokens.copyCardMetrics,
+            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            footerHeight: Double(RefsVisualTokens.copyCardPickerScopeLineHeight)
+        )
+        let linkSize = RefsPanelView.copyCardPickerWindowSize(for: card, size: size)
+        XCTAssertLessThan(linkSize, highlightSize)
+        XCTAssertGreaterThanOrEqual(linkSize, 2)
+        XCTAssertLessThanOrEqual(linkSize, 9)
     }
 
     func testOpenCopyCardFetchesCodeWhenSourceMarkdownIsPresent() async throws {

@@ -91,21 +91,19 @@ struct RefsLinkPreviewWellView: View {
     }
 
     private func payloadLine(_ line: RefsLinkPreviewLine) -> some View {
-        HStack(spacing: 0) {
-            Text(attributedLine(line))
-                .font(
-                    .system(
-                        size: RefsVisualTokens.copyCardLinkWellFontSize,
-                        design: .monospaced
-                    )
+        Text(attributedLine(line))
+            .font(
+                .system(
+                    size: RefsVisualTokens.copyCardLinkWellFontSize,
+                    design: .monospaced
                 )
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .clipped()
-        .opacity(line.isFaded ? 0.45 : 1)
-        .help(preview.displayPayload)
+            )
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: true)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .clipped()
+            .opacity(line.isFaded ? 0.45 : 1)
+            .help(preview.displayPayload)
     }
 
     private func attributedLine(_ line: RefsLinkPreviewLine) -> AttributedString {

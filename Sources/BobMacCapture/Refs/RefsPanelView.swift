@@ -305,16 +305,16 @@ public struct RefsPanelView: View {
                     alternatesActive: model.copyAlternatesActive,
                     linkOpenActive: model.copyLinkOpenActive,
                     previewMode: previewMode,
-                    onMeasuredHeight: { height in
+                    onMeasuredSize: { size in
                         guard let current = model.copyCard else { return }
                         model.copyCardNoteCapacity = Self.copyCardNoteCapacity(
                             for: current,
-                            height: height
+                            height: size.height
                         )
                         model.copyCardPickerWindowSize =
                             Self.copyCardPickerWindowSize(
                                 for: current,
-                                height: height
+                                size: size
                             )
                     },
                     onRowTap: { model.copyCardRowTapped($0) },
@@ -404,29 +404,45 @@ public struct RefsPanelView: View {
         )
     }
 
-    /// Highlight pickers fill the space under the header. The code picker
-    /// keeps a fixed well, so its row window is the remainder.
+    /// Picker rows reserve the scope line and any preview well before the
+    /// panel chooses the window size.
     static func copyCardPickerWindowSize(
         for card: RefsCopyCard,
-        height: CGFloat
+        size: CGSize
     ) -> Int {
         let metrics = RefsVisualTokens.copyCardMetrics
+        let available =
+            Double(size.height)
+            - metrics.headerHeight
+            - metrics.messageLineHeight
+            - metrics.verticalPadding
+        let footerHeight = Double(RefsVisualTokens.copyCardPickerScopeLineHeight)
         if card.codePicker != nil {
-            let available = Double(height)
-                - metrics.headerHeight
-                - metrics.messageLineHeight
-                - metrics.verticalPadding
             return RefsCodePreviewWellLayout.make(
                 availableHeightUnderHeader: available,
                 codeLineHeight: Double(RefsVisualTokens.copyCardCodeLineHeight),
                 headerHeight: Double(RefsVisualTokens.copyCardCodeWellHeaderHeight),
-                entryRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+                entryRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+                footerHeight: footerHeight
+                    + Double(RefsVisualTokens.copyCardPreviewWellTopPadding)
+            ).pickerWindowSize
+        }
+        if let picker = card.linkPicker {
+            let width = size.width > 0 ? size.width : 320
+            let longestURL = picker.entries.map(\.link.url).max(by: { $0.count < $1.count }) ?? ""
+            return RefsVisualTokens.linkWellLayout(
+                cardWidth: width,
+                availableHeight: available,
+                longestURL: longestURL,
+                footerHeight: footerHeight
+                    + Double(RefsVisualTokens.copyCardPreviewWellTopPadding)
             ).pickerWindowSize
         }
         return RefsCopyCardLayout.highlightWindowSize(
-            cardHeight: Double(height),
+            cardHeight: Double(size.height),
             metrics: metrics,
-            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            footerHeight: card.highlightPicker == nil ? 0 : footerHeight
         )
     }
 }

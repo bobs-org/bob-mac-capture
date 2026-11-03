@@ -3168,9 +3168,9 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func announceCodePickerIfNeeded(hadPicker: Bool) {
-        guard !hadPicker, copyCard?.codePicker != nil else { return }
+        guard !hadPicker, let picker = copyCard?.codePicker else { return }
         AccessibilityNotification.Announcement(
-            "Code blocks. Press a number or Return."
+            RefsCodePicker.openingAnnouncement(count: picker.entries.count)
         ).post()
     }
 
@@ -3194,9 +3194,9 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func announceLinkPickerIfNeeded(hadPicker: Bool) {
-        guard !hadPicker, copyCard?.linkPicker != nil else { return }
+        guard !hadPicker, let picker = copyCard?.linkPicker else { return }
         AccessibilityNotification.Announcement(
-            RefsLinkPicker.openingAnnouncement
+            RefsLinkPicker.openingAnnouncement(count: picker.entries.count)
         ).post()
     }
 

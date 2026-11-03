@@ -287,7 +287,7 @@ final class RefsLinksTests: XCTestCase {
 
     func testLinkPickerSelectsPageAndKeepsSectionHeaders() throws {
         let links = try decodeGolden().links
-        let picker = RefsLinkPicker(
+        var picker = RefsLinkPicker(
             links: links,
             highlightedPage: 7,
             windowSize: 3,
@@ -298,6 +298,13 @@ final class RefsLinksTests: XCTestCase {
         XCTAssertEqual(picker.selectedEntry?.link.number, 2)
         XCTAssertTrue(picker.selectedEntry?.isOnPage == true)
         XCTAssertEqual(picker.pageLinkCount, 3)
+        XCTAssertEqual(picker.scope.ordinalLabel, "Link 2 of 9")
+        XCTAssertEqual(picker.scope.visibleRange, 2...3)
+        XCTAssertEqual(
+            picker.scope.onPageIndices,
+            picker.entries.enumerated().compactMap { $0.element.isOnPage ? $0.offset : nil }
+        )
+        XCTAssertEqual(picker.scope.onPageIndices.count, picker.pageLinkCount)
         XCTAssertTrue(
             picker.windowRows.contains { row in
                 if case .group(let title) = row { return title == "4  Image models" }
@@ -305,12 +312,19 @@ final class RefsLinksTests: XCTestCase {
             })
         XCTAssertEqual(
             picker.openingVoiceOverLabel,
-            "Links. Press a number or Return to copy. Hold Shift to open."
+            "9 links. Press a number or Return to copy. Hold Shift to open."
+        )
+        XCTAssertEqual(
+            RefsLinkPicker.openingAnnouncement(count: 1),
+            "1 link. Press a number or Return to copy. Hold Shift to open."
         )
         XCTAssertEqual(
             picker.selectedEntry?.voiceOverLabel(index: 2, total: 9, key: 1),
             "Link 2 of 9, Imagen 4 model card, ai.google.dev, page 7, on this page, key 1"
         )
+        picker.move(3)
+        XCTAssertEqual(picker.windowStart, 4)
+        XCTAssertEqual(picker.scope.visibleRange, 5...5)
 
         XCTAssertEqual(RefsLinkPicker.initialSelection(in: links, page: 4), 0)
         XCTAssertEqual(RefsLinkPicker.initialSelection(in: links, page: 8), 4)
@@ -461,6 +475,21 @@ final class RefsLinksTests: XCTestCase {
             longestURL: "https://example.com"
         )
         XCTAssertEqual(tight.pickerWindowSize, 2)
+
+        let withFooter = RefsLinkPreviewLayout.make(
+            availableHeightUnderHeader: 350,
+            columns: 80,
+            longestURL: "https://example.com",
+            footerHeight: 26
+        )
+        XCTAssertLessThan(
+            withFooter.pickerWindowSize,
+            RefsLinkPreviewLayout.make(
+                availableHeightUnderHeader: 350,
+                columns: 80,
+                longestURL: "https://example.com"
+            ).pickerWindowSize
+        )
     }
 
     func testQueuedLReturnOpensPickerAndCopiesThePreselectedLink() throws {
@@ -574,7 +603,7 @@ final class RefsLinksTests: XCTestCase {
         XCTAssertEqual(selectedRequest.link.number, 2)
 
         XCTAssertEqual(card.handle(.openWindowRow(99)), .none)
-        XCTAssertEqual(card.message?.text, "No link 99")
+        XCTAssertEqual(card.message?.text, "Only 1–9 are listed")
 
         var refused = makeCard(
             item: item, links: .loaded(try decodeGolden()), highlightedPage: 7)

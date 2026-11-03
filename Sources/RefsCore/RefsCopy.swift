@@ -1173,11 +1173,13 @@ public enum RefsCopyCardLayout {
     public static func highlightWindowSize(
         cardHeight: Double,
         metrics: RefsCopyCardMetrics,
-        rowHeight: Double
+        rowHeight: Double,
+        footerHeight: Double = 0
     ) -> Int {
         let fixedHeight = metrics.headerHeight
             + metrics.messageLineHeight
             + metrics.verticalPadding
+            + max(0, footerHeight)
         guard rowHeight > 0 else { return 0 }
         return min(9, max(0, Int(floor((cardHeight - fixedHeight) / rowHeight))))
     }
@@ -1906,7 +1908,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     ) -> RefsCopyEffect {
         guard var picker = linkPicker else { return .none }
         guard let entry = picker.selectWindowPosition(number) else {
-            message = RefsCopyMessage(text: "No link \(number)")
+            message = RefsCopyMessage(text: picker.scope.digitMissMessage)
             return .none
         }
         linkPicker = picker
@@ -1923,7 +1925,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     private mutating func openLinkPickerWindowRow(_ number: Int) -> RefsCopyEffect {
         guard var picker = linkPicker else { return .none }
         guard let entry = picker.selectWindowPosition(number) else {
-            message = RefsCopyMessage(text: "No link \(number)")
+            message = RefsCopyMessage(text: picker.scope.digitMissMessage)
             return .none
         }
         linkPicker = picker
@@ -2044,7 +2046,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     ) -> RefsCopyEffect {
         guard var picker = codePicker else { return .none }
         guard let entry = picker.selectWindowPosition(number) else {
-            message = RefsCopyMessage(text: "No code block \(number)")
+            message = RefsCopyMessage(text: picker.scope.digitMissMessage)
             return .none
         }
         codePicker = picker
@@ -2168,7 +2170,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     private mutating func copyPickerWindowRow(_ number: Int, alternate: Bool) -> RefsCopyEffect {
         guard var picker = highlightPicker else { return .none }
         guard let entry = picker.selectWindowPosition(number) else {
-            message = RefsCopyMessage(text: "No highlight \(number)")
+            message = RefsCopyMessage(text: picker.scope.digitMissMessage)
             return .none
         }
         highlightPicker = picker

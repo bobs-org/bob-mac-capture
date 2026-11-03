@@ -153,6 +153,34 @@ final class RefsCodeTests: XCTestCase {
         XCTAssertEqual(RefsCodePicker.initialSelection(in: blocks, page: nil), 0)
     }
 
+    func testCodePickerScopeUsesCatalogIndexAndTracksWindowAndPageIndices() throws {
+        let blocksJSON =
+            #"[{"n":1,"text":"first","page":5},{"n":"bad","text":"skip"},"#
+            + #"{"n":8,"text":"last","page":7}]"#
+        let response = try decodeResponse(blocks: blocksJSON)
+        var picker = RefsCodePicker(
+            blocks: response.blocks,
+            highlightedPage: 7,
+            windowSize: 1
+        )
+        XCTAssertEqual(picker.scope.ordinalLabel, "Block 2 of 2")
+        XCTAssertEqual(picker.scope.onPageIndices, [1])
+        XCTAssertEqual(picker.scope.onPageIndices.count, picker.pageBlockCount)
+        XCTAssertEqual(picker.scope.visibleRange, 2...2)
+        XCTAssertEqual(
+            RefsCodePicker.openingAnnouncement(count: 13),
+            "13 code blocks. Press a number or Return."
+        )
+        XCTAssertEqual(
+            RefsCodePicker.openingAnnouncement(count: 1),
+            "1 code block. Press a number or Return."
+        )
+        picker.move(1)
+        XCTAssertEqual(picker.windowStart, 0)
+        XCTAssertEqual(picker.scope.ordinalLabel, "Block 1 of 2")
+        XCTAssertEqual(picker.scope.onPageIndices, [1])
+    }
+
     func testCodeCopyUsesExactPlainOrFencedPayload() throws {
         let entry = try XCTUnwrap(RefsCodePicker(blocks: decodeResponse().blocks).entries.first)
         XCTAssertEqual(entry.copyRow(fenced: false).payload, .text("refresh:\n\tinterval_ms: 250"))
@@ -190,6 +218,22 @@ final class RefsCodeTests: XCTestCase {
         let small = RefsCodePreviewWellLayout.make(availableHeightUnderHeader: 100)
         XCTAssertEqual(small.visibleCodeLines, 6)
         XCTAssertEqual(small.pickerWindowSize, 2)
+
+        let withFooter = RefsCodePreviewWellLayout.make(
+            availableHeightUnderHeader: 480,
+            footerHeight: 26
+        )
+        XCTAssertLessThan(
+            withFooter.pickerWindowSize,
+            RefsCodePreviewWellLayout.make(availableHeightUnderHeader: 480).pickerWindowSize
+        )
+        XCTAssertEqual(
+            RefsCodePreviewWellLayout.make(
+                availableHeightUnderHeader: 80,
+                footerHeight: 26
+            ).pickerWindowSize,
+            2
+        )
     }
 
     func testCopyCardQueuesCodeKeyUntilCatalogLoads() throws {

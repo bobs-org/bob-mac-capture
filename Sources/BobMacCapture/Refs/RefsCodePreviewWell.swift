@@ -93,14 +93,12 @@ struct RefsCodePreviewWellView: View {
     }
 
     private func codeLine(_ line: RefsCodePreviewLine) -> some View {
-        HStack(spacing: 0) {
-            Text(attributedLine(line))
-                .font(.system(size: RefsVisualTokens.copyCardCodeFontSize, design: .monospaced))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .clipped()
+        Text(attributedLine(line))
+            .font(.system(size: RefsVisualTokens.copyCardCodeFontSize, design: .monospaced))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: true)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .clipped()
     }
 
     private func attributedLine(_ line: RefsCodePreviewLine) -> AttributedString {

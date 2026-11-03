@@ -289,6 +289,23 @@ public struct RefsCodePicker: Equatable, Sendable {
     public var windowRows: [WindowRow] { sectionedWindow.windowRows }
     public var windowEntries: ArraySlice<Entry> { sectionedWindow.windowEntries }
     public var selectedEntry: Entry? { sectionedWindow.selectedEntry }
+    public var scope: RefsPickerScope {
+        sectionedWindow.scope(
+            noun: .codeBlock,
+            onPageIndices: entries.enumerated().compactMap { index, entry in
+                entry.isOnPage ? index : nil
+            }
+        )
+    }
+
+    public static func openingAnnouncement(count: Int) -> String {
+        let word = RefsPickerNoun.codeBlock.spokenNoun(count: count)
+        return "\(count) \(word). Press a number or Return."
+    }
+
+    public var openingVoiceOverLabel: String {
+        Self.openingAnnouncement(count: entries.count)
+    }
 
     public init(
         blocks: [RefsCodeBlock],
@@ -449,9 +466,10 @@ public struct RefsCodePreviewWellLayout: Equatable, Sendable {
         availableHeightUnderHeader: Double,
         codeLineHeight: Double = 16,
         headerHeight: Double = 18,
-        entryRowHeight: Double = 36
+        entryRowHeight: Double = 36,
+        footerHeight: Double = 0
     ) -> Self {
-        let available = max(0, availableHeightUnderHeader)
+        let available = max(0, availableHeightUnderHeader - max(0, footerHeight))
         let lineHeight = max(1, codeLineHeight)
         let wellHeader = max(0, headerHeight)
         let minHeight = 6 * lineHeight + wellHeader

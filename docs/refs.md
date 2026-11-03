@@ -443,19 +443,22 @@ arrows scroll, `A` copies all). Section titles repeat when a window starts
 mid-section. Return copies the selected marker ID when available, otherwise its
 wiki link.
 
-The link picker lists recorded links in document order under `LINKS N`, grouped
-by report section, and opens on the current Highlights page's first link when
-available. Rows show label, site, path, and page; `●` marks current-page links.
-The well previews the URL with its host emphasized, or the Markdown form while
-Option is held. Return copies the URL, Option-Return its Markdown form, `1`–`9`
-copy visible rows, `A` copies distinct URLs (Option-A a Markdown list), and
-Escape returns to the card. Shift-1–9 opens a visible link, Shift-Return the
-selection, and Shift-click a row in the default browser. Shift adds `· Open`
-and updates the hint. Only hosted `http` and `https` links open; others explain
-why and remain copyable with Return. Opening hides Refs without a HUD or
-pasteboard change; failure restores an error banner. `L` explains when links
-are unrecorded, bob lacks `ref links`, or saved Markdown is missing; input
-while links load queues like `C`.
+Code, link, and highlight pickers put the count first (`13 CODE BLOCKS`,
+`8 LINKS`, `9 HIGHLIGHTS`); code and link add ` · ● 2 ON THIS PAGE` when
+known. A scope line names the selection and visible range
+(`Block 7 of 13 · showing 6–8`). Off-screen lists show a rail with a
+selected notch and on-page ticks (code and link). Hints name the live
+range (`1–3 pick`).
+
+The link picker opens at the current Highlights page's first link when available.
+Rows show label, site, path, and page; `●` marks current-page links. Option
+previews Markdown instead of the URL. Return and Option-Return copy those forms;
+visible digits copy rows, `A` copies distinct URLs (Option-A a Markdown list),
+and Escape returns. Shift-digit, Shift-Return, or Shift-click opens hosted
+`http`/`https` links; unsupported links explain why and stay copyable. Opening
+hides Refs without a HUD or pasteboard change; failures restore an error banner.
+`L` explains when links or saved Markdown are unavailable; typing during load
+queues like `C`.
 
 Home-folder paths copy with `~` (for example, `~/bob/lib/…`); only the
 Obsidian link and the PDF and narration file copies stay absolute.

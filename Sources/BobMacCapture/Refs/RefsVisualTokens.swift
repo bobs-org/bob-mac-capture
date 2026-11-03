@@ -94,6 +94,19 @@ enum RefsVisualTokens {
     static let copyCardHeaderHeight: CGFloat = 44
     static let copyCardRowHeight: CGFloat = 24
     static let copyCardPickerRowHeight: CGFloat = 36
+    static let copyCardPickerScopeLineHeight: CGFloat = 20
+    static let copyCardPreviewWellTopPadding: CGFloat = 6
+    static let copyCardPickerRailGutter: CGFloat = 12
+    static let copyCardPickerRailTrackWidth: CGFloat = 3
+    static let copyCardPickerRailMinimumThumbHeight: CGFloat = 16
+    static let copyCardPickerRailNotchWidth: CGFloat = 7
+    static let copyCardPickerRailNotchHeight: CGFloat = 3
+    static let copyCardPickerRailTrackOpacity = 0.07
+    static let copyCardPickerRailTrackOpacityIncreased = 0.18
+    static let copyCardPickerRailThumbOpacity = 0.28
+    static let copyCardPickerRailThumbOpacityIncreased = 0.50
+    static let copyCardPickerRailTickOpacity = 0.55
+    static let copyCardPickerRailTickOpacityIncreased = 0.80
     static let copyCardPickerGroupHeaderHeight: CGFloat = CGFloat(
         RefsCopyCardLayout.pickerGroupHeaderHeight
     )
@@ -148,7 +161,10 @@ enum RefsVisualTokens {
     /// the fixed well height (2–5 body lines) and the row window gets the
     /// rest (2–9 rows).
     static func linkWellLayout(
-        cardWidth: CGFloat, availableHeight: Double, longestURL: String
+        cardWidth: CGFloat,
+        availableHeight: Double,
+        longestURL: String,
+        footerHeight: Double = 0
     ) -> RefsLinkPreviewLayout {
         RefsLinkPreviewLayout.make(
             availableHeightUnderHeader: availableHeight,
@@ -156,7 +172,8 @@ enum RefsVisualTokens {
             longestURL: longestURL,
             headerHeight: Double(copyCardLinkWellHeaderHeight),
             lineHeight: Double(copyCardLinkWellLineHeight),
-            entryRowHeight: Double(copyCardPickerRowHeight)
+            entryRowHeight: Double(copyCardPickerRowHeight),
+            footerHeight: footerHeight
         )
     }
 

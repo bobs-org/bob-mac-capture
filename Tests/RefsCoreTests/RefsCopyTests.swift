@@ -616,6 +616,15 @@ final class RefsCopyTests: XCTestCase {
             ),
             3
         )
+        XCTAssertEqual(
+            RefsCopyCardLayout.highlightWindowSize(
+                cardHeight: 190,
+                metrics: metrics,
+                rowHeight: 36,
+                footerHeight: 20
+            ),
+            2
+        )
     }
 
     func testHighlightPickerEntriesExcludeImagesAndEmptyQuotes() {
@@ -735,7 +744,7 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(card.handle(.key(.title)), .none)
         XCTAssertEqual(card.message?.text, "Nothing on ‘t’")
         XCTAssertEqual(card.handle(.key(.note(9))), .none)
-        XCTAssertEqual(card.message?.text, "No highlight 9")
+        XCTAssertEqual(card.message?.text, "Only 1 is listed")
         XCTAssertEqual(card.handle(.close), .none)
         XCTAssertNil(card.highlightPicker)
         XCTAssertFalse(card.isClosed)

@@ -144,6 +144,9 @@ public struct RefsHighlightPicker: Equatable, Sendable {
     public var windowEntries: ArraySlice<Entry> { sectionedWindow.windowEntries }
 
     public var selectedEntry: Entry? { sectionedWindow.selectedEntry }
+    public var scope: RefsPickerScope {
+        sectionedWindow.scope(noun: .highlight)
+    }
 
     public mutating func move(_ delta: Int) {
         sectionedWindow.move(delta)

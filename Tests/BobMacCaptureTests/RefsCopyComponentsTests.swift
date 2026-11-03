@@ -115,4 +115,75 @@ final class RefsCopyComponentsTests: XCTestCase {
         XCTAssertEqual(RefsVisualTokens.copyCardCodeFadeWidth, 8)
         XCTAssertEqual(RefsVisualTokens.copyCardLanguageChipMinWidth, 52)
     }
+
+    func testLongCodeAndLinkPreviewLinesDoNotWidenCopyCard() throws {
+        let column = 880 - RefsVisualTokens.listWidth(panelWidth: 880)
+        for card in [try longCodePickerCard(), longLinkPickerCard()] {
+            let hosted = NSHostingController(
+                rootView: RefsCopyCardView(card: card, previewMode: true)
+            )
+            let size = hosted.sizeThatFits(in: CGSize(width: column, height: 480))
+            XCTAssertLessThanOrEqual(size.width, column + 0.5)
+        }
+    }
+
+    private func longCodePickerCard() throws -> RefsCopyCard {
+        let item = makeItem()
+        let line = String(repeating: "x", count: 400)
+        let response = try JSONDecoder().decode(
+            RefsCodeResponse.self,
+            from: JSONSerialization.data(withJSONObject: [
+                "reference": ["path": item.id, "title": item.rawTitle],
+                "status": "available",
+                "blocks": [["n": 1, "summary": line, "text": line]],
+            ])
+        )
+        var card = RefsCopyCard(
+            token: 1,
+            item: item,
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .unavailable,
+            noteCapacity: 0,
+            code: .loaded(response)
+        )
+        _ = card.handle(.key(.codePicker))
+        return card
+    }
+
+    private func longLinkPickerCard() -> RefsCopyCard {
+        let item = makeItem()
+        let url = "https://example.com/" + String(repeating: "long-path-segment/", count: 30)
+        let response = RefsLinksResponse(
+            reference: RefsCodeReference(path: item.id, title: item.rawTitle),
+            status: .available,
+            links: [RefsLink(number: 1, url: url, label: "Long URL", site: "example.com")]
+        )
+        var card = RefsCopyCard(
+            token: 2,
+            item: item,
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .unavailable,
+            noteCapacity: 0,
+            links: .loaded(response)
+        )
+        _ = card.handle(.key(.linkPicker))
+        return card
+    }
+
+    private func makeItem() -> RefItem {
+        RefItem(
+            id: "ref/chat/preview.md",
+            link: "[[ref/chat/preview]]",
+            rawTitle: "Long preview regression",
+            stem: "preview",
+            markerID: .absent,
+            kind: .chat,
+            state: .ready,
+            isBlocked: false,
+            pdfPath: "lib/chat/preview.pdf",
+            sourceMarkdown: ".bob/ref-sources/chat/preview/source.md"
+        )
+    }
 }
