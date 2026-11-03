@@ -260,7 +260,6 @@ public struct RefsPanelView: View {
                     focus: focus
                 )
                 .id("\(selected)#\(model.inspectorGeneration)")
-                .onChange(of: selected) { _, _ in model.inspectorRequested() }
                 .transition(.opacity)
             } else {
                 Text("Select a reference")

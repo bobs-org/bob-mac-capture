@@ -433,6 +433,13 @@ public final class RefsPanelModel: ObservableObject {
                 {
                     closeRenameCard()
                 }
+                // The inspector subtree is rebuilt when tabsState changes
+                // case (and when the Tabs skeleton gives way to the list),
+                // so a view-level onChange misses selections that land with
+                // a Tabs read. The model therefore requests hydration on
+                // every selection change; the loader's 120 ms settle plus
+                // cancel-previous behavior still debounces rapid movement.
+                inspectorRequested()
                 updateHighlightsKeyFocusArming()
                 tryFireHighlightsKeyFocus()
             }

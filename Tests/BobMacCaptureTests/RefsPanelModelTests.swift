@@ -3837,6 +3837,124 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.tabsListing?.currentID)
     }
 
+    func testHighlightsTabsShowHydratesSnapshotSelectedRowOnFirstShow()
+        async throws
+    {
+        let reader = FakeTabsReader(isTrusted: true)
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: temporaryRoot,
+            withIntermediateDirectories: true
+        )
+        let showFixture = temporaryRoot.appendingPathComponent("show.json")
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        let harness = try makeHarness(
+            environment: ["FAKE_BOB_REFS_SHOW_FIXTURE": showFixture.path],
+            tabsReader: reader
+        )
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references, got \(items.count)")
+            return
+        }
+        try Data(
+            showFixtureJSON(path: items[0].id, quote: "first show", count: 3).utf8
+        ).write(to: showFixture)
+        harness.model.panelIsVisible = { true }
+        reader.setNextResult(
+            .snapshot(
+                Self.tabsSnapshot(items, vault: harness.vault, frontmost: true)
+            )
+        )
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        XCTAssertNil(
+            harness.model.selectedID,
+            "first show has no stale Tabs selection before the read lands"
+        )
+        await harness.waitForModel(
+            { $0.tabsState == .loaded && $0.selectedID == items[0].id },
+            label: "tabs loaded with snapshot selection"
+        )
+        await harness.waitForModel(
+            {
+                $0.inspectorContent(for: items[0].id)?.highlights.first?.quote
+                    == "first show 0"
+            },
+            label: "snapshot-selected row hydrates"
+        )
+    }
+
+    func testHighlightsTabsShowHydratesTabSelectedAfterStalePreselection()
+        async throws
+    {
+        let reader = FakeTabsReader(isTrusted: true)
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: temporaryRoot,
+            withIntermediateDirectories: true
+        )
+        let showFixture = temporaryRoot.appendingPathComponent("show.json")
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+        let harness = try makeHarness(
+            environment: ["FAKE_BOB_REFS_SHOW_FIXTURE": showFixture.path],
+            tabsReader: reader
+        )
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references, got \(items.count)")
+            return
+        }
+        try Data(
+            showFixtureJSON(path: items[0].id, quote: "stale show", count: 3).utf8
+        ).write(to: showFixture)
+        harness.model.panelIsVisible = { true }
+        reader.setNextResult(
+            .snapshot(
+                Self.tabsSnapshot(items, vault: harness.vault, frontmost: true)
+            )
+        )
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel(
+            { $0.tabsState == .loaded && $0.selectedID == items[0].id },
+            label: "first tabs show loaded"
+        )
+        harness.model.panelDidHide()
+        reader.setReadDelay(200_000_000)
+        reader.setNextResult(
+            .snapshot(
+                Self.tabsSnapshot(
+                    [items[1], items[0]],
+                    vault: harness.vault,
+                    frontmost: true
+                )
+            )
+        )
+        try Data(
+            showFixtureJSON(path: items[1].id, quote: "fresh show", count: 3).utf8
+        ).write(to: showFixture)
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        XCTAssertEqual(
+            harness.model.selectedID,
+            items[0].id,
+            "second show synchronously keeps the stale selection"
+        )
+        await harness.waitForModel(
+            { $0.tabsState == .loaded && $0.selectedID == items[1].id },
+            label: "snapshot reselects the current tab"
+        )
+        await harness.waitForModel(
+            {
+                $0.inspectorContent(for: items[1].id)?.highlights.first?.quote
+                    == "fresh show 0"
+            },
+            label: "reselected row hydrates"
+        )
+    }
+
     func testHighlightsKeySelectsCurrentTabAfterGitBackfill() async throws {
         let reader = FakeTabsReader(isTrusted: true)
         let gate = BoundedGitGate()
