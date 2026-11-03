@@ -431,9 +431,24 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         // breaker fired; with only recovered rows the body is unchanged.
         if let successorLine = SuccessorRows.notificationLine(
             unblocked: summary.unblocked,
-            keepMoving: summary.keepMoving
+            keepMoving: summary.keepMoving,
+            relation: summary.relationSuccessors
         ) {
             bodyLines.append(successorLine)
+        }
+        if capture.pullIn?.choice != "none" {
+            bodyLines.append(
+                contentsOf: CaptureRelationHeldPresentation.heldNotices(
+                    for: summary.relationHeld
+                )
+            )
+            if let uncertaintyLine = CaptureRelationHeldPresentation.uncertaintyNotice(
+                check: summary.relationCheck,
+                held: summary.relationHeld,
+                relationRows: summary.relationSuccessors
+            ) {
+                bodyLines.append(uncertaintyLine)
+            }
         }
         if let droppedDependenciesChip {
             bodyLines.append(droppedDependenciesChip)

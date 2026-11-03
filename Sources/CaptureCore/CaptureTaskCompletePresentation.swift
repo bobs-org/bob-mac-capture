@@ -197,13 +197,28 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         // `· unblocked A, B` form.
         if let line = SuccessorRows.notificationLine(
             unblocked: summary.unblocked,
-            keepMoving: summary.keepMoving
+            keepMoving: summary.keepMoving,
+            relation: summary.relationSuccessors
         ) {
             body += "\n\(line)"
         } else {
             let unblockedNames = summary.unblocked.map(\.text).filter { !$0.isEmpty }
             if !unblockedNames.isEmpty {
                 body += " · unblocked \(unblockedNames.joined(separator: ", "))"
+            }
+        }
+        if capture.pullIn?.choice != "none" {
+            for heldLine in CaptureRelationHeldPresentation.heldNotices(
+                for: summary.relationHeld
+            ) {
+                body += "\n\(heldLine)"
+            }
+            if let uncertaintyLine = CaptureRelationHeldPresentation.uncertaintyNotice(
+                check: summary.relationCheck,
+                held: summary.relationHeld,
+                relationRows: summary.relationSuccessors
+            ) {
+                body += "\n\(uncertaintyLine)"
             }
         }
         if isAlreadyDone {

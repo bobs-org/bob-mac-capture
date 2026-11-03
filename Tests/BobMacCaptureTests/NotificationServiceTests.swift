@@ -1716,6 +1716,107 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.contains("Pulled in"))
     }
 
+    func testBatchSuccessNotificationReportsRelationOnlyPullIn() {
+        let relation = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            statusSymbol: " ",
+            statusName: "Ready",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [
+                    CaptureRelationTarget(
+                        notePath: "agents.md",
+                        blockID: "implement",
+                        text: "Send implementation prompt"
+                    ),
+                ]
+            )
+        )
+        let capture = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "agents.md",
+            relativeTarget: "agents.md",
+            target: "/tmp/agents.md",
+            text: "Send implementation prompt",
+            taskLine: "- [x] Send implementation prompt",
+            kind: "task_complete",
+            created: "2026-11-02",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(relationSuccessors: [relation])
+        )
+
+        let content = NotificationService.successContent(captures: [capture])
+
+        XCTAssertTrue(
+            content.body.contains("🪢 Pulled in 1 · starts after “Send implementation prompt”"),
+            content.body
+        )
+        XCTAssertFalse(content.body.contains("🔓 Pulled in"), content.body)
+    }
+
+    func testBatchSuccessNotificationCountsRelationWithDependencyPicks() {
+        let successor = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:key", n: 1, group: "hand_off", selected: true)
+        )
+        let relation = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 2,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let capture = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "travel.md",
+            relativeTarget: "travel.md",
+            target: "/tmp/travel.md",
+            text: "Complete trip prep",
+            taskLine: "- [ ] Complete trip prep",
+            kind: "task_complete",
+            created: "2026-10-13",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(
+                unblocked: [successor],
+                relationSuccessors: [relation]
+            )
+        )
+
+        let content = NotificationService.successContent(captures: [capture])
+
+        XCTAssertTrue(content.body.contains("Pulled in 2 successor offers"), content.body)
+    }
+
     func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {
         let success = try closeSuccessFixture("task-complete-successors.json")
         let content = NotificationService.successContent(captures: [success])

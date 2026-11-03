@@ -313,6 +313,101 @@ final class CaptureSuccessorPresentationTests: XCTestCase {
         )
     }
 
+    private func relationRow(
+        text: String = "Prepare evaluation prompt",
+        key: String = "agents.md#^evaluate",
+        selected: Bool = true,
+        label: String = "starts after",
+        target: String = "Send implementation prompt"
+    ) -> TaskCompleteUnblocked {
+        TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: text,
+            statusSymbol: " ",
+            statusName: "Ready",
+            offer: TaskCompleteOffer(
+                key: key,
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: selected
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: label,
+                key: label,
+                event: "parked",
+                after: [
+                    CaptureRelationTarget(
+                        notePath: "agents.md",
+                        blockID: "implement",
+                        text: target
+                    ),
+                ]
+            )
+        )
+    }
+
+    func testNotificationLineForRelationOnlyUsesJoinsLinkCopy() throws {
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [], relation: [relationRow()]),
+            "🪢 Pulled in 1 · starts after “Send implementation prompt”"
+        )
+    }
+
+    func testNotificationLineCountsRelationWithDependencyOffers() throws {
+        let successor = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:handoff", n: 1, group: "hand_off", selected: true)
+        )
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [successor], relation: [relationRow()]),
+            "🔓 Pulled in 2 successor offers"
+        )
+    }
+
+    func testNotificationLineDedupesDuplicateRelationKeysOnce() throws {
+        let unblockedDup = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(key: "dup", n: 1, group: "hand_off", selected: true),
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let relationDup = relationRow(key: "dup")
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [unblockedDup], relation: [relationDup]),
+            "🔓 Pulled in 1 successor offer"
+        )
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(
+                unblocked: [],
+                relation: [relationRow(key: "dup"), relationRow(key: "dup")]
+            ),
+            "🪢 Pulled in 1 · starts after “Send implementation prompt”"
+        )
+    }
+
+    func testNotificationLineFallsBackWhenRelationMetadataMissing() throws {
+        let bare = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(key: "k", n: 1, group: "relation", selected: true),
+            trigger: "relation"
+        )
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [], relation: [bare]),
+            "🔓 Pulled in 1 successor offer"
+        )
+    }
+
     func testTruncation() throws {
         let full = String(repeating: "a", count: 48)
         XCTAssertEqual(SuccessorRows.truncate(full), full)

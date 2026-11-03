@@ -185,10 +185,26 @@ public enum SuccessorRows {
     /// then keeps its existing `· unblocked A, B` body).
     public static func notificationLine(
         unblocked: [TaskCompleteUnblocked],
-        keepMoving: [TaskCompleteUnblocked] = []
+        keepMoving: [TaskCompleteUnblocked] = [],
+        relation: [TaskCompleteUnblocked] = []
     ) -> String? {
-        let selectedKeepMoving = keepMoving.filter { $0.offer?.selected == true }
-        let selectedSuccessorCount = unblocked.filter { $0.offer?.selected == true }.count
+        var seenSelectedKeys = Set<String>()
+        func dedupedSelected(_ rows: [TaskCompleteUnblocked]) -> [TaskCompleteUnblocked] {
+            var out: [TaskCompleteUnblocked] = []
+            for row in rows where row.offer?.selected == true {
+                if let key = row.offer?.key, !key.isEmpty {
+                    guard seenSelectedKeys.insert(key).inserted else {
+                        continue
+                    }
+                }
+                out.append(row)
+            }
+            return out
+        }
+        let selectedUnblocked = dedupedSelected(unblocked)
+        let selectedRelation = dedupedSelected(relation)
+        let selectedKeepMoving = dedupedSelected(keepMoving)
+        let selectedSuccessorCount = selectedUnblocked.count + selectedRelation.count
         let pulledInCount = selectedSuccessorCount + selectedKeepMoving.count
         if pulledInCount > 0 {
             if !selectedKeepMoving.isEmpty {
@@ -209,9 +225,17 @@ public enum SuccessorRows {
                 }
                 return "⏭ Pulled in \(pulledInCount) · keeps \(projectText) moving"
             }
+            if !selectedRelation.isEmpty, selectedUnblocked.isEmpty,
+               let relationLine = relationPulledInLine(
+                   count: selectedRelation.count,
+                   rows: selectedRelation
+               )
+            {
+                return relationLine
+            }
             return "🔓 Pulled in \(pulledInCount) successor offer\(pulledInCount == 1 ? "" : "s")"
         }
-        let linked: [LinkedRow] = unblocked.compactMap { item in
+        let linked: [LinkedRow] = (unblocked + relation).compactMap { item in
             guard let link = item.link else { return nil }
             return (item, link)
         }
@@ -233,6 +257,28 @@ public enum SuccessorRows {
             return "🔓 \(linked.count) linked → \(destination): \(joinedHeads(texts))"
         }
         return "🔓 \(linked.count) linked · \(distinct.joined(separator: ", "))"
+    }
+
+    /// Relation-only pulled-in line (`🪢 Pulled in n · label "T"`),
+    /// matching Bob's `mac_notification` copy. Nil when the rows carry
+    /// no usable label/target metadata, so callers fall back to the
+    /// existing dependency wording instead of leaking empty quotes.
+    public static func relationPulledInLine(
+        count: Int,
+        rows: [TaskCompleteUnblocked]
+    ) -> String? {
+        guard
+            let withRelation = rows.first(where: { $0.relation != nil }) ?? rows.first,
+            let relation = withRelation.relation,
+            !relation.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            let target = relation.after.compactMap({ target -> String? in
+                let text = target.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : text
+            }).first
+        else {
+            return nil
+        }
+        return "🪢 Pulled in \(count) · \(relation.label) “\(truncate(target))”"
     }
 
     /// The recovered-only fallback from the §12.6 notice-text table

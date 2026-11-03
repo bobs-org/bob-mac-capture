@@ -207,7 +207,17 @@ struct BlockDiffCard: View {
 
     @ViewBuilder
     private func rowContent(_ row: CaptureBlockDiffRow) -> some View {
-        if row.isKeepMoving {
+        if row.isRelationSuccessor {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                diffText(row)
+                Image(systemName: "link")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Relation successor")
+            }
+            .help("Offered by your relation link")
+            .textSelection(.enabled)
+        } else if row.isKeepMoving {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 diffText(row)
                 Image(systemName: "forward.end.fill")

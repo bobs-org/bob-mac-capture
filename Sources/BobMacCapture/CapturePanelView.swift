@@ -3620,27 +3620,14 @@ struct PreviewPane: View {
         if index == 0 {
             inboxRoutePreviewSummary
         }
-        if let complete = success.taskComplete {
-            pullInPreviewSummary(
-                for: complete.unblocked + complete.keepMoving,
-                pullIn: success.pullIn
-            )
-        }
-        if let close = success.pomodoroClose {
-            pullInPreviewSummary(
-                for: close.unblocked + close.keepMoving,
-                pullIn: success.pullIn
-            )
-        }
-        ForEach(
-            Array(success.relationCompletes.compactMap(\.taskComplete).enumerated()),
-            id: \.offset
-        ) { _, complete in
-            pullInPreviewSummary(
-                for: complete.unblocked + complete.keepMoving,
-                pullIn: success.pullIn
-            )
-        }
+        let previewOffers = success.allUnblockedRows + success.allKeepMovingRows
+            + success.allRelationSuccessors
+        pullInPreviewSummary(
+            for: previewOffers,
+            pullIn: success.pullIn,
+            held: success.allRelationHeld,
+            check: success.allRelationCheck
+        )
         if let project = CaptureProjectNoteSuccessorPresentation(capture: success) {
             projectNoteSuccessorsPreview(for: project)
         }
@@ -3743,72 +3730,132 @@ struct PreviewPane: View {
     private func pullInPreviewSummary(
         for items: [TaskCompleteUnblocked],
         pullIn: CapturePullIn? = nil,
+        held: [CaptureRelationHeld] = [],
+        check: String? = nil,
         showsInvitation: Bool = true
     ) -> some View {
-        let offers = items.filter { $0.offer?.key.isEmpty == false }
-        if !offers.isEmpty {
-            let rows = offers.map { item in
-                CapturePullInChoiceRow(
-                    offerRow: item,
-                    blockedRow: nil,
-                    group: item.offer?.group ?? "",
-                    project: item.offer?.project
+        if pullIn?.choice == "none" {
+            EmptyView()
+        } else {
+            let dedupedOffers: [TaskCompleteUnblocked] = {
+                var seen = Set<String>()
+                return items.filter { item in
+                    guard let key = item.offer?.key, !key.isEmpty else {
+                        return false
+                    }
+                    return seen.insert(key).inserted
+                }
+            }()
+            if !dedupedOffers.isEmpty {
+                let rows = dedupedOffers.map { item in
+                    CapturePullInChoiceRow(
+                        offerRow: item,
+                        blockedRow: nil,
+                        group: item.offer?.group ?? "",
+                        project: item.offer?.project
+                    )
+                }
+                let grouped = CapturePullInChoiceState(
+                    draftSnapshot: "",
+                    processClientIdentity: "",
+                    openAfterCapture: false,
+                    priorityRollSeed: "",
+                    generation: 0,
+                    requestID: nil,
+                    pullIn: pullIn ?? CapturePullIn(supported: true, offerCount: rows.count),
+                    planBudget: nil,
+                    rows: rows,
+                    highlightedKey: nil
                 )
-            }
-            let grouped = CapturePullInChoiceState(
-                draftSnapshot: "",
-                processClientIdentity: "",
-                openAfterCapture: false,
-                priorityRollSeed: "",
-                generation: 0,
-                requestID: nil,
-                pullIn: pullIn ?? CapturePullIn(supported: true, offerCount: offers.count),
-                planBudget: nil,
-                rows: rows,
-                highlightedKey: nil
-            )
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(grouped.sections) { section in
-                    Text(section.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(section.rows) { row in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("Offer \(row.offerNumber ?? 0)")
-                                .font(.system(.caption, design: .monospaced))
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(grouped.sections) { section in
+                        HStack(spacing: 6) {
+                            Image(systemName: section.glyph)
                                 .foregroundStyle(.secondary)
-                            Text(row.text)
-                                .font(.callout)
+                                .accessibilityHidden(true)
+                            Text(section.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                            Spacer(minLength: 4)
-                            if let destination = row.destinationText {
-                                Text(destination)
-                                    .font(.caption)
+                            if let tag = section.contrastTag {
+                                Text(tag)
+                                    .font(.caption2.weight(.medium))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            if row.needsBlockID {
-                                Text("needs ^id")
+                        }
+                        if let caption = section.caption {
+                            Text(caption)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if let fold = section.foldText {
+                            Text(fold)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        ForEach(section.rows) { row in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Offer \(row.offerNumber ?? 0)")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text(row.text)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                if let destination = row.destinationText {
+                                    Text(destination)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                if row.needsBlockID {
+                                    Text("needs ^id")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            if let detail = row.detailText {
+                                Text(detail)
                                     .font(.caption)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        if let detail = row.detailText {
-                            Text(detail)
+                    }
+                    if showsInvitation {
+                        Text("↩ choose what to pull in")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Press Return to choose what to pull in")
+                    }
+                }
+                .padding(.leading, 20)
+                .accessibilityElement(children: .combine)
+            } else {
+                let heldLines = CaptureRelationHeldPresentation.heldNotices(for: held)
+                let uncertaintyLine = CaptureRelationHeldPresentation.uncertaintyNotice(
+                    check: check,
+                    held: held
+                )
+                if !heldLines.isEmpty || uncertaintyLine != nil {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(heldLines.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let uncertaintyLine {
+                            Text(uncertaintyLine)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
-                }
-                if showsInvitation {
-                    Text("↩ choose what to pull in")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Press Return to choose what to pull in")
+                    .padding(.leading, 20)
+                    .accessibilityElement(children: .combine)
                 }
             }
-            .padding(.leading, 20)
-            .accessibilityElement(children: .combine)
         }
     }
 

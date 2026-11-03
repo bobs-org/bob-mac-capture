@@ -832,8 +832,34 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {
+        var unblockedSelectedTotal = 0
+        var relationSelectedTotal = 0
+        var relationSelectedRows: [TaskCompleteUnblocked] = []
+        for capture in captures {
+            var seenKeys = Set<String>()
+            for row in capture.allUnblockedRows where row.offer?.selected == true {
+                if let key = row.offer?.key, !key.isEmpty {
+                    guard seenKeys.insert(key).inserted else {
+                        continue
+                    }
+                }
+                unblockedSelectedTotal += 1
+            }
+            for row in capture.allRelationSuccessors where row.offer?.selected == true {
+                if let key = row.offer?.key, !key.isEmpty {
+                    guard seenKeys.insert(key).inserted else {
+                        continue
+                    }
+                    relationSelectedRows.append(row)
+                } else {
+                    relationSelectedRows.append(row)
+                }
+                relationSelectedTotal += 1
+            }
+        }
         let count = captures.reduce(into: 0) { total, capture in
-            let rows = capture.allUnblockedRows + capture.allKeepMovingRows
+            let rows = capture.allUnblockedRows + capture.allRelationSuccessors
+                + capture.allKeepMovingRows
             var selectedKeys = Set<String>()
             var unkeyedSelectedCount = 0
             for row in rows where row.offer?.selected == true {
@@ -877,6 +903,14 @@ final class NotificationService: NSObject, ObservableObject {
                 return "⏭ Pulled in \(successorOffers) · \(movingOffers)"
             }
             return "⏭ Pulled in \(count) · keeps \(projectText) moving"
+        }
+        if relationSelectedTotal > 0, unblockedSelectedTotal == 0,
+           let relationLine = SuccessorRows.relationPulledInLine(
+               count: relationSelectedTotal,
+               rows: relationSelectedRows
+           )
+        {
+            return relationLine
         }
         return "Pulled in \(count) successor offer\(count == 1 ? "" : "s")"
     }
