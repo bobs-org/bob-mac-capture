@@ -628,6 +628,12 @@ struct CapturePullInChoiceState: Equatable {
         return copy
     }
 
+    /// True when Bob supplied copy on the card or any group, so sections
+    /// render Bob's order and copy. Copy-less payloads keep the legacy order.
+    private var carriesBobCopy: Bool {
+        authoredCopy != nil || pullIn.groups.contains(where: { $0.copy != nil })
+    }
+
     /// "Unblocked by X" / "Unblocked by X and N more" / nil.
     /// Relation-only cards never derive an unblocking story. When Bob
     /// supplies group copy, sections already render it: the card line
@@ -639,9 +645,7 @@ struct CapturePullInChoiceState: Equatable {
         // sections already render it: never invent a legacy Unblocked/New
         // caption. An absent `why` means no caption. Absent-copy payloads
         // (older Bob without copy objects) keep the legacy strings.
-        let hasSuppliedCopy =
-            authoredCopy != nil || pullIn.groups.contains(where: { $0.copy != nil })
-        if hasSuppliedCopy {
+        if carriesBobCopy {
             if isOnlyKeepMoving {
                 guard let section = sections.first(where: \.isKeepMoving) else {
                     return nil
@@ -774,12 +778,14 @@ struct CapturePullInChoiceState: Equatable {
         func groupMatching(_ identity: PullInSectionIdentity) -> CapturePullInGroup? {
             pullIn.groups.first { PullInSectionIdentity(group: $0) == identity }
         }
-        // Bob's group array is authoritative: emit supplied groups in
-        // Bob order, then append any unmatched fallback groups
-        // deterministically. This preserves authored copy/order and keeps
-        // distinct relation labels at the same target distinct.
+        // When Bob supplies copy, his group array is authoritative: emit
+        // supplied groups in Bob order, then append any unmatched fallback
+        // groups deterministically. This preserves authored copy/order and
+        // keeps distinct relation labels at the same target distinct.
+        // Copy-less payloads keep the legacy order unless every row identity
+        // is listed, so keep-moving still ranks last for partial lists.
         let listedIdentities = pullIn.groups.map(PullInSectionIdentity.init(group:))
-        if !pullIn.groups.isEmpty {
+        if carriesBobCopy, !pullIn.groups.isEmpty {
             var ordered: [CapturePullInChoiceSection] = []
             var seen = Set<PullInSectionIdentity>()
             for identity in listedIdentities {
@@ -807,6 +813,21 @@ struct CapturePullInChoiceState: Equatable {
                 )
             }
             return ordered
+        }
+        if !carriesBobCopy,
+            !pullIn.groups.isEmpty,
+            Set(rowsByIdentity.keys).isSubset(of: Set(listedIdentities))
+        {
+            return listedIdentities.compactMap { identity in
+                guard let sectionRows = rowsByIdentity[identity], !sectionRows.isEmpty else {
+                    return nil
+                }
+                return makeSection(
+                    identity: identity,
+                    group: groupMatching(identity),
+                    sectionRows: sectionRows
+                )
+            }
         }
         return rowsByIdentity.keys.sorted(by: Self.legacySectionOrder).map { identity in
             makeSection(

@@ -35,6 +35,22 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         return textView
     }
 
+    private func makeHostedTextView(_ text: String) -> (NSTextView, NSWindow) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        let textView = makeTextView(text)
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        XCTAssertNotNil(textView.undoManager)
+        return (textView, window)
+    }
+
     private func wireNativeApply(_ model: CapturePanelModel, textView: NSTextView) {
         model.applyNativeRewriteEdit = { edit in
             CapturePanelController.applySeparatorToggleInEditableTextView(
@@ -375,7 +391,8 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(recordURL: recordURL)
-        let textView = makeTextView("Do work @file^id")
+        let (textView, window) = makeHostedTextView("Do work @file^id")
+        defer { window.close() }
         wireNativeApply(model, textView: textView)
 
         typeSeparator("+", into: textView, model: model)
@@ -485,7 +502,8 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(recordURL: recordURL)
-        let textView = makeTextView("Do work @file:id")
+        let (textView, window) = makeHostedTextView("Do work @file:id")
+        defer { window.close() }
         wireNativeApply(model, textView: textView)
 
         typeSeparator("+", into: textView, model: model)
@@ -708,7 +726,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Pick an active task — press Tab to browse")
     }
 
-    func testTypedPlusAsWholeItemOpensActiveTaskPickerThroughKeyIntent() async throws {
+    func testTypedPlusAsWholeItemOpensParentTaskPickerThroughKeyIntent() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient()
         let textView = makeTextView("")
@@ -717,7 +735,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         typeSeparator("+", into: textView, model: model)
         await waitUntil { model.pickerVisible }
 
-        XCTAssertEqual(model.statusText, "Pick an active task — press Tab to browse")
+        XCTAssertTrue(model.pickerSourceIsParentTask)
+        XCTAssertEqual(
+            model.picker?.source.operatorContinuationHint,
+            "Type a number or + to adjust; Esc to extend +5m"
+        )
     }
 
     func testCompletionWaitsForRewriteThenOpensPicker() async throws {

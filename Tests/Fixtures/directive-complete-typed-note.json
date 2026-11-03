@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"grammar":3,"cursor":11,"replacement":{"start":9,"end":11},"context":"directive","candidates":[{"token":"%n","name":"Pomodoro note","summary":"Add a note to a Pomodoro","detail":"→ 09:00–09:30 FIX · running","replacement":"%n","cursor_after":11}],"query":"n"}
+{"ok":true,"schema_version":1,"grammar":8,"cursor":11,"replacement":{"start":9,"end":11},"context":"directive","candidates":[{"token":"%n","name":"Pomodoro note","summary":"Add a note to a Pomodoro","detail":"→ 09:00–09:30 FIX · running","replacement":"%n","cursor_after":11}],"query":"n"}

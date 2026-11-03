@@ -315,18 +315,35 @@ final class CaptureClipPreviewHostedTests: XCTestCase {
                 "FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "2",
             ]
         )
+        let sequenceURL = recordURL.path + ".dry-run-count"
+        let lockPath = sequenceURL + ".lock"
+        func settledDryRuns() -> Int {
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: lockPath)) != nil {
+                return 0
+            }
+            let text = (try? String(contentsOfFile: sequenceURL, encoding: .utf8)) ?? ""
+            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        }
         var counter = 100
         model.clipboardChangeCounter = { counter }
         let draft = "jot idea %c3"
         model.plainDraft = draft
         model.prepareForPresentation()
-        await waitUntil {
-            self.recordContains(recordURL, "argv=capture --dry-run --format json -- \(draft)")
+        guard await waitUntil(condition: {
+            model.clipboardPollingForTests && settledDryRuns() >= 1
+        }) else {
+            return
         }
+        XCTAssertTrue(
+            self.recordContains(recordURL, "argv=capture --dry-run --format json -- \(draft)")
+        )
 
         counter = 101
         model.fireClipboardPollForTests()
-        await waitUntil { self.previewCallCount(recordURL) >= 2 }
+        guard await waitUntil(condition: { settledDryRuns() >= 2 }) else {
+            return
+        }
+
         counter = 102
         model.fireClipboardPollForTests()
         guard await waitUntil(condition: {

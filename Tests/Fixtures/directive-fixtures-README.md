@@ -7,9 +7,10 @@ BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-directive-fixtures.sh
 ```
 
-Generated with `bob 0.4.0` built from bob-cli revision `e660c8d8844df3542f701a4b83cd1fc6826bf5f3`
-(grammar revision 3, `schema_version` 1). The script refuses a binary that reports a
-lower grammar, a bob-cli checkout without `e660c8d8`, or a dirty checkout.
+Generated with `bob 0.4.0` built from bob-cli revision `b8688d9ef802f719d5ee46f02d3b87c1080fcaa2`
+(grammar revision 8, `schema_version` 1). The script refuses a binary that reports
+below the Mac gate (`CaptureGrammarGate.minimumRevision` 5), a bob-cli checkout without
+`e660c8d8`, or a dirty checkout.
 
 Inputs are fully isolated: a scratch vault (`dev.md` and `mac_inbox.md` areas plus a
 daily note with one running `FIX` Pomodoro at 09:00-09:30), an empty Bob config (and

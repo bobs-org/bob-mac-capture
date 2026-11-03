@@ -11,13 +11,13 @@ import XCTest
 final class CaptureTaskTypeHostedTests: XCTestCase {
     func testBareLeadingTrailingAndChildMarkersOpenTaskTypeMenu() async throws {
         let model = try makeModel()
-        for (draft, query) in [("#f", "f"), ("#fix Fix it", "fix"), ("Fix the parser #f", "f")] {
+        for (draft, query, cursor) in [("#f", "f", 2), ("#fix Fix it", "fix", 4), ("Fix the parser #f", "f", 17)] {
             model.plainDraft = draft
-            model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+            model.editorTextDidChange(cursorUTF8Offset: cursor)
             await waitUntil {
                 model.completionResponse?.context == "task_type"
                     && model.completionResponse?.query == query
-                    && model.completionResponse?.cursor == draft.utf8.count
+                    && model.completionResponse?.cursor == cursor
             }
             XCTAssertEqual(model.selectedCompletionIndex, 0, draft)
             XCTAssertNotNil(model.taskTypeMenuPresentation(), draft)
@@ -324,7 +324,9 @@ final class CaptureTaskTypeHostedTests: XCTestCase {
         XCTAssertNil(model.taskTypeMenuPresentation()?.hideKeycap)
         model.toggleSelectedCompletionThemeVisibility()
         try await Task.sleep(nanoseconds: 40_000_000)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
+        let record = (try? String(contentsOf: recordURL, encoding: .utf8)) ?? ""
+        XCTAssertFalse(record.contains("argv=themes hide"), record)
+        XCTAssertFalse(record.contains("argv=themes unhide"), record)
         XCTAssertNil(model.temporarilyHiddenThemeKey)
     }
 

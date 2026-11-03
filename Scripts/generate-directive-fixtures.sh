@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate truthful grammar-3 directive and clipboard fixtures from a real Bob.
+# Generate truthful directive and clipboard fixtures from a real Bob.
 #
 #   BOB_BIN=/path/to/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
 #     Scripts/generate-directive-fixtures.sh
@@ -7,7 +7,8 @@
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
 # checkout must contain the grammar-3 drawer work (commit e660c8d8) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies the
-# binary reports `grammar >= 3`, then persists, from one isolated vault, config, cache,
+# binary reports `grammar` at or above the Mac gate
+# (`CaptureGrammarGate.minimumRevision`), then persists, from one isolated vault, config, cache,
 # state, HOME, and pinned clock:
 #
 #   directive-parse-*.json      bob capture-parse
@@ -139,18 +140,35 @@ bob() {
     "$bob_bin" "$@"
 }
 
+gate_source="$repo_root/Sources/CaptureCore/CaptureGrammarGate.swift"
+mac_gate="$(sed -n 's/.*minimumRevision *= *\([0-9][0-9]*\).*/\1/p' "$gate_source" | head -n 1)"
+if ! printf '%s' "$mac_gate" | grep -Eq '^[0-9]+$'; then
+  echo "Cannot parse CaptureGrammarGate.minimumRevision from $gate_source." >&2
+  exit 1
+fi
+
 version_line="$("$bob_bin" --version | head -n 1)"
 probe="$scratch_root/probe.json"
 bob capture-parse --format json -- 'probe' > "$probe"
-python3 - "$probe" <<'PY'
+python3 - "$probe" "$mac_gate" <<'PY'
 import json
 import pathlib
 import sys
 
-grammar = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar")
-if not isinstance(grammar, int) or grammar < 3:
-    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 3")
+probe_path, gate_arg = sys.argv[1], sys.argv[2]
+gate = int(gate_arg)
+grammar = json.loads(pathlib.Path(probe_path).read_text()).get("grammar")
+if not isinstance(grammar, int) or grammar < gate:
+    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= {gate}")
 PY
+probe_grammar="$(python3 - "$probe" <<'PY'
+import json
+import pathlib
+import sys
+
+print(json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar"))
+PY
+)"
 
 manifest="$scratch_root/manifest.md"
 {
@@ -442,13 +460,14 @@ capture clip-error-history-unavailable.json 1 -- 'jot idea %c3'
 history_command="bash $clip_dir/history.sh"
 
 # --- verify the fixtures say what their names claim ---
-python3 - "$fixtures" "$stable_root" <<'PY'
+python3 - "$fixtures" "$stable_root" "$mac_gate" <<'PY'
 import json
 import pathlib
 import sys
 
 fixtures = pathlib.Path(sys.argv[1])
 stable_root = sys.argv[2]
+mac_gate = int(sys.argv[3])
 
 
 def load(name):
@@ -474,7 +493,7 @@ def disabled(name):
 for path in sorted(fixtures.glob("directive-*.json")) + sorted(fixtures.glob("clip-*.json")):
     reply = json.loads(path.read_text())
     if path.name.startswith(("directive-parse-", "directive-complete-")):
-        assert reply["ok"] is True and reply["grammar"] >= 3, path.name
+        assert reply["ok"] is True and reply["grammar"] >= mac_gate, path.name
 
 # Parse.
 assert load("directive-parse-bare-percent.json")["needs"] == ["directive"]
@@ -632,8 +651,9 @@ BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \\
 \`\`\`
 
 Generated with \`${version_line}\` built from bob-cli revision \`${cli_revision}\`
-(grammar revision 3, \`schema_version\` 1). The script refuses a binary that reports a
-lower grammar, a bob-cli checkout without \`${prerequisite_commit}\`, or a dirty checkout.
+(grammar revision ${probe_grammar}, \`schema_version\` 1). The script refuses a binary that reports
+below the Mac gate (\`CaptureGrammarGate.minimumRevision\` ${mac_gate}), a bob-cli checkout without
+\`${prerequisite_commit}\`, or a dirty checkout.
 
 Inputs are fully isolated: a scratch vault (\`dev.md\` and \`mac_inbox.md\` areas plus a
 daily note with one running \`FIX\` Pomodoro at 09:00-09:30), an empty Bob config (and

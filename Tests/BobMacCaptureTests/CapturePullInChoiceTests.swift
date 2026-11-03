@@ -452,7 +452,8 @@ final class CapturePullInChoiceTests: XCTestCase {
                 "agents.md#^evaluate",
             ])
         XCTAssertFalse(state.isOnlyRelation)
-        XCTAssertEqual(state.contextText, "Unblocked by Ship schema change")
+        // Bob supplies group copy, which suppresses the legacy caption.
+        XCTAssertNil(state.contextText)
     }
 
     func testDistinctAfterKeysAndDistinctLabelsStaySeparate() {

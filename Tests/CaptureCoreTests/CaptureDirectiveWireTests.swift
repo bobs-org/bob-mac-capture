@@ -3,7 +3,7 @@ import XCTest
 
 @testable import CaptureCore
 
-/// Decodes the captured grammar-3 wire, using fixtures that
+/// Decodes the captured directive wire, using fixtures that
 /// `Scripts/generate-directive-fixtures.sh` captures from a real Bob (see
 /// `Tests/Fixtures/directive-fixtures-README.md`).
 final class CaptureDirectiveWireTests: XCTestCase {
@@ -42,14 +42,32 @@ final class CaptureDirectiveWireTests: XCTestCase {
         XCTAssertNil(try grammar(#","grammar":"2""#))
     }
 
-    func testRealBobFixturesReportGrammarThree() throws {
-        let parse = try parseFixture("directive-parse-clip.json")
-        XCTAssertEqual(parse.grammar, 3)
-        XCTAssertEqual(parse.schemaVersion, 1)
-
-        let complete = try completionFixture("directive-complete-bare.json")
-        XCTAssertEqual(complete.grammar, 3)
-        XCTAssertEqual(complete.schemaVersion, 1)
+    func testRealBobDirectiveFixturesMeetGrammarGate() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let names = try FileManager.default.contentsOfDirectory(atPath: fixtures.path)
+        let parseNames = names.filter {
+            $0.hasPrefix("directive-parse-") && $0.hasSuffix(".json")
+        }.sorted()
+        let completeNames = names.filter {
+            $0.hasPrefix("directive-complete-") && $0.hasSuffix(".json")
+        }.sorted()
+        XCTAssertFalse(parseNames.isEmpty, "expected directive-parse fixtures")
+        XCTAssertFalse(completeNames.isEmpty, "expected directive-complete fixtures")
+        for name in parseNames {
+            let parse = try parseFixture(name)
+            XCTAssertEqual(parse.schemaVersion, 1, name)
+            let grammar = try XCTUnwrap(parse.grammar, name)
+            XCTAssertGreaterThanOrEqual(grammar, CaptureGrammarGate.minimumRevision, name)
+        }
+        for name in completeNames {
+            let complete = try completionFixture(name)
+            XCTAssertEqual(complete.schemaVersion, 1, name)
+            let grammar = try XCTUnwrap(complete.grammar, name)
+            XCTAssertGreaterThanOrEqual(grammar, CaptureGrammarGate.minimumRevision, name)
+        }
     }
 
     // MARK: - Parse: directive spans

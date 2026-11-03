@@ -79,8 +79,8 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   The block-ID `project_note` completion intent now comes from either separator
   followed by the seal, with no new intent value, because an older Mac would read
   an unknown intent as `link`.
-  Lists under a lone `@file` or `@file#section` header (grammar 6; the gate stays at
-  grammar 3) add the `list` object on `capture` results and `capture-parse` items,
+  Lists under a lone `@file` or `@file#section` header (grammar 6; the gate requires
+  grammar 5) add the `list` object on `capture` results and `capture-parse` items,
   the `list_item` need, and `block_id.owner_line` / `block_id.splice` on
   `project_task_block_id` completions. The app applies the splice and groups results
   by `list` ([Capture lists](capture-lists.md)); it never splits a draft or places an ID itself.

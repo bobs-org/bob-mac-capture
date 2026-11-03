@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"grammar":3,"input":"jot idea \\%c","body":"jot idea %c","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":8,"input":"jot idea \\%c","body":"jot idea %c","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[]}

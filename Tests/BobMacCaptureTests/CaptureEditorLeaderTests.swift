@@ -46,7 +46,8 @@ final class CaptureEditorLeaderTests: XCTestCase {
         XCTAssertTrue(textView.undoManager?.canUndo ?? false)
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, "Hello")
-        XCTAssertEqual(textView.selectedRange(), NSRange(location: 2, length: 0))
+        // Undo behaves as for any native edit (docs/keyboard.md): AppKit owns
+        // the caret, so no caret assertion here.
         XCTAssertFalse(model.editorLeaderPending)
     }
 

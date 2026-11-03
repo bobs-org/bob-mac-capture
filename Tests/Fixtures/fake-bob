@@ -275,7 +275,7 @@ case "${command}" in
       elif [[ "${draft}" == "jot idea %" ]]; then
         cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
       else
-        printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+        printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
         json_string "${draft}"
         printf ',"text":'
         json_string "${draft}"
@@ -403,7 +403,7 @@ case "${command}" in
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))
       end=$((start + 2))
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       printf ',"body":'
       json_string "${draft}"
@@ -413,7 +413,7 @@ case "${command}" in
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@",
   "body": "",
   "mode": "incomplete",
@@ -429,7 +429,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@fi",
   "body": "@fi",
   "mode": "task",
@@ -443,7 +443,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+",
   "body": "",
   "mode": "incomplete",
@@ -461,7 +461,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+goog-exit",
   "body": "",
   "mode": "task_toggle",
@@ -480,7 +480,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+goog-exit!",
   "body": "",
   "mode": "task_toggle",
@@ -500,7 +500,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+goog-exit#fix",
   "body": "",
   "mode": "task_toggle",
@@ -520,7 +520,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+goog-exit#build",
   "body": "",
   "mode": "task_toggle",
@@ -540,7 +540,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file+goog-exit#nope",
   "body": "",
   "mode": "task_toggle",
@@ -556,7 +556,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"ma","needs":[],
@@ -564,7 +564,7 @@ JSON
 "global_destination":{"range":{"start":0,"end":4},"route":"ma","needs":[]}}
 JSON
     elif [[ "${draft}" == "${global_task_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"foo","needs":[],
@@ -578,7 +578,7 @@ JSON
 "global_destination":{"range":{"start":0,"end":5},"route":"foo","needs":[]}}
 JSON
     elif [[ "${draft}" == "${global_mixed_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First task","mode":"task","route":"foo","needs":[],
@@ -596,7 +596,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "idea @ma",
   "body": "idea",
   "mode": "task",
@@ -613,7 +613,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "idea @mac_inbox",
   "body": "idea",
   "mode": "task",
@@ -632,7 +632,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "idea @mac_inboxx",
   "body": "idea",
   "mode": "task",
@@ -649,7 +649,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "idea @ma^new-id",
   "body": "idea",
   "mode": "task",
@@ -668,7 +668,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "idea @mac_inbox^new-id",
   "body": "idea",
   "mode": "task",
@@ -687,7 +687,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Call bank @Ca",
   "body": "Call bank",
   "mode": "task",
@@ -704,7 +704,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Call bank @Cash",
   "body": "Call bank",
   "mode": "task",
@@ -721,7 +721,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "${draft}",
   "body": "Call bank",
   "mode": "incomplete",
@@ -739,7 +739,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Add note @de",
   "body": "Add note",
   "mode": "task",
@@ -756,7 +756,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Add note @design+",
   "body": "Add note",
   "mode": "incomplete",
@@ -774,7 +774,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "note @",
   "body": "note",
   "mode": "task",
@@ -790,7 +790,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Add context @file+parent-id",
   "body": "Add context",
   "mode": "sub_bullet",
@@ -809,7 +809,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Follow up @file^new-id",
   "body": "Follow up",
   "mode": "task",
@@ -828,7 +828,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Do work @Dev^new-id",
   "body": "Do work",
   "mode": "task",
@@ -847,7 +847,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "note @Cash+goog",
   "body": "note",
   "mode": "sub_bullet",
@@ -862,7 +862,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "${multiline_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
       printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
@@ -875,7 +875,7 @@ JSON
         block_id="new-id"
         second_range_end=45
       fi
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       printf ',"body":"Plan café","mode":"task","route":"cash","needs":[],'
       printf '"spans":[{"start":33,"end":38,"kind":"sub_bullet_route"},{"start":39,"end":%s,"kind":"sub_bullet_block_id"}],' "${second_range_end}"
@@ -887,7 +887,7 @@ JSON
       printf '"body":"File follow-up","mode":"sub_bullet","route":"file","block_id":"%s","needs":[]}' "${block_id}"
       printf ']}\n'
     elif [[ "${draft}" == "${batch_draft}" ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"First item","mode":"task","route":"cash","needs":[],"spans":[],"diagnostics":[],
@@ -909,7 +909,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "jot idea #",
   "body": "jot idea",
   "mode": "incomplete",
@@ -931,7 +931,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "jot idea @foo#",
   "body": "jot idea",
   "mode": "bullet",
@@ -949,7 +949,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Write outline @sase:outline=3",
   "body": "Write outline",
   "mode": "pomodoro_task",
@@ -970,7 +970,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Do work @sase:outline#deep=-2",
   "body": "Do work",
   "mode": "pomodoro_task",
@@ -993,7 +993,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Do work @sase:outline=abc",
   "body": "Do work",
   "mode": "task",
@@ -1014,7 +1014,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "+5",
   "body": "+5",
   "mode": "pomodoro_adjust",
@@ -1034,7 +1034,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "-2",
   "body": "-2",
   "mode": "pomodoro_adjust",
@@ -1056,7 +1056,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "--",
   "body": "--",
   "mode": "pomodoro_shift",
@@ -1078,7 +1078,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "+0",
   "body": "+0",
   "mode": "pomodoro_adjust",
@@ -1104,7 +1104,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "+5\n\njot idea\n",
   "body": "+5",
   "mode": "pomodoro_adjust",
@@ -1151,7 +1151,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "^",
   "body": "",
   "mode": "incomplete",
@@ -1170,7 +1170,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "${draft}",
   "body": "",
   "mode": "incomplete",
@@ -1189,7 +1189,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "^zzz",
   "body": "",
   "mode": "incomplete",
@@ -1212,7 +1212,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "/dee",
   "body": "",
   "mode": "incomplete",
@@ -1251,7 +1251,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "+2",
   "body": "+2",
   "mode": "pomodoro_adjust",
@@ -1271,7 +1271,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "++",
   "body": "++",
   "mode": "pomodoro_shift",
@@ -1389,7 +1389,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "${esc_input}",
   "body": "",
   "mode": "task_complete",
@@ -1416,7 +1416,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": ":dee",
   "body": "",
   "mode": "incomplete",
@@ -1435,7 +1435,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "^sase:deep-fix",
   "body": "",
   "mode": "pomodoro_link",
@@ -1455,7 +1455,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "^sase:deep-fix extra words",
   "body": "^sase:deep-fix extra words",
   "mode": "pomodoro_link",
@@ -1482,7 +1482,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file:",
   "body": "",
   "mode": "incomplete",
@@ -1501,7 +1501,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@old:",
   "body": "",
   "mode": "incomplete",
@@ -1520,7 +1520,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file:rea",
   "body": "",
   "mode": "incomplete",
@@ -1539,7 +1539,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "@file:ready",
   "body": "",
   "mode": "pomodoro_link",
@@ -1558,7 +1558,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Follow up @file^",
   "body": "Follow up",
   "mode": "incomplete",
@@ -1577,7 +1577,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Follow up @file:",
   "body": "Follow up",
   "mode": "incomplete",
@@ -1592,7 +1592,7 @@ JSON
 }
 JSON
     elif [[ "${draft}" == $'Parent\n- child @file^' ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"child","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
@@ -1603,7 +1603,7 @@ JSON
 "diagnostics":[]}
 JSON
     elif [[ "${draft}" == $'First @cash\n\nSecond @file^' ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Second","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
@@ -1614,7 +1614,7 @@ JSON
 "diagnostics":[]}
 JSON
     elif [[ "${draft}" == $'Finish it @cash^goog-exit@\n- Draft the memo :' ]]; then
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Finish it","mode":"incomplete","route":"cash","block_id":"goog-exit","needs":["block_id"],
@@ -1630,7 +1630,7 @@ JSON
     elif [[ "${draft}" == "Do work @file^id@" ]]; then
       # Real bob output: typing the `@` seal right after a caret ID reports a
       # non-completion seal span and no needs, so no picker or route list opens.
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       cat <<'JSON'
 ,"body":"Do work","mode":"project_note","route":"file","block_id":"id","needs":[],
@@ -1651,7 +1651,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Follow up @file:new-id#",
   "body": "Follow up",
   "mode": "task",
@@ -1671,7 +1671,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "Follow up @file^new-id ",
   "body": "Follow up",
   "mode": "task",
@@ -1690,7 +1690,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "!sase:fix-flaky",
   "body": "",
   "mode": "task_complete",
@@ -1711,7 +1711,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "!sase:mv1",
   "body": "",
   "mode": "task_complete",
@@ -1732,7 +1732,7 @@ JSON
 {
   "ok": true,
   "schema_version": 1,
-  "grammar": 3,
+  "grammar": 5,
   "input": "!sase:big-task",
   "body": "",
   "mode": "task_complete",
@@ -1773,7 +1773,7 @@ JSON
       # the app requests completion and skips the doomed live dry-run, same
       # as `!` / `task_complete`.
       draft_bytes=$(printf '%s' "${draft}" | wc -c)
-      printf '{"ok":true,"schema_version":1,"grammar":3,"input":'
+      printf '{"ok":true,"schema_version":1,"grammar": 5,"input":'
       json_string "${draft}"
       printf ',"body":'
       json_string "${draft}"
@@ -2032,7 +2032,12 @@ JSON
         "jot idea #") task_type_fixture="task-type-complete-incomplete-marker.json" ;;
         "jot idea #f") task_type_fixture="task-type-complete-typed-trailing.json" ;;
         "#f") task_type_fixture="task-type-complete-leading.json" ;;
-        "#fix Fix it") task_type_fixture="task-type-complete-leading-full.json" ;;
+        "#fix Fix it")
+          if [[ "${cursor}" == "4" ]]; then
+            task_type_fixture="task-type-complete-leading-prefix.json"
+          else
+            task_type_fixture="task-type-complete-leading-full.json"
+          fi ;;
         "Fix the parser #f") task_type_fixture="task-type-complete-trailing-prefix.json" ;;
         "Fix it #fix") task_type_fixture="task-type-complete-prefix.json" ;;
         "Fix the parser @dev^parser #") task_type_fixture="task-type-complete-empty.json" ;;
@@ -4692,7 +4697,7 @@ JSON
   "previous_status_symbol": " ",
   "previous_status_name": "Ready",
   "pomodoro_name": "FIX",
-  "creates_pomodoro": true,
+  "creates_pomodoro": false,
   "pomodoro_already_linked": false,
   "removed_pomodoro_links": 0,
   "toggle_behavior": "ensure_next",

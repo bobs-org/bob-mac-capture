@@ -64,7 +64,11 @@ final class CapturePullInChoiceModelTests: XCTestCase {
             CaptureCommandSuccess.self,
             from: Data(fixture.utf8)
         )
-        let key = try XCTUnwrap(success.taskComplete?.keepMoving.first?.offer?.key)
+        let offers = try XCTUnwrap(success.taskComplete?.keepMoving)
+        XCTAssertEqual(offers.count, 3)
+        let keys = offers.sorted { ($0.offer?.n ?? 0) < ($1.offer?.n ?? 0) }
+            .compactMap { $0.offer?.key }
+        XCTAssertEqual(keys, ["sase_badges.md#^p", "sase_badges.md#^b", "sase_badges.md#^a"])
         let model = makeModel(record: record, stdout: fixture)
         model.plainDraft = "!sase_badges:t"
         model.preview()
@@ -76,8 +80,8 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         let choice = try XCTUnwrap(model.pullInChoice)
         XCTAssertTrue(choice.isOnlyKeepMoving)
         XCTAssertEqual(choice.promptStatusText, "Choose tasks to keep moving")
-        XCTAssertEqual(choice.selectableKeys, [key])
-        XCTAssertEqual(choice.effectiveSelectionKeys, [key])
+        XCTAssertEqual(choice.selectableKeys, keys)
+        XCTAssertEqual(choice.effectiveSelectionKeys, [keys.first].compactMap { $0 })
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
 
         model.confirmPullInChoice()
@@ -85,7 +89,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
 
         let calls = try recordText(record)
         XCTAssertEqual(captureCallCount(calls), 2)
-        XCTAssertTrue(calls.contains("--pull-in \(key)"), calls)
+        XCTAssertTrue(calls.contains("--pull-in \(keys[0])"), calls)
     }
 
     func testKeepMovingChoiceHasDistinctContextAndRanksLast() throws {
