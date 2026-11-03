@@ -31,6 +31,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case relationLabel
     case relationCancelLabel
     case relationCompleteLabel
+    case relationSuccessorLabel
     case taskType
     case taskTypeMarker
     case pomodoroStart
@@ -52,11 +53,11 @@ extension CaptureSemanticCategory {
         self == .link
     }
 
-    /// Relation labels render muted italic in the editor. Cancel and
-    /// complete labels keep the italic and take the ⊘/✓ tint instead of
-    /// the muted role.
+    /// Relation labels render italic in the editor. Cancel, complete, and
+    /// successor labels keep the italic and take their effect tint.
     public var isItalic: Bool {
-        self == .relationLabel || self == .relationCancelLabel || self == .relationCompleteLabel
+        self == .relationLabel || self == .relationCancelLabel
+            || self == .relationCompleteLabel || self == .relationSuccessorLabel
     }
 }
 
@@ -209,6 +210,8 @@ public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanti
         return .relationCompleteLabel
     case "relation_label" where span.cancelsSource:
         return .relationCancelLabel
+    case "relation_label" where span.offersSource:
+        return .relationSuccessorLabel
     case "task_block_id", "pomodoro_block_id", "project_note_separator":
         // Inside a sealed project-note marker the block ID is the new note's
         // name and the separator follows the form: the create form seals brown,
@@ -839,6 +842,9 @@ public func completionRowContent(
         } else if candidate.cancelsSource {
             category = .relationCancelLabel
             symbolName = "circle.slash"
+        } else if candidate.offersSource {
+            category = .relationSuccessorLabel
+            symbolName = "link"
         } else {
             category = .relationLabel
             symbolName = "textformat"
@@ -856,6 +862,8 @@ public func completionRowContent(
             labelBadges.append("completes")
         } else if candidate.cancelsSource {
             labelBadges.append("cancels")
+        } else if candidate.offersSource {
+            labelBadges.append("offers")
         }
         if candidate.typed {
             labelBadges.append("Typed")
@@ -867,6 +875,8 @@ public func completionRowContent(
             accessibilityHint = "Inserts this complete relation label."
         } else if candidate.cancelsSource {
             accessibilityHint = "Inserts this cancel relation label."
+        } else if candidate.offersSource {
+            accessibilityHint = "Inserts this successor-offer relation label."
         } else {
             accessibilityHint = "Inserts this relation label."
         }

@@ -1524,6 +1524,34 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.secondaryText, "4")
     }
 
+    func testRelationLabelSuccessorCandidateGetsOffersCapsule() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "|\"starts after\"",
+            label: "starts after",
+            offersSource: true
+        )
+        let content = completionRowContent(
+            for: candidate, context: "relation_label", query: "starts")
+
+        XCTAssertEqual(content.category, .relationSuccessorLabel)
+        XCTAssertEqual(content.symbolName, "link")
+        XCTAssertEqual(content.primaryText, "starts after")
+        XCTAssertEqual(content.badges, ["offers"])
+        XCTAssertEqual(content.accessibilityHint, "Inserts this successor-offer relation label.")
+    }
+
+    func testRelationSuccessorOfferSpanUsesItsOwnItalicTint() {
+        let span = CaptureSpan(
+            start: 0,
+            end: 12,
+            kind: "relation_label",
+            offersSource: true
+        )
+
+        XCTAssertEqual(captureSemanticCategory(forSpan: span), .relationSuccessorLabel)
+        XCTAssertTrue(CaptureSemanticCategory.relationSuccessorLabel.isItalic)
+    }
+
     func testRetiredNowTagContextFallsBackToNeutral() {
         let candidate = CaptureCompletionCandidate(
             replacement: "#now",

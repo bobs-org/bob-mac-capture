@@ -98,39 +98,11 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   version that shipped `obsidian://bob-goto-task`). Control-Return landing via
   `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,
   deployed to the vault with `bob plugins sync`.
-  Older builds can still capture ordinary drafts, but
-  global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
-  flow, the drawer menu, and the task-toggle footer/preview report the local Bob
-  error or an empty list until Bob is upgraded. An older Bob that returns scoped
-  `@route+` `task` completion without the additive `picker` descriptor keeps the
-  inline parent-task list; vault-wide `+` and `parent_replacement` need a Bob that
-  emits the phase-one contract. An older Bob that sees bare
-  `@route+block-id` as a missing-text sub-bullet reports `task text is required`, which
-  the panel surfaces unchanged. An older Bob that does not emit `creates_pomodoro` still
-  captures `@route:id#name` create-on-submit; the Mac app decodes a missing flag as false
-  and simply omits the explicit Create row. An older Bob that omits `pomodoro_start`
-  still previews and captures `@route:block-id` without a session; the Mac app
-  decodes a missing start object as no session and shows no timer row, while a
-  malformed `=<X>` suffix surfaces Bob's `invalid_pomodoro_start` diagnostic
-  unchanged. An older Bob that omits `pomodoro_adjust` still parses `+5` as an
-  ordinary task; the Mac app decodes a missing adjustment object as no
-  adjustment and shows no adjustment row, while an invalid magnitude surfaces
-  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. An older Bob that
-  omits `pomodoro_shift` still parses `++3` as an ordinary task; the Mac app
-  decodes a missing shift object as no shift and shows no shift row, while an
-  invalid magnitude surfaces Bob's `invalid_pomodoro_shift` diagnostic
-  unchanged. An older Bob that reports `=` as incomplete and `=3` as a task
-  shows no start card or Start footer for whole-item starts; the panel simply
-  previews that older behavior, so upgrade Bob before using `=`/`=<X>`. A start
-  summary whose `tasks` array is absent still previews: the card shows the
-  session with no queued rows. An older Bob that omits
-  `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
-  `x`. A close summary whose task, carried, notes, or next fields are absent
-  still previews: booleans read as false, arrays as empty, and missing lines as
-  zero, and unknown task roles degrade to a neutral row. A close summary whose
-  `in_progress`, `park`, `complete`, `drop`, `task_links`, or `index` fields are absent
-  still previews as today's unnumbered card: the spec decodes as no selection,
-  rows decode as unnumbered, and no hint, summary, or badge renders. Whole-item
+  Older Bob may reject or omit these capabilities; the compatibility table records
+  each fallback. Missing `pomodoro_start` or `pomodoro_close` omits its card; absent
+  summary arrays decode empty, booleans false, and unknown close-task roles neutral.
+  A close without selector fields stays an unnumbered legacy card. Upgrade Bob before
+  using syntax its binary does not support. Whole-item
   `x` (including the `x*` and `x!` selection forms) reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "x"}` parse spec (`raw` preserves the exact token, `x*` parks
   all numbered links and `x!` completes them); link items keep `pomodoro_link`/`pomodoro_task`
@@ -411,6 +383,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |
 | `task_complete.unblocked`, `pomodoro_close.unblocked`, `project_note.successors` | Grouped Pull-In choice card; project offers show a New project context and task preview rows | Single legacy wording | Upgrade `bob` for offers |
 | `task_complete.keep_moving`, `pomodoro_close.keep_moving` | ⏭ Keep-moving section with the last-planned caption, ready-task lanes, folded reasons, choice keys, and `forward.end.fill` block-diff badge; notifications name the project | Missing arrays decode empty; existing successor offers keep working | Upgrade `bob` for keep-moving offers |
+| `relation_successors`, `relation_held`, `relation_check` on capture items, task completion, Pomodoro close, and nested relation completions; row `relation` `{label,key,event,after}` and `offer.after` | Relation rows join Bob's ordered Pull-In groups, passive held/check notices, selected-offer counts, and relation-aware notification copy; held reasons use `waits_on`, `waits_for`, `scheduled`, and `project`; checks are `checked` or `unavailable` | Missing arrays decode empty; missing check state is silent; malformed optional metadata is dropped while the offer row remains | Upgrade `bob` for relation successors |
+| `pull_in.copy` `{title,capsule,glyph}`, group `copy` `{title,why,tag,fold,glyph}`, `after`, `label`, `event`, and `folded.already_started` / `waits_for` | Bob-authored chooser title, capsule, reason, tag, fold, glyph, relation target identity, and folded-reason line | Missing copy uses the legacy per-group Swift wording and ordering; missing optional group metadata or fold counts renders no added copy | Upgrade `bob` for Bob-authored Pull-In copy |
+| Block-diff `reason: relation`, task-block role `relation_successor` | A `link` badge with “Offered by your relation link” help, and relation-successor task styling | Unknown reasons and roles keep their existing neutral fallback | Upgrade `bob` for relation block cues |
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
 | `sub_bullet_depths`, route-only `global_destination`, `items` | Exact children; batch route declaration and per-item route overrides | Depth 1; per-item targets | Upgrade `bob` for global declarations |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
@@ -425,6 +400,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `relation_updates[]`, `linked_from_line_updates[]`, `minted_relation_block_ids[]`, `mirror_skipped[]` | 🪢 preview rows, managed-line suppression, separate notification counts | Legacy preview without relation rows; notifications omit relations | Upgrade `bob` for relation previews |
 | `cancels_source`, `configured`, `relation_cancel`, span `cancels_source`, `relation_cancels[]`, `cancel_effect`, `relation_cancelled_source` | ⊘ cancels capsule, dimmed source, verdict slot, cancelled span tint, ⊘ preview rows, `Capture & cancel N task(s)` | No cue; ordinary relation labels and preview rows | Upgrade `bob` for cancel labels |
 | `completes_source`, `relation_complete`, span `completes_source`, `relation_completes[]` (with nested `task_complete`), `complete_effect`, `relation_completed_source` | ✓ completes capsule, dimmed source, verdict slot, complete span tint, ✓ preview rows with `!` detail rows, `Capture & complete N task(s)` / `Capture & close N tasks`, in-panel successor choice | No cue; ordinary relation labels and preview rows, no successor offers | Upgrade `bob` for complete labels |
+| Candidate/span `offers_source`, `relation_successor` in `capture-complete` | `link` / **offers** capsule and successor-label tint; Bob's `message` is shown verbatim, released `already_parked` / `already_closed` messages are amber, and `hint` is muted | Missing flags mean false. A verdict is optional for inverse hints; the source never dims, and the app never derives a verdict from task status | Upgrade `bob` for successor-label authoring |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 

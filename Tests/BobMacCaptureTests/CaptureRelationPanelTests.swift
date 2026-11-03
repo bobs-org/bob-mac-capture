@@ -92,7 +92,8 @@ final class CaptureRelationPanelTests: XCTestCase {
             suggestions: completion.candidates,
             suggestionAuthoredLabel: completion.query ?? label,
             relationCancel: completion.relationCancel,
-            relationComplete: completion.relationComplete
+            relationComplete: completion.relationComplete,
+            relationSuccessor: completion.relationSuccessor
         )
         return (model, completion)
     }
@@ -344,6 +345,65 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertNil(model.relationLabelPrompt?.selectedKey)
     }
 
+    func testSuccessorConsequenceFollowsCatalogAndTypedCompletionRefreshes() {
+        let selected = CaptureCompletionCandidate(
+            replacement: "|\"starts after\"",
+            label: "starts after",
+            key: "starts after",
+            offersSource: true
+        )
+        let catalogMessage = "Bob catalog offer"
+        let catalogModel = CapturePanelModel()
+        catalogModel.installRelationLabelPromptForPreviews(suggestions: [selected])
+        catalogModel.selectRelationLabelSuggestion(key: "starts after")
+        XCTAssertTrue(
+            catalogModel.applyRelationLabelCatalog(
+                relationLabelResponse(
+                    query: "",
+                    candidates: [selected],
+                    relationSuccessor: CaptureCompletionRelationSuccessor(
+                        verdict: "offers",
+                        message: catalogMessage
+                    )
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target"
+            )
+        )
+        XCTAssertEqual(catalogModel.relationLabelCloseSlot?.text, catalogMessage)
+
+        let typedMessage = "Bob typed offer"
+        let typedModel = CapturePanelModel()
+        typedModel.installRelationLabelPromptForPreviews(
+            authoredLabel: "starts after",
+            suggestions: [],
+            suggestionAuthoredLabel: nil
+        )
+        XCTAssertTrue(
+            typedModel.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "starts after",
+                    candidates: [
+                        CaptureCompletionCandidate(
+                            replacement: "|\"starts after\"",
+                            label: "starts after",
+                            typed: true,
+                            offersSource: true
+                        )
+                    ],
+                    relationSuccessor: CaptureCompletionRelationSuccessor(
+                        verdict: "offers",
+                        message: typedMessage
+                    )
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "starts after"
+            )
+        )
+        XCTAssertEqual(typedModel.relationLabelCloseSlot?.text, typedMessage)
+    }
+
     func testRelationCardFakeBobCatalogDoesNotCollapseDuringNavigation() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("relation-card-\(UUID().uuidString).log")
@@ -475,7 +535,8 @@ final class CaptureRelationPanelTests: XCTestCase {
 
     private func relationLabelResponse(
         query: String,
-        candidates: [CaptureCompletionCandidate]
+        candidates: [CaptureCompletionCandidate],
+        relationSuccessor: CaptureCompletionRelationSuccessor? = nil
     ) -> CaptureCompletionResponse {
         CaptureCompletionResponse(
             ok: true,
@@ -483,7 +544,8 @@ final class CaptureRelationPanelTests: XCTestCase {
             replacement: CaptureRange(start: 22, end: 27),
             context: "relation_label",
             candidates: candidates,
-            query: query
+            query: query,
+            relationSuccessor: relationSuccessor
         )
     }
 
@@ -1690,6 +1752,109 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertFalse(model.relationLabelCompletesSource)
         XCTAssertEqual(model.relationLabelCompleteSlot?.style, .muted)
         XCTAssertEqual(model.relationLabelCompleteSlot?.text, "Already Done · link only")
+    }
+
+    func testRelationCardShowsBobAuthoredSuccessorOfferWithoutDimmingSource() throws {
+        let (model, completion) = try installRelationCompletionFixture(
+            "relation-successor-authoring-offers.json"
+        )
+        let candidate = try XCTUnwrap(completion.candidates.first(where: \.offersSource))
+
+        XCTAssertTrue(completion.owner?.isExistingTask == true)
+        XCTAssertEqual(candidate.label, "starts after")
+        XCTAssertEqual(model.relationLabelSourceEffect, .offers)
+        XCTAssertEqual(model.relationLabelCloseEffectCategory, .relationSuccessorLabel)
+        XCTAssertFalse(model.relationLabelCloseDimsSource)
+        XCTAssertEqual(
+            model.relationLabelCloseSlot,
+            RelationSourceSlot(
+                text: completion.relationSuccessor?.message ?? "",
+                style: .offers,
+                effect: .offers
+            )
+        )
+        XCTAssertTrue(model.relationLabelSentenceAccessibilityLabel.contains("Offers source"))
+    }
+
+    func testRelationCardShowsReleasedSuccessorCaveatsInAmber() throws {
+        for (fixture, verdict) in [
+            ("relation-successor-authoring-already-parked.json", "already_parked"),
+            ("relation-successor-authoring-already-closed.json", "already_closed"),
+        ] {
+            let (model, completion) = try installRelationCompletionFixture(fixture)
+            XCTAssertEqual(completion.relationSuccessor?.verdict, verdict)
+            XCTAssertEqual(
+                model.relationLabelCloseSlot?.text, completion.relationSuccessor?.message)
+            XCTAssertEqual(model.relationLabelCloseSlot?.style, .caveat)
+            XCTAssertFalse(model.relationLabelCloseDimsSource)
+        }
+    }
+
+    func testRelationCardShowsInverseSuccessorHintWithoutVerdict() throws {
+        let (model, completion) = try installRelationCompletionFixture(
+            "relation-successor-authoring-inverse-hint.json"
+        )
+
+        XCTAssertNil(completion.relationSuccessor?.verdict)
+        XCTAssertEqual(model.relationLabelSourceEffect, nil)
+        XCTAssertEqual(model.relationLabelCloseSlot?.text, completion.relationSuccessor?.hint)
+        XCTAssertEqual(model.relationLabelCloseSlot?.style, .muted)
+        XCTAssertFalse(model.relationLabelCloseDimsSource)
+    }
+
+    func testSelectedCatalogSuccessorUsesRelationEffectCapsule() {
+        let message =
+            "🪢 Offers “Prepare evaluation prompt” when “Send implementation prompt” is parked or done · never blocks"
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: "Prepare evaluation prompt",
+            targetText: "Send implementation prompt",
+            authoredLabel: "starts",
+            suggestions: [
+                CaptureCompletionCandidate(
+                    replacement: "|\"starts after\"",
+                    label: "starts after",
+                    key: "starts after",
+                    offersSource: true
+                )
+            ],
+            suggestionAuthoredLabel: "starts",
+            relationSuccessor: CaptureCompletionRelationSuccessor(
+                source: CaptureCompletionRelationSuccessorTask(text: "Prepare evaluation prompt"),
+                target: CaptureCompletionRelationSuccessorTask(text: "Send implementation prompt"),
+                verdict: "offers",
+                message: message
+            )
+        )
+        model.selectRelationLabelSuggestion(key: "starts after")
+
+        XCTAssertEqual(model.relationLabelSourceEffect, .offers)
+        XCTAssertEqual(model.relationLabelCloseSlot?.text, message)
+        XCTAssertFalse(model.relationLabelCloseDimsSource)
+    }
+
+    func testNewTaskSuccessorOfferDoesNotNeedAnExistingSourcePath() throws {
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(
+                #"{"ok":true,"schema_version":1,"cursor":0,"replacement":{"start":0,"end":0},"context":"relation_label","query":"starts after","owner":{"kind":"new_task","text":"Prepare evaluation prompt"},"candidates":[{"replacement":"|\"starts after\"","label":"starts after","typed":true,"offers_source":true}],"relation_successor":{"source":{"text":"Prepare evaluation prompt"},"target":{"path":"agents.md","block_id":"implement","text":"Send implementation prompt"},"verdict":"offers","message":"Bob's exact offer message"}}"#
+                    .utf8
+            )
+        )
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: response.owner?.text ?? "",
+            targetText: "Send implementation prompt",
+            authoredLabel: response.query ?? "",
+            suggestions: response.candidates,
+            suggestionAuthoredLabel: response.query,
+            relationSuccessor: response.relationSuccessor
+        )
+
+        XCTAssertTrue(response.owner?.isNewTask == true)
+        XCTAssertEqual(model.relationLabelSourceEffect, .offers)
+        XCTAssertEqual(model.relationLabelCloseSlot?.text, "Bob's exact offer message")
+        XCTAssertFalse(model.relationLabelCloseDimsSource)
     }
 
     func testRelationCardCompleteInverseHintIsMuted() {

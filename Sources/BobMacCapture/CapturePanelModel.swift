@@ -299,6 +299,9 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// completion. Nil on older Bob and when no complete labels are
     /// configured.
     var relationComplete: CaptureCompletionRelationComplete?
+    /// Latest Bob-authored successor-label consequence or inverse hint.
+    /// An inverse hint may have no verdict.
+    var relationSuccessor: CaptureCompletionRelationSuccessor?
 }
 
 /// Ctrl+R rename mode over one existing relation label. `oldKey` is the
@@ -8404,17 +8407,27 @@ final class CapturePanelModel: ObservableObject {
         relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
     }
 
+    var relationLabelSourceCandidate: CaptureCompletionCandidate? {
+        relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
+    }
+
+    var relationLabelSourceEffect: RelationSourceEffect? {
+        guard let candidate = relationLabelSourceCandidate else {
+            return nil
+        }
+        if candidate.completesSource {
+            return .complete
+        }
+        if candidate.cancelsSource {
+            return .cancel
+        }
+        return candidate.offersSource ? .offers : nil
+    }
+
     /// Palette role for the live-sentence label pill: the close-effect
     /// tint when the active row carries one, else the mint relation sigil.
     var relationLabelCloseEffectCategory: CaptureSemanticCategory {
-        let candidate = relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
-        if candidate?.completesSource == true {
-            return .relationCompleteLabel
-        }
-        if candidate?.cancelsSource == true {
-            return .relationCancelLabel
-        }
-        return .relationSigil
+        relationLabelSourceEffect?.semanticCategory ?? .relationSigil
     }
 
     /// The selected catalog row, else the fresh typed row, for complete
@@ -8459,20 +8472,59 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// The close-effect slot: the complete slot when it applies, else the
-    /// cancel slot.
-    var relationLabelCloseSlot: (text: String, isClosing: Bool, effect: RelationSourceEffect)? {
-        if let complete = relationLabelCompleteSlot {
-            return (
+    /// The relation-effect slot: Bob's successor consequence when selected,
+    /// followed by the existing complete/cancel cues and their inverse hints.
+    var relationLabelCloseSlot: RelationSourceSlot? {
+        let candidate = relationLabelSourceCandidate
+        if candidate?.offersSource == true,
+            let successor = relationLabelPrompt?.relationSuccessor
+        {
+            return CaptureRelationCloseEffect.slot(
+                effect: .offers,
+                appliesToSource: true,
+                verdict: successor.verdict,
+                message: successor.message,
+                hint: successor.hint
+            )
+        }
+        if candidate?.completesSource == true, let complete = relationLabelCompleteSlot {
+            return RelationSourceSlot(
                 text: complete.text,
-                isClosing: complete.style == .completes,
+                style: complete.style == .completes ? .complete : .muted,
+                effect: .complete
+            )
+        }
+        if candidate?.cancelsSource == true, let cancel = relationLabelCancelSlot {
+            return RelationSourceSlot(
+                text: cancel.text,
+                style: cancel.style == .cancels ? .cancel : .muted,
+                effect: .cancel
+            )
+        }
+        if let hint = relationLabelPrompt?.relationSuccessor?.hint,
+            !hint.isEmpty,
+            candidate?.completesSource != true,
+            candidate?.cancelsSource != true
+        {
+            return CaptureRelationCloseEffect.slot(
+                effect: nil,
+                appliesToSource: false,
+                verdict: nil,
+                message: nil,
+                hint: hint
+            )
+        }
+        if let complete = relationLabelCompleteSlot {
+            return RelationSourceSlot(
+                text: complete.text,
+                style: complete.style == .completes ? .complete : .muted,
                 effect: .complete
             )
         }
         if let cancel = relationLabelCancelSlot {
-            return (
+            return RelationSourceSlot(
                 text: cancel.text,
-                isClosing: cancel.style == .cancels,
+                style: cancel.style == .cancels ? .cancel : .muted,
                 effect: .cancel
             )
         }
@@ -8506,6 +8558,9 @@ final class CapturePanelModel: ObservableObject {
             )
         }
         let sentence = relationLabelSentence
+        if relationLabelSourceEffect == .offers {
+            return "Relation sentence: \(sentence). Offers source"
+        }
         if relationLabelCloseDimsSource, !source.isEmpty {
             return "Relation sentence: \(source). \(sentence)"
         }
@@ -8792,7 +8847,8 @@ final class CapturePanelModel: ObservableObject {
             isSaving: false,
             errorMessage: nil,
             relationCancel: nil,
-            relationComplete: nil
+            relationComplete: nil,
+            relationSuccessor: nil
         )
         statusText = "Link with a relation"
         requestFocus(.relationLabelPromptField)
@@ -8816,6 +8872,7 @@ final class CapturePanelModel: ObservableObject {
         // The catalog remains visible and is filtered locally. Only the typed
         // row is invalidated while Bob validates the new field text (bob-cli-al).
         prompt.suggestionAuthoredLabel = nil
+        prompt.relationSuccessor = nil
         prompt.pendingSubmit = false
         prompt.errorMessage = nil
         prompt.noticeMessage = nil
@@ -10194,6 +10251,7 @@ final class CapturePanelModel: ObservableObject {
         current.catalogErrorMessage = nil
         current.relationCancel = response.relationCancel
         current.relationComplete = response.relationComplete
+        current.relationSuccessor = response.relationSuccessor
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -10311,6 +10369,7 @@ final class CapturePanelModel: ObservableObject {
         current.suggestionAuthoredLabel = authoredLabel
         current.relationCancel = response.relationCancel
         current.relationComplete = response.relationComplete
+        current.relationSuccessor = response.relationSuccessor
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -10433,6 +10492,7 @@ final class CapturePanelModel: ObservableObject {
                 existing.suggestionAuthoredLabel = existing.authoredLabel
                 existing.relationCancel = completion.relationCancel
                 existing.relationComplete = completion.relationComplete
+                existing.relationSuccessor = completion.relationSuccessor
                 if let typed = completion.candidates.first(where: { $0.typed }),
                    let reason = typed.disabledReason, !reason.isEmpty
                 {
@@ -10487,6 +10547,7 @@ final class CapturePanelModel: ObservableObject {
             }
             opened.relationCancel = completion.relationCancel
             opened.relationComplete = completion.relationComplete
+            opened.relationSuccessor = completion.relationSuccessor
             relationLabelPrompt = opened
             if opened.hiddenCount > 0 {
                 fetchRelationLabelHiddenRows()
@@ -10510,7 +10571,8 @@ final class CapturePanelModel: ObservableObject {
         pendingSubmit: Bool = false,
         returnPicker: CapturePickerState? = nil,
         relationCancel: CaptureCompletionRelationCancel? = nil,
-        relationComplete: CaptureCompletionRelationComplete? = nil
+        relationComplete: CaptureCompletionRelationComplete? = nil,
+        relationSuccessor: CaptureCompletionRelationSuccessor? = nil
     ) {
         plainDraft = draft
         relationLabelPrompt = CaptureRelationLabelPromptState(
@@ -10543,7 +10605,8 @@ final class CapturePanelModel: ObservableObject {
             isSaving: false,
             errorMessage: nil,
             relationCancel: relationCancel,
-            relationComplete: relationComplete
+            relationComplete: relationComplete,
+            relationSuccessor: relationSuccessor
         )
         editorInputLocked = true
         fetchRelationLabelCatalog()

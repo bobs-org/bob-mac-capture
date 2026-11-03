@@ -119,6 +119,10 @@ enum CaptureEditorPalette {
             // `!` seal. A distinct role from the `!` sigil's category even
             // though both render green.
             return .green
+        case .relationSuccessorLabel:
+            // Successor labels remain neutral effects: the relation sigil's
+            // mint hue distinguishes them without implying a close.
+            return .mint
         case .taskType, .taskTypeMarker:
             return Color(nsColor: .tertiaryLabelColor)
         case .pomodoroStart:

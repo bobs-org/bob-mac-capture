@@ -2068,6 +2068,12 @@ private struct RelationLabelPromptCard: View {
                                     Image(systemName: "eye.slash")
                                         .font(.caption2.weight(.medium))
                                 }
+                                if model.relationLabelSourceEffect == .offers {
+                                    Image(systemName: "link")
+                                        .font(.caption2.weight(.medium))
+                                    Text("offers")
+                                        .font(.caption2.weight(.medium))
+                                }
                                 Text(label)
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
@@ -2082,7 +2088,12 @@ private struct RelationLabelPromptCard: View {
                             )
                             .accessibilityLabel(
                                 prompt.oneOff
-                                    ? "One-off relation \(label)" : "Relation \(label)"
+                                    ? (model.relationLabelSourceEffect == .offers
+                                        ? "One-off relation \(label), offers"
+                                        : "One-off relation \(label)")
+                                    : (model.relationLabelSourceEffect == .offers
+                                        ? "Relation \(label), offers"
+                                        : "Relation \(label)")
                             )
                         }
                         Image(systemName: "arrow.right")
@@ -2285,18 +2296,23 @@ private struct RelationLabelPromptCard: View {
                     }
 
                     if let slot = model.relationLabelCloseSlot {
+                        let color: Color
+                        switch slot.style {
+                        case .cancel:
+                            color = CaptureEditorPalette.color(for: .relationCancelLabel)
+                        case .complete:
+                            color = CaptureEditorPalette.color(for: .relationCompleteLabel)
+                        case .offers:
+                            color = CaptureEditorPalette.color(for: .relationSuccessorLabel)
+                        case .caveat:
+                            color = .orange
+                        case .muted:
+                            color = .secondary
+                        }
                         Text(slot.text)
                             .font(.caption)
                             .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(
-                                slot.isClosing
-                                    ? CaptureEditorPalette.color(
-                                        for: slot.effect == .complete
-                                            ? .relationCompleteLabel
-                                            : .relationCancelLabel
-                                    )
-                                    : Color.secondary
-                            )
+                            .foregroundStyle(color)
                             .accessibilityLabel(slot.text)
                     } else if let warning = model.relationLabelOneOffWarning {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -2386,8 +2402,11 @@ private struct RelationLabelPromptCard: View {
         let effectiveHidden = ghost ?? (hidden || candidate.hidden)
         let disabled = candidate.disabledReason?.isEmpty == false
         let closeEffect: RelationSourceEffect? =
-            candidate.completesSource ? .complete
-            : candidate.cancelsSource ? .cancel : nil
+            candidate.completesSource
+            ? .complete
+            : candidate.cancelsSource
+                ? .cancel
+                : candidate.offersSource ? .offers : nil
         return HStack(spacing: 8) {
             if effectiveHidden {
                 Image(systemName: "eye.slash")
@@ -2428,23 +2447,19 @@ private struct RelationLabelPromptCard: View {
                     Text(effect.capsuleText)
                         .font(.caption2.weight(.medium))
                 }
-                .foregroundStyle(
-                    CaptureEditorPalette.color(
-                        for: effect == .complete ? .relationCompleteLabel : .relationCancelLabel
-                    )
-                )
+                .foregroundStyle(CaptureEditorPalette.color(for: effect.semanticCategory))
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2)
                 .background(
-                    CaptureEditorPalette.color(
-                        for: effect == .complete ? .relationCompleteLabel : .relationCancelLabel
-                    ).opacity(0.12),
+                    CaptureEditorPalette.color(for: effect.semanticCategory).opacity(0.12),
                     in: Capsule()
                 )
                 .accessibilityHidden(true)
             }
             if disabled, let reason = candidate.disabledReason,
-               !candidate.cancelsSource, !candidate.completesSource {
+                !candidate.cancelsSource, !candidate.completesSource,
+                !candidate.offersSource
+            {
                 Text(reason)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -2493,6 +2508,8 @@ private struct RelationLabelPromptCard: View {
             parts.append("completes")
         } else if candidate.cancelsSource {
             parts.append("cancels")
+        } else if candidate.offersSource {
+            parts.append("offers")
         }
         if let reason = candidate.disabledReason, !reason.isEmpty {
             parts.append(reason)

@@ -10,6 +10,13 @@ public enum RelationSourceEffect: Equatable, Sendable {
     case cancel
     /// A complete label (`relations.complete_labels`): the source is done.
     case complete
+    /// A successor label (`relations.successor_labels`): the source is offered
+    /// when the target is parked or done. This never closes or dims the source.
+    case offers
+
+    public var isClosing: Bool {
+        self == .cancel || self == .complete
+    }
 
     /// SF Symbol for the row capsule (`circle.slash` / `checkmark.circle`).
     public var symbolName: String {
@@ -18,6 +25,8 @@ public enum RelationSourceEffect: Equatable, Sendable {
             return "circle.slash"
         case .complete:
             return "checkmark.circle"
+        case .offers:
+            return "link"
         }
     }
 
@@ -28,6 +37,8 @@ public enum RelationSourceEffect: Equatable, Sendable {
             return "cancels"
         case .complete:
             return "completes"
+        case .offers:
+            return "offers"
         }
     }
 
@@ -38,19 +49,56 @@ public enum RelationSourceEffect: Equatable, Sendable {
             return "Cancels"
         case .complete:
             return "Completes"
+        case .offers:
+            return "Offers"
         }
     }
 
     /// The `relation_cancel` / `relation_complete` verdict that dims the
     /// live-sentence source (`cancels` / `completes`). Every other verdict
     /// renders muted.
-    public var closingVerdict: String {
+    public var closingVerdict: String? {
         switch self {
         case .cancel:
             return "cancels"
         case .complete:
             return "completes"
+        case .offers:
+            return nil
         }
+    }
+
+    public var semanticCategory: CaptureSemanticCategory {
+        switch self {
+        case .cancel:
+            return .relationCancelLabel
+        case .complete:
+            return .relationCompleteLabel
+        case .offers:
+            return .relationSuccessorLabel
+        }
+    }
+}
+
+/// Color role for Bob-authored relation-effect copy. Offer messages remain
+/// neutral, released-source caveats are amber, and inverse hints are muted.
+public enum RelationSourceSlotStyle: Equatable, Sendable {
+    case cancel
+    case complete
+    case offers
+    case caveat
+    case muted
+}
+
+public struct RelationSourceSlot: Equatable, Sendable {
+    public let text: String
+    public let style: RelationSourceSlotStyle
+    public let effect: RelationSourceEffect?
+
+    public init(text: String, style: RelationSourceSlotStyle, effect: RelationSourceEffect?) {
+        self.text = text
+        self.style = style
+        self.effect = effect
     }
 }
 
@@ -68,44 +116,65 @@ public enum CaptureRelationCloseEffect {
         verdict: String?,
         effect: RelationSourceEffect
     ) -> Bool {
-        guard closesSource, let verdict else {
+        guard effect.isClosing, closesSource, let verdict,
+            let closingVerdict = effect.closingVerdict
+        else {
             return false
         }
-        return verdict == effect.closingVerdict
+        return verdict == closingVerdict
     }
 
-    /// Bob's `relation_cancel.message` / `relation_complete.message` when
-    /// the active label would close or is refused, else the muted inverse
-    /// `hint`. Returns the text plus whether it takes the closing tint
-    /// (green/⊘) rather than muted. Nil when neither applies.
+    /// Presents a Bob-authored cancel, complete, or successor consequence.
+    /// The effect and matching candidate flag gate consequence messages;
+    /// hints remain visible without a verdict, including inverse successor
+    /// hints. No verdict is inferred from endpoint status.
     public static func slot(
-        closesSource: Bool,
+        effect: RelationSourceEffect?,
+        appliesToSource: Bool,
         verdict: String?,
         message: String?,
         hint: String?
-    ) -> (text: String, isClosing: Bool)? {
-        guard let verdict else {
-            return nil
+    ) -> RelationSourceSlot? {
+        if effect == .offers, appliesToSource {
+            switch verdict {
+            case "offers":
+                return slot(text: message, style: .offers, effect: .offers)
+            case "already_parked", "already_closed":
+                return slot(text: message, style: .caveat, effect: .offers)
+            default:
+                return slot(text: hint, style: .muted, effect: .offers)
+            }
         }
-        if closesSource {
+
+        if let effect, effect.isClosing, appliesToSource {
             switch verdict {
             case "cancels", "completes":
-                guard let message, !message.isEmpty else {
+                guard verdict == effect.closingVerdict else {
                     return nil
                 }
-                return (message, true)
+                return slot(
+                    text: message,
+                    style: effect == .cancel ? .cancel : .complete,
+                    effect: effect
+                )
             case "already_closed", "recurring", "new_task":
-                guard let message, !message.isEmpty else {
-                    return nil
-                }
-                return (message, false)
+                return slot(text: message, style: .muted, effect: effect)
             default:
                 return nil
             }
         }
-        if let hint, !hint.isEmpty {
-            return (hint, false)
+
+        return slot(text: hint, style: .muted, effect: effect)
+    }
+
+    private static func slot(
+        text: String?,
+        style: RelationSourceSlotStyle,
+        effect: RelationSourceEffect?
+    ) -> RelationSourceSlot? {
+        guard let text, !text.isEmpty else {
+            return nil
         }
-        return nil
+        return RelationSourceSlot(text: text, style: style, effect: effect)
     }
 }

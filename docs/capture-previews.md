@@ -399,29 +399,31 @@ Queueing can be turned off per draft with `bob capture -R/--no-ref`. The queued 
 
 ## Successor offers
 
-When a current Bob preview reports successor offers for `!` completion, `x` close, or
-an `@route:id@` project capture, Return opens a grouped choice card before the capture
-is written. Project offers show a `New project` capsule with a `folder.badge.plus`
-glyph, the new project's `^prj` task in the context line, and a preview row for the
-offered tasks. Nothing is marked initially, including a single offer. Return is Pull In: it chooses marked offers or,
-when none are marked, the highlighted offer. Up/Down or Control-N/Control-P moves the
-highlight, including from the filter. Space marks or unmarks the highlighted offer
-whenever the filter is empty or unfocused, including immediately after the card opens.
-The filter takes spaces only once it holds text. Command-A marks every offer,
-Shift-Return is Skip: it commits with no offers, and Escape returns to the unchanged
-draft without writing. Control-Return confirms with Return's selection rule, captures,
-and opens Bob's reported notes. The card shows Bob's global offer numbers, destinations,
-project folds, blocked residents, and a projected plan-link count when Bob supplied
-the budget. It is a full-width card like the task picker, with a context line naming
-what unblocked the offers, destination capsules that turn green on the offers Return
-will pull in, a live Links projection when Bob supplied the budget, and footer hints
-with Skip and Pull In N buttons that also work by pointer, plus a lowest-priority
-`⌃↩ Pull In & Open` hint. When the card already carries an open intent (Control-Return
-from a picker, or Control-Return on the card itself), that hint is omitted and both
-buttons show a trailing `arrow.up.forward` glyph. The success notification
-reports what was pulled in. A project capture's picks are Task Links, so its
-notification counts each one once in "Linked N tasks into …" together with any
-authored ` :id` bullets and never adds a second "Pulled in" count.
+For `!` completion, `x` close, and project captures, current Bob can return
+successor offers. Return opens the grouped choice card before capture writes.
+Bob's group order and supplied copy control the headings and captions. Relation
+groups use Bob's title, reason, tag, fold, and glyph with a neutral `link`
+accent; they name the task they start after and never use dependency wording.
+Missing group copy keeps the legacy presentation. Project offers show the new
+project and its `^prj` task beside the offered rows.
+
+Nothing starts selected. Return chooses marked offers, or the highlighted offer
+when none are marked. Space toggles the highlight, Command-A marks all, and the
+filter supports keyboard navigation. Shift-Return skips all offers and commits;
+Escape returns to the unchanged draft. Control-Return confirms the same choice
+and opens Bob's reported notes. The card shows Bob's global numbers,
+destinations, folds, blocked residents, and projected plan-link budget.
+
+When no chooser opens, muted held-relation lines explain rows that are already
+started, wait for another task, are dependency/schedule or project blocked, or
+are hidden. `already_planned` rows stay silent. An unavailable check says
+“Couldn't check … · nothing offered”, naming one distinct label or the generic
+“relation links”. Relation-only picks notify as `🪢 Pulled in n · label “T”`;
+mixed dependency picks retain their existing copy and count relation picks once.
+Relation block-diff lines carry a `link` badge with “Offered by your relation
+link” help; dependency successors retain the unlock badge. Project picks are
+Task Links counted once as “Linked N tasks into …”, never again as pulled-in
+successors.
 
 ## Inbox routing
 
@@ -493,6 +495,10 @@ the latest dry run has completes, the submit button reads
 `Capture & complete 1 task`; a mixed cancel-and-complete dry run reads
 `Capture & close N tasks`. A complete-label commit with offers opens the
 in-panel successor choice exactly as `!` does.
+`offers_source` candidates and spans show a neutral `link` / **offers** cue;
+the relation source stays undimmed. The card renders Bob's message unchanged,
+released-source caveats amber, and inverse hints muted even without a verdict.
+Swift never derives the outcome.
 Success notifications count relations separately:
 a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
 `🪢 "source" now links here`, and larger or mixed batches read

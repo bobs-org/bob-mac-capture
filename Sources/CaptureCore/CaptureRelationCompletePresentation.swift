@@ -54,7 +54,8 @@ public enum CaptureRelationCompletePresentation {
             return nil
         }
         let slot = CaptureRelationCloseEffect.slot(
-            closesSource: candidate?.completesSource == true,
+            effect: .complete,
+            appliesToSource: candidate?.completesSource == true,
             verdict: complete.verdict,
             message: complete.message,
             hint: complete.hint
@@ -64,7 +65,7 @@ public enum CaptureRelationCompletePresentation {
         }
         return CaptureRelationCompleteSlot(
             text: slot.text,
-            style: slot.isClosing ? .completes : .muted
+            style: slot.style == .complete ? .completes : .muted
         )
     }
 

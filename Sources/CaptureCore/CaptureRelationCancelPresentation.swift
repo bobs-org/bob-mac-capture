@@ -70,22 +70,21 @@ public enum CaptureRelationCancelPresentation {
         guard let cancel else {
             return nil
         }
-        if let candidate, candidate.cancelsSource {
-            switch cancel.verdict {
-            case "cancels":
-                return CaptureRelationCancelSlot(text: cancel.message, style: .cancels)
-            case "already_closed":
-                return CaptureRelationCancelSlot(text: cancel.message, style: .muted)
-            case "recurring", "new_task":
-                return CaptureRelationCancelSlot(text: cancel.message, style: .muted)
-            default:
-                return nil
-            }
+        guard
+            let slot = CaptureRelationCloseEffect.slot(
+                effect: .cancel,
+                appliesToSource: candidate?.cancelsSource == true,
+                verdict: cancel.verdict,
+                message: cancel.message,
+                hint: cancel.hint
+            )
+        else {
+            return nil
         }
-        if let hint = cancel.hint, !hint.isEmpty {
-            return CaptureRelationCancelSlot(text: hint, style: .muted)
-        }
-        return nil
+        return CaptureRelationCancelSlot(
+            text: slot.text,
+            style: slot.style == .cancel ? .cancels : .muted
+        )
     }
 
     /// VoiceOver for a dimmed source: "Cancels Sell stocks!".
