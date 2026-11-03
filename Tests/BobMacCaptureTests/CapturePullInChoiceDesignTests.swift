@@ -71,7 +71,10 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
 
         for (name, width) in [
             ("capture-pull-in-choice-wide", CGFloat(760)),
-            ("capture-pull-in-choice-minimum", CGFloat(CapturePanelLayout.panelMinimumContentWidth)),
+            (
+                "capture-pull-in-choice-minimum",
+                CGFloat(CapturePanelLayout.panelMinimumContentWidth)
+            ),
         ] {
             try RenderFixtureWriter.write(view, name: name, width: width, appearance: .aqua)
             try RenderFixtureWriter.write(view, name: name, width: width, appearance: .darkAqua)
@@ -82,7 +85,8 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         try writeCardFixtures(name: "capture-pull-in-choice-open") { model in
             model.installPullInChoiceForPreviews(
                 offers: [
-                    cardOffer(n: 1, text: "Re-launch all failed agents", cause: "Fix apollo machine"),
+                    cardOffer(
+                        n: 1, text: "Re-launch all failed agents", cause: "Fix apollo machine"),
                     cardOffer(n: 2, text: "Book flights", cause: "Fix apollo machine"),
                     cardOffer(n: 3, text: "Ship the outcome", cause: "Fix apollo machine"),
                 ],
@@ -157,7 +161,8 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
                         CapturePullInGroup(
                             group: "project",
                             project: projectPath,
-                            folded: CapturePullInFolded(hidden: 5, alreadyPlanned: 3, subProjects: 2)
+                            folded: CapturePullInFolded(
+                                hidden: 5, alreadyPlanned: 3, subProjects: 2)
                         )
                     ]
                 ),
@@ -191,6 +196,87 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
                     ]
                 ),
                 draft: "!sase_badges:t"
+            )
+        }
+    }
+
+    func testRenderRelationCard() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-relation") { model in
+            model.installPullInChoiceForPreviews(
+                offers: [
+                    TaskCompleteUnblocked(
+                        notePath: "agents.md",
+                        blockID: "evaluate",
+                        line: 1,
+                        text: "Prepare evaluation prompt",
+                        previousStatusSymbol: " ",
+                        previousStatusName: "Ready",
+                        statusSymbol: " ",
+                        statusName: "Ready",
+                        unblockedBy: [
+                            TaskCompleteUnblockedCause(
+                                notePath: "agents.md",
+                                blockID: "implement",
+                                text: "Send implementation prompt"
+                            )
+                        ],
+                        notLinked: "not_selected",
+                        offer: TaskCompleteOffer(
+                            key: "agents.md#^evaluate",
+                            n: 1,
+                            group: "relation",
+                            after: "agents.md#^implement",
+                            destination: TaskCompleteOfferDestination(
+                                dayFile: "20261102.md",
+                                entryName: "BUILD",
+                                entryRole: "created"
+                            )
+                        ),
+                        trigger: "relation",
+                        relation: CaptureRelationMetadata(
+                            label: "starts after",
+                            key: "starts after",
+                            event: "parked",
+                            after: [
+                                CaptureRelationTarget(
+                                    notePath: "agents.md",
+                                    blockID: "implement",
+                                    text: "Send implementation prompt"
+                                )
+                            ]
+                        )
+                    )
+                ],
+                pullIn: CapturePullIn(
+                    supported: true,
+                    offerCount: 1,
+                    groups: [
+                        CapturePullInGroup(
+                            group: "relation",
+                            after: CapturePullInAfter(
+                                key: "agents.md#^implement",
+                                notePath: "agents.md",
+                                blockID: "implement",
+                                text: "Send implementation prompt"
+                            ),
+                            label: "starts after",
+                            event: "parked",
+                            copy: CapturePullInGroupCopy(
+                                title: "Starts after “Send implementation prompt”",
+                                why:
+                                    "“Send implementation prompt” is parked · Pending, off today's plan",
+                                tag: "your links · not dependents",
+                                glyph: "relation"
+                            )
+                        )
+                    ],
+                    copy: CapturePullInCopy(
+                        title: "Starts after “Send implementation prompt”",
+                        capsule: "Starts after",
+                        glyph: "relation"
+                    )
+                ),
+                draft: "x*"
             )
         }
     }

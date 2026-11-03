@@ -12298,6 +12298,7 @@ final class CapturePanelModel: ObservableObject {
                 stillBlocked.append(contentsOf: complete.stillBlocked)
             }
         }
+        offers.append(contentsOf: success.allRelationSuccessors)
         return CapturePullInPreviewSnapshot(
             draft: draft,
             clientIdentity: processClientIdentity,

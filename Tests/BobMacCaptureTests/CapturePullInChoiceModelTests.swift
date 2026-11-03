@@ -127,7 +127,9 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         let row = try XCTUnwrap(section.rows.first)
         XCTAssertEqual(section.group, "keep_moving")
         XCTAssertEqual(section.title, "Keep sase_badges moving")
-        XCTAssertEqual(section.caption, "✓ Wire badges into the README was the last sase_badges task planned today")
+        XCTAssertEqual(
+            section.caption,
+            "✓ Wire badges into the README was the last sase_badges task planned today")
         XCTAssertEqual(section.contrastTag, "ready in sase_badges · not dependents")
         XCTAssertEqual(section.folded?.blocked, 2)
         XCTAssertEqual(section.folded?.scheduled, 1)
@@ -139,20 +141,25 @@ final class CapturePullInChoiceModelTests: XCTestCase {
 
         let onlyMoving = CapturePanelModel()
         onlyMoving.installPullInChoiceForPreviews(
-            offers: [cardOffer(
-                n: 1,
-                text: "Keep the renderer moving",
-                group: "keep_moving",
-                project: "projects/sase_badges.md",
-                cause: "Wire badges into the README",
-                trigger: "last_planned"
-            )],
+            offers: [
+                cardOffer(
+                    n: 1,
+                    text: "Keep the renderer moving",
+                    group: "keep_moving",
+                    project: "projects/sase_badges.md",
+                    cause: "Wire badges into the README",
+                    trigger: "last_planned"
+                )
+            ],
             pullIn: CapturePullIn(supported: true, offerCount: 1),
             draft: "complete task"
         )
         let movingChoice = try XCTUnwrap(onlyMoving.pullInChoice)
         XCTAssertTrue(movingChoice.isOnlyKeepMoving)
-        XCTAssertEqual(movingChoice.contextText, "Wire badges into the README was the last sase_badges task planned today · ready tasks, not dependents")
+        XCTAssertEqual(
+            movingChoice.contextText,
+            "Wire badges into the README was the last sase_badges task planned today · ready tasks, not dependents"
+        )
     }
 
     func testProjectNoteOfferSkipSubmitsExplicitNoneWithoutPickedLinks() async throws {
@@ -282,7 +289,9 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(calls), 2)
         XCTAssertTrue(calls.contains("argv=capture --format json --dry-run -- complete task"))
         XCTAssertTrue(
-            calls.contains("argv=capture --format json --pull-in opaque:two#^suffix --refuse-override -- complete task"))
+            calls.contains(
+                "argv=capture --format json --pull-in opaque:two#^suffix --refuse-override -- complete task"
+            ))
         XCTAssertFalse(calls.contains("--require-pull-in-choice"))
         let captureBlocks = calls.components(separatedBy: "argv=")
             .dropFirst()
@@ -327,7 +336,8 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         try await waitUntil { !model.isSubmitting }
         XCTAssertEqual(opened, 0)
         XCTAssertTrue(
-            try recordText(record).contains("argv=capture --format json --pull-in none --refuse-override -- complete task"))
+            try recordText(record).contains(
+                "argv=capture --format json --pull-in none --refuse-override -- complete task"))
     }
 
     func testShiftReturnSubmitsExplicitNone() async throws {
@@ -344,7 +354,8 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertTrue(controller.perform(.chooseNoPullInOffers))
         try await waitUntil { !model.isSubmitting }
         XCTAssertTrue(
-            try recordText(record).contains("argv=capture --format json --pull-in none --refuse-override -- complete task"))
+            try recordText(record).contains(
+                "argv=capture --format json --pull-in none --refuse-override -- complete task"))
         XCTAssertEqual(model.plainDraft, "")
     }
 
@@ -381,8 +392,120 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         let calls = try recordText(record)
         XCTAssertEqual(captureCallCount(calls), 2)
         XCTAssertTrue(
-            calls.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- complete task")
+            calls.contains(
+                "argv=capture --format json --require-pull-in-choice --refuse-override -- complete task"
+            )
         )
+    }
+
+    func testRealRelationFixtureOpensChoiceAndSubmitsItsOpaqueKey() async throws {
+        let record = temporaryRecordURL()
+        let fixture = try fixtureText("relation-successor-parked-x-star.json")
+        let success = try JSONDecoder().decode(CaptureCommandSuccess.self, from: Data(fixture.utf8))
+        let key = try XCTUnwrap(success.allRelationSuccessors.first?.offer?.key)
+        let model = makeModel(record: record, stdout: fixture)
+        model.plainDraft = "x*"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.isOnlyRelation)
+        XCTAssertEqual(choice.authoredCopy?.capsule, "Starts after")
+        XCTAssertEqual(choice.sections.first?.glyph, "link")
+        XCTAssertEqual(choice.selectableKeys, [key])
+        XCTAssertEqual(choice.effectiveSelectionKeys, [key])
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let calls = try recordText(record)
+        XCTAssertEqual(captureCallCount(calls), 2)
+        XCTAssertTrue(calls.contains("--pull-in \(key)"), calls)
+        XCTAssertFalse(calls.contains("--pull-in none"))
+    }
+
+    func testRelationToggleAndNestedFixturesOpenTheChooser() async throws {
+        for name in [
+            "relation-successor-pending-toggle-unlink.json",
+            "relation-successor-nested-complete-label.json",
+            "relation-successor-done-bang.json",
+        ] {
+            let record = temporaryRecordURL()
+            let fixture = try fixtureText(name)
+            let success = try JSONDecoder().decode(
+                CaptureCommandSuccess.self,
+                from: Data(fixture.utf8)
+            )
+            let key = try XCTUnwrap(success.allRelationSuccessors.first?.offer?.key)
+            let model = makeModel(record: record, stdout: fixture)
+            model.plainDraft = "relation successor"
+            model.preview()
+            try await waitUntil { !model.isPreviewing }
+            model.installCompatibleCaptureGrammarForTests()
+            model.submit(openAfterCapture: false)
+            let choice = try XCTUnwrap(model.pullInChoice, "chooser did not open for \(name)")
+            XCTAssertEqual(choice.selectableKeys, [key], name)
+            XCTAssertEqual(choice.sections.first?.group, "relation", name)
+        }
+    }
+
+    func testRelationRequiredChoiceRefusalOpensChooserWithOpaqueKey() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_STDOUT": capabilityPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": try fixtureText(
+                        "relation-successor-required-choice-refusal.json"
+                    ),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "1",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "x*"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        XCTAssertFalse(model.pullInChoiceVisible)
+
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        try await waitUntil { model.pullInChoiceVisible }
+
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.plainDraft, "x*")
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertEqual(choice.selectableKeys, ["agents.md#^evaluate"])
+        XCTAssertEqual(choice.sections.first?.title, "Starts after “Send implementation prompt”")
+        XCTAssertEqual(choice.authoredCopy?.capsule, "Starts after")
+    }
+
+    func testRelationSkipSubmitsExplicitNone() async throws {
+        let record = temporaryRecordURL()
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("relation-successor-parked-x-star.json")
+        )
+        model.plainDraft = "x*"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.chooseNoPullInOffers()
+        try await waitUntil { !model.isSubmitting }
+        let calls = try recordText(record)
+        XCTAssertTrue(calls.contains("--pull-in none"), calls)
+        XCTAssertFalse(calls.contains("--pull-in agents.md#^evaluate"))
     }
 
     func testDraftChangeInvalidatesChoiceAndPicks() {

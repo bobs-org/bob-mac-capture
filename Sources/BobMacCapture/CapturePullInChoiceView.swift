@@ -22,7 +22,7 @@ extension CapturePanelLayout {
 /// never resizes the panel, matching the picker's contract.
 struct CapturePullInChoiceHeightPolicy: Equatable {
     var sectionCount: Int
-    var keepMovingSectionCount: Int
+    var captionSectionCount: Int
     var foldRowCount: Int
     var rowCount: Int
     var hasContextLine: Bool
@@ -33,11 +33,11 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         foldRowCount: Int,
         rowCount: Int,
         hasContextLine: Bool,
-        keepMovingSectionCount: Int = 0,
+        captionSectionCount: Int = 0,
         displayScale: CGFloat = 1
     ) {
         self.sectionCount = sectionCount
-        self.keepMovingSectionCount = keepMovingSectionCount
+        self.captionSectionCount = captionSectionCount
         self.foldRowCount = foldRowCount
         self.rowCount = rowCount
         self.hasContextLine = hasContextLine
@@ -46,20 +46,14 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
 
     init(choice: CapturePullInChoiceState, displayScale: CGFloat = 1) {
         let sections = choice.sections
-        let folds = sections.filter { section in
-            guard let folded = section.folded else {
-                return false
-            }
-            return folded.blocked > 0 || folded.scheduled > 0 || folded.hidden > 0
-                || folded.alreadyPlanned > 0 || folded.subProjects > 0
-        }.count
+        let folds = sections.filter { $0.foldText != nil }.count
         let hasContext = choice.contextText != nil || choice.planBudget != nil
         self.init(
             sectionCount: sections.count,
             foldRowCount: folds,
             rowCount: choice.rows.count,
             hasContextLine: hasContext,
-            keepMovingSectionCount: sections.filter(\.isKeepMoving).count,
+            captionSectionCount: sections.filter { $0.caption != nil }.count,
             displayScale: displayScale
         )
     }
@@ -68,9 +62,9 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CGFloat(sectionCount) * CapturePanelLayout.pullInSectionHeaderHeight
-                + CGFloat(keepMovingSectionCount)
-                    * (CapturePanelLayout.pullInKeepMovingHeaderHeight
-                        - CapturePanelLayout.pullInSectionHeaderHeight)
+                + CGFloat(captionSectionCount)
+                * (CapturePanelLayout.pullInKeepMovingHeaderHeight
+                    - CapturePanelLayout.pullInSectionHeaderHeight)
                 + CGFloat(foldRowCount) * CapturePanelLayout.pullInFoldRowHeight
                 + CGFloat(rowCount) * CapturePanelLayout.pullInRowHeight
         )
@@ -80,11 +74,12 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CapturePanelLayout.pullInSectionHeaderHeight
-                + (keepMovingSectionCount > 0
+                + (captionSectionCount > 0
                     ? CapturePanelLayout.pullInKeepMovingHeaderHeight
                         - CapturePanelLayout.pullInSectionHeaderHeight
                     : 0)
-                + CGFloat(CapturePanelLayout.pullInMaxVisibleRows) * CapturePanelLayout.pullInRowHeight
+                + CGFloat(CapturePanelLayout.pullInMaxVisibleRows)
+                * CapturePanelLayout.pullInRowHeight
         )
     }
 
@@ -92,11 +87,12 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         roundedToPixel(
             CapturePanelLayout.pullInListPadding * 2
                 + CapturePanelLayout.pullInSectionHeaderHeight
-                + (keepMovingSectionCount > 0
+                + (captionSectionCount > 0
                     ? CapturePanelLayout.pullInKeepMovingHeaderHeight
                         - CapturePanelLayout.pullInSectionHeaderHeight
                     : 0)
-                + CGFloat(CapturePanelLayout.pullInMinVisibleRows) * CapturePanelLayout.pullInRowHeight
+                + CGFloat(CapturePanelLayout.pullInMinVisibleRows)
+                * CapturePanelLayout.pullInRowHeight
         )
     }
 
@@ -288,13 +284,27 @@ struct CapturePullInChoiceCard: View {
     }
 
     private var filterCapsuleGlyph: String {
-        if choice.isNewProjectPrompt {
-            return "folder.badge.plus"
+        if let key = choice.authoredCopy?.glyph, !key.isEmpty {
+            return CapturePullInGlyph.systemImageName(for: key)
         }
-        return choice.isOnlyKeepMoving ? "forward.end.fill" : "lock.open.fill"
+        if choice.isNewProjectPrompt {
+            return CapturePullInGlyph.systemImageName(for: "project_created")
+        }
+        if choice.isOnlyKeepMoving {
+            return CapturePullInGlyph.systemImageName(for: "keep_moving")
+        }
+        if choice.isOnlyRelation {
+            return CapturePullInGlyph.systemImageName(for: "relation")
+        }
+        return "lock.open.fill"
     }
 
     private var filterCapsuleColor: Color {
+        if choice.isOnlyRelation
+            || choice.authoredCopy?.glyph == "relation"
+        {
+            return .secondary
+        }
         if choice.isNewProjectPrompt {
             return .brown
         }
@@ -304,10 +314,19 @@ struct CapturePullInChoiceCard: View {
     }
 
     private var filterCapsuleTitle: String {
+        if let capsule = choice.authoredCopy?.capsule, !capsule.isEmpty {
+            return capsule
+        }
         if choice.isNewProjectPrompt {
             return "New project"
         }
-        return choice.isOnlyKeepMoving ? "Keep moving" : "Successors"
+        if choice.isOnlyKeepMoving {
+            return "Keep moving"
+        }
+        if choice.isOnlyRelation {
+            return "Starts after"
+        }
+        return "Successors"
     }
 
     private var pullInContextLine: some View {
@@ -319,12 +338,12 @@ struct CapturePullInChoiceCard: View {
                             ? "forward.end.fill"
                             : "checkmark.circle.fill"
                     )
-                        .foregroundStyle(
-                            choice.isOnlyKeepMoving
-                                ? CaptureEditorPalette.checkboxSymbolColor("*")
-                                : .green
-                        )
-                        .accessibilityHidden(true)
+                    .foregroundStyle(
+                        choice.isOnlyKeepMoving
+                            ? CaptureEditorPalette.checkboxSymbolColor("*")
+                            : .green
+                    )
+                    .accessibilityHidden(true)
                 }
                 Text(context)
                     .font(.caption)
@@ -397,7 +416,7 @@ struct CapturePullInChoiceCard: View {
     private var choiceSections: some View {
         ForEach(choice.sections) { section in
             Section {
-                if let foldText = foldText(for: section) {
+                if let foldText = section.foldText {
                     Text(foldText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -427,14 +446,17 @@ struct CapturePullInChoiceCard: View {
                         CapturePullInMutedRow(row: row)
                     }
                 }
-                if previewMode && choice.visibleRows(in: section).isEmpty && choice.filterText.isEmpty {
+                if previewMode && choice.visibleRows(in: section).isEmpty
+                    && choice.filterText.isEmpty
+                {
                     EmptyView()
                 }
             } header: {
                 CapturePullInSectionHeader(
                     choice: choice,
                     section: section,
-                    isCollapsed: choice.collapsedGroups.contains(section.id) && choice.filterText.isEmpty,
+                    isCollapsed: choice.collapsedGroups.contains(section.id)
+                        && choice.filterText.isEmpty,
                     marked: choice.markedCount(in: section),
                     onToggle: { model.togglePullInChoiceGroup(section.id) },
                     reduceMotion: reduceMotion
@@ -449,12 +471,13 @@ struct CapturePullInChoiceCard: View {
                 CapturePullInSectionHeader(
                     choice: choice,
                     section: section,
-                    isCollapsed: choice.collapsedGroups.contains(section.id) && choice.filterText.isEmpty,
+                    isCollapsed: choice.collapsedGroups.contains(section.id)
+                        && choice.filterText.isEmpty,
                     marked: choice.markedCount(in: section),
                     onToggle: { model.togglePullInChoiceGroup(section.id) },
                     reduceMotion: reduceMotion
                 )
-                if let foldText = foldText(for: section) {
+                if let foldText = section.foldText {
                     Text(foldText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -483,41 +506,6 @@ struct CapturePullInChoiceCard: View {
             }
         }
         .padding(CapturePanelLayout.pullInListPadding)
-    }
-
-    private func foldText(for section: CapturePullInChoiceSection) -> String? {
-        guard let folded = section.folded else {
-            return nil
-        }
-        var parts: [String] = []
-        if section.isKeepMoving {
-            if folded.blocked > 0 {
-                parts.append("\(folded.blocked) blocked")
-            }
-            if folded.scheduled > 0 {
-                parts.append("\(folded.scheduled) scheduled later")
-            }
-            if folded.hidden > 0 {
-                parts.append("\(folded.hidden) hidden")
-            }
-            guard !parts.isEmpty else {
-                return nil
-            }
-            return parts.joined(separator: " · ")
-        }
-        if folded.hidden > 0 {
-            parts.append("\(folded.hidden) hidden")
-        }
-        if folded.alreadyPlanned > 0 {
-            parts.append("\(folded.alreadyPlanned) already planned")
-        }
-        if folded.subProjects > 0 {
-            parts.append("\(folded.subProjects) sub-projects stay blocked until the next reconcile")
-        }
-        guard !parts.isEmpty else {
-            return nil
-        }
-        return parts.joined(separator: " · ")
     }
 
     private var pullInEmptyState: some View {
@@ -559,7 +547,7 @@ struct CapturePullInSectionHeader: View {
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCollapsed)
                         .accessibilityHidden(true)
-                    Image(systemName: glyph)
+                    Image(systemName: section.glyph)
                         .foregroundStyle(glyphColor)
                         .accessibilityHidden(true)
                     Text(section.title)
@@ -598,9 +586,11 @@ struct CapturePullInSectionHeader: View {
                 }
             }
         }
-        .frame(height: section.isKeepMoving
-            ? CapturePanelLayout.pullInKeepMovingHeaderHeight
-            : CapturePanelLayout.pullInSectionHeaderHeight)
+        .frame(
+            height: section.caption == nil
+                ? CapturePanelLayout.pullInSectionHeaderHeight
+                : CapturePanelLayout.pullInKeepMovingHeaderHeight
+        )
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
         .buttonStyle(.plain)
@@ -618,27 +608,15 @@ struct CapturePullInSectionHeader: View {
         )
     }
 
-    private var glyph: String {
-        switch section.group {
-        case "hand_off":
-            return "arrow.turn.down.right"
-        case "project":
-            return section.isNewProject ? "folder.badge.plus" : "folder"
-        case "project_finished":
-            return "checkmark.circle"
-        case "keep_moving":
-            return "forward.end.fill"
-        default:
-            return "lock.open"
-        }
-    }
-
     private var glyphColor: Color {
         if section.isNewProject {
             return .brown
         }
         if section.isKeepMoving {
             return CaptureEditorPalette.checkboxSymbolColor("*")
+        }
+        if section.isRelation {
+            return .secondary
         }
         return section.group == "project_finished" ? .green : .secondary
     }
@@ -784,10 +762,11 @@ struct CapturePullInOfferRow: View {
         for detail in row.metaDetails {
             parts.append((detail, nil))
         }
-        if row.isKeepMoving, let lane = row.laneText {
+        if row.isKeepMoving || row.isRelation, let lane = row.laneText {
             parts.append((lane, nil))
         }
         if !row.isKeepMoving,
+            !row.isRelation,
             choice.showsRowCauses,
             let cause = row.offerRow?.unblockedBy.first,
             !cause.text.isEmpty
@@ -934,7 +913,11 @@ struct CapturePullInChoiceFooter: View {
         HStack(alignment: .center, spacing: 12) {
             ViewThatFits(in: .horizontal) {
                 hintRow(items: Self.hintItems(openAfterCapture: openAfterCapture))
-                hintRow(items: Array(Self.hintItems(openAfterCapture: openAfterCapture).filter { $0.keys != "⌃↩" }))
+                hintRow(
+                    items: Array(
+                        Self.hintItems(openAfterCapture: openAfterCapture).filter {
+                            $0.keys != "⌃↩"
+                        }))
                 hintRow(items: Array(Self.hintItems(openAfterCapture: true).dropLast()))
                 hintRow(items: Array(Self.hintItems(openAfterCapture: true).prefix(2)))
             }

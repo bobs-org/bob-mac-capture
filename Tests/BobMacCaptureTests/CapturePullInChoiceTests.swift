@@ -124,17 +124,21 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(36), context: context), .confirmPullInChoice)
         XCTAssertEqual(router.command(for: keyEvent(76), context: context), .confirmPullInChoice)
         XCTAssertEqual(
-            router.command(for: keyEvent(36, modifiers: .shift), context: context), .chooseNoPullInOffers)
+            router.command(for: keyEvent(36, modifiers: .shift), context: context),
+            .chooseNoPullInOffers)
         XCTAssertEqual(
             router.command(for: keyEvent(36, modifiers: .command), context: context), .consumeKey)
-        XCTAssertEqual(router.command(for: keyEvent(36, repeat: true), context: context), .consumeKey)
+        XCTAssertEqual(
+            router.command(for: keyEvent(36, repeat: true), context: context), .consumeKey)
         XCTAssertEqual(router.command(for: keyEvent(53), context: context), .cancelPullInChoice)
         XCTAssertEqual(
-            router.command(for: keyEvent(33, modifiers: .control), context: context), .cancelPullInChoice)
+            router.command(for: keyEvent(33, modifiers: .control), context: context),
+            .cancelPullInChoice)
         XCTAssertEqual(router.command(for: keyEvent(126), context: context), .previousPullInOffer)
         XCTAssertEqual(router.command(for: keyEvent(125), context: context), .nextPullInOffer)
         XCTAssertEqual(
-            router.command(for: keyEvent(45, modifiers: .control), context: context), .nextPullInOffer)
+            router.command(for: keyEvent(45, modifiers: .control), context: context),
+            .nextPullInOffer)
         XCTAssertEqual(
             router.command(for: keyEvent(35, modifiers: .control), context: context),
             .previousPullInOffer)
@@ -150,7 +154,8 @@ final class CapturePullInChoiceTests: XCTestCase {
             router.command(for: keyEvent(35, modifiers: .control), context: focusedContext),
             .previousPullInOffer)
         XCTAssertEqual(
-            router.command(for: keyEvent(45, modifiers: [.control, .shift]), context: focusedContext),
+            router.command(
+                for: keyEvent(45, modifiers: [.control, .shift]), context: focusedContext),
             nil)
         XCTAssertEqual(
             router.command(for: keyEvent(45, modifiers: .command), context: focusedContext), nil)
@@ -165,31 +170,37 @@ final class CapturePullInChoiceTests: XCTestCase {
             router.command(for: keyEvent(35, modifiers: .control), context: completionContext),
             .previousPullInOffer)
         XCTAssertEqual(router.command(for: keyEvent(49), context: context), .togglePullInOffer)
-        XCTAssertEqual(router.command(for: keyEvent(49, repeat: true), context: context), .consumeKey)
+        XCTAssertEqual(
+            router.command(for: keyEvent(49, repeat: true), context: context), .consumeKey)
         XCTAssertEqual(
             router.command(
                 for: keyEvent(49),
                 context: CaptureKeyRoutingContext(
-                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)),
+                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)
+            ),
             .togglePullInOffer)
         XCTAssertEqual(
             router.command(
                 for: keyEvent(49),
                 context: CaptureKeyRoutingContext(
-                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: false)),
+                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: false
+                )),
             nil)
         XCTAssertEqual(
             router.command(
                 for: keyEvent(49, repeat: true),
                 context: CaptureKeyRoutingContext(
-                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)),
+                    pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)
+            ),
             .consumeKey)
         XCTAssertEqual(
-            router.command(for: keyEvent(0, modifiers: .command), context: context), .markAllPullInOffers)
+            router.command(for: keyEvent(0, modifiers: .command), context: context),
+            .markAllPullInOffers)
         XCTAssertEqual(
             router.command(
                 for: keyEvent(0, modifiers: .command),
-                context: CaptureKeyRoutingContext(pullInChoiceVisible: true, pullInFilterFocused: true)),
+                context: CaptureKeyRoutingContext(
+                    pullInChoiceVisible: true, pullInFilterFocused: true)),
             .markAllPullInOffers)
 
         let promptWins = CaptureKeyRoutingContext(
@@ -303,10 +314,12 @@ final class CapturePullInChoiceTests: XCTestCase {
 
         let twenty = choiceState(offers: offers(count: 20))
         let twentyPolicy = CapturePullInChoiceHeightPolicy(choice: twenty)
-        let maxList = 2 * padding + header
+        let maxList =
+            2 * padding + header
             + CGFloat(CapturePanelLayout.pullInMaxVisibleRows) * row
         XCTAssertEqual(twentyPolicy.listViewportHeight, maxList, accuracy: 0.001)
-        let minList = 2 * padding + header
+        let minList =
+            2 * padding + header
             + CGFloat(CapturePanelLayout.pullInMinVisibleRows) * row
         XCTAssertEqual(
             twentyPolicy.minimumVisibleHeight, bar + 1 + minList, accuracy: 0.001)
@@ -362,7 +375,8 @@ final class CapturePullInChoiceTests: XCTestCase {
                 project: nil
             )
         }
-        let finished = row(n: 1, group: "project_finished", trigger: "project_empty", hideRemoved: true)
+        let finished = row(
+            n: 1, group: "project_finished", trigger: "project_empty", hideRemoved: true)
         XCTAssertEqual(finished.metaDetails, ["removed #hide"])
         XCTAssertFalse(finished.metaDetails.joined(separator: " ").contains("not pulled in"))
         XCTAssertNotNil(finished.detailText)
@@ -383,6 +397,305 @@ final class CapturePullInChoiceTests: XCTestCase {
         )
         XCTAssertEqual(newProject.metaDetails, [])
         XCTAssertFalse(newProject.detailText?.contains("trigger: project_created") == true)
+        let relation = row(n: 6, group: "relation", trigger: "relation", hideRemoved: false)
+        XCTAssertEqual(relation.metaDetails, [])
+        XCTAssertFalse(relation.metaDetails.contains(where: { $0.contains("trigger:") }))
+        XCTAssertFalse(relation.statusText.contains("→"))
+    }
+
+    func testRelationOnlyUsesBobCopyOrderAndGlyph() throws {
+        let success = try fixtureSuccess("relation-successor-parked-x-star.json")
+        let offer = try XCTUnwrap(success.allRelationSuccessors.first)
+        let state = choiceState(offers: [offer], pullIn: success.pullIn)
+        XCTAssertTrue(state.isOnlyRelation)
+        XCTAssertNil(state.contextText)
+        XCTAssertEqual(state.authoredCopy?.capsule, "Starts after")
+        XCTAssertEqual(state.authoredCopy?.glyph, "relation")
+        XCTAssertEqual(
+            CapturePullInGlyph.systemImageName(for: state.authoredCopy?.glyph ?? ""),
+            "link"
+        )
+        XCTAssertEqual(state.sections.count, 1)
+        let section = try XCTUnwrap(state.sections.first)
+        XCTAssertEqual(section.group, "relation")
+        XCTAssertEqual(section.after?.key, "agents.md#^implement")
+        XCTAssertEqual(section.label, "starts after")
+        XCTAssertEqual(section.title, "Starts after “Send implementation prompt”")
+        XCTAssertEqual(
+            section.caption,
+            "“Send implementation prompt” is parked · Pending, off today's plan"
+        )
+        XCTAssertEqual(section.contrastTag, "your links · not dependents")
+        XCTAssertEqual(section.glyph, "link")
+        XCTAssertEqual(section.rows.first?.offerKey, offer.offer?.key)
+        XCTAssertEqual(section.rows.first?.after, "agents.md#^implement")
+        XCTAssertFalse(section.rows.first?.accessibilityLabel.contains("trigger: relation") == true)
+        XCTAssertFalse(section.rows.first?.accessibilityLabel.contains("[") == true)
+    }
+
+    func testMixedBobGroupOrderKeepsHandOffBeforeRelation() throws {
+        let success = try fixtureSuccess("relation-successor-mixed-x-star-dependency.json")
+        let state = choiceState(
+            offers: success.allUnblockedRows + success.allRelationSuccessors,
+            pullIn: success.pullIn
+        )
+        XCTAssertEqual(state.sections.map(\.group), ["hand_off", "relation"])
+        XCTAssertEqual(state.sections.first?.title, "Hand-offs")
+        XCTAssertEqual(
+            state.sections.last?.title,
+            "Starts after “Send implementation prompt”"
+        )
+        XCTAssertEqual(
+            state.selectableKeys,
+            [
+                "agents.md#^schema-change",
+                "agents.md#^evaluate",
+            ])
+        XCTAssertFalse(state.isOnlyRelation)
+        XCTAssertEqual(state.contextText, "Unblocked by Ship schema change")
+    }
+
+    func testDistinctAfterKeysAndDistinctLabelsStaySeparate() {
+        let first = relationOffer(
+            n: 1,
+            key: "s.md#^one",
+            after: "s.md#^alpha",
+            label: "starts after",
+            target: "Alpha"
+        )
+        let second = relationOffer(
+            n: 2,
+            key: "s.md#^two",
+            after: "s.md#^beta",
+            label: "starts after",
+            target: "Beta"
+        )
+        let relabeled = relationOffer(
+            n: 3,
+            key: "s.md#^three",
+            after: "s.md#^alpha",
+            label: "blocks",
+            target: "Alpha"
+        )
+        let state = choiceState(
+            offers: [first, second, relabeled],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 3,
+                groups: [
+                    relationGroup(after: "s.md#^beta", label: "starts after", text: "Beta"),
+                    relationGroup(after: "s.md#^alpha", label: "starts after", text: "Alpha"),
+                    relationGroup(after: "s.md#^alpha", label: "blocks", text: "Alpha"),
+                ]
+            )
+        )
+        XCTAssertEqual(
+            state.sections.map(\.after?.key),
+            [
+                "s.md#^beta",
+                "s.md#^alpha",
+                "s.md#^alpha",
+            ])
+        XCTAssertEqual(state.sections.map(\.label), ["starts after", "starts after", "blocks"])
+        XCTAssertEqual(state.sections.map(\.rows.count), [1, 1, 1])
+        XCTAssertNotEqual(state.sections[1].id, state.sections[2].id)
+    }
+
+    func testUnknownGlyphIsCircleAndBobCopyOverridesLocalTitle() {
+        XCTAssertEqual(CapturePullInGlyph.systemImageName(for: "mystery"), "circle")
+        XCTAssertEqual(CapturePullInGlyph.systemImageName(for: ""), "circle")
+        XCTAssertNotEqual(CapturePullInGlyph.systemImageName(for: "relation"), "lock.open")
+        let state = choiceState(
+            offers: [offer(n: 1, group: "hand_off")],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 1,
+                groups: [
+                    CapturePullInGroup(
+                        group: "hand_off",
+                        copy: CapturePullInGroupCopy(
+                            title: "Custom Bob hand-offs",
+                            glyph: "mystery"
+                        )
+                    )
+                ],
+                copy: CapturePullInCopy(title: "Custom card", capsule: "Custom", glyph: "mystery")
+            )
+        )
+        XCTAssertEqual(state.sections.first?.title, "Custom Bob hand-offs")
+        XCTAssertEqual(state.sections.first?.glyph, "circle")
+        XCTAssertNil(state.sections.first?.caption)
+        XCTAssertEqual(state.authoredCopy?.capsule, "Custom")
+    }
+
+    func testAbsentWhyDoesNotSynthesizeLegacyCaption() {
+        let state = choiceState(
+            offers: [
+                cardOffer(
+                    n: 1,
+                    text: "Keep the renderer moving",
+                    group: "keep_moving",
+                    project: "projects/sase_badges.md",
+                    cause: "Wire badges into the README",
+                    trigger: "last_planned"
+                )
+            ],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 1,
+                groups: [
+                    CapturePullInGroup(
+                        group: "keep_moving",
+                        project: "projects/sase_badges.md",
+                        copy: CapturePullInGroupCopy(
+                            title: "Keep ‹sase_badges› moving",
+                            glyph: "keep_moving"
+                        )
+                    )
+                ]
+            )
+        )
+        XCTAssertEqual(state.sections.first?.title, "Keep ‹sase_badges› moving")
+        XCTAssertNil(state.sections.first?.caption)
+        XCTAssertNil(state.sections.first?.contrastTag)
+        XCTAssertNil(state.sections.first?.foldText)
+    }
+
+    func testOlderNoCopyPayloadKeepsLocalFallback() {
+        let state = choiceState(offers: [offer(n: 1, group: "hand_off")])
+        XCTAssertEqual(state.sections.first?.title, "Hand-offs")
+        XCTAssertEqual(state.sections.first?.glyph, "arrow.turn.down.right")
+        XCTAssertNil(state.authoredCopy)
+        XCTAssertFalse(state.isOnlyRelation)
+    }
+
+    func testGroupMetadataDoesNotCreateEmptyPerItemSections() {
+        let state = choiceState(
+            offers: [offer(n: 1, group: "hand_off")],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 2,
+                groups: [
+                    CapturePullInGroup(
+                        group: "hand_off",
+                        copy: CapturePullInGroupCopy(title: "Hand-offs", glyph: "hand_off")
+                    ),
+                    relationGroup(
+                        after: "agents.md#^implement", text: "Send implementation prompt"),
+                ]
+            )
+        )
+        XCTAssertEqual(state.sections.map(\.group), ["hand_off"])
+        XCTAssertFalse(state.sections.contains(where: \.isRelation))
+    }
+
+    func testRelationAfterSuffixAndSecondReasonReachMetaAndAccessibility() {
+        let multi = relationOffer(
+            n: 1,
+            key: "s.md#^source",
+            after: "s.md#^t1",
+            label: "starts after",
+            target: "First",
+            extraTargets: ["Second"]
+        )
+        XCTAssertEqual(
+            CapturePullInChoiceRow(
+                offerRow: multi, blockedRow: nil, group: "relation", project: nil
+            ).relationAfterSuffix,
+            "after “First” and “Second”"
+        )
+        let second = TaskCompleteUnblocked(
+            notePath: "s.md",
+            blockID: "dep",
+            line: 2,
+            text: "Dependent",
+            previousStatusSymbol: "?",
+            previousStatusName: "Blocked",
+            statusSymbol: " ",
+            statusName: "Ready",
+            notLinked: "not_selected",
+            offer: TaskCompleteOffer(
+                key: "s.md#^dep",
+                n: 2,
+                group: "hand_off",
+                destination: TaskCompleteOfferDestination(dayFile: "20261102.md")
+            ),
+            trigger: "dependency",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "done",
+                after: [CaptureRelationTarget(notePath: "s.md", blockID: "t1", text: "First")]
+            )
+        )
+        let row = CapturePullInChoiceRow(
+            offerRow: second, blockedRow: nil, group: "hand_off", project: nil
+        )
+        XCTAssertEqual(row.relationSecondReason, "starts after “First”")
+        XCTAssertTrue(row.metaDetails.contains("starts after “First”"))
+        XCTAssertTrue(row.accessibilityLabel.contains("starts after “First”"))
+        XCTAssertFalse(row.metaDetails.contains(where: { $0.hasPrefix("trigger:") }))
+    }
+
+    func testRelationCaptionAndNewFoldCountersHoldHeightWhileFiltering() {
+        let header = CapturePanelLayout.pullInSectionHeaderHeight
+        let captionHeader = CapturePanelLayout.pullInKeepMovingHeaderHeight
+        let fold = CapturePanelLayout.pullInFoldRowHeight
+        let row = CapturePanelLayout.pullInRowHeight
+        let padding = CapturePanelLayout.pullInListPadding
+        var state = choiceState(
+            offers: [
+                relationOffer(
+                    n: 1,
+                    key: "agents.md#^evaluate",
+                    after: "agents.md#^implement",
+                    target: "Send implementation prompt"
+                )
+            ],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 1,
+                groups: [
+                    CapturePullInGroup(
+                        group: "relation",
+                        after: CapturePullInAfter(
+                            key: "agents.md#^implement",
+                            notePath: "agents.md",
+                            blockID: "implement",
+                            text: "Send implementation prompt"
+                        ),
+                        label: "starts after",
+                        event: "parked",
+                        folded: CapturePullInFolded(alreadyStarted: 1, waitsFor: 2, hidden: 1),
+                        copy: CapturePullInGroupCopy(
+                            title: "Starts after “Send implementation prompt”",
+                            why:
+                                "“Send implementation prompt” is parked · Pending, off today's plan",
+                            tag: "your links · not dependents",
+                            fold: "not offered · 1 already started · 2 waiting",
+                            glyph: "relation"
+                        )
+                    )
+                ],
+                copy: CapturePullInCopy(
+                    title: "Starts after “Send implementation prompt”",
+                    capsule: "Starts after",
+                    glyph: "relation"
+                )
+            )
+        )
+        let policy = CapturePullInChoiceHeightPolicy(choice: state)
+        let content = 2 * padding + captionHeader + fold + row
+        XCTAssertEqual(policy.listContentHeight, content, accuracy: 0.001)
+        XCTAssertEqual(
+            state.sections.first?.foldText, "not offered · 1 already started · 2 waiting")
+        XCTAssertNotNil(state.sections.first?.caption)
+        state.updateFilter("zzz")
+        if let section = state.sections.first {
+            state.toggleGroup(section.id)
+        }
+        XCTAssertEqual(CapturePullInChoiceHeightPolicy(choice: state), policy)
+        XCTAssertEqual(captionHeader - header, 20, accuracy: 0.001)
     }
 
     func testContextTextCoversOneThreeAndNoCauses() {
@@ -573,11 +886,95 @@ final class CapturePullInChoiceTests: XCTestCase {
             ["⌃N ⌃P", "space", "⌘A", "esc"]
         )
         let label = CapturePullInChoiceFooter.accessibilityText
-        for phrase in ["Control-N", "Space", "Command-A", "Return", "Shift-Return", "Control-Return", "Escape"] {
+        for phrase in [
+            "Control-N", "Space", "Command-A", "Return", "Shift-Return", "Control-Return", "Escape",
+        ] {
             XCTAssertTrue(label.contains(phrase), "Footer label mentions \(phrase)")
         }
         XCTAssertFalse(
-            CapturePullInChoiceFooter.openIntentAccessibilityText.contains("Control-Return pulls in and opens")
+            CapturePullInChoiceFooter.openIntentAccessibilityText.contains(
+                "Control-Return pulls in and opens")
+        )
+    }
+
+    private func fixtureSuccess(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        guard
+            case .success(let response) = try JSONDecoder().decode(
+                CaptureCommandResponse.self,
+                from: data
+            )
+        else {
+            throw NSError(
+                domain: "CapturePullInChoiceTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Expected success fixture \(name)"]
+            )
+        }
+        return response
+    }
+
+    private func relationGroup(
+        after: String,
+        label: String = "starts after",
+        text: String
+    ) -> CapturePullInGroup {
+        CapturePullInGroup(
+            group: "relation",
+            after: CapturePullInAfter(key: after, notePath: "s.md", blockID: "t", text: text),
+            label: label,
+            event: "parked",
+            copy: CapturePullInGroupCopy(
+                title: "\(CapturePullInChoiceSection.capitalizedLabel(label)) “\(text)”",
+                why: "“\(text)” is parked · Pending, off today's plan",
+                tag: "your links · not dependents",
+                glyph: "relation"
+            )
+        )
+    }
+
+    private func relationOffer(
+        n: Int,
+        key: String,
+        after: String,
+        label: String = "starts after",
+        target: String,
+        extraTargets: [String] = []
+    ) -> TaskCompleteUnblocked {
+        let afterTargets = ([target] + extraTargets).enumerated().map { index, text in
+            CaptureRelationTarget(notePath: "s.md", blockID: "t\(index + 1)", text: text)
+        }
+        return TaskCompleteUnblocked(
+            notePath: "s.md",
+            blockID: "task-\(n)",
+            line: n,
+            text: "Task \(n)",
+            previousStatusSymbol: " ",
+            previousStatusName: "Ready",
+            statusSymbol: " ",
+            statusName: "Ready",
+            unblockedBy: [
+                TaskCompleteUnblockedCause(notePath: "s.md", blockID: "t1", text: target)
+            ],
+            notLinked: "not_selected",
+            offer: TaskCompleteOffer(
+                key: key,
+                n: n,
+                group: "relation",
+                after: after,
+                destination: TaskCompleteOfferDestination(dayFile: "20261102.md")
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: label,
+                key: label,
+                event: "parked",
+                after: afterTargets
+            )
         )
     }
 
