@@ -599,18 +599,20 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if let toggle = CaptureTogglePresentation(capture: capture) {
-                return CaptureNotificationPresentation(
+                return singlePresentation(
                     title: toggle.notificationTitle,
                     subtitle: toggle.routeDestinationLabel,
                     body: toggle.notificationBody,
+                    capture: capture,
                     targetPaths: targetPaths
                 )
             }
             if let complete = CaptureTaskCompletePresentation(capture: capture) {
-                return CaptureNotificationPresentation(
+                return singlePresentation(
                     title: complete.notificationTitle,
                     subtitle: complete.destinationLabel,
                     body: complete.notificationBody,
+                    capture: capture,
                     targetPaths: targetPaths
                 )
             }
@@ -623,10 +625,11 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if let close = CapturePomodoroClosePresentation(capture: capture) {
-                return CaptureNotificationPresentation(
+                return singlePresentation(
                     title: close.notificationTitle,
                     subtitle: displayLabel(for: capture),
                     body: close.notificationBody,
+                    capture: capture,
                     targetPaths: targetPaths
                 )
             }
@@ -665,21 +668,23 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if let relationship = CaptureRelationshipPresentation(capture: capture).notification {
-                return CaptureNotificationPresentation(
+                return singlePresentation(
                     title: relationship.title,
                     subtitle: relationship.subtitle,
                     body: relationship.body,
+                    capture: capture,
                     targetPaths: targetPaths
                 )
             }
             let kind = friendlyKindLabel(capture.kind)
-            return CaptureNotificationPresentation(
+            return singlePresentation(
                 title: "\(kind) captured",
                 // Adjustments and shifts are unrouted daily-note edits, so fall
                 // back to the relative target (the day file) when there is no
                 // route label rather than notifying with an empty subtitle.
                 subtitle: displayLabel(for: capture),
                 body: singleCaptureBody(capture),
+                capture: capture,
                 targetPaths: targetPaths
             )
         }
@@ -703,10 +708,11 @@ final class NotificationService: NSObject, ObservableObject {
                 pulledInSummary(captures: nonemptyCaptures),
             ].filter { !$0.isEmpty }
             let summary = summaryParts.joined(separator: " · ")
+            let heldLines = batchHeldLines(for: nonemptyCaptures)
             return CaptureNotificationPresentation(
                 title: "Completed \(nonemptyCaptures.count) tasks",
                 subtitle: summary,
-                body: ([summary] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+                body: ([summary] + lines + heldLines).filter { !$0.isEmpty }.joined(separator: "\n"),
                 targetPaths: targetPaths
             )
         }
@@ -731,10 +737,11 @@ final class NotificationService: NSObject, ObservableObject {
             return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): "
                 + "\(batchLineText(capture))\(suffix)"
         }
+        let heldLines = batchHeldLines(for: nonemptyCaptures)
         return CaptureNotificationPresentation(
             title: "\(nonemptyCaptures.count) items captured",
             subtitle: summary,
-            body: ([summary] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+            body: ([summary] + lines + heldLines).filter { !$0.isEmpty }.joined(separator: "\n"),
             targetPaths: targetPaths
         )
     }
@@ -769,10 +776,11 @@ final class NotificationService: NSObject, ObservableObject {
                 + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(resetSuffix(for: capture))\(closedSuffix(for: capture))"
             return "\(index + 1). \(batchLineText(capture))\(override)\(suffix)"
         }
+        let heldLines = batchHeldLines(for: captures)
         return CaptureNotificationPresentation(
             title: "\(captures.count) items captured",
             subtitle: summary,
-            body: ([summary] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+            body: ([summary] + lines + heldLines).filter { !$0.isEmpty }.joined(separator: "\n"),
             targetPaths: targetPaths
         )
     }
@@ -832,10 +840,15 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {
+        // Explicit `none` never reports picks, and unselected offers stay
+        // silent via the `selected` gate. Opaque keys dedupe within each
+        // capture result; a hand-off second reason lives only on its
+        // primary row, so it never double-counts.
+        let eligible = captures.filter { $0.pullIn?.choice != "none" }
         var unblockedSelectedTotal = 0
         var relationSelectedTotal = 0
         var relationSelectedRows: [TaskCompleteUnblocked] = []
-        for capture in captures {
+        for capture in eligible {
             var seenKeys = Set<String>()
             for row in capture.allUnblockedRows where row.offer?.selected == true {
                 if let key = row.offer?.key, !key.isEmpty {
@@ -857,7 +870,7 @@ final class NotificationService: NSObject, ObservableObject {
                 relationSelectedTotal += 1
             }
         }
-        let count = captures.reduce(into: 0) { total, capture in
+        let count = eligible.reduce(into: 0) { total, capture in
             let rows = capture.allUnblockedRows + capture.allRelationSuccessors
                 + capture.allKeepMovingRows
             var selectedKeys = Set<String>()
@@ -872,7 +885,7 @@ final class NotificationService: NSObject, ObservableObject {
             total += selectedKeys.count + unkeyedSelectedCount
         }
         guard count > 0 else { return "" }
-        let keepMovingRows: [TaskCompleteUnblocked] = captures
+        let keepMovingRows: [TaskCompleteUnblocked] = eligible
             .flatMap(\.allKeepMovingRows)
             .filter { $0.offer?.selected == true }
         if !keepMovingRows.isEmpty {
@@ -913,6 +926,53 @@ final class NotificationService: NSObject, ObservableObject {
             return relationLine
         }
         return "Pulled in \(count) successor offer\(count == 1 ? "" : "s")"
+    }
+
+    /// Single-capture presentation with the shared picked summary appended
+    /// once. Task/Pomodoro bodies already contain their picked line, so a
+    /// body that mentions "Pulled in" never gains a second summary.
+    /// Titles, dependency wording, keep-moving breakdowns, and note targets
+    /// stay exactly as the underlying presentation built them. Explicit
+    /// `none` and unselected offers stay silent via `pulledInSummary`.
+    nonisolated private static func singlePresentation(
+        title: String,
+        subtitle: String,
+        body: String,
+        capture: CaptureCommandSuccess,
+        targetPaths: [String]
+    ) -> CaptureNotificationPresentation {
+        let summary = pulledInSummary(captures: [capture])
+        guard !summary.isEmpty, !body.contains("Pulled in") else {
+            return CaptureNotificationPresentation(
+                title: title,
+                subtitle: subtitle,
+                body: body,
+                targetPaths: targetPaths
+            )
+        }
+        return CaptureNotificationPresentation(
+            title: title,
+            subtitle: subtitle,
+            body: ([body] + [summary]).filter { !$0.isEmpty }.joined(separator: "\n"),
+            targetPaths: targetPaths
+        )
+    }
+
+    /// Held/check lines for batch notifications, one shared gate per
+    /// capture. A batch with offers in one item and held rows in another
+    /// still surfaces the held-only item; a picker with offers suppresses
+    /// only its own held rows. Ordered unique to avoid doubling a root
+    /// that mirrors its first item.
+    nonisolated private static func batchHeldLines(for captures: [CaptureCommandSuccess]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for capture in captures {
+            for line in CaptureRelationHeldPresentation.lines(for: capture) {
+                guard seen.insert(line).inserted else { continue }
+                out.append(line)
+            }
+        }
+        return out
     }
 
     nonisolated private static func resetSuffix(for capture: CaptureCommandSuccess) -> String {

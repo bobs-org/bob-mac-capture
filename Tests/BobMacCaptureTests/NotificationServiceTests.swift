@@ -1817,6 +1817,258 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("Pulled in 2 successor offers"), content.body)
     }
 
+    func testSingleToggleReportsSelectedRelationPickOnce() {
+        let relation = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            statusSymbol: " ",
+            statusName: "Ready",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [
+                    CaptureRelationTarget(
+                        notePath: "agents.md",
+                        blockID: "implement",
+                        text: "Send implementation prompt"
+                    ),
+                ]
+            )
+        )
+        let toggle = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "agents.md",
+            relativeTarget: "agents.md",
+            target: "/tmp/agents.md",
+            text: "Send implementation prompt",
+            taskLine: "- [*] Send implementation prompt",
+            kind: "task_toggle",
+            created: "2026-11-02",
+            placement: "updated",
+            toggleDirection: "next",
+            relationSuccessors: [relation]
+        )
+        let content = NotificationService.successContent(captures: [toggle])
+        XCTAssertTrue(
+            content.body.contains("🪢 Pulled in 1 · starts after “Send implementation prompt”"),
+            content.body
+        )
+        XCTAssertEqual(content.body.components(separatedBy: "🪢 Pulled in 1").count - 1, 1)
+    }
+
+    func testSingleToggleWithNoneReportsNoPick() {
+        let relation = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: false
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let toggle = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "agents.md",
+            relativeTarget: "agents.md",
+            target: "/tmp/agents.md",
+            text: "Send implementation prompt",
+            taskLine: "- [*] Send implementation prompt",
+            kind: "task_toggle",
+            created: "2026-11-02",
+            placement: "updated",
+            toggleDirection: "next",
+            relationSuccessors: [relation],
+            pullIn: CapturePullIn(supported: true, offerCount: 1, choice: "none")
+        )
+        let content = NotificationService.successContent(captures: [toggle])
+        XCTAssertFalse(content.body.contains("Pulled in"), content.body)
+    }
+
+    func testSingleNestedCompleteReportsTopLevelAndNestedPicksOnce() {
+        let top = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let nested = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "nested",
+            text: "Nested follow-up",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^nested",
+                n: 2,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        // Duplicate opaque key across top-level and nested must dedupe.
+        let dupe = TaskCompleteUnblocked(
+            notePath: "agents.md",
+            blockID: "evaluate",
+            text: "Prepare evaluation prompt",
+            offer: TaskCompleteOffer(
+                key: "agents.md#^evaluate",
+                n: 1,
+                group: "relation",
+                after: "agents.md#^implement",
+                selected: true
+            ),
+            trigger: "relation",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let capture = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "agents.md",
+            relativeTarget: "agents.md",
+            target: "/tmp/agents.md",
+            text: "Send implementation prompt",
+            taskLine: "- [x] Send implementation prompt",
+            kind: "task_complete",
+            created: "2026-11-02",
+            placement: "updated",
+            relationCompletes: [
+                CaptureRelationComplete(
+                    source: CaptureRelationCancelEndpoint(path: "agents.md"),
+                    taskComplete: CaptureTaskComplete(relationSuccessors: [nested, dupe])
+                ),
+            ],
+            taskComplete: CaptureTaskComplete(relationSuccessors: [top])
+        )
+        let content = NotificationService.successContent(captures: [capture])
+        XCTAssertTrue(
+            content.body.contains("🪢 Pulled in 2 · starts after “Send implementation prompt”"),
+            content.body
+        )
+        XCTAssertEqual(content.body.components(separatedBy: "Pulled in").count - 1, 1)
+    }
+
+    func testMultiItemBatchReportsPicksAndHeldWithoutDoubling() {
+        let picked = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:key", n: 1, group: "hand_off", selected: true)
+        )
+        let keepMoving = TaskCompleteUnblocked(
+            notePath: "projects/sase_badges.md",
+            blockID: "ship",
+            text: "Ship the badge renderer",
+            offer: TaskCompleteOffer(
+                key: "opaque:keep#^ship",
+                n: 2,
+                group: "keep_moving",
+                project: "projects/sase_badges.md",
+                selected: true
+            ),
+            trigger: "last_planned"
+        )
+        let first = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "travel.md",
+            relativeTarget: "travel.md",
+            target: "/tmp/travel.md",
+            text: "Complete trip prep",
+            taskLine: "- [ ] Complete trip prep",
+            kind: "task_complete",
+            created: "2026-10-13",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(
+                unblocked: [picked],
+                keepMoving: [keepMoving]
+            ),
+            pullIn: CapturePullIn(supported: true, offerCount: 2, choice: "selected")
+        )
+        let held = CaptureRelationHeld(
+            notePath: "agents.md",
+            blockID: "write",
+            text: "Write rollout notes",
+            statusSymbol: " ",
+            statusName: "Ready",
+            reason: "hidden",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "parked",
+                after: [CaptureRelationTarget(text: "Send implementation prompt")]
+            )
+        )
+        let second = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "agents.md",
+            relativeTarget: "agents.md",
+            target: "/tmp/agents.md",
+            text: "Park task",
+            taskLine: "- [/] Park task",
+            kind: "task_toggle",
+            created: "2026-11-02",
+            placement: "updated",
+            toggleDirection: "next",
+            relationHeld: [held]
+        )
+        let content = NotificationService.successContent(captures: [first, second])
+        XCTAssertTrue(content.body.contains("⏭ Pulled in"), content.body)
+        XCTAssertTrue(content.body.contains("keep-moving offer"), content.body)
+        XCTAssertTrue(content.body.contains("not offered: hidden"), content.body)
+        XCTAssertEqual(content.body.components(separatedBy: "Pulled in").count - 1, 1)
+    }
+
     func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {
         let success = try closeSuccessFixture("task-complete-successors.json")
         let content = NotificationService.successContent(captures: [success])

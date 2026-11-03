@@ -2296,23 +2296,10 @@ private struct RelationLabelPromptCard: View {
                     }
 
                     if let slot = model.relationLabelCloseSlot {
-                        let color: Color
-                        switch slot.style {
-                        case .cancel:
-                            color = CaptureEditorPalette.color(for: .relationCancelLabel)
-                        case .complete:
-                            color = CaptureEditorPalette.color(for: .relationCompleteLabel)
-                        case .offers:
-                            color = CaptureEditorPalette.color(for: .relationSuccessorLabel)
-                        case .caveat:
-                            color = .orange
-                        case .muted:
-                            color = .secondary
-                        }
                         Text(slot.text)
                             .font(.caption)
                             .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(color)
+                            .foregroundStyle(relationSlotColor(for: slot.style))
                             .accessibilityLabel(slot.text)
                     } else if let warning = model.relationLabelOneOffWarning {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -2523,6 +2510,21 @@ private struct RelationLabelPromptCard: View {
             parts.append("selected")
         }
         return parts.joined(separator: ", ")
+    }
+
+    private func relationSlotColor(for style: RelationSourceSlotStyle) -> Color {
+        switch style {
+        case .cancel:
+            return CaptureEditorPalette.color(for: .relationCancelLabel)
+        case .complete:
+            return CaptureEditorPalette.color(for: .relationCompleteLabel)
+        case .offers:
+            return CaptureEditorPalette.color(for: .relationSuccessorLabel)
+        case .caveat:
+            return .orange
+        case .muted:
+            return .secondary
+        }
     }
 
     private func matchedLabelText(_ label: String, query: String) -> Text {

@@ -63,7 +63,7 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         let relationRows = capture.relationUpdates.map { Self.row(for: $0, capture: capture) }
         let cancelRows = capture.relationCancels.compactMap { Self.row(for: $0) }
         let completeRows = capture.relationCompletes.flatMap {
-            Self.rows(for: $0, dryRun: capture.dryRun)
+            Self.rows(for: $0, dryRun: capture.dryRun, enclosingPullIn: capture.pullIn)
         }
         rows = dependencyRows + relationRows + cancelRows + completeRows
         if Self.isTaskDependency(capture) {
@@ -222,7 +222,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
     /// completed.
     private static func rows(
         for complete: CaptureRelationComplete,
-        dryRun: Bool
+        dryRun: Bool,
+        enclosingPullIn: CapturePullIn? = nil
     ) -> [CaptureRelationshipRow] {
         let text = complete.message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
@@ -232,7 +233,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         guard
             let detail = CaptureRelationCompletePresentation.detailPresentation(
                 complete: complete,
-                dryRun: dryRun
+                dryRun: dryRun,
+                enclosingPullIn: enclosingPullIn
             )
         else {
             return rows

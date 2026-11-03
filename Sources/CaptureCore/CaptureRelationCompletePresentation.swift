@@ -185,7 +185,8 @@ public enum CaptureRelationCompletePresentation {
     /// byte-identical with the whole-item completion card.
     public static func detailPresentation(
         complete: CaptureRelationComplete,
-        dryRun: Bool
+        dryRun: Bool,
+        enclosingPullIn: CapturePullIn? = nil
     ) -> CaptureTaskCompletePresentation? {
         guard let summary = complete.taskComplete else {
             return nil
@@ -207,7 +208,8 @@ public enum CaptureRelationCompletePresentation {
             statusName: "Done",
             previousStatusSymbol: complete.previousStatus,
             previousStatusName: complete.previousStatusName,
-            taskComplete: summary
+            taskComplete: summary,
+            pullIn: enclosingPullIn
         )
         return CaptureTaskCompletePresentation(capture: success)
     }

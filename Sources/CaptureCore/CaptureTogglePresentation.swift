@@ -293,6 +293,22 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         if !chips.isEmpty {
             bodyLines.append(chips.joined(separator: " \u{00b7} "))
         }
+        // Selected relation/unblocked/keep-moving picks report once via the
+        // shared successor line, using aggregates so item-level toggle offers
+        // count. Unselected offers and explicit `none` stay silent via the
+        // shared helper's empty result.
+        if let pickedLine = SuccessorRows.notificationLine(
+            unblocked: capture.allUnblockedRows,
+            keepMoving: capture.allKeepMovingRows,
+            relation: capture.allRelationSuccessors
+        ) {
+            // Avoid a second summary when the toggle already reported picks;
+            // toggles never do today, so this is the single report.
+            if !bodyLines.contains(where: { $0.contains("Pulled in") }) {
+                bodyLines.append(pickedLine)
+            }
+        }
+        bodyLines.append(contentsOf: CaptureRelationHeldPresentation.lines(for: capture))
         notificationBody = bodyLines.joined(separator: "\n")
 
         var previewParts = [

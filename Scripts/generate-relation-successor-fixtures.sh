@@ -400,6 +400,149 @@ assert any(span.get("offers_source") is True for span in payload["spans"]), payl
 PY
 persist "$scratch_root/authoring-spans.json" relation-successor-authoring-spans.json
 
+# Committed item-level toggle selection: dry-run to learn the opaque key,
+# then commit the same draft with -p <key> on a distinct scratch vault.
+toggle_sel_vault="$scratch_root/toggle-selected"
+new_vault "$toggle_sel_vault"
+cat > "$toggle_sel_vault/agents.md" <<'MD'
+- [ ] #task Prepare evaluation prompt [id:: evaluate] ^evaluate
+  - 🪢 **LINKS:** starts after [[agents#^implement]]
+- [/] #task Send implementation prompt [id:: implement] ^implement
+MD
+cat > "$toggle_sel_vault/20261102.md" <<'MD'
+## Pomodoros
+- [ ] (**0920-0950**) — BUILD
+  - [[agents#^implement]]
+MD
+capture_to "$toggle_sel_vault" "$scratch_root/toggle-selection-preview.json" '@agents+implement!' --dry-run
+toggle_key="$(python3 - "$scratch_root/toggle-selection-preview.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+print(payload["relation_successors"][0]["offer"]["key"])
+PY
+)"
+capture_to "$toggle_sel_vault" "$scratch_root/toggle-selected.json" '@agents+implement!' -p "$toggle_key"
+python3 - "$scratch_root/toggle-selected.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+row = payload["relation_successors"][0]
+assert row["offer"]["selected"] is True, payload
+assert row["offer"]["key"], payload
+PY
+persist "$scratch_root/toggle-selected.json" relation-successor-toggle-selected.json
+
+# Committed nested complete-label selection: same vault shape as the nested
+# dry-run above, committed with the nested offer key on its own vault.
+nested_sel_vault="$scratch_root/nested-selected"
+seed_done_vault "$nested_sel_vault"
+cat > "$nested_sel_vault/done_by.md" <<'MD'
+- [ ] #task Close the loop ^close-loop
+MD
+cat > "$scratch_root/config.yml" <<'YAML'
+relations:
+  complete_labels:
+    - implemented by
+  successor_labels:
+    - starts after
+YAML
+capture_to "$nested_sel_vault" "$scratch_root/nested-selection-preview.json" \
+  '@agents+implement ~done_by:close-loop|"implemented by"' --dry-run
+nested_key="$(python3 - "$scratch_root/nested-selection-preview.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+nested = payload["relation_completes"][0]["task_complete"]
+print(nested["relation_successors"][0]["offer"]["key"])
+PY
+)"
+capture_to "$nested_sel_vault" "$scratch_root/nested-selected.json" \
+  '@agents+implement ~done_by:close-loop|"implemented by"' -p "$nested_key"
+python3 - "$scratch_root/nested-selected.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+nested = payload["relation_completes"][0]["task_complete"]
+row = nested["relation_successors"][0]
+assert row["offer"]["selected"] is True, payload
+PY
+persist "$scratch_root/nested-selected.json" relation-successor-nested-selected.json
+write_config
+
+# Blocked scheduled held: S carries a future scheduled date, so the parked
+# T reports `reason: blocked` with scheduled metadata (not synthetic
+# `reason: scheduled`).
+sched_vault="$scratch_root/held-scheduled"
+new_vault "$sched_vault"
+cat > "$sched_vault/agents.md" <<'MD'
+- [ ] #task Write rollout notes [scheduled:: 2026-11-10] [id:: write] ^write
+  - 🪢 **LINKS:** starts after [[agents#^implement]]
+- [*] #task Send implementation prompt [id:: implement] ^implement
+MD
+cat > "$sched_vault/20261102.md" <<'MD'
+## Pomodoros
+- [ ] (**0920-0950**) — BUILD
+  - [[agents#^implement]]
+MD
+capture_to "$sched_vault" "$scratch_root/held-scheduled.json" 'x*' --dry-run
+python3 - "$scratch_root/held-scheduled.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+held = payload["pomodoro_close"]["relation_held"][0]
+assert held["reason"] == "blocked", payload
+assert held["scheduled"] == "2026-11-10", payload
+assert not payload["pomodoro_close"].get("relation_successors"), payload
+PY
+persist "$scratch_root/held-scheduled.json" relation-successor-held-scheduled.json
+
+# Blocked project held: S carries the project-blocked proxy tag, so a parked
+# T reports `reason: blocked` with project metadata.
+proj_vault="$scratch_root/held-project"
+new_vault "$proj_vault"
+cat > "$proj_vault/agents.md" <<'MD'
+- [ ] #task Write rollout notes [id:: write] ^write #prj_is_blocked
+  - 🪢 **LINKS:** starts after [[agents#^implement]]
+- [*] #task Send implementation prompt [id:: implement] ^implement
+MD
+cat > "$proj_vault/20261102.md" <<'MD'
+## Pomodoros
+- [ ] (**0920-0950**) — BUILD
+  - [[agents#^implement]]
+MD
+capture_to "$proj_vault" "$scratch_root/held-project.json" 'x*' --dry-run
+python3 - "$scratch_root/held-project.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+held = payload["pomodoro_close"]["relation_held"][0]
+assert held["reason"] == "blocked", payload
+assert held.get("project"), payload
+assert not payload["pomodoro_close"].get("relation_successors"), payload
+PY
+persist "$scratch_root/held-project.json" relation-successor-held-project.json
+
+# Primary hand-off with a secondary relation reason: S both depends on T and
+# links `starts after` T. Completing T keeps S in `hand_off` with relation
+# metadata attached for display.
+secondary_vault="$scratch_root/handoff-secondary"
+new_vault "$secondary_vault"
+cat > "$secondary_vault/agents.md" <<'MD'
+- [ ] #task Follow-up work [dependsOn:: implement] [id:: follow] ^follow
+  - 🪢 **LINKS:** starts after [[agents#^implement]]
+- [/] #task Send implementation prompt [id:: implement] ^implement
+MD
+cat > "$secondary_vault/20261102.md" <<'MD'
+## Pomodoros
+- [ ] () — BUILD
+  - [[agents#^implement]]
+MD
+capture_to "$secondary_vault" "$scratch_root/handoff-secondary.json" '!agents:implement' --dry-run
+python3 - "$scratch_root/handoff-secondary.json" <<'PY'
+import json, pathlib, sys
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+rows = payload["task_complete"]["unblocked"]
+assert rows and rows[0]["offer"]["group"] == "hand_off", payload
+assert rows[0].get("relation", {}).get("label") == "starts after", payload
+assert payload["pull_in"]["groups"][0]["group"] == "hand_off", payload
+PY
+persist "$scratch_root/handoff-secondary.json" relation-successor-handoff-secondary.json
+
 bob_version="$("$bob_bin" --version | head -n 1)"
 cat > "$fixtures/relation-successor-provenance.md" <<EOF
 # Relation successor fixture provenance
@@ -407,8 +550,8 @@ cat > "$fixtures/relation-successor-provenance.md" <<EOF
 - Bob source SHA: $bob_sha
 - Bob binary version: $bob_version
 - Generator: Scripts/generate-relation-successor-fixtures.sh
-- Build command: CARGO_TARGET_DIR=<isolated-target> cargo build --release --bin bob
-- Generator command: BOB_SOURCE=<opened bob-cli master checkout> BOB_BIN=<isolated-target>/release/bob Scripts/generate-relation-successor-fixtures.sh
+- Build command: cargo build --bin bob (debug, workspace target)
+- Generator command: BOB_SOURCE=<opened bob-cli master checkout> BOB_BIN=<checkout>/target/debug/bob Scripts/generate-relation-successor-fixtures.sh
 - Clock: BOB_NOW=2026-11-02 09:30:00, TZ=UTC0
 - Vault, config, XDG state, and cache are temporary and isolated for each scenario.
 - Fixture transformation: replace only the generated scratch root with $stable_root.
@@ -416,7 +559,9 @@ cat > "$fixtures/relation-successor-provenance.md" <<EOF
 The generator asserts each response's expected relation payload. The mixed x*!2
 vault explicitly contains both a dependency hand-off and a relation successor offer.
 The required-choice refusal, -p none, and opaque-key selection run against separate
-scratch vaults.
+scratch vaults. Committed toggle and nested selections, blocked scheduled/project
+held cases, and the primary hand-off with a secondary relation reason each run on
+their own scratch vaults with genuine Bob output.
 EOF
 
 echo "Generated real-Bob relation-successor fixtures from $bob_sha"

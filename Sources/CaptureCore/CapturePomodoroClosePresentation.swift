@@ -429,27 +429,15 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         }
         // One extra notification line when anything was linked or the
         // breaker fired; with only recovered rows the body is unchanged.
+        // Uses aggregates so nested relation completes count once.
         if let successorLine = SuccessorRows.notificationLine(
-            unblocked: summary.unblocked,
-            keepMoving: summary.keepMoving,
-            relation: summary.relationSuccessors
+            unblocked: capture.allUnblockedRows,
+            keepMoving: capture.allKeepMovingRows,
+            relation: capture.allRelationSuccessors
         ) {
             bodyLines.append(successorLine)
         }
-        if capture.pullIn?.choice != "none" {
-            bodyLines.append(
-                contentsOf: CaptureRelationHeldPresentation.heldNotices(
-                    for: summary.relationHeld
-                )
-            )
-            if let uncertaintyLine = CaptureRelationHeldPresentation.uncertaintyNotice(
-                check: summary.relationCheck,
-                held: summary.relationHeld,
-                relationRows: summary.relationSuccessors
-            ) {
-                bodyLines.append(uncertaintyLine)
-            }
-        }
+        bodyLines.append(contentsOf: CaptureRelationHeldPresentation.lines(for: capture))
         if let droppedDependenciesChip {
             bodyLines.append(droppedDependenciesChip)
         }

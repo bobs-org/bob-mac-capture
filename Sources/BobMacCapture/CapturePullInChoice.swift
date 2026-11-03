@@ -211,6 +211,8 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
 
     var detailText: String? {
         if isRelation {
+            // Lane-only relation status plus the shared meta path, which
+            // already suppresses the raw `trigger: relation` text.
             var details = metaDetails
             if let lane = laneText {
                 details.insert(lane, at: 0)
@@ -218,27 +220,24 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
             return details.isEmpty ? nil : details.joined(separator: " · ")
         }
         if let offerRow {
+            if offerRow.trigger == "last_planned" {
+                var parts: [String] = []
+                if let lane = laneText {
+                    parts.append(lane)
+                }
+                parts.append(contentsOf: metaDetails)
+                return parts.isEmpty ? nil : parts.joined(separator: " · ")
+            }
             let presentation = SuccessorRows.unblockedRows(
                 from: [offerRow],
                 transition: { _ in "" },
                 locator: { _ in "" }
             ).first
+            // Reuse the shared meta path so passive previews and
+            // accessibility both see the second reason without duplicate
+            // trigger/hide fragments.
             var details = [presentation?.captionText].compactMap { $0 }
-            if offerRow.hideRemoved {
-                details.append("removed #hide")
-            }
-            if offerRow.trigger == "project_empty" {
-                details.append("project finished")
-            } else if let trigger = offerRow.trigger,
-                !trigger.isEmpty,
-                trigger != "project_created",
-                trigger != "last_planned"
-            {
-                details.append("trigger: \(trigger)")
-            }
-            if offerRow.trigger == "last_planned" {
-                return laneText
-            }
+            details.append(contentsOf: metaDetails)
             return details.isEmpty ? nil : details.joined(separator: " · ")
         }
         guard let blockedRow else {
@@ -627,8 +626,27 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     /// "Unblocked by X" / "Unblocked by X and N more" / nil.
-    /// Relation-only cards never derive an unblocking story.
+    /// Relation-only cards never derive an unblocking story. When Bob
+    /// supplies group copy, sections already render it: the card line
+    /// respects that copy and never invents a legacy caption. An absent
+    /// `why` in a supplied copy object means no caption. Legacy strings
+    /// survive only for absent-copy payloads.
     var contextText: String? {
+        // When Bob supplies copy (any group copy or top-level copy),
+        // sections already render it: never invent a legacy Unblocked/New
+        // caption. An absent `why` means no caption. Absent-copy payloads
+        // (older Bob without copy objects) keep the legacy strings.
+        let hasSuppliedCopy =
+            authoredCopy != nil || pullIn.groups.contains(where: { $0.copy != nil })
+        if hasSuppliedCopy {
+            if isOnlyKeepMoving {
+                guard let section = sections.first(where: \.isKeepMoving) else {
+                    return nil
+                }
+                return pullInNonempty(section.copy?.why)
+            }
+            return nil
+        }
         if isOnlyRelation {
             return nil
         }
@@ -761,21 +779,39 @@ struct CapturePullInChoiceState: Equatable {
         func groupMatching(_ identity: PullInSectionIdentity) -> CapturePullInGroup? {
             pullIn.groups.first { PullInSectionIdentity(group: $0) == identity }
         }
+        // Bob's group array is authoritative: emit supplied groups in
+        // Bob order, then append any unmatched fallback groups
+        // deterministically. This preserves authored copy/order and keeps
+        // distinct relation labels at the same target distinct.
         let listedIdentities = pullIn.groups.map(PullInSectionIdentity.init(group:))
-        let allIdentitiesListed =
-            !pullIn.groups.isEmpty
-            && Set(rowsByIdentity.keys).isSubset(of: Set(listedIdentities))
-        if allIdentitiesListed {
-            return listedIdentities.compactMap { identity in
+        if !pullIn.groups.isEmpty {
+            var ordered: [CapturePullInChoiceSection] = []
+            var seen = Set<PullInSectionIdentity>()
+            for identity in listedIdentities {
                 guard let sectionRows = rowsByIdentity[identity], !sectionRows.isEmpty else {
-                    return nil
+                    continue
                 }
-                return makeSection(
-                    identity: identity,
-                    group: groupMatching(identity),
-                    sectionRows: sectionRows
+                seen.insert(identity)
+                ordered.append(
+                    makeSection(
+                        identity: identity,
+                        group: groupMatching(identity),
+                        sectionRows: sectionRows
+                    )
                 )
             }
+            let extras = rowsByIdentity.keys.filter { !seen.contains($0) }
+                .sorted(by: Self.legacySectionOrder)
+            for identity in extras {
+                ordered.append(
+                    makeSection(
+                        identity: identity,
+                        group: groupMatching(identity),
+                        sectionRows: rowsByIdentity[identity] ?? []
+                    )
+                )
+            }
+            return ordered
         }
         return rowsByIdentity.keys.sorted(by: Self.legacySectionOrder).map { identity in
             makeSection(
@@ -902,7 +938,15 @@ private struct PullInSectionIdentity: Hashable {
     }
 
     init(row: CapturePullInChoiceRow) {
-        self.init(group: row.group, project: row.project, after: row.after, label: row.label)
+        // Relation discriminators join only primary relation groups. A
+        // hand-off/project/keep-moving row may carry secondary relation
+        // metadata for display; it must not split Bob's group, lose authored
+        // copy, or fall back to legacy ordering.
+        if row.group == "relation" {
+            self.init(group: row.group, project: row.project, after: row.after, label: row.label)
+        } else {
+            self.init(group: row.group, project: row.project, after: nil, label: nil)
+        }
     }
 
     init(group: CapturePullInGroup) {

@@ -62,6 +62,56 @@ public enum CaptureRelationHeldPresentation {
         held.compactMap(heldNotice)
     }
 
+    /// True when held/check lines may render for this pull-in state.
+    /// Held rows are muted and appear only when no picker is involved;
+    /// an explicit `none` choice stays silent, and a picker with offers
+    /// already carries folded diagnostics. Older payloads without
+    /// pull-in still render.
+    public static func shouldPresentHeld(pullIn: CapturePullIn?) -> Bool {
+        if pullIn?.choice == "none" {
+            return false
+        }
+        guard let pullIn else {
+            return true
+        }
+        if !pullIn.supported {
+            return true
+        }
+        return pullIn.offerCount == 0
+    }
+
+    /// Held plus uncertainty lines for one presentation, gated on the
+    /// enclosing picker state. Uses the already-aggregated held/check
+    /// locations so item-level, task, Pomodoro, nested, and batch routes
+    /// share one gate. `already_planned` stays JSON-only via `heldNotice`.
+    public static func lines(
+        held: [CaptureRelationHeld],
+        check: String?,
+        relationRows: [TaskCompleteUnblocked],
+        pullIn: CapturePullIn?
+    ) -> [String] {
+        guard shouldPresentHeld(pullIn: pullIn) else {
+            return []
+        }
+        var out = heldNotices(for: held)
+        if let line = uncertaintyNotice(check: check, held: held, relationRows: relationRows) {
+            out.append(line)
+        }
+        return out
+    }
+
+    /// Aggregate held/check lines for a whole capture, reusing the
+    /// `allRelation*` traversal so batch roots mirroring the first item
+    /// do not double-count. Gated on this capture's picker state.
+    public static func lines(for capture: CaptureCommandSuccess) -> [String] {
+        lines(
+            held: capture.allRelationHeld,
+            check: capture.allRelationCheck,
+            relationRows: capture.allRelationSuccessors,
+            pullIn: capture.pullIn
+        )
+    }
+
     private static func heldReasonText(for held: CaptureRelationHeld) -> String? {
         switch held.reason {
         case "already_planned":
@@ -81,6 +131,19 @@ public enum CaptureRelationHeldPresentation {
             }
             return "waits for “\(SuccessorRows.truncate(first))” and \(targets.count - 1) more"
         case "blocked":
+            // Rust `relation_held_row_json` emits every held-blocked row as
+            // `reason: blocked` with scheduled/project metadata. Mirror its
+            // `held_copy_reason` precedence: scheduled, then project, then
+            // dependency count. The `scheduled`/`project` reason strings
+            // below are legacy synthetic shapes only.
+            if let date = held.scheduled, !date.isEmpty {
+                return "scheduled \(SuccessorRows.shortMonthDay(date) ?? date)"
+            }
+            if let project = held.project,
+                !project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                return "blocked by its project"
+            }
             let count = held.waitsOn?.count ?? 0
             return "blocked (waits on \(count))"
         case "scheduled":

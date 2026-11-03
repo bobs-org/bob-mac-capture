@@ -12360,6 +12360,10 @@ final class CapturePanelModel: ObservableObject {
                 offers.append(contentsOf: complete.keepMoving)
                 stillBlocked.append(contentsOf: complete.stillBlocked)
             }
+            // Relation offers via the shared helpers, including item-level
+            // toggle offers and nested complete-label closes. Deduped below
+            // by Bob's opaque key, preserving canonical numbering.
+            offers.append(contentsOf: capture.allRelationSuccessors)
         }
         offers.append(contentsOf: success.allRelationSuccessors)
         return CapturePullInPreviewSnapshot(

@@ -194,11 +194,12 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         var body = notePath
         // One extra notification line when anything was linked or the
         // breaker fired; with only recovered rows the body keeps today's
-        // `· unblocked A, B` form.
+        // `· unblocked A, B` form. Uses aggregates so nested relation
+        // completes count once alongside the whole-item rows.
         if let line = SuccessorRows.notificationLine(
-            unblocked: summary.unblocked,
-            keepMoving: summary.keepMoving,
-            relation: summary.relationSuccessors
+            unblocked: capture.allUnblockedRows,
+            keepMoving: capture.allKeepMovingRows,
+            relation: capture.allRelationSuccessors
         ) {
             body += "\n\(line)"
         } else {
@@ -207,19 +208,8 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
                 body += " · unblocked \(unblockedNames.joined(separator: ", "))"
             }
         }
-        if capture.pullIn?.choice != "none" {
-            for heldLine in CaptureRelationHeldPresentation.heldNotices(
-                for: summary.relationHeld
-            ) {
-                body += "\n\(heldLine)"
-            }
-            if let uncertaintyLine = CaptureRelationHeldPresentation.uncertaintyNotice(
-                check: summary.relationCheck,
-                held: summary.relationHeld,
-                relationRows: summary.relationSuccessors
-            ) {
-                body += "\n\(uncertaintyLine)"
-            }
+        for heldLine in CaptureRelationHeldPresentation.lines(for: capture) {
+            body += "\n\(heldLine)"
         }
         if isAlreadyDone {
             body += " · nothing to change"

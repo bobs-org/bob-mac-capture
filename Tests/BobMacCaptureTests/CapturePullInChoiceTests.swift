@@ -634,7 +634,119 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(row.relationSecondReason, "starts after “First”")
         XCTAssertTrue(row.metaDetails.contains("starts after “First”"))
         XCTAssertTrue(row.accessibilityLabel.contains("starts after “First”"))
-        XCTAssertFalse(row.metaDetails.contains(where: { $0.hasPrefix("trigger:") }))
+        // `dependency` is the real hand-off trigger and stays visible;
+        // only the raw `trigger: relation` text is suppressed.
+        XCTAssertTrue(row.metaDetails.contains("trigger: dependency"))
+        XCTAssertFalse(row.metaDetails.contains("trigger: relation"))
+        XCTAssertTrue((row.detailText ?? "").contains("starts after “First”"))
+        XCTAssertTrue((row.detailText ?? "").contains("trigger: dependency"))
+    }
+
+    func testHandOffWithSecondReasonJoinsBobGroupAndKeepsMeta() {
+        let handOffPrimary = TaskCompleteUnblocked(
+            notePath: "s.md",
+            blockID: "h1",
+            line: 1,
+            text: "Hand off one",
+            previousStatusSymbol: "?",
+            previousStatusName: "Blocked",
+            statusSymbol: " ",
+            statusName: "Ready",
+            notLinked: "not_selected",
+            offer: TaskCompleteOffer(
+                key: "s.md#^h1",
+                n: 1,
+                group: "hand_off",
+                destination: TaskCompleteOfferDestination(dayFile: "20261102.md")
+            ),
+            trigger: "dependency"
+        )
+        let handOffWithSecond = TaskCompleteUnblocked(
+            notePath: "s.md",
+            blockID: "h2",
+            line: 2,
+            text: "Hand off two",
+            previousStatusSymbol: "?",
+            previousStatusName: "Blocked",
+            statusSymbol: " ",
+            statusName: "Ready",
+            notLinked: "not_selected",
+            offer: TaskCompleteOffer(
+                key: "s.md#^h2",
+                n: 2,
+                group: "hand_off",
+                destination: TaskCompleteOfferDestination(dayFile: "20261102.md")
+            ),
+            trigger: "dependency",
+            relation: CaptureRelationMetadata(
+                label: "starts after",
+                key: "starts after",
+                event: "done",
+                after: [CaptureRelationTarget(notePath: "s.md", blockID: "t1", text: "First")]
+            )
+        )
+        let relation = relationOffer(
+            n: 3,
+            key: "agents.md#^evaluate",
+            after: "agents.md#^implement",
+            target: "Send implementation prompt"
+        )
+        let bobGroups = [
+            CapturePullInGroup(
+                group: "hand_off",
+                copy: CapturePullInGroupCopy(title: "Hand-offs", glyph: "hand_off")
+            ),
+            relationGroup(after: "agents.md#^implement", text: "Send implementation prompt"),
+        ]
+        let state = choiceState(
+            offers: [handOffPrimary, handOffWithSecond, relation],
+            pullIn: CapturePullIn(supported: true, offerCount: 3, groups: bobGroups)
+        )
+        // Secondary relation metadata must not split Bob's hand-off group.
+        XCTAssertEqual(state.sections.map(\.group), ["hand_off", "relation"])
+        let handOff = try! XCTUnwrap(state.sections.first)
+        XCTAssertEqual(handOff.rows.count, 2)
+        XCTAssertEqual(handOff.title, "Hand-offs")
+        // Exact Bob order is preserved; no extra per-item sections appear.
+        XCTAssertEqual(state.sections[1].title, "Starts after “Send implementation prompt”")
+        XCTAssertEqual(state.sections[1].caption, "“Send implementation prompt” is parked · Pending, off today's plan")
+        let second = try! XCTUnwrap(handOff.rows.first(where: { $0.offerKey == "s.md#^h2" }))
+        XCTAssertTrue(second.metaDetails.contains("starts after “First”"))
+        XCTAssertTrue((second.detailText ?? "").contains("starts after “First”"))
+        XCTAssertTrue(second.accessibilityLabel.contains("starts after “First”"))
+        // Same target with distinct labels stays distinct.
+        let distinctA = relationOffer(n: 4, key: "k4", after: "s.md#^t", label: "starts after", target: "T")
+        let distinctB = relationOffer(n: 5, key: "k5", after: "s.md#^t", label: "blocked by", target: "T")
+        let distinctState = choiceState(
+            offers: [distinctA, distinctB],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 2,
+                groups: [
+                    relationGroup(after: "s.md#^t", label: "starts after", text: "T"),
+                    relationGroup(after: "s.md#^t", label: "blocked by", text: "T"),
+                ]
+            )
+        )
+        XCTAssertEqual(distinctState.sections.count, 2)
+        // Non-relation `why` override/absence and partial group metadata:
+        // a supplied copy without `why` yields no invented caption.
+        let noWhy = CapturePullInGroup(
+            group: "relation",
+            after: CapturePullInAfter(key: "s.md#^t", notePath: "s.md", blockID: "t", text: "T"),
+            label: "starts after",
+            event: "parked",
+            copy: CapturePullInGroupCopy(title: "Starts after “T”", glyph: "relation")
+        )
+        let noWhyState = choiceState(
+            offers: [relationOffer(n: 6, key: "k6", after: "s.md#^t", target: "T")],
+            pullIn: CapturePullIn(supported: true, offerCount: 1, groups: [noWhy])
+        )
+        XCTAssertNil(noWhyState.sections.first?.caption)
+        XCTAssertNil(noWhyState.contextText)
+        // No-copy legacy payloads keep local fallbacks.
+        let legacy = choiceState(offers: [handOffPrimary])
+        XCTAssertEqual(legacy.sections.first?.title, "Hand-offs")
     }
 
     func testRelationCaptionAndNewFoldCountersHoldHeightWhileFiltering() {
