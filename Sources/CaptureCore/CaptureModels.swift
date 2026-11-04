@@ -4568,6 +4568,14 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // `project_note` capture. Older Bob binaries omit it entirely; decode
     // as nil.
     public let projectNote: CaptureProjectNoteSummary?
+    /// Additive move records for a capture `>` transfer to a bare note.
+    /// Older Bob binaries omit them; malformed rows are ignored.
+    public let moves: [CaptureTransferMove]
+    /// Additive merge records for a capture `>` transfer into a task,
+    /// drawer, or section. Older Bob binaries omit them; malformed rows are ignored.
+    public let merges: [CaptureTransferMerge]
+    /// Files Bob repaired while moving transferred tasks. Absent from older Bob.
+    public let repairedFiles: [CaptureTransferRepairedFile]
     /// Additive note-pull result. Older Bob binaries omit it; malformed
     /// values degrade to nil so the rest of capture still previews.
     public let notePull: CaptureNotePull?
@@ -4700,6 +4708,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         mirrorSkipped: [CaptureMirrorSkipped] = [],
         taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
+        moves: [CaptureTransferMove] = [],
+        merges: [CaptureTransferMerge] = [],
+        repairedFiles: [CaptureTransferRepairedFile] = [],
         notePull: CaptureNotePull? = nil,
         ref: CaptureRef? = nil,
         planBudget: CapturePlanBudget? = nil,
@@ -4788,6 +4799,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.mirrorSkipped = mirrorSkipped
         self.taskComplete = taskComplete
         self.projectNote = projectNote
+        self.moves = moves
+        self.merges = merges
+        self.repairedFiles = repairedFiles
         self.notePull = notePull
         self.ref = ref
         self.planBudget = planBudget
@@ -4969,6 +4983,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
         )
+        moves = (try? container.decode([CaptureTransferMove].self, forKey: .moves)) ?? []
+        merges = (try? container.decode([CaptureTransferMerge].self, forKey: .merges)) ?? []
+        repairedFiles =
+            (try? container.decode([CaptureTransferRepairedFile].self, forKey: .repairedFiles)) ?? []
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
         planBudget = try container.decodeIfPresent(
@@ -5107,6 +5125,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case mirrorSkipped = "mirror_skipped"
         case taskComplete = "task_complete"
         case projectNote = "project_note"
+        case moves
+        case merges
+        case repairedFiles = "repaired_files"
         case notePull = "note_pull"
         case ref
         case planBudget = "plan_budget"

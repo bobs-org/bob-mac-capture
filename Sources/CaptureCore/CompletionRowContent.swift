@@ -90,6 +90,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .blockID
     case "relation_sigil":
         return .relationSigil
+    case "transfer_source", "transfer_destination":
+        return .route
+    case "transfer_arrow":
+        return .interactivePlaceholder
     case "relation_note":
         return .route
     case "relation_block_id":

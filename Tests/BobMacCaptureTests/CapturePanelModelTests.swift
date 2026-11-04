@@ -7690,6 +7690,30 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNotNil(model.destinationSummary)
     }
 
+    func testTransferPreviewUsesMoveAndMergeFooterVerbs() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let move = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: Data(contentsOf: fixtures.appendingPathComponent("capture-transfer-move.json"))
+        )
+        let merge = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: Data(contentsOf: fixtures.appendingPathComponent("capture-transfer-merge.json"))
+        )
+
+        let model = CapturePanelModel()
+        model.previewResult = move
+        model.previewResults = [move]
+        XCTAssertEqual(model.primaryActionTitle, "Move")
+
+        model.previewResult = merge
+        model.previewResults = [merge]
+        XCTAssertEqual(model.primaryActionTitle, "Merge")
+    }
+
     private func waitUntil(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,

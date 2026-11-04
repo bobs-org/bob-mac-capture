@@ -3888,6 +3888,12 @@ struct PreviewPane: View {
         if index == 0 {
             inboxRoutePreviewSummary
         }
+        if let transferMoves = CaptureTransferMovePresentation(capture: success) {
+            captureTransferMovesPreview(for: transferMoves)
+        }
+        if let transferMerges = CaptureTransferMergePresentation(capture: success) {
+            captureTransferMergesPreview(for: transferMerges)
+        }
         // The moves band sits above the Links and Offers bands, so the
         // moved tasks read before their links and pull-in rows.
         if let moves = CaptureProjectNoteMovePresentation(capture: success) {
@@ -4229,6 +4235,52 @@ struct PreviewPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.previewAccessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func captureTransferMovesPreview(
+        for presentation: CaptureTransferMovePresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(presentation.headerText)
+                .font(.system(.callout, design: .monospaced))
+                .fontWeight(.semibold)
+            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
+                Text(row.text)
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            if let footer = presentation.repairFooterText {
+                Text(footer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.previewAccessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func captureTransferMergesPreview(
+        for presentation: CaptureTransferMergePresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(presentation.headerText)
+                .font(.system(.callout, design: .monospaced))
+                .fontWeight(.semibold)
+            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
+                Text(row.text)
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(2)
+                    .textSelection(.enabled)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

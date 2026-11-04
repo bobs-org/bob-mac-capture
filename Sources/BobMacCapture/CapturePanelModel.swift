@@ -1847,6 +1847,22 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroStartPresentation(capture: previewResult)
     }
 
+    /// The live preview's bare-note task-transfer result for a single capture item.
+    var transferMovePresentation: CaptureTransferMovePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureTransferMovePresentation(capture: previewResult)
+    }
+
+    /// The live preview's task-merge transfer result for a single capture item.
+    var transferMergePresentation: CaptureTransferMergePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureTransferMergePresentation(capture: previewResult)
+    }
+
     /// True when any capture in the on-screen preview is a restart or swap,
     /// so the footer's primary Return tints orange.
     var primaryActionIsOverride: Bool {
@@ -1863,6 +1879,12 @@ final class CapturePanelModel: ObservableObject {
     var primaryActionTitle: String {
         if !previewResults.isEmpty, previewResults.allSatisfy({ $0.kind == "note_pull" }) {
             return "Pull In"
+        }
+        if transferMovePresentation != nil {
+            return "Move"
+        }
+        if transferMergePresentation != nil {
+            return "Merge"
         }
         if resetPresentation != nil {
             return "Reset"
@@ -14782,7 +14804,7 @@ final class CapturePanelModel: ObservableObject {
             "active_task", "task_link", "task_goto", "task_parent", "task_dependency", "blocked_task",
             "relation_target", "relation_to", "relation_from", "relation_label",
             "dependency_target", "task_complete", "wikilink_task", "block_id", "project_task_move",
-            "task_type",
+            "transfer_destination", "task_type",
             "directive",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {

@@ -46,6 +46,19 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.contains("Already Next"), content.body)
     }
 
+    func testTransferNotificationsUseMoveAndMergeCopy() throws {
+        let move = try committedTransferFixture("capture-transfer-move.json")
+        let moved = NotificationService.successContent(captures: [move])
+        XCTAssertEqual(moved.title, "Moved 1 task into db.md")
+        XCTAssertTrue(moved.body.contains("Benchmark logical replication"), moved.body)
+        XCTAssertTrue(moved.body.contains("1 link repaired in 1 note"), moved.body)
+
+        let merge = try committedTransferFixture("capture-transfer-merge.json")
+        let merged = NotificationService.successContent(captures: [merge])
+        XCTAssertEqual(merged.title, "Merged 1 task into Upgrade Postgres")
+        XCTAssertTrue(merged.body.contains("Unknown → Cancelled"), merged.body)
+    }
+
     func testSinglePomodoroStartSuccessContentAppendsSessionDetail() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -2253,6 +2266,20 @@ final class NotificationServiceTests: XCTestCase {
             throw NSError(domain: "NotificationServiceTests", code: 1)
         }
         return success
+    }
+
+    private func committedTransferFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["dry_run"] = false
+        return try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
     }
 
     private func todayLinkFixture(_ name: String) throws -> RefsTodayLinkResponse {
