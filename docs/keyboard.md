@@ -100,7 +100,8 @@ as Command-Y L does.
 | Ctrl-Tab / Ctrl-Shift-Tab | Switch to Bob Refs, retaining the draft and caret | Same switch, closing completion | Same switch; the prompt closes and the draft is retained | Same switch; the prompt closes and the draft is retained |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app-command--then-) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| \ | From a blank draft, replace it with `/` to open Go To; on a bare `/` draft right after, type a literal `\`; otherwise consume the key (reopening from the chip when visible) | Same as in the editor | Native text-field behavior | Native text-field behavior |
 | Command-J | Join the focus calendar event in the default browser when the draft is empty and the band shows a join link; with a nonempty draft the key is unconsumed | Unconsumed (completion stays open) | Native text-field behavior | Native text-field behavior |
 | Command-S | Save the current `%t` draft | Save the current `%t` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
@@ -108,7 +109,7 @@ as Command-Y L does.
 
 ## Capture picker keys
 
-While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. Command-X toggles completed tasks only in the Go To (`/`) picker, where it replaces native cut; other picker fields keep native Command-X. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. The Move picker (`- ^` / `- :`) inserts the ID on Return and inserts the ID plus Bob's continuation on Shift-Return. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. With an empty Go To filter, `\` is consumed or, right after `\` opened Go To, types a literal `\`. Command-X toggles completed tasks only in the Go To (`/`) picker, where it replaces native cut; other picker fields keep native Command-X. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. The Move picker (`- ^` / `- :`) inserts the ID on Return and inserts the ID plus Bob's continuation on Shift-Return. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ## Successor choices
 
@@ -256,6 +257,21 @@ flight does nothing. If the panel is hidden before the result lands, the
 result is dropped. While the stash, saved-template shelf, Add block ID or
 Name Pomodoro prompt, successor-choice card, or a picker is open, Command-\
 is consumed so you finish or cancel that surface first.
+
+## Going to a task from any app (Command-\ then \)
+
+`Command-\` then `\` searches tasks from any macOS app. The first press opens
+or focuses Capture with the editor focused (release Command); with
+Settings › Hotkey › **Also open Capture with Command-\\** on, `\` typed into
+the blank draft turns into `/` and opens the Go To picker. This depends on the
+alias setting: with it off, `\` still opens Go To inside the panel but the
+global chord only works there.
+
+Contrast with `Command-\` `Command-\`, which opens today's Pomodoro. The
+retained-draft caveat applies: `\` starts Go To only from a blank draft or a
+bare `/` draft, so stash (Control-C) or clear a retained capture first.
+Typing `\` `\` right away types one literal `\`, so a draft can still start
+with a capture escape such as `\#fix`.
 
 ## Editing the draft
 

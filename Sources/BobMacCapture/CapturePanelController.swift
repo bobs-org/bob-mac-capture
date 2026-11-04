@@ -1007,6 +1007,33 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Blank-draft `\` opens Go To: replaces the whole blank draft with `/`
+    /// through `NSTextView` so undo, accessibility, and the text-did-change
+    /// path stay native, then arms the one-shot literal. Returns `false`
+    /// without changing state when declined, so the key falls through and
+    /// AppKit types `\` natively.
+    static func insertGotoSigilForBackslashInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText(),
+              !model.hasDraft,
+              textView.string == model.plainDraft,
+              !model.isSubmitting,
+              !model.editorInputLocked
+        else {
+            return false
+        }
+        model.dismissCompletion()
+        let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+        textView.insertText("/", replacementRange: fullRange)
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        textView.scrollRangeToVisible(NSRange(location: 1, length: 0))
+        model.armBackslashLiteral()
+        return true
+    }
+
     /// Close-list auto-comma: insert `,` before a digit typed right after
     /// a close task number. Returns `false` without changing state whenever
     /// the model declines, so the key event falls through to AppKit and the
@@ -1919,6 +1946,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.dismissCompletion()
             model.openTodayPomodoroInObsidian()
             return true
+        case .openGotoFromBackslash:
+            return Self.insertGotoSigilForBackslashInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+        case .typeLiteralBackslash:
+            model.replaceGotoSigilWithLiteralBackslash()
+            return true
         case .joinCalendarEvent:
             model.dismissCompletion()
             model.joinFocusCalendarEvent()
@@ -2081,6 +2116,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         repairPromptFieldFocusIfOrphaned()
         repairPickerFilterFocusIfNeeded()
         let editorLeaderPending = takeEditorLeader()
+        let backslashLiteralArmed = model.takeBackslashLiteralArm()
         guard let command = keyRouter.command(
             for: event,
             context: CaptureKeyRoutingContext(
@@ -2128,6 +2164,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 taskIDPromptCyclesSuggestions: model.taskIDPromptCyclesSuggestions,
                 closeTaskCommaArmed: model.closeTaskCommaArmed,
                 draftIsBlank: !model.hasDraft,
+                draftIsBareGotoSigil: model.draftIsBareGotoSigil,
+                backslashLiteralArmed: backslashLiteralArmed,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )

@@ -97,6 +97,8 @@ enum CaptureKeyCommand: Equatable {
     case flipRelationDirection
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
+    case openGotoFromBackslash
+    case typeLiteralBackslash
     case joinCalendarEvent
     case switchPanel
     case armEditorLeader
@@ -147,6 +149,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptCyclesSuggestions = false
     var closeTaskCommaArmed = false
     var draftIsBlank = false
+    var draftIsBareGotoSigil = false
+    var backslashLiteralArmed = false
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -160,6 +164,20 @@ struct CaptureKeyCommandRouter {
         _ modifiers: NSEvent.ModifierFlags
     ) -> NSEvent.ModifierFlags {
         modifiers.subtracting(ignoredReturnModifiers)
+    }
+
+    /// Typed `\` by characters, not key code, so layouts needing Option or
+    /// Shift still match. Command and Control veto; marked text is checked
+    /// by the caller through `editorHasMarkedText`.
+    static func isTypedBackslash(
+        event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        guard event.characters == "\\" else {
+            return false
+        }
+        return !modifiers.contains(.command)
+            && !modifiers.contains(.control)
     }
 
     private enum KeyCode {
@@ -327,6 +345,27 @@ struct CaptureKeyCommandRouter {
 
         if event.keyCode == KeyCode.backslash, modifiers == .command {
             return .openTodayPomodoro
+        }
+
+        if Self.isTypedBackslash(event: event, modifiers: modifiers),
+           !context.editorHasMarkedText
+        {
+            let isRepeat = context.keyIsRepeat || event.isARepeat
+            if context.draftIsBlank || context.draftIsBareGotoSigil {
+                if isRepeat {
+                    return .consumeKey
+                }
+                if context.draftIsBlank {
+                    return .openGotoFromBackslash
+                }
+                if context.backslashLiteralArmed {
+                    return .typeLiteralBackslash
+                }
+                if context.pickerChipVisible {
+                    return .openPickerFromChip
+                }
+                return .consumeKey
+            }
         }
 
         if event.keyCode == KeyCode.s, modifiers == .command {
@@ -747,6 +786,21 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
+        // Bare `/` Go To keeps `\` out of the draft and filter: a second
+        // `\` right after the alias types a literal, otherwise consume.
+        // Before the keyCode switch, whose explicit backslash case would
+        // otherwise swallow non-Command keys.
+        if Self.isTypedBackslash(event: event, modifiers: modifiers),
+           !context.editorHasMarkedText,
+           context.pickerSourceIsTaskGoto,
+           context.pickerFilterIsEmpty,
+           context.draftIsBareGotoSigil
+        {
+            if context.keyIsRepeat || event.isARepeat {
+                return .consumeKey
+            }
+            return context.backslashLiteralArmed ? .typeLiteralBackslash : .consumeKey
+        }
         switch event.keyCode {
         case KeyCode.x:
             guard modifiers == .command, context.pickerSourceIsTaskGoto else {

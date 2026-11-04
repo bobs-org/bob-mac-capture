@@ -91,7 +91,8 @@ suggestions.
 
 ## Go To Picker
 
-Typing `/` as the whole capture draft opens the Go To picker (`task_goto`
+Typing `/` as the whole capture draft — or typing `\` into a blank draft,
+which Mac Capture turns into `/` — opens the Go To picker (`task_goto`
 context), the same card as `:` with scope `/` and caption Go To. When
 `capture-parse` reports `task_goto` in `needs`, the app skips the doomed live
 dry run and shows "Pick a task to open — press Tab to browse".
@@ -126,8 +127,9 @@ discards it instead of pushing it to the canceled-draft stash.
 
 Go To Picker keys: Return/Tab/Command-Return/Control-Return Go To, Command-X
 Show/Hide Completed, Shift-Return consumed, Escape Clear/Cancel, Backspace on
-empty filter removes `/`, Control-C discards. Command-X replaces the native cut
-shortcut only while the Go To picker is open.
+empty filter removes `/`, `\` on an empty filter is consumed (or types a
+literal `\` right after `\` opened Go To), Control-C discards. Command-X
+replaces the native cut shortcut only while the Go To picker is open.
 
 ## Parent Task Picker
 

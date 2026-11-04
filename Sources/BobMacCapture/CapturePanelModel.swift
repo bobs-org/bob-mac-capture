@@ -547,6 +547,9 @@ final class CapturePanelModel: ObservableObject {
     @Published private(set) var editorInputLocked = false
     /// True while Control-G is waiting for its one follow-up key.
     @Published private(set) var editorLeaderPending = false
+    /// One-shot arm after `\` opens Go To: the very next `\` on a bare `/`
+    /// draft types a literal `\` instead. Cleared on consume or dismissal.
+    @Published private(set) var backslashLiteralArmed = false
     static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
@@ -4085,6 +4088,7 @@ final class CapturePanelModel: ObservableObject {
         invalidateRewrite()
         invalidateTodayPomodoroGoto()
         clearEditorLeader()
+        clearBackslashLiteralArm()
     }
 
     func armEditorLeader() {
@@ -4093,6 +4097,26 @@ final class CapturePanelModel: ObservableObject {
 
     func clearEditorLeader() {
         editorLeaderPending = false
+    }
+
+    func armBackslashLiteral() {
+        backslashLiteralArmed = true
+    }
+
+    func clearBackslashLiteralArm() {
+        backslashLiteralArmed = false
+    }
+
+    /// Takes and clears the one-shot backslash arm, like the editor leader.
+    func takeBackslashLiteralArm() -> Bool {
+        let armed = backslashLiteralArmed
+        backslashLiteralArmed = false
+        return armed
+    }
+
+    /// True when the trimmed draft is exactly `/`, the Go To trigger.
+    var draftIsBareGotoSigil: Bool {
+        plainDraft.trimmingCharacters(in: .whitespacesAndNewlines) == "/"
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {
@@ -7592,6 +7616,23 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         cancelPicker()
+    }
+
+    /// Second `\` right after the alias: rewrites the bare `/` Go To draft
+    /// to one literal `\`, mirroring the non-wikilink tail of
+    /// `removePickerTrigger()`. Bob never claims `\`, so no Go To picker
+    /// can reopen for the new draft.
+    func replaceGotoSigilWithLiteralBackslash() {
+        guard draftIsBareGotoSigil else {
+            return
+        }
+        closePickerForAccept()
+        dismissPickerChip()
+        pickerAutoOpenSuppressedStart = nil
+        let text = "\\"
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: 1, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: 1, requestCompletion: true, trigger: .edit)
     }
 
     func openPickerFromChip() {
