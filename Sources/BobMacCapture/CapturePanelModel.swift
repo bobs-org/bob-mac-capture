@@ -6555,8 +6555,11 @@ final class CapturePanelModel: ObservableObject {
                     else {
                         return
                     }
+                    let responseRange = snapshot.replacement
                     guard snapshot.context == "task_goto",
-                        snapshot.replacement == range
+                        responseRange.start == range.start,
+                        responseRange.end >= responseRange.start,
+                        responseRange.end <= range.end
                     else {
                         if self.settleFailedGotoClosedTasksFetch(
                             request: request,
@@ -6582,7 +6585,14 @@ final class CapturePanelModel: ObservableObject {
                 } else {
                     unsupportedClosedTasks = false
                 }
-                let errorMessage = error.description
+                let errorMessage: String
+                if case .processFailed(_, _, let stderr) = error {
+                    NSLog("%@", error.description)
+                    let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                    errorMessage = trimmedStderr.isEmpty ? error.description : trimmedStderr
+                } else {
+                    errorMessage = error.description
+                }
                 await MainActor.run {
                     guard let self,
                         self.settleFailedGotoClosedTasksFetch(

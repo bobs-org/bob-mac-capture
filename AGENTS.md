@@ -20,6 +20,11 @@ still runs the tests.
 If the mac is offline, say in the final report that the macOS targets are
 unverified.
 
+## After you push
+
+Before landing Swift changes, run `Scripts/macos-ci-check` from this repository. After
+every push, watch the exact-SHA macOS run to green with `/sase_monitor`.
+
 `.swift-format` pins the house style (4-space indentation, 100-column lines). Format
 only the lines you change; never re-indent whole files.
 

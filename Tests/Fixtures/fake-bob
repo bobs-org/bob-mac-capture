@@ -2068,7 +2068,8 @@ JSON
         closed_tasks="true"
       fi
     done
-    if [[ "${draft}" == "/" && "${all_tasks}" == "true" ]]; then
+    delay_request="false"
+    if [[ ("${draft}" == "/" || "${draft}" == "/dee") && "${all_tasks}" == "true" ]]; then
       if [[ "${closed_tasks}" == "true" ]]; then
         delay_marker="${FAKE_BOB_GOTO_DELAY_CLOSED_MARKER:-}"
         fail_marker="${FAKE_BOB_GOTO_FAIL_CLOSED_MARKER:-}"
@@ -2090,6 +2091,7 @@ JSON
       fi
       if [[ -n "${delay_marker}" && -e "${delay_marker}" ]]; then
         rm -f "${delay_marker}"
+        delay_request="true"
         sleep "${FAKE_BOB_GOTO_DELAY_SECONDS:-0.35}"
       fi
       if [[ "${unsupported_request}" == "true" ]]; then
@@ -3242,7 +3244,11 @@ JSON
       fi
     elif [[ "${draft}" == "/dee" ]]; then
       if [[ "${cursor}" == "0" ]]; then
-        if [[ " $* " == *" --closed-tasks "* ]]; then
+        if [[ "${delay_request}" == "true" ]]; then
+          sed -e 's/"cursor":4/"cursor":0/' \
+              -e 's/"replacement":{"start":0,"end":4}/"replacement":{"start":0,"end":1}/' \
+              "${fixtures_dir}/task-goto-complete-dee.json"
+        elif [[ " $* " == *" --closed-tasks "* ]]; then
           cat "${fixtures_dir}/task-goto-complete-closed.json"
         else
           cat "${fixtures_dir}/task-goto-complete-full.json"
