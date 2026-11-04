@@ -7708,10 +7708,15 @@ final class CapturePanelModelTests: XCTestCase {
         model.previewResult = move
         model.previewResults = [move]
         XCTAssertEqual(model.primaryActionTitle, "Move")
+        XCTAssertEqual(model.destinationSummary, "Would move 2 tasks into db.md › Tasks")
 
         model.previewResult = merge
         model.previewResults = [merge]
         XCTAssertEqual(model.primaryActionTitle, "Merge")
+        XCTAssertEqual(
+            model.destinationSummary,
+            "Would merge 2 tasks into “Always add capture time to ref marker note!” · work.md"
+        )
     }
 
     private func waitUntil(

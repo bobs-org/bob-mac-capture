@@ -49,14 +49,27 @@ final class NotificationServiceTests: XCTestCase {
     func testTransferNotificationsUseMoveAndMergeCopy() throws {
         let move = try committedTransferFixture("capture-transfer-move.json")
         let moved = NotificationService.successContent(captures: [move])
-        XCTAssertEqual(moved.title, "Moved 1 task into db.md")
+        XCTAssertEqual(moved.title, "Moved 2 tasks into db.md")
         XCTAssertTrue(moved.body.contains("Benchmark logical replication"), moved.body)
         XCTAssertTrue(moved.body.contains("1 link repaired in 1 note"), moved.body)
 
         let merge = try committedTransferFixture("capture-transfer-merge.json")
         let merged = NotificationService.successContent(captures: [merge])
-        XCTAssertEqual(merged.title, "Merged 1 task into Upgrade Postgres")
-        XCTAssertTrue(merged.body.contains("Unknown → Cancelled"), merged.body)
+        XCTAssertEqual(
+            merged.title,
+            "Merged 2 tasks into “Always add capture time to ref marker note!”"
+        )
+        XCTAssertTrue(merged.body.contains("Next → Cancelled · title only"), merged.body)
+        XCTAssertFalse(merged.body.contains("Unknown"), merged.body)
+    }
+
+    func testTransferNotificationIncludesBobAuthoredConsequences() throws {
+        let merge = try committedTransferFixture("capture-transfer-consequences-offers.json")
+        let content = NotificationService.successContent(captures: [merge])
+
+        XCTAssertTrue(content.body.contains("Cut over prod"), content.body)
+        XCTAssertTrue(content.body.contains("Prepare test environment"), content.body)
+        XCTAssertTrue(content.body.contains("leaves BUILD"), content.body)
     }
 
     func testSinglePomodoroStartSuccessContentAppendsSessionDetail() {

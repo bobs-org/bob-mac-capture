@@ -1,9 +1,11 @@
 ---
 title: "Mac Capture previews"
-description: "Preview cards, Pomodoro blocks, session controls, dependencies, completions, and successor offers."
+description: "Preview cards, Pomodoro blocks, transfers, dependencies, completions, and successor offers."
 ---
 
 Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard data unless the accepted parse reports `%c`; Preview and Capture read it and mirror the full block. See [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md) for insertion.
+
+Transfer cards are covered in [Task transfers](capture-transfers.md).
 
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion.png#only-light)](images/task-completion.png)
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)

@@ -31,10 +31,10 @@ extension CaptureCommandSuccess {
         notePull?.successors ?? []
     }
 
-    /// Relation offers in Bob's deterministic item → task completion → nested
-    /// relation completion → Pomodoro close → past close order. Batch roots
-    /// mirror the first item for legacy compatibility, so normalized children
-    /// are authoritative.
+    /// Relation and merge hand-off offers in Bob's deterministic item order:
+    /// item, task completion, nested relation completion, Pomodoro close, past
+    /// close, then merge hand-offs. Batch roots mirror the first item for
+    /// legacy compatibility, so normalized children are authoritative.
     public var allRelationSuccessors: [TaskCompleteUnblocked] {
         relationItems.flatMap { item in
             var rows = item.relationSuccessors
@@ -44,6 +44,7 @@ extension CaptureCommandSuccess {
             }
             rows.append(contentsOf: item.pomodoroClose?.relationSuccessors ?? [])
             rows.append(contentsOf: item.pomodoroPast?.close.relationSuccessors ?? [])
+            rows.append(contentsOf: item.mergeOffers)
             return rows
         }
     }

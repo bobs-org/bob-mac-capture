@@ -1,0 +1,27 @@
+---
+title: "Mac Capture task transfers"
+description: "Move and merge preview cards, status, notifications, and VoiceOver."
+---
+
+## Task transfers (`>`)
+
+A move or merge renders one card per transfer item in draft order. The card follows the
+draft: source tasks, a `↓ into` connector, the destination, Bob-authored consequence
+sentences, link-repair summary, TODAY badge when Bob returned `plan_budget`, and any
+merge hand-off offers. Move uses the route accent and merge uses purple throughout the
+card and editor arrow. Source rows show Bob's task title, status transition, locator, and
+block-ID change or moved-note count; the destination shows its status, locator, and
+created drawer or section. A batch-level TODAY meter stays above ordinary item cards,
+while a single transfer hosts the badge inside its card. Transfer cards stand in for the
+generic item header and item-level Pull-In summary. Inbox-route candidates remain above
+the card.
+
+The footer status line names the action and resolved destination (`Would merge 2 tasks
+into “T” · bob.md › FUTURE WORK`, `Would move 2 tasks into db.md › Tasks`). Return keeps
+the **Merge** or **Move** action. Once committed, notifications use `Merged …` or
+`Moved …`; each body has one styled source line, Bob's consequence sentences, and the
+link-repair line. VoiceOver reads the whole card as one element. If the parsed transfer
+verb changes while editing, the panel announces the new verb and Bob-resolved target.
+An all-unchanged merge is muted and says `Already merged into “T”` and `Nothing to
+write`. Older Bob responses keep working: message rows render as styled fallback text,
+and consequence rows are omitted when their additive fields are missing.

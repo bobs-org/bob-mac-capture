@@ -684,20 +684,11 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
-            if let merges = CaptureTransferMergePresentation(capture: capture) {
+            if let transfer = CaptureTransferPresentation(capture: capture) {
                 return singlePresentation(
-                    title: merges.notificationTitle,
+                    title: transfer.notificationTitle,
                     subtitle: displayLabel(for: capture),
-                    body: merges.notificationBody,
-                    capture: capture,
-                    targetPaths: targetPaths
-                )
-            }
-            if let moves = CaptureTransferMovePresentation(capture: capture) {
-                return singlePresentation(
-                    title: moves.notificationTitle,
-                    subtitle: displayLabel(for: capture),
-                    body: moves.notificationBody,
+                    body: transfer.notificationBody,
                     capture: capture,
                     targetPaths: targetPaths
                 )

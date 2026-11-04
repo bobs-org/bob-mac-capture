@@ -219,7 +219,17 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
 /// Maps a typed span while retaining the template slot index carried by Bob.
 /// Template spans without a field index remain neutral; every other span kind
 /// follows the established kind-only mapping.
-public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanticCategory {
+public func captureSemanticCategory(
+    forSpan span: CaptureSpan,
+    mode: String? = nil
+) -> CaptureSemanticCategory {
+    if span.kind == "transfer_arrow" {
+        switch mode {
+        case "task_move": return .route
+        case "task_merge": return .section
+        default: return .interactivePlaceholder
+        }
+    }
     switch span.kind {
     case "template_placeholder", "template_field":
         guard let field = span.field else {

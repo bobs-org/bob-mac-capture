@@ -4920,6 +4920,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive merge records for a capture `>` transfer into a task,
     /// drawer, or section. Older Bob binaries omit them; malformed rows are ignored.
     public let merges: [CaptureTransferMerge]
+    /// Additive merge hand-off offers for a capture `>` transfer. Older Bob
+    /// binaries omit them; malformed rows are dropped independently.
+    public let mergeOffers: [TaskCompleteUnblocked]
     /// Files Bob repaired while moving transferred tasks. Absent from older Bob.
     public let repairedFiles: [CaptureTransferRepairedFile]
     /// Additive note-pull result. Older Bob binaries omit it; malformed
@@ -5060,6 +5063,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         projectNote: CaptureProjectNoteSummary? = nil,
         moves: [CaptureTransferMove] = [],
         merges: [CaptureTransferMerge] = [],
+        mergeOffers: [TaskCompleteUnblocked] = [],
         repairedFiles: [CaptureTransferRepairedFile] = [],
         notePull: CaptureNotePull? = nil,
         ref: CaptureRef? = nil,
@@ -5153,6 +5157,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.projectNote = projectNote
         self.moves = moves
         self.merges = merges
+        self.mergeOffers = mergeOffers
         self.repairedFiles = repairedFiles
         self.notePull = notePull
         self.ref = ref
@@ -5340,8 +5345,15 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
         )
-        moves = (try? container.decode([CaptureTransferMove].self, forKey: .moves)) ?? []
-        merges = (try? container.decode([CaptureTransferMerge].self, forKey: .merges)) ?? []
+        moves =
+            (try? container.decode(CaptureLossyArray<CaptureTransferMove>.self, forKey: .moves))?
+            .values ?? []
+        merges =
+            (try? container.decode(CaptureLossyArray<CaptureTransferMerge>.self, forKey: .merges))?
+            .values ?? []
+        mergeOffers =
+            (try? container.decode(CaptureLossyArray<TaskCompleteUnblocked>.self, forKey: .mergeOffers))?
+            .values ?? []
         repairedFiles =
             (try? container.decode([CaptureTransferRepairedFile].self, forKey: .repairedFiles)) ?? []
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
@@ -5487,6 +5499,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case projectNote = "project_note"
         case moves
         case merges
+        case mergeOffers = "merge_offers"
         case repairedFiles = "repaired_files"
         case notePull = "note_pull"
         case ref
@@ -6763,6 +6776,9 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     /// the same draft changes the row's `note_path`, never this. Absent on
     /// other offers and from older Bob binaries.
     public let note: String?
+    /// Source task that was merged when this hand-off was offered.
+    /// Absent on other offers and from older Bob binaries.
+    public let mergedFrom: String?
 
     public init(
         key: String = "",
@@ -6774,7 +6790,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         selected: Bool = false,
         blockIDNeeded: Bool = false,
         movedFrom: String? = nil,
-        note: String? = nil
+        note: String? = nil,
+        mergedFrom: String? = nil
     ) {
         self.key = key
         self.n = n
@@ -6786,6 +6803,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         self.blockIDNeeded = blockIDNeeded
         self.movedFrom = movedFrom
         self.note = note
+        self.mergedFrom = mergedFrom
     }
 
     public init(from decoder: Decoder) throws {
@@ -6804,6 +6822,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         blockIDNeeded = (try? container.decodeIfPresent(Bool.self, forKey: .blockIDNeeded)) ?? false
         movedFrom = try? container.decodeIfPresent(String.self, forKey: .movedFrom)
         note = try? container.decodeIfPresent(String.self, forKey: .note)
+        mergedFrom = try? container.decodeIfPresent(String.self, forKey: .mergedFrom)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6817,6 +6836,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         case blockIDNeeded = "block_id_needed"
         case movedFrom = "moved_from"
         case note
+        case mergedFrom = "merged_from"
     }
 }
 

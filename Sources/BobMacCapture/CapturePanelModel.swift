@@ -529,6 +529,8 @@ final class CapturePanelModel: ObservableObject {
     // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
     @Published var successAnnouncementTick = 0
     @Published var statusAnnouncementTick = 0
+    @Published var transferVerbAnnouncementTick = 0
+    @Published var transferVerbAnnouncement: String?
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
     @Published var isTemplateShelfPresented = false
@@ -1918,20 +1920,12 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroStartPresentation(capture: previewResult)
     }
 
-    /// The live preview's bare-note task-transfer result for a single capture item.
-    var transferMovePresentation: CaptureTransferMovePresentation? {
+    /// The live preview's transfer result for a single capture item.
+    var transferPresentation: CaptureTransferPresentation? {
         guard previewResults.count == 1, let previewResult else {
             return nil
         }
-        return CaptureTransferMovePresentation(capture: previewResult)
-    }
-
-    /// The live preview's task-merge transfer result for a single capture item.
-    var transferMergePresentation: CaptureTransferMergePresentation? {
-        guard previewResults.count == 1, let previewResult else {
-            return nil
-        }
-        return CaptureTransferMergePresentation(capture: previewResult)
+        return CaptureTransferPresentation(capture: previewResult)
     }
 
     /// True when any capture in the on-screen preview is a restart or swap,
@@ -1951,11 +1945,8 @@ final class CapturePanelModel: ObservableObject {
         if !previewResults.isEmpty, previewResults.allSatisfy({ $0.kind == "note_pull" }) {
             return "Pull In"
         }
-        if transferMovePresentation != nil {
-            return "Move"
-        }
-        if transferMergePresentation != nil {
-            return "Merge"
+        if let transfer = transferPresentation {
+            return transfer.primaryActionTitle
         }
         if resetPresentation != nil {
             return "Reset"
@@ -2096,6 +2087,19 @@ final class CapturePanelModel: ObservableObject {
         globalDestination: CaptureGlobalDestination?,
         previewDraft: String
     ) {
+        let previousTransfer = previewResults
+            .compactMap { CaptureTransferPresentation(capture: $0) }
+            .first
+        let nextTransfer = captures
+            .compactMap { CaptureTransferPresentation(capture: $0) }
+            .first
+        if let previousTransfer, let nextTransfer,
+           previousTransfer.verb != nextTransfer.verb
+        {
+            transferVerbAnnouncement =
+                "Now \(nextTransfer.verb.gerund) into “\(nextTransfer.destination.title.text)”"
+            transferVerbAnnouncementTick += 1
+        }
         emptyNotePullPresentation = nil
         previewResult = captures.first
         previewResults = captures
@@ -15617,7 +15621,7 @@ final class CapturePanelModel: ObservableObject {
                 return true
             }
 
-            let category = captureSemanticCategory(forSpan: item.span)
+            let category = captureSemanticCategory(forSpan: item.span, mode: parse.mode)
             text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
             if item.span.projectNote != nil {
                 // Every span of a sealed project-note marker, whatever the
@@ -16083,6 +16087,12 @@ final class CapturePanelModel: ObservableObject {
             return "\(prefix) \u{2192} All items \u{2192} \(globalDestination.destinationLabel)\(overrides): \(sample)"
         }
 
+        if captures.count == 1,
+           let transfer = CaptureTransferPresentation(capture: captures[0])
+        {
+            return transfer.statusLineText
+        }
+
         guard captures.count != 1 else {
             let capture = captures[0]
             let label = displayLabel(for: capture)
@@ -16125,6 +16135,12 @@ final class CapturePanelModel: ObservableObject {
                 ? ""
                 : ", \(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
             return "\(prefix) \(captures.count) items \u{00b7} All items \u{2192} \(globalDestination.destinationLabel)\(overrides)"
+        }
+
+        if captures.count == 1,
+           let transfer = CaptureTransferPresentation(capture: captures[0])
+        {
+            return transfer.statusLineText
         }
 
         guard captures.count != 1 else {

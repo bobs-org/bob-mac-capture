@@ -1,5 +1,26 @@
 import Foundation
 
+/// Decodes arrays whose individual additive rows may be malformed. One bad
+/// optional transfer row must not hide the other rows or the capture itself.
+struct CaptureLossyArray<Element: Decodable>: Decodable {
+    let values: [Element]
+
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var values: [Element] = []
+        while !container.isAtEnd {
+            // `decode` can leave some unkeyed containers on the same element
+            // after a type mismatch. Claim the slot first so one malformed
+            // additive row cannot trap decoding in this loop.
+            let elementDecoder = try container.superDecoder()
+            if let value = try? Element(from: elementDecoder) {
+                values.append(value)
+            }
+        }
+        self.values = values
+    }
+}
+
 /// One task moved by `bob capture`'s `>` transfer syntax. Bob owns source
 /// resolution, move semantics, and link repair; the Mac client only displays
 /// these returned records.
@@ -12,6 +33,10 @@ public struct CaptureTransferMove: Codable, Equatable, Sendable {
     public let newBlockID: String?
     public let oldDependencyID: String?
     public let newDependencyID: String?
+    public let destinationLine: Int?
+    public let destinationSection: String?
+    public let statusSymbol: String?
+    public let statusName: String?
 
     public init(
         sourcePath: String = "",
@@ -21,7 +46,11 @@ public struct CaptureTransferMove: Codable, Equatable, Sendable {
         oldBlockID: String? = nil,
         newBlockID: String? = nil,
         oldDependencyID: String? = nil,
-        newDependencyID: String? = nil
+        newDependencyID: String? = nil,
+        destinationLine: Int? = nil,
+        destinationSection: String? = nil,
+        statusSymbol: String? = nil,
+        statusName: String? = nil
     ) {
         self.sourcePath = sourcePath
         self.destinationPath = destinationPath
@@ -31,6 +60,10 @@ public struct CaptureTransferMove: Codable, Equatable, Sendable {
         self.newBlockID = newBlockID
         self.oldDependencyID = oldDependencyID
         self.newDependencyID = newDependencyID
+        self.destinationLine = destinationLine
+        self.destinationSection = destinationSection
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +76,10 @@ public struct CaptureTransferMove: Codable, Equatable, Sendable {
         newBlockID = try? container.decodeIfPresent(String.self, forKey: .newBlockID)
         oldDependencyID = try? container.decodeIfPresent(String.self, forKey: .oldDependencyID)
         newDependencyID = try? container.decodeIfPresent(String.self, forKey: .newDependencyID)
+        destinationLine = try? container.decodeIfPresent(Int.self, forKey: .destinationLine)
+        destinationSection = try? container.decodeIfPresent(String.self, forKey: .destinationSection)
+        statusSymbol = try? container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try? container.decodeIfPresent(String.self, forKey: .statusName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -54,12 +91,15 @@ public struct CaptureTransferMove: Codable, Equatable, Sendable {
         case newBlockID = "new_block_id"
         case oldDependencyID = "old_dependency_id"
         case newDependencyID = "new_dependency_id"
+        case destinationLine = "destination_line"
+        case destinationSection = "destination_section"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
     }
 }
 
 /// A descriptor from Bob's `merges[]` result. The same tolerant shape works
-/// for source and destination records; fields that do not apply to a target
-/// are absent.
+/// for source and destination records; fields that do not apply are absent.
 public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
     public let path: String
     public let blockID: String?
@@ -68,6 +108,9 @@ public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
     public let drawer: String?
     public let section: String?
     public let kind: String?
+    public let created: Bool?
+    public let statusSymbol: String?
+    public let statusName: String?
 
     public init(
         path: String = "",
@@ -76,7 +119,10 @@ public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
         title: String? = nil,
         drawer: String? = nil,
         section: String? = nil,
-        kind: String? = nil
+        kind: String? = nil,
+        created: Bool? = nil,
+        statusSymbol: String? = nil,
+        statusName: String? = nil
     ) {
         self.path = path
         self.blockID = blockID
@@ -85,6 +131,9 @@ public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
         self.drawer = drawer
         self.section = section
         self.kind = kind
+        self.created = created
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
     }
 
     public init(from decoder: Decoder) throws {
@@ -96,6 +145,9 @@ public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
         drawer = try? container.decodeIfPresent(String.self, forKey: .drawer)
         section = try? container.decodeIfPresent(String.self, forKey: .section)
         kind = try? container.decodeIfPresent(String.self, forKey: .kind)
+        created = try? container.decodeIfPresent(Bool.self, forKey: .created)
+        statusSymbol = try? container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try? container.decodeIfPresent(String.self, forKey: .statusName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -106,20 +158,57 @@ public struct CaptureTransferTaskDescriptor: Codable, Equatable, Sendable {
         case drawer
         case section
         case kind
+        case created
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+    }
+}
+
+/// One Bob-authored effect of a merge. The Mac displays `text` and never
+/// reconstructs a consequence from keys, counts, or the vault.
+public struct CaptureTransferConsequence: Codable, Equatable, Sendable {
+    public let kind: String
+    public let tone: String
+    public let text: String
+    public let keys: [String]
+
+    public init(kind: String = "", tone: String = "info", text: String = "", keys: [String] = []) {
+        self.kind = kind
+        self.tone = tone
+        self.text = text
+        self.keys = keys
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = (try? container.decode(String.self, forKey: .kind)) ?? ""
+        tone = (try? container.decode(String.self, forKey: .tone)) ?? "info"
+        text = (try? container.decode(String.self, forKey: .text)) ?? ""
+        keys = (try? container.decode([String].self, forKey: .keys)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case tone
+        case text
+        case keys
     }
 }
 
 /// Bob's source-ordered result for one task merge in a capture transfer.
-/// Its message is Bob-authored consequence copy and is displayed verbatim.
 public struct CaptureTransferMerge: Codable, Equatable, Sendable {
     public let source: CaptureTransferTaskDescriptor
     public let target: CaptureTransferTaskDescriptor
     public let label: String
     public let outcome: String
     public let previousStatus: String?
+    public let previousStatusName: String?
+    public let statusSymbol: String?
+    public let statusName: String?
     public let movedLines: Int
     public let movedNotes: Int
     public let message: String
+    public let consequences: [CaptureTransferConsequence]
 
     public init(
         source: CaptureTransferTaskDescriptor = CaptureTransferTaskDescriptor(),
@@ -127,18 +216,26 @@ public struct CaptureTransferMerge: Codable, Equatable, Sendable {
         label: String = "",
         outcome: String = "",
         previousStatus: String? = nil,
+        previousStatusName: String? = nil,
+        statusSymbol: String? = nil,
+        statusName: String? = nil,
         movedLines: Int = 0,
         movedNotes: Int = 0,
-        message: String = ""
+        message: String = "",
+        consequences: [CaptureTransferConsequence] = []
     ) {
         self.source = source
         self.target = target
         self.label = label
         self.outcome = outcome
         self.previousStatus = previousStatus
+        self.previousStatusName = previousStatusName
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
         self.movedLines = movedLines
         self.movedNotes = movedNotes
         self.message = message
+        self.consequences = consequences
     }
 
     public init(from decoder: Decoder) throws {
@@ -150,9 +247,15 @@ public struct CaptureTransferMerge: Codable, Equatable, Sendable {
         label = (try? container.decode(String.self, forKey: .label)) ?? ""
         outcome = (try? container.decode(String.self, forKey: .outcome)) ?? ""
         previousStatus = try? container.decodeIfPresent(String.self, forKey: .previousStatus)
+        previousStatusName = try? container.decodeIfPresent(String.self, forKey: .previousStatusName)
+        statusSymbol = try? container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try? container.decodeIfPresent(String.self, forKey: .statusName)
         movedLines = (try? container.decode(Int.self, forKey: .movedLines)) ?? 0
         movedNotes = (try? container.decode(Int.self, forKey: .movedNotes)) ?? 0
         message = (try? container.decode(String.self, forKey: .message)) ?? ""
+        consequences =
+            (try? container.decode(CaptureLossyArray<CaptureTransferConsequence>.self, forKey: .consequences))?
+            .values ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -161,9 +264,13 @@ public struct CaptureTransferMerge: Codable, Equatable, Sendable {
         case label
         case outcome
         case previousStatus = "previous_status"
+        case previousStatusName = "previous_status_name"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
         case movedLines = "moved_lines"
         case movedNotes = "moved_notes"
         case message
+        case consequences
     }
 }
 
@@ -194,134 +301,298 @@ public struct CaptureTransferRepairedFile: Codable, Equatable, Sendable {
     }
 }
 
-/// Presentation for Bob's `moves[]` transfer results. No task resolution,
-/// destination selection, or link-repair math happens in the client.
-public struct CaptureTransferMovePresentation: Equatable, Sendable {
-    public struct Row: Equatable, Sendable {
-        public let text: String
-        public let accessibilityText: String
+/// Pure card, status, notification, and VoiceOver content for one Bob transfer
+/// result. Bob supplies every title, status, destination, and consequence.
+public struct CaptureTransferPresentation: Equatable, Sendable {
+    public enum Verb: Equatable, Sendable {
+        case move
+        case merge
 
-        public init(text: String, accessibilityText: String) {
-            self.text = text
-            self.accessibilityText = accessibilityText
-        }
+        public var actionText: String { self == .move ? "Move" : "Merge" }
+        public var gerund: String { self == .move ? "moving" : "merging" }
+        public var glyph: String { self == .move ? "arrow.right" : "arrow.triangle.merge" }
     }
 
-    public let headerText: String
-    public let rows: [Row]
-    public let repairFooterText: String?
-    public let primaryActionTitle: String
+    public enum State: Equatable, Sendable {
+        case planned
+        case alreadyMerged
+    }
+
+    public struct SourceRow: Equatable, Sendable {
+        public let title: TaskDisplayText
+        public let status: CapturePickerTaskStatus?
+        public let targetStatus: CapturePickerTaskStatus?
+        public let statusName: String?
+        public let targetStatusName: String?
+        public let locator: String
+        public let detailText: String?
+        public let fallback: Bool
+    }
+
+    public struct DestinationRow: Equatable, Sendable {
+        public let kind: String
+        public let title: TaskDisplayText
+        public let status: CapturePickerTaskStatus?
+        public let statusName: String?
+        public let relativePath: String
+        public let locator: String
+        public let containerLabel: String?
+        public let isNew: Bool
+    }
+
+    public struct ConsequenceRow: Equatable, Sendable {
+        public let kind: String
+        public let tone: String
+        public let text: String
+        public let symbol: String
+    }
+
+    public let verb: Verb
+    public let state: State
+    public let sourceRows: [SourceRow]
+    public let destination: DestinationRow
+    public let consequences: [ConsequenceRow]
+    public let repairText: String?
+    public let offers: [TaskCompleteUnblocked]
+    public let statusLineText: String
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
+    public let alreadyMergedText: String?
+
+    public var primaryActionTitle: String { verb.actionText }
 
     public init?(capture: CaptureCommandSuccess) {
-        guard !capture.moves.isEmpty else { return nil }
-        let destination = Self.displayPath(capture.moves[0].destinationPath)
-        let count = capture.moves.count
-        let noun = count == 1 ? "task" : "tasks"
-        headerText = "↪ Moves \(count) \(noun) into \(destination)"
-        rows = capture.moves.map { move in
-            let identity = Self.identity(from: move)
-            let location = "\(Self.displayPath(move.sourcePath)):\(move.sourceLine)"
-            let destinationPath = Self.displayPath(move.destinationPath)
-            let text = "\(identity) \(location) → \(destinationPath)  \(move.title)"
-            let spokenIdentity = identity == "(no block ID)" ? "" : ", \(identity)"
-            return Row(
-                text: text,
-                accessibilityText:
-                    "\(move.title), moved from \(location) into \(destinationPath)\(spokenIdentity)"
-            )
+        guard capture.kind == "task_move" || capture.kind == "task_merge",
+              !capture.moves.isEmpty || !capture.merges.isEmpty
+        else {
+            return nil
         }
+
+        let isMove = !capture.moves.isEmpty
+        verb = isMove ? .move : .merge
+        let mergesAreUnchanged = !capture.merges.isEmpty
+            && capture.merges.allSatisfy { $0.outcome == "unchanged" }
+        state = mergesAreUnchanged ? .alreadyMerged : .planned
+        offers = capture.mergeOffers
+
+        if isMove {
+            let moves = capture.moves
+            sourceRows = moves.map { move in
+                let status = move.statusSymbol == nil && move.statusName == nil
+                    ? nil
+                    : CapturePickerTaskStatus(symbol: move.statusSymbol, name: move.statusName)
+                return SourceRow(
+                    title: TaskDisplayText(parsing: move.title),
+                    status: status,
+                    targetStatus: status,
+                    statusName: move.statusName,
+                    targetStatusName: move.statusName,
+                    locator: Self.locator(path: move.sourcePath, line: move.sourceLine),
+                    detailText: Self.moveDetail(move),
+                    fallback: false
+                )
+            }
+            let first = moves[0]
+            let path = Self.displayPath(first.destinationPath)
+            let section = first.destinationSection.flatMap { $0.isEmpty ? nil : $0 }
+            let containerLabel = section.map { "› \($0)" }
+            destination = DestinationRow(
+                kind: "note",
+                title: TaskDisplayText(parsing: path),
+                status: nil,
+                statusName: nil,
+                relativePath: first.destinationPath,
+                locator: Self.locator(path: first.destinationPath, line: first.destinationLine),
+                containerLabel: containerLabel,
+                isNew: false
+            )
+            consequences = []
+        } else {
+            let merges = capture.merges
+            let hasEnrichedMerge = merges.contains { $0.statusName != nil }
+            sourceRows = merges.map { merge in
+                if hasEnrichedMerge && merge.statusName != nil {
+                    return SourceRow(
+                        title: TaskDisplayText(parsing: merge.source.title ?? "Task"),
+                        status: CapturePickerTaskStatus(
+                            symbol: merge.previousStatus,
+                            name: merge.previousStatusName
+                        ),
+                        targetStatus: CapturePickerTaskStatus(
+                            symbol: merge.statusSymbol,
+                            name: merge.statusName
+                        ),
+                        statusName: merge.previousStatusName,
+                        targetStatusName: merge.statusName,
+                        locator: Self.locator(path: merge.source.path, line: merge.source.line),
+                        detailText: merge.movedNotes == 0
+                            ? "title only"
+                            : "\(merge.movedNotes) note\(merge.movedNotes == 1 ? "" : "s") move\(merge.movedNotes == 1 ? "s" : "" )",
+                        fallback: false
+                    )
+                }
+                return SourceRow(
+                    title: TaskDisplayText(parsing: merge.message.isEmpty
+                        ? merge.source.title ?? "Task"
+                        : merge.message),
+                    status: nil,
+                    targetStatus: nil,
+                    statusName: nil,
+                    targetStatusName: nil,
+                    locator: Self.locator(path: merge.source.path, line: merge.source.line),
+                    detailText: nil,
+                    fallback: true
+                )
+            }
+            let target = merges[0].target
+            let targetTitle = target.title.flatMap { $0.isEmpty ? nil : $0 }
+                ?? Self.displayPath(target.path)
+            destination = DestinationRow(
+                kind: target.kind ?? "task",
+                title: TaskDisplayText(parsing: targetTitle),
+                status: target.statusSymbol == nil && target.statusName == nil
+                    ? nil
+                    : CapturePickerTaskStatus(symbol: target.statusSymbol, name: target.statusName),
+                statusName: target.statusName,
+                relativePath: target.path,
+                locator: Self.locator(path: target.path, line: target.line),
+                containerLabel: Self.containerLabel(for: target),
+                isNew: target.created == true
+            )
+            consequences = merges.flatMap(\.consequences).compactMap { consequence in
+                guard !consequence.text.isEmpty else { return nil }
+                return ConsequenceRow(
+                    kind: consequence.kind,
+                    tone: consequence.tone,
+                    text: consequence.text,
+                    symbol: Self.consequenceSymbol(for: consequence.kind)
+                )
+            }
+        }
+
+        let count = sourceRows.count
+        let noun = count == 1 ? "task" : "tasks"
+        let isDryRun = capture.dryRun
+        let action = verb == .move ? "move" : "merge"
+        let prefix = isDryRun ? "Would \(action)" : (verb == .move ? "Moved" : "Merged")
+        let destinationText = Self.statusDestinationText(verb: verb, destination: destination)
+        statusLineText = "\(prefix) \(count) \(noun) into \(destinationText)"
+        let quotedTarget = Self.notificationDestinationText(verb: verb, destination: destination)
+        notificationTitle = "\(prefix) \(count) \(noun) into \(quotedTarget)"
 
         let repairedLinks = capture.repairedFiles.reduce(0) { $0 + $1.linkCount }
         let repairedNotes = capture.repairedFiles.filter { $0.linkCount > 0 }.count
         if repairedLinks > 0 {
-            let linkNoun = repairedLinks == 1 ? "link" : "links"
-            let noteNoun = repairedNotes == 1 ? "note" : "notes"
-            repairFooterText =
-                "\(repairedLinks) \(linkNoun) repaired in \(repairedNotes) \(noteNoun)"
+            repairText = "\(repairedLinks) link\(repairedLinks == 1 ? "" : "s") repaired in "
+                + "\(repairedNotes) note\(repairedNotes == 1 ? "" : "s")"
         } else {
-            repairFooterText = nil
+            repairText = nil
         }
 
-        primaryActionTitle = "Move"
-        let verb = capture.dryRun ? "Would move" : "Moved"
-        notificationTitle = "\(verb) \(count) \(noun) into \(destination)"
-        notificationBody =
-            ([headerText] + rows.map(\.text) + (repairFooterText.map { [$0] } ?? []))
+        if state == .alreadyMerged {
+            alreadyMergedText = "Already merged into “\(destination.title.text)”"
+        } else {
+            alreadyMergedText = nil
+        }
+        let sourceLines = sourceRows.map(Self.notificationLine)
+        notificationBody = (sourceLines + consequences.map(\.text) + (repairText.map { [$0] } ?? []))
             .joined(separator: "\n")
-        previewAccessibilitySummary =
-            ([headerText] + rows.map(\.accessibilityText)
-                + (repairFooterText.map { [$0] } ?? []))
-            .joined(separator: "; ")
+
+        let spokenSources = sourceRows.map(Self.accessibilityLine)
+        var summary = [statusLineText]
+        if state == .alreadyMerged {
+            summary.append(alreadyMergedText ?? "Already merged")
+            summary.append("Nothing to write")
+        } else {
+            summary.append(contentsOf: spokenSources)
+            var destinationSpeech = "into \(destination.title.text)"
+            if let statusName = destination.statusName, !statusName.isEmpty {
+                destinationSpeech += ", \(statusName)"
+            }
+            if !destination.locator.isEmpty {
+                destinationSpeech += ", \(destination.locator)"
+            }
+            if let container = destination.containerLabel, !container.isEmpty {
+                destinationSpeech += ", \(container)"
+            }
+            if destination.isNew { destinationSpeech += ", new" }
+            summary.append(destinationSpeech)
+            summary.append(contentsOf: consequences.map(\.text))
+            if let repairText { summary.append(repairText) }
+            if !offers.isEmpty {
+                summary.append("Pull-In offers: \(offers.map(\.text).joined(separator: ", "))")
+            }
+        }
+        previewAccessibilitySummary = summary.joined(separator: ". ")
     }
 
-    private static func identity(from move: CaptureTransferMove) -> String {
-        if let oldID = move.oldBlockID, let newID = move.newBlockID, oldID != newID {
+    private static func notificationLine(_ row: SourceRow) -> String {
+        var parts = [row.title.text]
+        if let source = row.statusName, let target = row.targetStatusName {
+            parts.append("\(source) → \(target)")
+        }
+        if let detail = row.detailText { parts.append(detail) }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func accessibilityLine(_ row: SourceRow) -> String {
+        var parts = [row.title.text]
+        if let source = row.statusName, let target = row.targetStatusName {
+            parts.append("\(source) to \(target)")
+        }
+        if !row.locator.isEmpty { parts.append(row.locator) }
+        if let detail = row.detailText { parts.append(detail) }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func moveDetail(_ move: CaptureTransferMove) -> String? {
+        guard let newID = move.newBlockID ?? move.oldBlockID else { return nil }
+        if let oldID = move.oldBlockID, oldID != newID {
             return "^\(oldID) → ^\(newID)"
         }
-        if let blockID = move.newBlockID ?? move.oldBlockID {
-            return "^\(blockID)"
-        }
-        return "(no block ID)"
+        return "^\(newID)"
     }
 
-    private static func displayPath(_ path: String) -> String {
-        let name = (path as NSString).lastPathComponent
-        return name.isEmpty ? path : name
-    }
-}
-
-/// Presentation for Bob's `merges[]` transfer results. Row details are the
-/// exact consequence sentences Bob returned, including status and note counts.
-public struct CaptureTransferMergePresentation: Equatable, Sendable {
-    public struct Row: Equatable, Sendable {
-        public let text: String
-
-        public init(text: String) {
-            self.text = text
+    private static func statusDestinationText(
+        verb: Verb,
+        destination: DestinationRow
+    ) -> String {
+        let title = destination.title.text
+        let base = verb == .merge ? "“\(title)” · \(displayPath(destination.relativePath))" : title
+        if let container = destination.containerLabel, !container.isEmpty {
+            return "\(base) \(container)"
         }
+        return base
     }
 
-    public let headerText: String
-    public let targetLabel: String
-    public let rows: [Row]
-    public let primaryActionTitle: String
-    public let notificationTitle: String
-    public let notificationBody: String
-    public let previewAccessibilitySummary: String
+    private static func notificationDestinationText(
+        verb: Verb,
+        destination: DestinationRow
+    ) -> String {
+        if verb == .merge { return "“\(destination.title.text)”" }
+        return destination.title.text
+    }
 
-    public init?(capture: CaptureCommandSuccess) {
-        guard !capture.merges.isEmpty else { return nil }
-        let first = capture.merges[0].target
-        let resolvedTargetLabel: String
-        if let drawer = first.drawer, !drawer.isEmpty {
-            resolvedTargetLabel = "\(drawer) in \(first.title ?? Self.displayPath(first.path))"
-        } else if let section = first.section, !section.isEmpty {
-            resolvedTargetLabel = "\(section) in \(Self.displayPath(first.path))"
-        } else if let title = first.title, !title.isEmpty {
-            resolvedTargetLabel = title
-        } else {
-            resolvedTargetLabel = Self.displayPath(first.path)
-        }
-        targetLabel = resolvedTargetLabel
+    private static func containerLabel(for target: CaptureTransferTaskDescriptor) -> String? {
+        if let drawer = target.drawer, !drawer.isEmpty { return "› \(drawer.uppercased())" }
+        if let section = target.section, !section.isEmpty { return "§ \(section)" }
+        return nil
+    }
 
-        let count = capture.merges.count
-        let noun = count == 1 ? "task" : "tasks"
-        headerText = "⤵ Merges \(count) \(noun) into \(targetLabel)"
-        rows = capture.merges.map { merge in
-            let text = merge.message.isEmpty
-                ? "\(merge.source.title ?? merge.source.blockID ?? "Task") → \(resolvedTargetLabel)"
-                : merge.message
-            return Row(text: text)
+    private static func consequenceSymbol(for kind: String) -> String {
+        switch kind {
+        case "dependent": return "link"
+        case "prerequisite_left", "successor_orphaned": return "exclamationmark.triangle"
+        case "link_pruned": return "minus.circle"
+        default: return "info.circle"
         }
-        primaryActionTitle = "Merge"
-        let verb = capture.dryRun ? "Would merge" : "Merged"
-        notificationTitle = "\(verb) \(count) \(noun) into \(targetLabel)"
-        notificationBody = rows.map(\.text).joined(separator: "\n")
-        previewAccessibilitySummary =
-            ([headerText] + rows.map(\.text)).joined(separator: "; ")
+    }
+
+    private static func locator(path: String, line: Int?) -> String {
+        let name = displayPath(path)
+        guard !name.isEmpty else { return "" }
+        return line.map { "\(name):\($0)" } ?? name
     }
 
     private static func displayPath(_ path: String) -> String {

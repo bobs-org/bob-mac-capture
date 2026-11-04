@@ -1247,6 +1247,10 @@ private struct CapturePanelFooter: View {
                 .onChange(of: model.statusAnnouncementTick) { _, _ in
                     statusIsFocused = true
                 }
+                .onChange(of: model.transferVerbAnnouncementTick) { _, _ in
+                    guard let announcement = model.transferVerbAnnouncement else { return }
+                    AccessibilityNotification.Announcement(announcement).post()
+                }
             Spacer(minLength: 12)
             ViewThatFits(in: .horizontal) {
                 actionRow(includeOpenChip: true)
@@ -3774,15 +3778,18 @@ struct PreviewPane: View {
                 .accessibilityLabel("All items to \(globalDestination.destinationLabel)")
         }
 
-        // The plan-budget meter is batch-level: `plan_budget` lives on the
-        // outer success, not per item. Render it once above the items from
-        // Bob's resolved object — no Swift-side ledger math.
-        if let budget = CapturePlanBudgetPresentation(capture: success) {
-            CapturePlanBudgetMeterRow(budget: budget)
-        } else if captures.count == 1, let first = captures.first,
-                  let budget = CapturePlanBudgetPresentation(capture: first)
-        {
-            CapturePlanBudgetMeterRow(budget: budget)
+        // A sole transfer hosts the TODAY badge inside its card. Other
+        // previews keep the shared batch-level meter above the item stack.
+        let soleTransfer = captures.count == 1
+            && captures.first.flatMap { CaptureTransferPresentation(capture: $0) } != nil
+        if !soleTransfer {
+            if let budget = CapturePlanBudgetPresentation(capture: success) {
+                CapturePlanBudgetMeterRow(budget: budget)
+            } else if captures.count == 1, let first = captures.first,
+                      let budget = CapturePlanBudgetPresentation(capture: first)
+            {
+                CapturePlanBudgetMeterRow(budget: budget)
+            }
         }
         ForEach(
             Array(model.visibleThemeNotConfiguredWarnings(from: success).enumerated()),
@@ -3863,6 +3870,7 @@ struct PreviewPane: View {
                         globalDestination: success.globalDestination,
                         blocks: success.pomodoroBlocks,
                         taskBlocks: orderedTaskBlocks,
+                        planBudget: success.planBudget,
                         pullIn: success.pullIn,
                         moveChoice: success.moveChoice
                     )
@@ -3964,6 +3972,7 @@ struct PreviewPane: View {
         globalDestination: CaptureGlobalDestination?,
         blocks: [CapturePomodoroBlock],
         taskBlocks: [CaptureTaskBlock] = [],
+        planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
         moveChoice: CaptureMoveChoice? = nil
     ) -> some View {
@@ -3971,150 +3980,161 @@ struct PreviewPane: View {
             globalDestination.map {
                 !captureUsesGlobalDestination(success, $0)
         } ?? false
-        // The destination row sits above the per-kind preview item, so every
-        // link landing names where its Task Link went without disturbing the
-        // existing card below.
-        planDestinationRow(for: success)
         if index == 0 {
             inboxRoutePreviewSummary
         }
-        if let transferMoves = CaptureTransferMovePresentation(capture: success) {
-            captureTransferMovesPreview(for: transferMoves)
-        }
-        if let transferMerges = CaptureTransferMergePresentation(capture: success) {
-            captureTransferMergesPreview(for: transferMerges)
-        }
-        // The moves band sits above the Links and Offers bands, so the
-        // moved tasks read before their links and pull-in rows.
-        if let moves = CaptureProjectNoteMovePresentation(capture: success) {
-            projectNoteMovesPreview(for: moves)
-        }
-        if moveChoice?.supported == true {
-            ForEach((moveChoice?.slots ?? []).filter { $0.item == index + 1 }, id: \.itemLine) {
-                slot in
-                if let band = slot.copy?.band, !band.isEmpty {
-                    Text("↪ " + band).font(.caption).foregroundStyle(.secondary)
-                        .accessibilityLabel(band)
-                }
-            }
-        }
-        if let notePull = success.notePull,
-            let presentation = CaptureNotePullPresentation(
-               notePull: notePull,
-               group: pullIn?.groups.first(where: {
-                   $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
-               })
-           )
-        {
-            CaptureNotePullPreviewCard(presentation: presentation)
-        }
-        let previewOffers = success.allUnblockedRows + success.allKeepMovingRows
-            + success.allRelationSuccessors
-        pullInPreviewSummary(
-            for: previewOffers,
-            pullIn: pullIn,
-            held: success.allRelationHeld,
-            check: success.allRelationCheck
-        )
-        if let project = CaptureProjectNoteSuccessorPresentation(capture: success) {
-            projectNoteSuccessorsPreview(for: project)
-        }
-        if let ref = CaptureRefPresentation(capture: success) {
-            refPreviewItem(
-                ref,
-                success: success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride
-            )
-        } else if let reset = CapturePomodoroResetPresentation(capture: success) {
-            resetPreviewItem(reset, success: success, index: index, total: total)
-        } else if let split = CapturePomodoroSplitPresentation(capture: success) {
-            splitPreviewItem(split, index: index, total: total)
-        } else if let merge = CapturePomodoroMergePresentation(capture: success) {
-            mergePreviewItem(merge, index: index, total: total)
-        } else if let past = CapturePomodoroPastPresentation(capture: success),
-            let group = past.groups.first
-        {
-            pastGroupCard(
-                group,
-                index: index,
-                total: total,
-                globalDestination: globalDestination,
-                pullIn: pullIn
-            )
-        } else if let close = CapturePomodoroClosePresentation(capture: success) {
-            closePreviewItem(close, success: success, index: index, total: total)
-        } else if CapturePomodoroStartPresentation.isSessionStart(success),
-                  let start = CapturePomodoroStartPresentation(capture: success)
-        {
-            startPreviewItem(start, success: success, index: index, total: total)
-        } else if let complete = CaptureTaskCompletePresentation(capture: success) {
-            completePreviewItem(
-                complete,
-                success: success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride
-            )
-        } else if let toggle = CaptureTogglePresentation(capture: success) {
-            togglePreviewItem(
-                toggle,
-                success: success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride
-            )
-        } else if let link = CapturePomodoroLinkPresentation(capture: success) {
-            linkPreviewItem(
-                link,
-                success: success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride
-            )
-        } else if let linkGuard = CaptureLinkGuardPresentation(capture: success) {
-            linkGuardPreviewItem(
-                linkGuard,
-                success: success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride
+        if let transfer = CaptureTransferPresentation(capture: success) {
+            let transferOffers = success.allUnblockedRows + success.allKeepMovingRows
+                + success.allRelationSuccessors
+            let offerContent: AnyView? = transfer.offers.isEmpty
+                ? nil
+                : AnyView(
+                    pullInPreviewSummary(
+                        for: transferOffers,
+                        pullIn: pullIn,
+                        held: success.allRelationHeld,
+                        check: success.allRelationCheck,
+                        showsInvitation: false
+                    )
+                )
+            CaptureTransferCardView(
+                presentation: transfer,
+                planBudget: total == 1 ? success.planBudget ?? planBudget : nil,
+                offerContent: offerContent
             )
         } else {
-            standardPreviewItem(
-                success,
-                index: index,
-                total: total,
-                isLocalOverride: isLocalOverride,
-                blocks: blocks,
-                taskBlocks: taskBlocks
+            // The destination row sits above the per-kind preview item, so every
+            // link landing names where its Task Link went without disturbing the
+            // existing card below.
+            planDestinationRow(for: success)
+            // Project-note moves sit above the Links and Offers rows so the
+            // moved tasks read before their destinations and choices.
+            if let moves = CaptureProjectNoteMovePresentation(capture: success) {
+                projectNoteMovesPreview(for: moves)
+            }
+            if moveChoice?.supported == true {
+                ForEach((moveChoice?.slots ?? []).filter { $0.item == index + 1 }, id: \.itemLine) {
+                    slot in
+                    if let band = slot.copy?.band, !band.isEmpty {
+                        Text("↪ " + band).font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel(band)
+                    }
+                }
+            }
+            if let notePull = success.notePull,
+                let presentation = CaptureNotePullPresentation(
+                    notePull: notePull,
+                    group: pullIn?.groups.first(where: {
+                        $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
+                    })
+                )
+            {
+                CaptureNotePullPreviewCard(presentation: presentation)
+            }
+            let previewOffers = success.allUnblockedRows + success.allKeepMovingRows
+                + success.allRelationSuccessors
+            pullInPreviewSummary(
+                for: previewOffers,
+                pullIn: pullIn,
+                held: success.allRelationHeld,
+                check: success.allRelationCheck
             )
-        }
+            if let project = CaptureProjectNoteSuccessorPresentation(capture: success) {
+                projectNoteSuccessorsPreview(for: project)
+            }
+            if let ref = CaptureRefPresentation(capture: success) {
+                refPreviewItem(
+                    ref,
+                    success: success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride
+                )
+            } else if let reset = CapturePomodoroResetPresentation(capture: success) {
+                resetPreviewItem(reset, success: success, index: index, total: total)
+            } else if let split = CapturePomodoroSplitPresentation(capture: success) {
+                splitPreviewItem(split, index: index, total: total)
+            } else if let merge = CapturePomodoroMergePresentation(capture: success) {
+                mergePreviewItem(merge, index: index, total: total)
+            } else if let past = CapturePomodoroPastPresentation(capture: success),
+                      let group = past.groups.first
+            {
+                pastGroupCard(
+                    group,
+                    index: index,
+                    total: total,
+                    globalDestination: globalDestination,
+                    pullIn: pullIn
+                )
+            } else if let close = CapturePomodoroClosePresentation(capture: success) {
+                closePreviewItem(close, success: success, index: index, total: total)
+            } else if CapturePomodoroStartPresentation.isSessionStart(success),
+                      let start = CapturePomodoroStartPresentation(capture: success)
+            {
+                startPreviewItem(start, success: success, index: index, total: total)
+            } else if let complete = CaptureTaskCompletePresentation(capture: success) {
+                completePreviewItem(
+                    complete,
+                    success: success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride
+                )
+            } else if let toggle = CaptureTogglePresentation(capture: success) {
+                togglePreviewItem(
+                    toggle,
+                    success: success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride
+                )
+            } else if let link = CapturePomodoroLinkPresentation(capture: success) {
+                linkPreviewItem(
+                    link,
+                    success: success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride
+                )
+            } else if let linkGuard = CaptureLinkGuardPresentation(capture: success) {
+                linkGuardPreviewItem(
+                    linkGuard,
+                    success: success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride
+                )
+            } else {
+                standardPreviewItem(
+                    success,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride,
+                    blocks: blocks,
+                    taskBlocks: taskBlocks
+                )
+            }
 
-        // The move hint is a muted one-liner under the project card for a
-        // project-note draft with no move bullets whose parent still has
-        // movable open tasks. It renders after the kind card so the card
-        // itself stays the first thing a move-less draft shows.
-        if let hint = CaptureProjectNoteMoveHintPresentation(
-            capture: success, moveChoiceSupported: moveChoice?.supported == true
-        ) {
-            Text(hint.hintText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .accessibilityLabel(hint.previewAccessibilitySummary)
-        }
+            // The move hint is a muted one-liner under the project card for a
+            // project-note draft with no move bullets whose parent still has
+            // movable open tasks. It renders after the kind card so the card
+            // itself stays the first thing a move-less draft shows.
+            if let hint = CaptureProjectNoteMoveHintPresentation(
+                capture: success, moveChoiceSupported: moveChoice?.supported == true
+            ) {
+                Text(hint.hintText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityLabel(hint.previewAccessibilitySummary)
+            }
 
-        // The Clip card belongs to this item, so every `%c` in a batch
-        // renders its own clipboard content beneath its own card. It reads
-        // only this item's `clip` object: kind/count header, Bob's exact
-        // child lines, snippet destination, attachment summaries with image
-        // thumbnails, and entry dividers for `%c<N>` history. `not_read`
-        // shows a quiet placeholder. Clip lines never enter a task block.
-        if let clip = CaptureClipPresentation(capture: success) {
-            ClipCardView(clip: clip)
+            // The Clip card belongs to this item, so every `%c` in a batch
+            // renders its own clipboard content beneath its own card.
+            if let clip = CaptureClipPresentation(capture: success) {
+                ClipCardView(clip: clip)
+            }
         }
     }
 
@@ -4346,52 +4366,6 @@ struct PreviewPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(presentation.previewAccessibilitySummary)
-    }
-
-    @ViewBuilder
-    private func captureTransferMovesPreview(
-        for presentation: CaptureTransferMovePresentation
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(presentation.headerText)
-                .font(.system(.callout, design: .monospaced))
-                .fontWeight(.semibold)
-            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
-                Text(row.text)
-                    .font(.system(.callout, design: .monospaced))
-                    .lineLimit(2)
-                    .textSelection(.enabled)
-            }
-            if let footer = presentation.repairFooterText {
-                Text(footer)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(presentation.previewAccessibilitySummary)
-    }
-
-    @ViewBuilder
-    private func captureTransferMergesPreview(
-        for presentation: CaptureTransferMergePresentation
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(presentation.headerText)
-                .font(.system(.callout, design: .monospaced))
-                .fontWeight(.semibold)
-            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
-                Text(row.text)
-                    .font(.system(.callout, design: .monospaced))
-                    .lineLimit(2)
-                    .textSelection(.enabled)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
