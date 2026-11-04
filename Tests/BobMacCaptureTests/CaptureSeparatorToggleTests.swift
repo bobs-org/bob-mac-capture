@@ -874,6 +874,108 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         )
     }
 
+    // MARK: - Move-bullet sigil aliases
+
+    func testPeriodAliasOnMoveBulletOpensMovePicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("@cash^goog-exit@\n- ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(".", into: textView, model: model)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.plainDraft, "@cash^goog-exit@\n- ^")
+        XCTAssertTrue(model.pickerSourceIsProjectTaskMove)
+        guard case .projectTaskMove(let context)? = model.picker?.source else {
+            XCTFail("expected a Move picker")
+            return
+        }
+        XCTAssertEqual(context.scopeToken, "^")
+        XCTAssertFalse(context.isLinkMove)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 20 --format json -- "))
+        XCTAssertTrue(
+            record.contains("capture-complete --all-tasks --cursor 20 --format json -- ")
+        )
+        XCTAssertTrue(record.contains("- ^"))
+    }
+
+    func testSemicolonAliasOnOfferMoveBulletOpensMoveAndLinkPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("@cash:goog-exit@\n- ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(";", into: textView, model: model)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.plainDraft, "@cash:goog-exit@\n- :")
+        XCTAssertTrue(model.pickerSourceIsProjectTaskMove)
+        guard case .projectTaskMove(let context)? = model.picker?.source else {
+            XCTFail("expected a Move picker")
+            return
+        }
+        XCTAssertEqual(context.scopeToken, ":")
+        XCTAssertTrue(context.isLinkMove)
+        XCTAssertEqual(context.pickerTitle, "Move & link into cash_goog_exit.md")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 20 --format json -- "))
+        XCTAssertTrue(
+            record.contains("capture-complete --all-tasks --cursor 20 --format json -- ")
+        )
+    }
+
+    func testUndoAfterMoveAliasRestoresLiteralWithoutRetriggering() async throws {
+        let (textView, window) = makeHostedTextView("@cash^goog-exit@\n- ")
+        defer { window.close() }
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(".", into: textView, model: model)
+        await waitUntil { textView.string == "@cash^goog-exit@\n- ^" && model.pickerVisible }
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "@cash^goog-exit@\n- .")
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        await waitUntil { !model.pickerVisible }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(textView.string, "@cash^goog-exit@\n- .")
+    }
+
+    func testOlderBobMoveAliasReplyLeavesLiteralWithoutOpeningPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_MOVE_UNCHANGED": "1"]
+        )
+        let textView = makeTextView("@cash^goog-exit@\n- ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(".", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(model.plainDraft, "@cash^goog-exit@\n- .")
+        XCTAssertEqual(textView.string, "@cash^goog-exit@\n- .")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(
+            (try String(contentsOf: recordURL)).contains("capture-rewrite --cursor 20")
+        )
+    }
+
     func testDelayedAcceptedAliasSupersedesGatedCompletion() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

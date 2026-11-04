@@ -130,4 +130,108 @@ final class CaptureProjectTaskMovePanelTests: XCTestCase {
         model.acceptPickerRow(id: "cash|6:93f5563b", submitAfterInsert: false)
         XCTAssertFalse(model.pickerVisible)
     }
+
+    // MARK: - Dot alias for the second caret
+
+    private func moveContextWithDotAlias() -> ProjectTaskMovePickerContext {
+        ProjectTaskMovePickerContext(
+            scopeToken: "^",
+            noteTarget: "cash.md",
+            destination: "cash_goog_exit.md",
+            continuation: "\n- ^",
+            markerRange: CaptureRange(start: 42, end: 43),
+            triggerRemovalRange: CaptureRange(start: 42, end: 43),
+            openCount: 7,
+            actionContinuationKeys: ["^"],
+            actionContinuationAliases: [".": "^"]
+        )
+    }
+
+    private func dotAliasEvent(keyCode: UInt16) -> NSEvent? {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: ".",
+            charactersIgnoringModifiers: ".",
+            isARepeat: false,
+            keyCode: keyCode
+        )
+    }
+
+    private func dotAliasContext(
+        keys: [String] = ["^"],
+        aliases: [String: String] = [".": "^"],
+        filterIsEmpty: Bool = true
+    ) -> CaptureKeyRoutingContext {
+        CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsProjectTaskMove: true,
+            pickerFilterIsEmpty: filterIsEmpty,
+            pickerOperatorContinuationKeys: keys,
+            pickerOperatorContinuationAliases: aliases
+        )
+    }
+
+    func testRouterMapsDotAliasInDefaultBranch() {
+        let router = CaptureKeyCommandRouter()
+        let event = dotAliasEvent(keyCode: 47)
+        let command = event.flatMap {
+            router.command(for: $0, context: dotAliasContext())
+        }
+        XCTAssertEqual(command, .continuePickerOperator("^"))
+    }
+
+    func testRouterMapsDotAliasInLeftBracketBranch() {
+        let router = CaptureKeyCommandRouter()
+        let event = dotAliasEvent(keyCode: 33)
+        let command = event.flatMap {
+            router.command(for: $0, context: dotAliasContext())
+        }
+        XCTAssertEqual(command, .continuePickerOperator("^"))
+    }
+
+    func testRouterDotTypesIntoNonemptyFilter() {
+        let router = CaptureKeyCommandRouter()
+        let event = dotAliasEvent(keyCode: 47)
+        let command = event.flatMap {
+            router.command(for: $0, context: dotAliasContext(filterIsEmpty: false))
+        }
+        XCTAssertNil(command)
+    }
+
+    func testRouterDotWithoutAliasFieldStaysInFilter() {
+        let router = CaptureKeyCommandRouter()
+        let event = dotAliasEvent(keyCode: 47)
+        let command = event.flatMap {
+            router.command(for: $0, context: dotAliasContext(aliases: [:]))
+        }
+        XCTAssertNil(command)
+    }
+
+    func testDotAliasClosesPickerWithDoubleCaret() {
+        let model = CapturePanelModel()
+        model.installProjectTaskMovePickerForPreviews(
+            candidates: [identifiedCandidate()],
+            context: moveContextWithDotAlias(),
+            draft: "Finish the exit packet @cash^goog-exit@\n- ^",
+            replacement: CaptureRange(start: 43, end: 43)
+        )
+        XCTAssertEqual(model.pickerOperatorContinuationAliases, [".": "^"])
+        model.continuePickerOperator("^")
+        XCTAssertEqual(
+            model.plainDraft,
+            "Finish the exit packet @cash^goog-exit@\n- ^^"
+        )
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testOlderBobPickerOmitsDotAlias() {
+        let model = installMovePicker()
+        XCTAssertEqual(model.pickerOperatorContinuationAliases, [:])
+        XCTAssertEqual(model.pickerOperatorContinuationKeys, [])
+    }
 }

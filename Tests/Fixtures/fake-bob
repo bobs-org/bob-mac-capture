@@ -1820,6 +1820,16 @@ JSON
 JSON
       exit 0
     fi
+    if [[ "${FAKE_BOB_REWRITE_MOVE_UNCHANGED:-}" == "1" ]]; then
+      if [[ "${draft}" == $'@cash^goog-exit@\n- .' || "${draft}" == $'@cash:goog-exit@\n- ;' ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+        exit 0
+      fi
+    fi
     if [[ "${draft}" == "@file." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-task-block-id.json"
     elif [[ "${draft}" == "@file;" ]]; then
@@ -1828,6 +1838,10 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-task-link.json"
     elif [[ "${draft}" == "Buy milk." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-unchanged.json"
+    elif [[ "${draft}" == $'@cash^goog-exit@\n- .' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-move-caret.json"
+    elif [[ "${draft}" == $'@cash:goog-exit@\n- ;' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-move-link.json"
     elif [[ "${draft}" == "New task ~tasks:target |" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -3173,6 +3187,14 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc1.json"
     elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^dr' ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc2.json"
+    elif [[ "${draft}" == $'@cash^goog-exit@\n- ^' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-sigil-alias-caret-create.json"
+    elif [[ "${draft}" == $'@cash:goog-exit@\n- ^' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-sigil-alias-caret-offer.json"
+    elif [[ "${draft}" == $'@cash^goog-exit@\n- :' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-sigil-alias-link-create.json"
+    elif [[ "${draft}" == $'@cash:goog-exit@\n- :' ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-sigil-alias-link-offer.json"
     elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@#admin\n- :' ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/move-complete-mc4.json"
     elif [[ "${draft}" == $'Finish it @^x@\n- ^' ]]; then

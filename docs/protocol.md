@@ -22,8 +22,9 @@ Capabilities are response-driven: unknown spans render neutral, unknown contexts
   `task_parent` completion context for
   leading and prose-terminal `+` (with the additive `picker` descriptor:
   `kind: parent_task`, `scope: note|vault`, `scope_token`, `note_target`,
-  `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`,
-  and top-level `query`), the same descriptor on scoped `@route+` `task` responses,
+  `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`
+  /`action_continuation_aliases`, and top-level `query`), the same descriptor
+  on scoped `@route+` `task` responses,
   `parent_replacement` on `capture-task-id` for vault-wide ID-less picks,
   `drawer` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
@@ -281,9 +282,9 @@ Template saves send `--template-origin` only after a successful template-list re
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
-- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows instead of open rows when Go To requests them)
+- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows for Go To)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases, template start)
-- `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` is omitted only when the draft's accepted parse reported a `%c` directive span) and `capture --format json` (submit)
+- `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
@@ -336,7 +337,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | `@@` absorbs eligible markers; `^` / `:` / `+` switch separators, including sub-bullets and sealed forms; `|` attaches to relation tokens; `.` / `;` alias `^` / `:` at picker positions | Older bob leaves `.` / `;` literal and unsupported `+` unchanged; spaces before `|` stay, so only `~note:id|` opens a relation card; other rewrites follow bob | Upgrade `bob` for `+`, relation labels, and sigil aliases |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | `@@` absorbs eligible markers; `^` / `:` / `+` switch separators, including sub-bullets and sealed forms; `|` attaches to relation tokens; `.` / `;` alias `^` / `:` at picker positions | Older bob leaves `.` / `;` literal (move bullets included) and unsupported `+` unchanged; spaces before `|` stay, so only `~note:id|` opens a relation card; other rewrites follow bob | Upgrade `bob` for `+`, relation labels, and sigil aliases |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
@@ -411,7 +412,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Candidate/span `offers_source`, `relation_successor` in `capture-complete` | `link` / **offers** capsule and successor-label tint; Bob's `message` is shown verbatim, released `already_parked` / `already_closed` messages are amber, and `hint` is muted | Missing flags mean false. A verdict is optional for inverse hints; the source never dims, and the app never derives a verdict from task status | Upgrade `bob` for successor-label authoring |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
-| `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination` and `continuation`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, section groups, Bob consequence footer, Shift-Return chaining, Add block ID flow, Esc calm status, new span colours | Older Bob never reports the need, so behaviour is unchanged there | Upgrade `bob` for move bullets |
+| `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination`, `continuation`, `action_continuation_aliases`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, section groups, Bob consequence footer, Shift-Return chaining, Add block ID flow, Esc calm status, new span colours | Older Bob never reports the need, so behaviour is unchanged there; without aliases, `.` filters | Upgrade `bob` for move bullets |
 | `moved_tasks[]` / `move_summary` / `move_hint` on `project_note`, `moved_from` on offers | Moves band with repair footer, ghost titles, move hint, `moved from` label, `Created` notification | Band, ghosts, hint, and labels stay hidden; legacy copy remains | Upgrade `bob` for move previews |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`

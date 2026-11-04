@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@cash^goog-exit@\n- .","text":"@cash^goog-exit@\n- ^","changed":true,"cursor":20,"rule":"expand_sigil_alias","edits":[{"range":{"start":19,"end":20},"replacement":"^"}],"summary":"Typed ^ for ."}

@@ -121,9 +121,26 @@ final class ProjectTaskMovePickerPresentationTests: XCTestCase {
         XCTAssertTrue(descriptor.isProjectTaskMove)
         XCTAssertEqual(descriptor.destination, "cash_goog_exit.md")
         XCTAssertEqual(descriptor.continuation, "\n- ^")
+        XCTAssertEqual(descriptor.actionContinuationKeys, [])
+        XCTAssertEqual(descriptor.actionContinuationAliases, [:])
         let context = try XCTUnwrap(descriptor.projectTaskMoveContext)
         XCTAssertEqual(context.scopeToken, "^")
         XCTAssertEqual(context.noteTarget, "cash.md")
+        XCTAssertEqual(context.actionContinuationAliases, [:])
+    }
+
+    func testDescriptorDecodesDotAlias() throws {
+        let descriptor = try JSONDecoder().decode(
+            CapturePickerDescriptor.self,
+            from: Data("""
+            {"kind":"project_task_move","scope":"note","scope_token":"^","note_target":"cash.md","marker_range":{"start":42,"end":43},"trigger_removal_range":{"start":42,"end":43},"destination":"cash_goog_exit.md","continuation":"\\n- ^","action_continuation_keys":["^"],"action_continuation_aliases":{".":"^"}}
+            """.utf8)
+        )
+        XCTAssertEqual(descriptor.actionContinuationKeys, ["^"])
+        XCTAssertEqual(descriptor.actionContinuationAliases, [".": "^"])
+        let context = try XCTUnwrap(descriptor.projectTaskMoveContext)
+        XCTAssertEqual(context.actionContinuationKeys, ["^"])
+        XCTAssertEqual(context.actionContinuationAliases, [".": "^"])
     }
 
     func testHeaderDecodesTolerantly() throws {

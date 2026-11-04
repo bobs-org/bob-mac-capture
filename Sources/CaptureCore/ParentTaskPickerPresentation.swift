@@ -112,6 +112,9 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
     /// Bob's keys that extend the move marker instead of filtering. The
     /// `- ^^` choice marker currently advertises a second caret.
     public let actionContinuationKeys: [String]
+    /// Bob's alias map for those keys (for example `{".": "^"}` on a lone
+    /// `- ^`). Older Bob omits it.
+    public let actionContinuationAliases: [String: String]
 
     public init(
         scopeToken: String,
@@ -121,7 +124,8 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
         openCount: Int? = nil,
-        actionContinuationKeys: [String] = []
+        actionContinuationKeys: [String] = [],
+        actionContinuationAliases: [String: String] = [:]
     ) {
         self.scopeToken = scopeToken
         self.noteTarget = noteTarget
@@ -131,6 +135,7 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
         self.triggerRemovalRange = triggerRemovalRange
         self.openCount = openCount
         self.actionContinuationKeys = actionContinuationKeys
+        self.actionContinuationAliases = actionContinuationAliases
     }
 
     /// True when the `:` lane also links (Move & link).

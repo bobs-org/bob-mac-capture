@@ -187,7 +187,8 @@ prompt, Tab / Shift-Tab cycle suggestions.
 
 Typing `^` or `:` after `- ` on a first-level bullet of a sealed project-note
 item (`@cash^goog-exit@` or `@cash:goog-exit@`) opens the Move picker
-(`project_task_move` context). Bob lists the parent note's open top-level tasks
+(`project_task_move` context). Typing `.` or `;` there is turned into `^` or
+`:` through Bob's rewrite lane under either seal. Bob lists the parent note's open top-level tasks
 in document order, ID-less rows included, with Bob-authored consequence copy
 and disabled reasons. The header reads `Move into cash_goog_exit.md` (or
 `Move & link into cash_goog_exit.md` for `:`) with trailing
@@ -220,7 +221,8 @@ builds never report the need, so behaviour there is unchanged.
 For several tasks, use the [Move card](#move-card).
 
 Move Picker keys: Return Move, Shift-Return Move & add another, Escape Close,
-Backspace on empty filter removes Bob's trigger range. In the move Add block
+Backspace on empty filter removes Bob's trigger range, `^` or `.` on an empty
+filter makes `- ^^`. In the move Add block
 ID prompt, Tab / Shift-Tab cycle suggestions.
 
 ## Move card

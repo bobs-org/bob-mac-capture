@@ -8212,6 +8212,9 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
     public let markerRange: CaptureRange
     public let triggerRemovalRange: CaptureRange
     public let actionContinuationKeys: [String]
+    /// Additive alias map for operator-continuation keys (for example
+    /// `{".": "^"}` on the lone `- ^` Move picker). Older Bob omits it.
+    public let actionContinuationAliases: [String: String]
     /// Additive owner-mode descriptor on `+` / `@route+` pickers inside a
     /// relationship draft. Older Bob omits it.
     public let relationship: CapturePickerRelationship?
@@ -8230,6 +8233,7 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
         actionContinuationKeys: [String] = [],
+        actionContinuationAliases: [String: String] = [:],
         relationship: CapturePickerRelationship? = nil,
         destination: String? = nil,
         continuation: String? = nil
@@ -8241,6 +8245,7 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         self.markerRange = markerRange
         self.triggerRemovalRange = triggerRemovalRange
         self.actionContinuationKeys = actionContinuationKeys
+        self.actionContinuationAliases = actionContinuationAliases
         self.relationship = relationship
         self.destination = destination
         self.continuation = continuation
@@ -8265,6 +8270,11 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
                 [String].self,
                 forKey: .actionContinuationKeys
             ) ?? []
+        actionContinuationAliases =
+            try container.decodeIfPresent(
+                [String: String].self,
+                forKey: .actionContinuationAliases
+            ) ?? [:]
         relationship = try container.decodeIfPresent(
             CapturePickerRelationship.self,
             forKey: .relationship
@@ -8319,7 +8329,8 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
             continuation: continuation,
             markerRange: markerRange,
             triggerRemovalRange: triggerRemovalRange,
-            actionContinuationKeys: actionContinuationKeys
+            actionContinuationKeys: actionContinuationKeys,
+            actionContinuationAliases: actionContinuationAliases
         )
     }
 
@@ -8331,6 +8342,7 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         case markerRange = "marker_range"
         case triggerRemovalRange = "trigger_removal_range"
         case actionContinuationKeys = "action_continuation_keys"
+        case actionContinuationAliases = "action_continuation_aliases"
         case relationship
         case destination
         case continuation

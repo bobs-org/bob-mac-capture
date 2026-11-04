@@ -2202,6 +2202,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerFilterIsEmpty: model.pickerFilterIsEmpty,
                 pickerChipVisible: model.pickerChipVisible,
                 pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys,
+                pickerOperatorContinuationAliases: model.pickerOperatorContinuationAliases,
                 taskIDPromptCyclesSuggestions: model.taskIDPromptCyclesSuggestions,
                 closeTaskCommaArmed: model.closeTaskCommaArmed,
                 draftIsBlank: !model.hasDraft,

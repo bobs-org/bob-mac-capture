@@ -1587,6 +1587,19 @@ final class CapturePanelModel: ObservableObject {
         return []
     }
 
+    /// Bob's alias map for the move picker continuation keys (for example
+    /// `{".": "^"}` on a lone `- ^`). Empty for every other source, a
+    /// nonempty filter, or an older Bob that omits the field.
+    var pickerOperatorContinuationAliases: [String: String] {
+        guard pickerFilterIsEmpty else {
+            return [:]
+        }
+        if case .projectTaskMove(let context) = picker?.source {
+            return context.actionContinuationAliases
+        }
+        return [:]
+    }
+
     var taskIDPromptCanSubmit: Bool {
         guard let prompt = taskIDPrompt, !prompt.isSaving else {
             return false
@@ -4672,7 +4685,9 @@ final class CapturePanelModel: ObservableObject {
             continuation: context.continuation,
             markerRange: context.markerRange,
             triggerRemovalRange: context.triggerRemovalRange,
-            openCount: context.openCount
+            openCount: context.openCount,
+            actionContinuationKeys: context.actionContinuationKeys,
+            actionContinuationAliases: context.actionContinuationAliases
         )
         let index = CapturePickerIndex.projectTaskMove(
             ProjectTaskMovePickerIndex(candidates: candidates, context: enriched)
@@ -5864,7 +5879,9 @@ final class CapturePanelModel: ObservableObject {
             continuation: context.continuation,
             markerRange: context.markerRange,
             triggerRemovalRange: context.triggerRemovalRange,
-            openCount: completion.projectTaskMove?.openCount
+            openCount: completion.projectTaskMove?.openCount,
+            actionContinuationKeys: context.actionContinuationKeys,
+            actionContinuationAliases: context.actionContinuationAliases
         )
         presentPicker(
             source: .projectTaskMove(enriched),

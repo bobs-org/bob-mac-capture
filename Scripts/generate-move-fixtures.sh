@@ -124,5 +124,53 @@ draft_mc5b='Finish it @nope^x@
 len_mc5b=$(python3 -c "d='Finish it @nope^x@\n- ^'; print(len(d.encode()))")
 bob capture-complete --cursor "$len_mc5b" --format json -- "$draft_mc5b" > "$scratch_root/complete-mc5b.json" || true
 persist "$scratch_root/complete-mc5b.json" move-complete-mc5b.json
+# Sigil aliases on sealed move bullets (rewrite + complete under both seals)
+draft_alias_caret='@cash^goog-exit@
+- .'
+len_alias_caret=$(python3 -c "d='@cash^goog-exit@\n- .'; print(len(d.encode()))")
+bob capture-rewrite --cursor "$len_alias_caret" --format json -- "$draft_alias_caret" > "$scratch_root/rewrite-alias-caret.json"
+python3 - "$scratch_root/rewrite-alias-caret.json" <<'VALIDATE'
+import json, pathlib, sys
+r = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert r.get("rule") == "expand_sigil_alias", r
+assert r.get("text") == "@cash^goog-exit@\n- ^", r
+assert r.get("summary") == "Typed ^ for .", r
+VALIDATE
+persist "$scratch_root/rewrite-alias-caret.json" capture-rewrite-sigil-alias-move-caret.json
+draft_alias_link='@cash:goog-exit@
+- ;'
+len_alias_link=$(python3 -c "d='@cash:goog-exit@\n- ;'; print(len(d.encode()))")
+bob capture-rewrite --cursor "$len_alias_link" --format json -- "$draft_alias_link" > "$scratch_root/rewrite-alias-link.json"
+python3 - "$scratch_root/rewrite-alias-link.json" <<'VALIDATE'
+import json, pathlib, sys
+r = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert r.get("rule") == "expand_sigil_alias", r
+assert r.get("text") == "@cash:goog-exit@\n- :", r
+assert r.get("summary") == "Typed : for ;", r
+VALIDATE
+persist "$scratch_root/rewrite-alias-link.json" capture-rewrite-sigil-alias-move-link.json
+for seal in '^' ':'; do
+  for sigil in '^' ':'; do
+    if [ "$sigil" = '^' ]; then lane=caret; else lane=link; fi
+    if [ "$seal" = '^' ]; then form=create; else form=offer; fi
+    draft_alias_complete="@cash${seal}goog-exit@
+- ${sigil}"
+    len_alias_complete=$(python3 -c "d='@cash${seal}goog-exit@\n- ${sigil}'; print(len(d.encode()))")
+    bob capture-complete --cursor "$len_alias_complete" --format json -- "$draft_alias_complete" > "$scratch_root/complete-alias.json"
+    ALIAS_SIGIL="$sigil" python3 - "$scratch_root/complete-alias.json" <<'VALIDATE'
+import json, os, pathlib, sys
+r = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert r.get("context") == "project_task_move", r
+picker = r.get("picker", {})
+if os.environ.get("ALIAS_SIGIL") == "^":
+    assert picker.get("action_continuation_keys") == ["^"], r
+    assert picker.get("action_continuation_aliases") == {".": "^"}, r
+else:
+    assert "action_continuation_keys" not in picker, r
+    assert "action_continuation_aliases" not in picker, r
+VALIDATE
+    persist "$scratch_root/complete-alias.json" "move-complete-sigil-alias-${lane}-${form}.json"
+  done
+done
 echo "wrote move fixtures to $fixtures"
 ls "$fixtures"/move-* 2>&1

@@ -193,7 +193,9 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   behaves like ordinary typing, and its picker or completion opens as before.
   This gesture needs a bob build that implements `switch_block_id_separator`.
   Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
-  `^` or `:`. Bob decides whether the candidate would open that sigil's picker; when
+  `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
+  project-note item (where the Move picker would open) and `- ^.` (which makes
+  `- ^^`). Bob decides whether the candidate would open that sigil's picker; when
   it does, the app applies the swap natively and requests completion so the picker
   opens through the existing handlers. Undo restores the literal `.` or `;`; an
   older bob leaves either key literal.

@@ -160,6 +160,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
     var pickerOperatorContinuationKeys: [String] = []
+    var pickerOperatorContinuationAliases: [String: String] = [:]
     var taskIDPromptCyclesSuggestions = false
     var closeTaskCommaArmed = false
     var draftIsBlank = false
@@ -945,10 +946,16 @@ struct CaptureKeyCommandRouter {
                !context.pickerOperatorContinuationKeys.isEmpty,
                modifiers.intersection([.command, .option, .control]).isEmpty,
                let characters = event.characters,
-               characters.count == 1,
-               context.pickerOperatorContinuationKeys.contains(characters)
+               characters.count == 1
             {
-                return .continuePickerOperator(characters)
+                if context.pickerOperatorContinuationKeys.contains(characters) {
+                    return .continuePickerOperator(characters)
+                }
+                if let mapped = context.pickerOperatorContinuationAliases[characters],
+                   context.pickerOperatorContinuationKeys.contains(mapped)
+                {
+                    return .continuePickerOperator(mapped)
+                }
             }
             return nil
         case KeyCode.delete:
@@ -989,10 +996,16 @@ struct CaptureKeyCommandRouter {
                !context.pickerOperatorContinuationKeys.isEmpty,
                modifiers.intersection([.command, .option, .control]).isEmpty,
                let characters = event.characters,
-               characters.count == 1,
-               context.pickerOperatorContinuationKeys.contains(characters)
+               characters.count == 1
             {
-                return .continuePickerOperator(characters)
+                if context.pickerOperatorContinuationKeys.contains(characters) {
+                    return .continuePickerOperator(characters)
+                }
+                if let mapped = context.pickerOperatorContinuationAliases[characters],
+                   context.pickerOperatorContinuationKeys.contains(mapped)
+                {
+                    return .continuePickerOperator(mapped)
+                }
             }
             return nil
         }
