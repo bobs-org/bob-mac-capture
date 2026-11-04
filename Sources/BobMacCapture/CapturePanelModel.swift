@@ -1861,7 +1861,7 @@ final class CapturePanelModel: ObservableObject {
     /// via its presentation. It never varies with `dryRun` — it always names
     /// what Return will do next.
     var primaryActionTitle: String {
-        if previewResults.count == 1, previewResults.first?.kind == "note_pull" {
+        if !previewResults.isEmpty, previewResults.allSatisfy({ $0.kind == "note_pull" }) {
             return "Pull In"
         }
         if resetPresentation != nil {

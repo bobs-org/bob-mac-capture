@@ -6377,6 +6377,10 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     /// Source parent for a moved project offer (`cash.md` on a `^`/`:` row).
     /// Absent on every other offer; older Bob binaries never send it.
     public let movedFrom: String?
+    /// Requested source note of a note-pull offer (`work.md`). A later move in
+    /// the same draft changes the row's `note_path`, never this. Absent on
+    /// other offers and from older Bob binaries.
+    public let note: String?
 
     public init(
         key: String = "",
@@ -6387,7 +6391,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         destination: TaskCompleteOfferDestination = TaskCompleteOfferDestination(),
         selected: Bool = false,
         blockIDNeeded: Bool = false,
-        movedFrom: String? = nil
+        movedFrom: String? = nil,
+        note: String? = nil
     ) {
         self.key = key
         self.n = n
@@ -6398,6 +6403,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         self.selected = selected
         self.blockIDNeeded = blockIDNeeded
         self.movedFrom = movedFrom
+        self.note = note
     }
 
     public init(from decoder: Decoder) throws {
@@ -6415,6 +6421,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         selected = (try? container.decodeIfPresent(Bool.self, forKey: .selected)) ?? false
         blockIDNeeded = (try? container.decodeIfPresent(Bool.self, forKey: .blockIDNeeded)) ?? false
         movedFrom = try? container.decodeIfPresent(String.self, forKey: .movedFrom)
+        note = try? container.decodeIfPresent(String.self, forKey: .note)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6427,6 +6434,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         case selected
         case blockIDNeeded = "block_id_needed"
         case movedFrom = "moved_from"
+        case note
     }
 }
 

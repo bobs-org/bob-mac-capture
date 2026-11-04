@@ -49,9 +49,7 @@ public struct CaptureNotePullPresentation: Equatable, Sendable {
         moreCount = max(0, allRows.count - rows.count)
         hintText = "↩ choose what to pull in · ⇧↩ start a list"
         let picked = notePull.successors.filter { $0.offer?.selected == true }
-        let count = picked.count
-        let noun = count == 1 ? "task" : "tasks"
-        notificationTitle = "📥 Pulled in \(count) \(noun) from ‹\(noteName)›"
+        notificationTitle = "📥 Pulled in \(picked.count) from ‹\(noteName)›"
         notificationBody = picked.map { offer in
             let destination = Self.destination(for: offer.offer?.destination)
             return "• \(offer.text)" + (destination.map { " \($0)" } ?? "")

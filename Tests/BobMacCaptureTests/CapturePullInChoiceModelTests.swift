@@ -90,6 +90,155 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testTwoNotePullOnlyDraftSaysPullInAndNamesBothSources() async throws {
+        let record = temporaryRecordURL()
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("note-pull-two-notes.json")
+        )
+        model.plainDraft = "@work\n\n@dev"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.previewResults.map(\.kind), ["note_pull", "note_pull"])
+        XCTAssertEqual(model.primaryActionTitle, "Pull In")
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.isOnlyNotePull)
+        XCTAssertEqual(choice.notePullSources, ["work.md", "dev.md"])
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in from 2 notes")
+        XCTAssertEqual(model.statusText, "Choose tasks to pull in from 2 notes")
+        XCTAssertEqual(choice.sections.map(\.title), ["Pull from ‹work›", "Pull from ‹dev›"])
+        XCTAssertEqual(choice.sections.map { $0.rows.compactMap(\.offerNumber) }, [[1, 2, 3], [4]])
+        XCTAssertTrue(choice.markedKeys.isEmpty)
+
+        // Shift-Return stays explanatory and Esc leaves the draft unchanged.
+        model.chooseNoPullInOffers()
+        XCTAssertTrue(model.pullInChoiceVisible)
+        model.cancelPullInChoiceFromKeyboard()
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertEqual(model.plainDraft, "@work\n\n@dev")
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testMovedNotePullRowsStayInTheirRequestedSourceSections() async throws {
+        let record = temporaryRecordURL()
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("note-pull-move.json")
+        )
+        model.plainDraft = Self.notePullMoveDraft
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        // Transfers and a project note make this a mixed draft.
+        XCTAssertNotEqual(model.primaryActionTitle, "Pull In")
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        assertMovedNotePullSections(choice)
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in from 2 notes")
+        model.cancelPullInChoiceFromKeyboard()
+        XCTAssertEqual(model.plainDraft, Self.notePullMoveDraft)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testRequiredChoiceFlatOffersKeepRequestedSourceSections() throws {
+        let data = Data(try fixtureText("note-pull-move-choice.json").utf8)
+        guard case .failure(let failure) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: data
+        ) else {
+            return XCTFail("Expected Bob's pull_in_choice_required refusal")
+        }
+        XCTAssertEqual(failure.code, "pull_in_choice_required")
+        let pullIn = try XCTUnwrap(failure.pullIn)
+        let model = CapturePanelModel()
+        model.installPullInChoiceForPreviews(
+            offers: failure.offers,
+            pullIn: pullIn,
+            draft: Self.notePullMoveDraft
+        )
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        assertMovedNotePullSections(choice)
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in from 2 notes")
+    }
+
+    func testPrimaryActionTitleForSingleAndEmptyNotePullPreviewStates() async throws {
+        let single = makeModel(
+            record: temporaryRecordURL(),
+            stdout: try fixtureText("note-pull-np1.json")
+        )
+        single.plainDraft = "@sase"
+        single.preview()
+        try await waitUntil { !single.isPreviewing }
+        XCTAssertEqual(single.primaryActionTitle, "Pull In")
+
+        let empty = makeModel(record: temporaryRecordURL(), stdout: successResponse())
+        XCTAssertTrue(empty.previewResults.isEmpty)
+        XCTAssertEqual(empty.primaryActionTitle, "Capture")
+    }
+
+    private static let notePullMoveDraft = """
+        @work
+
+        @dev
+
+        @work+gamma > @bob
+
+        @dev+delta > @bob
+
+        Docs push @work^docs-push@
+        - ^beta
+        """
+
+    /// One section per requested source in Bob's order. Rows keep their
+    /// final homes (`note_path`) while membership follows `offer.note`.
+    private func assertMovedNotePullSections(
+        _ choice: CapturePullInChoiceState,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(choice.isOnlyNotePull, file: file, line: line)
+        XCTAssertEqual(choice.notePullSources, ["work.md", "dev.md"], file: file, line: line)
+        XCTAssertEqual(
+            choice.sections.map(\.title),
+            ["Pull from ‹work›", "Pull from ‹dev›"],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(choice.sections.map(\.note), ["work.md", "dev.md"], file: file, line: line)
+        XCTAssertEqual(
+            choice.sections.map { $0.rows.compactMap(\.offerNumber) },
+            [[1, 2, 3], [4]],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            choice.sections.map { $0.rows.map(\.notePath) },
+            [["work.md", "work_docs_push.md", "bob.md"], ["bob.md"]],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            choice.sections.map { $0.rows.map(\.sourceNotePath) },
+            [["work.md", "work.md", "work.md"], ["dev.md"]],
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(choice.sections.last?.folded?.hidden, 1, file: file, line: line)
+        XCTAssertEqual(
+            choice.selectableKeys,
+            ["work.md#^alpha", "work.md#^beta", "work.md#^gamma", "dev.md#^delta"],
+            file: file,
+            line: line
+        )
+    }
+
     func testNothingToPullInRefusalUsesCalmCardState() async throws {
         let model = makeModel(
             record: temporaryRecordURL(),

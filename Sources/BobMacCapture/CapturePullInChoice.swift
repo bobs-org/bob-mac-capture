@@ -78,6 +78,13 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         offerRow?.notePath ?? blockedRow?.notePath ?? ""
     }
 
+    /// The `@note` a note-pull row was requested from. Bob freezes it on the
+    /// offer; `notePath` is the task's final home, which a later move in the
+    /// same draft can change. Older payloads without the field fall back.
+    var sourceNotePath: String {
+        pullInNonempty(offerRow?.offer?.note) ?? notePath
+    }
+
     var blockID: String {
         offerRow?.blockID ?? blockedRow?.blockID ?? ""
     }
@@ -655,6 +662,19 @@ struct CapturePullInChoiceState: Equatable {
         return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "note_pull" }
     }
 
+    /// Distinct requested source notes in Bob's group order, then any row
+    /// source Bob's groups do not list.
+    var notePullSources: [String] {
+        var sources: [String] = []
+        let grouped = pullIn.groups.filter { $0.group == "note_pull" }
+            .compactMap { pullInNonempty($0.note) }
+        let fromRows = rows.filter(\.isNotePull).compactMap { pullInNonempty($0.sourceNotePath) }
+        for note in grouped + fromRows where !sources.contains(note) {
+            sources.append(note)
+        }
+        return sources
+    }
+
     var isOnlyRelation: Bool {
         let offers = rows.compactMap(\.offerRow)
         return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "relation" }
@@ -662,9 +682,11 @@ struct CapturePullInChoiceState: Equatable {
 
     var promptStatusText: String {
         if isOnlyNotePull {
-            let note = pullIn.groups.first(where: { $0.group == "note_pull" })?.note
-                ?? rows.first?.notePath
-                ?? ""
+            let sources = notePullSources
+            if sources.count > 1 {
+                return "Choose tasks to pull in from \(sources.count) notes"
+            }
+            let note = sources.first ?? ""
             let name = note.isEmpty ? "note" : CapturePullInChoiceSection.projectLabel(note)
             return "Choose tasks to pull in from ‹\(name)›"
         }
@@ -1026,7 +1048,7 @@ private struct PullInSectionIdentity: Hashable {
             self.init(
                 group: row.group,
                 project: row.project,
-                note: row.isNotePull ? row.notePath : nil,
+                note: row.isNotePull ? row.sourceNotePath : nil,
                 after: row.after,
                 label: row.label
             )
@@ -1034,7 +1056,7 @@ private struct PullInSectionIdentity: Hashable {
             self.init(
                 group: row.group,
                 project: row.project,
-                note: row.isNotePull ? row.notePath : nil,
+                note: row.isNotePull ? row.sourceNotePath : nil,
                 after: nil,
                 label: nil
             )

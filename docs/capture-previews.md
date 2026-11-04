@@ -413,13 +413,13 @@ note-pull draft unchanged. Escape returns unchanged; Control-Return confirms and
 opens Bob's reported notes. Cards show numbers, destinations, folds, blocked
 residents, and plan-link budget.
 
-`@route` previews up to five offers in `Pull from ‹route›`, with ready tag, lane,
-Pomodoro destination, overflow, and fold. Return opens a `tray.and.arrow.down.fill`
-chooser with Next tint and **Pull In** footer; it links marked offers, or the
-highlight. Shift-Return returns to draft without writing. Inbox picks changing
-status continue to route selection. Calm `nothing_to_pull_in` refusals show
-`Nothing ready in ‹route›`; missing notes remain errors. Notifications name the
-note and pulled tasks.
+`@route` previews up to five offers in `Pull from ‹route›` with tag, lane,
+destination, overflow, and fold; pull-only drafts say **Pull In**. Return opens a
+`tray.and.arrow.down.fill` chooser (Next tint); moved rows keep their requested
+note's group. Shift-Return returns without writing. Inbox picks changing status
+continue to route selection. Calm `nothing_to_pull_in` refusals show `Nothing
+ready in ‹route›`; missing notes remain errors. Notifications read `📥 Pulled in
+k from ‹route›`.
 
 When no chooser opens, muted relation lines explain rows already started, waiting,
 blocked by dependency, schedule, or project, or hidden. `already_planned` stays
