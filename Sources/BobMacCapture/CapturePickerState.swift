@@ -72,7 +72,10 @@ struct CapturePickerChipState: Equatable {
     /// sources and ownerless picks.
     var dependencyOwner: DependencyOwner? = nil
     /// Go To's completed-task toggle for this session.
+    /// This is the desired scope; `snapshotIncludesClosedTasks` records the
+    /// scope actually represented by `candidates` while a refetch is pending.
     var includesClosedTasks = false
+    var snapshotIncludesClosedTasks = false
 }
 
 /// Whether an analysis was triggered by a draft edit or by a caret-only

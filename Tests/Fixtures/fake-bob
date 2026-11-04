@@ -2015,6 +2015,7 @@ JSON
     draft="${*: -1}"
     cursor="0"
     all_tasks="false"
+    closed_tasks="false"
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
@@ -2023,7 +2024,43 @@ JSON
       if [[ "${args[$i]}" == "--all-tasks" || "${args[$i]}" == "-a" ]]; then
         all_tasks="true"
       fi
+      if [[ "${args[$i]}" == "--closed-tasks" || "${args[$i]}" == "-C" ]]; then
+        closed_tasks="true"
+      fi
     done
+    if [[ "${draft}" == "/" && "${all_tasks}" == "true" ]]; then
+      if [[ "${closed_tasks}" == "true" ]]; then
+        delay_marker="${FAKE_BOB_GOTO_DELAY_CLOSED_MARKER:-}"
+        fail_marker="${FAKE_BOB_GOTO_FAIL_CLOSED_MARKER:-}"
+        unsupported_marker="${FAKE_BOB_GOTO_UNSUPPORTED_CLOSED_MARKER:-}"
+      else
+        delay_marker="${FAKE_BOB_GOTO_DELAY_OPEN_MARKER:-}"
+        fail_marker="${FAKE_BOB_GOTO_FAIL_OPEN_MARKER:-}"
+        unsupported_marker="${FAKE_BOB_GOTO_UNSUPPORTED_OPEN_MARKER:-}"
+      fi
+      unsupported_request="false"
+      if [[ -n "${unsupported_marker}" && -e "${unsupported_marker}" ]]; then
+        rm -f "${unsupported_marker}"
+        unsupported_request="true"
+      fi
+      fail_request="false"
+      if [[ -n "${fail_marker}" && -e "${fail_marker}" ]]; then
+        rm -f "${fail_marker}"
+        fail_request="true"
+      fi
+      if [[ -n "${delay_marker}" && -e "${delay_marker}" ]]; then
+        rm -f "${delay_marker}"
+        sleep "${FAKE_BOB_GOTO_DELAY_SECONDS:-0.35}"
+      fi
+      if [[ "${unsupported_request}" == "true" ]]; then
+        printf "error: unexpected argument '--closed-tasks' found\\n\\nUsage: bob capture-complete [OPTIONS] -- <TEXT>\\n" >&2
+        exit 2
+      fi
+      if [[ "${fail_request}" == "true" ]]; then
+        printf "controlled Go To fixture failure\\n" >&2
+        exit 7
+      fi
+    fi
     task_type_edge=0
     if [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
       if [[ "${draft}" == '#'* || "${draft}" == *' #' || "${draft}" == *' #fi' \

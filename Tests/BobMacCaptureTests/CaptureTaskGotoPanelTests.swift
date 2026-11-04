@@ -398,6 +398,300 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertEqual(model.picker?.candidates.count, 8)
     }
 
+    func testPendingShowEscapesAndBareSlashReopenFetchesCompletedRows() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        armGotoMarker("delay-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        model.escapePicker()
+
+        XCTAssertEqual(model.pickerChip?.includesClosedTasks, true)
+        XCTAssertEqual(model.pickerChip?.snapshotIncludesClosedTasks, false)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+
+        await waitUntil {
+            model.picker?.includesClosedTasks == true
+                && model.picker?.candidates.count == 11
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        XCTAssertEqual(model.picker?.candidates.count, 11)
+    }
+
+    func testPendingHideEscapesAndReopenDoesNotKeepCompletedRows() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+        armGotoMarker("delay-open", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            Self.recordCount(recordURL, contains: "argv=capture-complete --all-tasks --cursor") >= 2
+        }
+        await waitUntil { !Self.markerExists("delay-open", recordURL: recordURL) }
+        model.escapePicker()
+
+        XCTAssertEqual(model.pickerChip?.includesClosedTasks, false)
+        XCTAssertEqual(model.pickerChip?.snapshotIncludesClosedTasks, true)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        await waitUntil {
+            model.picker?.includesClosedTasks == false
+                && model.picker?.candidates.count == 8
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testDelayedChipRefetchCannotReplaceReopenedSnapshot() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/dee"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.pickerVisible }
+        XCTAssertEqual(model.picker?.filterText, "dee")
+
+        model.escapePicker()
+        model.escapePicker()
+        XCTAssertTrue(model.pickerChipVisible)
+        armGotoMarker("delay-open", recordURL: recordURL)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        await waitUntil {
+            Self.recordCount(recordURL, contains: "argv=capture-complete --all-tasks --cursor") >= 3
+        }
+        await waitUntil { !Self.markerExists("delay-open", recordURL: recordURL) }
+
+        model.escapePicker()
+        model.escapePicker()
+        XCTAssertTrue(model.pickerChipVisible)
+        model.openPickerFromChip()
+        await waitUntil {
+            model.pickerVisible
+                && model.statusText == "Hiding completed tasks, 8 tasks"
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testLateFailureAfterChipReopenSuccessHasNoEffect() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        armGotoMarker("delay-closed", recordURL: recordURL)
+        armGotoMarker("fail-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        await waitUntil { !Self.markerExists("fail-closed", recordURL: recordURL) }
+        model.escapePicker()
+        model.openPickerFromChip()
+        await waitUntil {
+            model.picker?.includesClosedTasks == true
+                && model.picker?.candidates.count == 11
+        }
+
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.statusText, "Showing completed tasks, 11 tasks")
+    }
+
+    func testLatestOffFailureAfterPendingOnKeepsOriginalOpenSnapshot() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.updatePickerFilter("Call")
+        let selected = model.picker?.selectedRowID
+        armGotoMarker("delay-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        armGotoMarker("fail-open", recordURL: recordURL)
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.statusText.contains("controlled Go To fixture failure") }
+
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertEqual(model.picker?.filterText, "Call")
+        XCTAssertEqual(model.picker?.selectedRowID, selected)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testLatestOnFailureFromCompletedSnapshotPreservesCompletedRows() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+        let completedID = "done/old.md|12:deadbeef"
+        model.selectPickerRow(id: completedID)
+        armGotoMarker("delay-open", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            Self.recordCount(recordURL, contains: "argv=capture-complete --all-tasks --cursor") >= 2
+        }
+        await waitUntil { !Self.markerExists("delay-open", recordURL: recordURL) }
+        armGotoMarker("fail-closed", recordURL: recordURL)
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.statusText.contains("controlled Go To fixture failure") }
+
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.picker?.selectedRowID, completedID)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        XCTAssertEqual(model.picker?.candidates.count, 11)
+    }
+
+    func testFailureOnChipRefetchRetainsRowsAndReportsError() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        armGotoMarker("delay-closed", recordURL: recordURL)
+        armGotoMarker("fail-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        await waitUntil { !Self.markerExists("fail-closed", recordURL: recordURL) }
+        model.escapePicker()
+        XCTAssertEqual(model.pickerChip?.includesClosedTasks, true)
+
+        armGotoMarker("fail-closed", recordURL: recordURL)
+        model.openPickerFromChip()
+        await waitUntil { model.statusText.contains("controlled Go To fixture failure") }
+
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertEqual(model.statusText, "controlled Go To fixture failure")
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testUnsupportedChipRefetchSettlesOffAndShowsUpdateHint() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        armGotoMarker("delay-closed", recordURL: recordURL)
+        armGotoMarker("unsupported-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        await waitUntil { !Self.markerExists("unsupported-closed", recordURL: recordURL) }
+        model.escapePicker()
+        XCTAssertEqual(model.pickerChip?.includesClosedTasks, true)
+        XCTAssertEqual(model.pickerChip?.snapshotIncludesClosedTasks, false)
+
+        armGotoMarker("unsupported-closed", recordURL: recordURL)
+        model.openPickerFromChip()
+        await waitUntil {
+            model.picker?.warnings.contains("Update bob to show completed tasks") == true
+        }
+
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertEqual(model.statusText, "Update bob to show completed tasks")
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertEqual(model.statusText, "Update bob to show completed tasks")
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+    }
+
+    func testOldFailureCannotChangeARecreatedIdenticalSlashSession() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        armGotoMarker("delay-closed", recordURL: recordURL)
+        armGotoMarker("fail-closed", recordURL: recordURL)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { Self.record(recordURL, contains: "--closed-tasks") }
+        await waitUntil { !Self.markerExists("delay-closed", recordURL: recordURL) }
+        await waitUntil { !Self.markerExists("fail-closed", recordURL: recordURL) }
+        model.escapePicker()
+        model.plainDraft = ""
+        model.editorTextDidChange(cursorUTF8Offset: 0)
+        await waitUntil { model.pickerChip == nil }
+
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testTurningOffFallsBackWhenSelectedCompletedRowDisappears() async throws {
+        let (model, _) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+        let completedID = "done/old.md|12:deadbeef"
+        model.selectPickerRow(id: completedID)
+
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.statusText == "Hiding completed tasks, 8 tasks" }
+
+        let selectedID = try XCTUnwrap(model.picker?.selectedRowID)
+        XCTAssertNotEqual(selectedID, completedID)
+        XCTAssertNotNil(model.pickerPresentation?.row(id: selectedID))
+        XCTAssertEqual(
+            selectedID,
+            CapturePickerNavigation.first(in: model.pickerPresentation?.orderedRowIDs ?? [])
+        )
+    }
+
+    func testFreshSlashSessionStartsOpenOnlyAfterDiscardingCompletedSession() async throws {
+        let (model, _) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+        model.discardDraft()
+        XCTAssertFalse(model.pickerVisible)
+
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
     func testAcceptingCompletedRowOpensItsVaultArchivePath() async throws {
         let (model, _) = try gotoModel()
         var opened: [URL] = []
@@ -589,6 +883,12 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             "HOME": "/tmp",
             "PATH": "/usr/bin:/bin",
             "FAKE_BOB_RECORD_PATH": url.path,
+            "FAKE_BOB_GOTO_DELAY_CLOSED_MARKER": url.path + ".delay-closed",
+            "FAKE_BOB_GOTO_DELAY_OPEN_MARKER": url.path + ".delay-open",
+            "FAKE_BOB_GOTO_FAIL_CLOSED_MARKER": url.path + ".fail-closed",
+            "FAKE_BOB_GOTO_FAIL_OPEN_MARKER": url.path + ".fail-open",
+            "FAKE_BOB_GOTO_UNSUPPORTED_CLOSED_MARKER": url.path + ".unsupported-closed",
+            "FAKE_BOB_GOTO_DELAY_SECONDS": "0.4",
         ]
         environment.merge(extraEnvironment) { _, replacement in replacement }
         let model = CapturePanelModel(
@@ -600,6 +900,34 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             canceledDraftStash: stash
         )
         return (model, url)
+    }
+
+    private func armGotoMarker(_ name: String, recordURL: URL) {
+        XCTAssertTrue(
+            FileManager.default.createFile(
+                atPath: Self.marker(name, recordURL: recordURL).path,
+                contents: Data()
+            )
+        )
+    }
+
+    private static func marker(_ name: String, recordURL: URL) -> URL {
+        URL(fileURLWithPath: recordURL.path + "." + name)
+    }
+
+    private static func markerExists(_ name: String, recordURL: URL) -> Bool {
+        FileManager.default.fileExists(atPath: marker(name, recordURL: recordURL).path)
+    }
+
+    private static func record(_ url: URL, contains text: String) -> Bool {
+        (try? String(contentsOf: url))?.contains(text) == true
+    }
+
+    private static func recordCount(_ url: URL, contains text: String) -> Int {
+        guard let contents = try? String(contentsOf: url) else {
+            return 0
+        }
+        return contents.components(separatedBy: text).count - 1
     }
 
     private func fakeBobPath() throws -> String {
