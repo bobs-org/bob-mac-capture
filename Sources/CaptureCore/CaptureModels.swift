@@ -4594,6 +4594,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// destinations. Older Bob binaries omit this field; a malformed value
     /// decodes as nil so it can never fail the capture decode.
     public let inboxRoute: CaptureInboxRoute?
+    /// Additive batch-level parent-task move choices. Older Bob binaries omit
+    /// this field; malformed data degrades to nil so it cannot fail capture.
+    public let moveChoice: CaptureMoveChoice?
     // Additive batch-level `pomodoro_blocks`: every Pomodoro the capture
     // touches, creates, or reports, in its final after-state. Older Bob
     // omits it entirely, and a malformed value decodes as empty so it can
@@ -4716,6 +4719,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
         inboxRoute: CaptureInboxRoute? = nil,
+        moveChoice: CaptureMoveChoice? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [CaptureWarning] = [],
@@ -4807,6 +4811,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.planBudget = planBudget
         self.pullIn = pullIn
         self.inboxRoute = inboxRoute
+        self.moveChoice = moveChoice
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
         self.droppedDependencies = droppedDependencies
@@ -4996,6 +5001,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
+        moveChoice =
+            (try? container.decodeIfPresent(CaptureMoveChoice.self, forKey: .moveChoice)) ?? nil
         pomodoroBlocks =
             (try? container.decodeIfPresent(
                 [CapturePomodoroBlock].self,
@@ -5133,6 +5140,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case planBudget = "plan_budget"
         case pullIn = "pull_in"
         case inboxRoute = "inbox_route"
+        case moveChoice = "move_choice"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
         case droppedDependencies = "dropped_dependencies"
@@ -6995,6 +7003,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
     /// `inbox_route_stale`. Older Bob omits it; a malformed value decodes
     /// as nil so it can never fail the failure decode.
     public let inboxRoute: CaptureInboxRoute?
+    /// Additive batch-level move-choice payload on `move_choice_*`
+    /// refusals. Older Bob omits it; malformed data degrades to nil.
+    public let moveChoice: CaptureMoveChoice?
     /// Additive refused-route detail on `inbox_route_refused` (`key`, `n`,
     /// `destination`, `message`). Older Bob omits it; malformed decodes as
     /// nil.
@@ -7008,6 +7019,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         notePull: CaptureNotePull? = nil,
         offers: [TaskCompleteUnblocked] = [],
         inboxRoute: CaptureInboxRoute? = nil,
+        moveChoice: CaptureMoveChoice? = nil,
         refused: CaptureInboxRouteRefused? = nil
     ) {
         self.ok = ok
@@ -7017,6 +7029,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.notePull = notePull
         self.offers = offers
         self.inboxRoute = inboxRoute
+        self.moveChoice = moveChoice
         self.refused = refused
     }
 
@@ -7030,6 +7043,8 @@ public struct CaptureCommandFailure: Codable, Equatable {
         offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
+        moveChoice =
+            (try? container.decodeIfPresent(CaptureMoveChoice.self, forKey: .moveChoice)) ?? nil
         refused =
             (try? container.decodeIfPresent(CaptureInboxRouteRefused.self, forKey: .refused)) ?? nil
     }
@@ -7042,6 +7057,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case notePull = "note_pull"
         case offers
         case inboxRoute = "inbox_route"
+        case moveChoice = "move_choice"
         case refused
     }
 }
@@ -10260,6 +10276,326 @@ public struct CaptureInboxRoute: Codable, Equatable, Sendable {
         case repairedFiles = "repaired_files"
         case renamedBlockIDs = "renamed_block_ids"
         case needsReconcile = "needs_reconcile"
+    }
+}
+
+/// Batch-level `move_choice` report on capture success and refusal JSON.
+/// Bob adds this object to supported builds, then supplies one slot for each
+/// `- ^^` marker. Older Bob omits it and malformed additive rows degrade
+/// individually instead of failing the capture response.
+public struct CaptureMoveChoice: Codable, Equatable, Sendable {
+    public let supported: Bool
+    public let slots: [CaptureMoveChoiceSlot]
+
+    public init(supported: Bool = false, slots: [CaptureMoveChoiceSlot] = []) {
+        self.supported = supported
+        self.slots = slots
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = (try? container.decodeIfPresent(Bool.self, forKey: .supported)) ?? false
+        slots = (try? container.decodeIfPresent([CaptureMoveChoiceSlot].self, forKey: .slots)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case supported
+        case slots
+    }
+}
+
+/// Bob's staged parent and candidate rows for one `- ^^` draft slot.
+public struct CaptureMoveChoiceSlot: Codable, Equatable, Sendable {
+    public let item: Int
+    public let itemLine: Int
+    /// Half-open UTF-8 byte range of the `^^` token in the draft.
+    public let draftRange: [Int]
+    public let parent: String
+    public let destination: String
+    public let pomodoroName: String?
+    public let nameNeedsLink: Bool
+    public let openCount: Int
+    public let answered: Bool
+    public let movedCount: Int
+    public let linkedCount: Int
+    public let copy: CaptureMoveChoiceCopy?
+    public let rows: [CaptureMoveChoiceRow]
+
+    public init(
+        item: Int = 0,
+        itemLine: Int = 0,
+        draftRange: [Int] = [],
+        parent: String = "",
+        destination: String = "",
+        pomodoroName: String? = nil,
+        nameNeedsLink: Bool = false,
+        openCount: Int = 0,
+        answered: Bool = false,
+        movedCount: Int = 0,
+        linkedCount: Int = 0,
+        copy: CaptureMoveChoiceCopy? = nil,
+        rows: [CaptureMoveChoiceRow] = []
+    ) {
+        self.item = item
+        self.itemLine = itemLine
+        self.draftRange = draftRange
+        self.parent = parent
+        self.destination = destination
+        self.pomodoroName = pomodoroName
+        self.nameNeedsLink = nameNeedsLink
+        self.openCount = openCount
+        self.answered = answered
+        self.movedCount = movedCount
+        self.linkedCount = linkedCount
+        self.copy = copy
+        self.rows = rows
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        item = (try? container.decodeIfPresent(Int.self, forKey: .item)) ?? 0
+        itemLine = (try? container.decodeIfPresent(Int.self, forKey: .itemLine)) ?? 0
+        draftRange = (try? container.decodeIfPresent([Int].self, forKey: .draftRange)) ?? []
+        parent = (try? container.decodeIfPresent(String.self, forKey: .parent)) ?? ""
+        destination = (try? container.decodeIfPresent(String.self, forKey: .destination)) ?? ""
+        pomodoroName = try? container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        nameNeedsLink = (try? container.decodeIfPresent(Bool.self, forKey: .nameNeedsLink)) ?? false
+        openCount = (try? container.decodeIfPresent(Int.self, forKey: .openCount)) ?? 0
+        answered = (try? container.decodeIfPresent(Bool.self, forKey: .answered)) ?? false
+        movedCount = (try? container.decodeIfPresent(Int.self, forKey: .movedCount)) ?? 0
+        linkedCount = (try? container.decodeIfPresent(Int.self, forKey: .linkedCount)) ?? 0
+        copy = try? container.decodeIfPresent(CaptureMoveChoiceCopy.self, forKey: .copy)
+        rows = (try? container.decodeIfPresent([CaptureMoveChoiceRow].self, forKey: .rows)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case item
+        case itemLine = "item_line"
+        case draftRange = "draft_range"
+        case parent
+        case destination
+        case pomodoroName = "pomodoro_name"
+        case nameNeedsLink = "name_needs_link"
+        case openCount = "open_count"
+        case answered
+        case movedCount = "moved_count"
+        case linkedCount = "linked_count"
+        case copy
+        case rows
+    }
+}
+
+/// Bob-authored card and preview copy for a move-choice slot.
+public struct CaptureMoveChoiceCopy: Codable, Equatable, Sendable {
+    public let title: String
+    public let subtitle: String
+    public let slot: String
+    public let leave: String
+    public let ghost: String
+    public let band: String
+    public let then: String?
+
+    public init(
+        title: String = "",
+        subtitle: String = "",
+        slot: String = "",
+        leave: String = "",
+        ghost: String = "",
+        band: String = "",
+        then: String? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.slot = slot
+        self.leave = leave
+        self.ghost = ghost
+        self.band = band
+        self.then = then
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        subtitle = (try? container.decodeIfPresent(String.self, forKey: .subtitle)) ?? ""
+        slot = (try? container.decodeIfPresent(String.self, forKey: .slot)) ?? ""
+        leave = (try? container.decodeIfPresent(String.self, forKey: .leave)) ?? ""
+        ghost = (try? container.decodeIfPresent(String.self, forKey: .ghost)) ?? ""
+        band = (try? container.decodeIfPresent(String.self, forKey: .band)) ?? ""
+        then = try? container.decodeIfPresent(String.self, forKey: .then)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case subtitle
+        case slot
+        case leave
+        case ghost
+        case band
+        case then
+    }
+}
+
+/// One Bob-ranked parent task and its planner-true move consequences.
+public struct CaptureMoveChoiceRow: Codable, Equatable, Sendable {
+    public let key: String
+    public let n: Int
+    public let line: Int
+    public let section: String?
+    public let blockID: String?
+    public let mint: String?
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let hidden: Bool
+    public let scheduled: String?
+    public let pomodoro: CaptureMoveChoicePomodoro?
+    public let choices: [CaptureMoveChoiceOption]
+    public let locked: CaptureMoveChoiceLock?
+    public let disabledReason: String?
+    /// `^`, `:`, or nil after Bob has resolved a submitted answer.
+    public let answer: String?
+
+    public init(
+        key: String = "",
+        n: Int = 0,
+        line: Int = 0,
+        section: String? = nil,
+        blockID: String? = nil,
+        mint: String? = nil,
+        text: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        hidden: Bool = false,
+        scheduled: String? = nil,
+        pomodoro: CaptureMoveChoicePomodoro? = nil,
+        choices: [CaptureMoveChoiceOption] = [],
+        locked: CaptureMoveChoiceLock? = nil,
+        disabledReason: String? = nil,
+        answer: String? = nil
+    ) {
+        self.key = key
+        self.n = n
+        self.line = line
+        self.section = section
+        self.blockID = blockID
+        self.mint = mint
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.hidden = hidden
+        self.scheduled = scheduled
+        self.pomodoro = pomodoro
+        self.choices = choices
+        self.locked = locked
+        self.disabledReason = disabledReason
+        self.answer = answer
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        section = try? container.decodeIfPresent(String.self, forKey: .section)
+        blockID = try? container.decodeIfPresent(String.self, forKey: .blockID)
+        mint = try? container.decodeIfPresent(String.self, forKey: .mint)
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        statusSymbol = (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        hidden = (try? container.decodeIfPresent(Bool.self, forKey: .hidden)) ?? false
+        scheduled = try? container.decodeIfPresent(String.self, forKey: .scheduled)
+        pomodoro = try? container.decodeIfPresent(CaptureMoveChoicePomodoro.self, forKey: .pomodoro)
+        choices =
+            (try? container.decodeIfPresent([CaptureMoveChoiceOption].self, forKey: .choices)) ?? []
+        locked = try? container.decodeIfPresent(CaptureMoveChoiceLock.self, forKey: .locked)
+        disabledReason = try? container.decodeIfPresent(String.self, forKey: .disabledReason)
+        answer = try? container.decodeIfPresent(String.self, forKey: .answer)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case n
+        case line
+        case section
+        case blockID = "block_id"
+        case mint
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case hidden
+        case scheduled
+        case pomodoro
+        case choices
+        case locked
+        case disabledReason = "disabled_reason"
+        case answer
+    }
+}
+
+public struct CaptureMoveChoiceOption: Codable, Equatable, Sendable {
+    public let sigil: String
+    public let consequence: String
+    public let addsLink: Bool
+
+    public init(sigil: String = "", consequence: String = "", addsLink: Bool = false) {
+        self.sigil = sigil
+        self.consequence = consequence
+        self.addsLink = addsLink
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sigil = (try? container.decodeIfPresent(String.self, forKey: .sigil)) ?? ""
+        consequence = (try? container.decodeIfPresent(String.self, forKey: .consequence)) ?? ""
+        addsLink = (try? container.decodeIfPresent(Bool.self, forKey: .addsLink)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sigil
+        case consequence
+        case addsLink = "adds_link"
+    }
+}
+
+public struct CaptureMoveChoiceLock: Codable, Equatable, Sendable {
+    public let sigil: String
+    public let itemLine: Int
+
+    public init(sigil: String = "", itemLine: Int = 0) {
+        self.sigil = sigil
+        self.itemLine = itemLine
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sigil = (try? container.decodeIfPresent(String.self, forKey: .sigil)) ?? ""
+        itemLine = (try? container.decodeIfPresent(Int.self, forKey: .itemLine)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sigil
+        case itemLine = "item_line"
+    }
+}
+
+public struct CaptureMoveChoicePomodoro: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+
+    public init(line: Int = 0, name: String? = nil) {
+        self.line = line
+        self.name = name
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        name = try? container.decodeIfPresent(String.self, forKey: .name)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
     }
 }
 
