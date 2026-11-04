@@ -527,6 +527,29 @@ final class CaptureListTests: XCTestCase {
         XCTAssertEqual(CaptureListHeaderNewline.insertion, "\n- ")
     }
 
+    func testNewlineAtANotePullHeaderStartsAList() {
+        let item = CaptureParseItem(
+            index: 0,
+            range: CaptureRange(start: 0, end: 4),
+            lineStart: 1,
+            lineEnd: 1,
+            body: "@dev",
+            mode: "note_pull"
+        )
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "@dev",
+            body: "@dev",
+            mode: "note_pull",
+            items: [item]
+        )
+
+        XCTAssertTrue(
+            CaptureListHeaderNewline.startsFirstBullet(parse: parse, draft: "@dev", caretUTF8: 4)
+        )
+    }
+
     func testNewlineKeepsBeingBareAwayFromTheHeaderEnd() throws {
         let header = try parse("list-parse-header-only.json")
 

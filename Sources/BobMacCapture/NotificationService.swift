@@ -686,6 +686,22 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let notePull = capture.notePull,
+               let presentation = CaptureNotePullPresentation(
+                   notePull: notePull,
+                   group: capture.pullIn?.groups.first(where: {
+                       $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
+                   })
+               ),
+               !presentation.notificationBody.isEmpty
+            {
+                return CaptureNotificationPresentation(
+                    title: presentation.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: presentation.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return singlePresentation(
                 title: "\(kind) captured",
@@ -882,7 +898,7 @@ final class NotificationService: NSObject, ObservableObject {
         }
         let count = eligible.reduce(into: 0) { total, capture in
             let rows = capture.allUnblockedRows + capture.allRelationSuccessors
-                + capture.allKeepMovingRows
+                + capture.allKeepMovingRows + capture.allNotePullRows
             var selectedKeys = Set<String>()
             var unkeyedSelectedCount = 0
             for row in rows where row.offer?.selected == true {
@@ -895,6 +911,35 @@ final class NotificationService: NSObject, ObservableObject {
             total += selectedKeys.count + unkeyedSelectedCount
         }
         guard count > 0 else { return "" }
+        var noteNames: [String] = []
+        var notePullCount = 0
+        var notePullLines: [String] = []
+        for capture in eligible {
+            guard let notePull = capture.notePull else { continue }
+            let selected = capture.allNotePullRows.filter { $0.offer?.selected == true }
+            guard !selected.isEmpty else { continue }
+            let name = CaptureNotePullPresentation.displayName(for: notePull)
+            if !noteNames.contains(name) {
+                noteNames.append(name)
+            }
+            notePullCount += selected.count
+            notePullLines.append(contentsOf: selected.map { row in
+                let destination = row.offer?.destination.entryName
+                let suffix = destination.flatMap { $0.isEmpty ? nil : $0 }.map { " → \($0)" } ?? ""
+                return "• \(row.text)\(suffix)"
+            })
+        }
+        if notePullCount > 0 {
+            let noteLabel = noteNames.count == 1
+                ? "‹\(noteNames[0])›"
+                : "\(noteNames.count) notes"
+            let noteSummary = "📥 Pulled in \(notePullCount) from \(noteLabel)"
+            if notePullCount == count {
+                return ([noteSummary] + notePullLines).joined(separator: "\n")
+            }
+            return (["Pulled in \(count) successor offers", noteSummary] + notePullLines)
+                .joined(separator: "\n")
+        }
         let keepMovingRows: [TaskCompleteUnblocked] = eligible
             .flatMap(\.allKeepMovingRows)
             .filter { $0.offer?.selected == true }
@@ -1045,6 +1090,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Start"
         case "project-note", "project_note":
             return "Project"
+        case "note-pull", "note_pull":
+            return "Pull from note"
         case "ref":
             return "Reference"
         default:

@@ -57,6 +57,55 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testRealNotePullFixturePreviewsAndEscReturnsWithoutWriting() async throws {
+        let record = temporaryRecordURL()
+        let model = makeModel(
+            record: record,
+            stdout: try fixtureText("note-pull-np1.json")
+        )
+        model.plainDraft = "@sase"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.primaryActionTitle, "Pull In")
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.isOnlyNotePull)
+        XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in from ‹sase›")
+        XCTAssertTrue(choice.markedKeys.isEmpty)
+        XCTAssertEqual(choice.selectableKeys.count, 3)
+        XCTAssertEqual(choice.sections.first?.glyph, "tray.and.arrow.down.fill")
+        XCTAssertEqual(choice.rows.map(\.laneText), ["Pending", "Next", "Ready"])
+        XCTAssertTrue(choice.rows.allSatisfy { !$0.metaDetails.contains("trigger: note_pull") })
+
+        model.chooseNoPullInOffers()
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(model.statusText, "Escape returns to the draft without pulling in")
+        model.cancelPullInChoiceFromKeyboard()
+
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertEqual(model.plainDraft, "@sase")
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testNothingToPullInRefusalUsesCalmCardState() async throws {
+        let model = makeModel(
+            record: temporaryRecordURL(),
+            stdout: try fixtureText("note-pull-empty.json"),
+            exit: "1"
+        )
+        model.plainDraft = "@sase"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.emptyNotePullPresentation?.title, "Nothing ready in ‹sase›")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.errorCode)
+        XCTAssertEqual(model.statusText, "Nothing ready in ‹sase›")
+    }
+
     func testRealKeepMovingFixtureOpensChoiceAndSubmitsItsOpaqueKey() async throws {
         let record = temporaryRecordURL()
         let fixture = try fixtureText("task-complete-keep-moving.json")

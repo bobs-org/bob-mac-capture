@@ -138,6 +138,88 @@ final class CapturePullInDecodingTests: XCTestCase {
         }
     }
 
+    func testRealBobNotePullFixturesDecodeAndRender() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../Fixtures", isDirectory: true)
+            .standardizedFileURL
+        let successText = try String(
+            contentsOf: fixtures.appendingPathComponent("note-pull-np1.json"),
+            encoding: .utf8
+        )
+        guard case .success(let success) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(successText.utf8)
+        ) else {
+            return XCTFail("Expected real-bob note-pull success fixture")
+        }
+
+        let notePull = try XCTUnwrap(success.notePull)
+        XCTAssertEqual(notePull.note, "sase.md")
+        XCTAssertEqual(notePull.route, "sase")
+        XCTAssertEqual(notePull.successors.count, 3)
+        XCTAssertEqual(success.pullIn?.groups.first?.note, "sase.md")
+        let preview = try XCTUnwrap(
+            CaptureNotePullPresentation(
+                notePull: notePull,
+                group: success.pullIn?.groups.first
+            )
+        )
+        XCTAssertEqual(preview.title, "Pull from ‹sase›")
+        XCTAssertEqual(preview.tag, "ready in sase")
+        XCTAssertEqual(preview.rows.map(\.lane), ["Pending", "Next", "Ready"])
+        XCTAssertEqual(preview.rows.first?.destination, "→ FIX")
+
+        let emptyText = try String(
+            contentsOf: fixtures.appendingPathComponent("note-pull-empty.json"),
+            encoding: .utf8
+        )
+        let failure = try JSONDecoder().decode(
+            CaptureCommandFailure.self,
+            from: Data(emptyText.utf8)
+        )
+        XCTAssertEqual(failure.code, "nothing_to_pull_in")
+        let empty = try XCTUnwrap(
+            CaptureNotePullEmptyPresentation(notePull: try XCTUnwrap(failure.notePull))
+        )
+        XCTAssertEqual(empty.title, "Nothing ready in ‹sase›")
+    }
+
+    func testNotePullNotificationNamesSelectedTasksAndDestinations() throws {
+        let row = TaskCompleteUnblocked(
+            notePath: "sase.md",
+            blockID: "write-docs",
+            text: "Write docs",
+            previousStatusSymbol: " ",
+            previousStatusName: "Ready",
+            statusSymbol: "*",
+            statusName: "Next",
+            offer: TaskCompleteOffer(
+                key: "sase.md#^write-docs",
+                n: 1,
+                group: "note_pull",
+                destination: TaskCompleteOfferDestination(
+                    dayFile: "20261005.md",
+                    entryName: "FIX",
+                    entryRole: "typed"
+                ),
+                selected: true
+            )
+        )
+        let presentation = try XCTUnwrap(
+            CaptureNotePullPresentation(
+                notePull: CaptureNotePull(
+                    note: "sase.md",
+                    route: "sase",
+                    successors: [row]
+                )
+            )
+        )
+
+        XCTAssertEqual(presentation.notificationTitle, "📥 Pulled in 1 task from ‹sase›")
+        XCTAssertEqual(presentation.notificationBody, "• Write docs → FIX")
+    }
+
     func testFailureRefusalKeepsTopLevelOffersAndUnknownStrings() throws {
         let json = #"""
             {"ok":false,"error":"Choose pull-in offers","code":"pull_in_choice_required",

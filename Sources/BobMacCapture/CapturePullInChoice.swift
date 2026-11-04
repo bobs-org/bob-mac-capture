@@ -16,6 +16,8 @@ enum CapturePullInGlyph {
             return "checkmark.circle"
         case "keep_moving":
             return "forward.end.fill"
+        case "note_pull":
+            return "tray.and.arrow.down.fill"
         case "relation":
             return "link"
         default:
@@ -118,6 +120,10 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         offerRow?.offer?.group == "keep_moving"
     }
 
+    var isNotePull: Bool {
+        offerRow?.offer?.group == "note_pull"
+    }
+
     var isRelation: Bool {
         group == "relation"
     }
@@ -134,9 +140,22 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         if isRelation, let name = offerRow?.statusName, !name.isEmpty {
             return name
         }
-        guard isKeepMoving, let offerRow else {
+        guard let offerRow else {
             return nil
         }
+        if isNotePull {
+            let symbol = offerRow.previousStatusSymbol.isEmpty
+                ? offerRow.statusSymbol
+                : offerRow.previousStatusSymbol
+            switch symbol {
+            case "/": return "Pending"
+            case "*": return "Next"
+            case " ": return "Ready"
+            case "?": return "Blocked"
+            default: return pullInNonempty(offerRow.previousStatusName) ?? offerRow.statusName
+            }
+        }
+        guard isKeepMoving else { return nil }
         if !offerRow.statusName.isEmpty {
             return offerRow.statusName
         }
@@ -175,6 +194,7 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
                 }
             } else if trigger != "project_created"
                 && trigger != "last_planned"
+                && trigger != "note_pull"
                 && trigger != "relation"
             {
                 details.append("trigger: \(trigger)")
@@ -287,6 +307,7 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
 struct CapturePullInChoiceSection: Equatable, Identifiable {
     let group: String
     let project: String?
+    let note: String?
     let after: CapturePullInAfter?
     let label: String?
     let event: String?
@@ -295,7 +316,7 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     let rows: [CapturePullInChoiceRow]
 
     var id: String {
-        Self.key(group: group, project: project, after: after?.key, label: label)
+        Self.key(group: group, project: project, note: note, after: after?.key, label: label)
     }
 
     var isNewProject: Bool {
@@ -306,6 +327,10 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
 
     var isKeepMoving: Bool {
         group == "keep_moving"
+    }
+
+    var isNotePull: Bool {
+        group == "note_pull"
     }
 
     var isRelation: Bool {
@@ -360,6 +385,10 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         if isRelation {
             return "your links · not dependents"
         }
+        if isNotePull {
+            let name = note.map(Self.projectLabel) ?? "note"
+            return "ready in \(name)"
+        }
         guard isKeepMoving else {
             return nil
         }
@@ -404,6 +433,9 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
                 parts.append("\(folded.hidden) hidden")
             }
             return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        }
+        if isNotePull {
+            return CaptureNotePullPresentation.foldedText(folded)
         }
         if folded.hidden > 0 {
             parts.append("\(folded.hidden) hidden")
@@ -475,6 +507,9 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
                 return "\(heading) \(pullInQuotedTask(text))"
             }
             return "Starts after"
+        case "note_pull":
+            let name = note.map(Self.projectLabel) ?? "note"
+            return "Pull from ‹\(name)›"
         default:
             return group.isEmpty ? "Successor offers" : group
         }
@@ -491,10 +526,14 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     static func key(
         group: String,
         project: String?,
+        note: String? = nil,
         after: String? = nil,
         label: String? = nil
     ) -> String {
-        "\(group)\u{1F}\(project ?? "")\u{1F}\(after ?? "")\u{1F}\(label ?? "")"
+        guard let note = pullInNonempty(note) else {
+            return "\(group)\u{1F}\(project ?? "")\u{1F}\(after ?? "")\u{1F}\(label ?? "")"
+        }
+        return "\(group)\u{1F}\(project ?? "")\u{1F}\(note)\u{1F}\(after ?? "")\u{1F}\(label ?? "")"
     }
 
     static func capitalizedLabel(_ text: String) -> String {
@@ -611,12 +650,24 @@ struct CapturePullInChoiceState: Equatable {
         return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "keep_moving" }
     }
 
+    var isOnlyNotePull: Bool {
+        let offers = rows.compactMap(\.offerRow)
+        return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "note_pull" }
+    }
+
     var isOnlyRelation: Bool {
         let offers = rows.compactMap(\.offerRow)
         return !offers.isEmpty && offers.allSatisfy { $0.offer?.group == "relation" }
     }
 
     var promptStatusText: String {
+        if isOnlyNotePull {
+            let note = pullIn.groups.first(where: { $0.group == "note_pull" })?.note
+                ?? rows.first?.notePath
+                ?? ""
+            let name = note.isEmpty ? "note" : CapturePullInChoiceSection.projectLabel(note)
+            return "Choose tasks to pull in from ‹\(name)›"
+        }
         if isNewProjectPrompt {
             return "Choose tasks to pull in"
         }
@@ -775,6 +826,7 @@ struct CapturePullInChoiceState: Equatable {
             return CapturePullInChoiceSection(
                 group: identity.group,
                 project: identity.project,
+                note: pullInNonempty(group?.note) ?? identity.note,
                 after: after,
                 label: pullInNonempty(group?.label) ?? identity.label,
                 event: pullInNonempty(group?.event)
@@ -857,6 +909,7 @@ struct CapturePullInChoiceState: Equatable {
             "project": 2,
             "project_finished": 3,
             "keep_moving": 4,
+            "note_pull": 5,
         ]
         let l = rank[left.group] ?? 5
         let r = rank[right.group] ?? 5
@@ -946,18 +999,20 @@ struct CapturePullInChoiceState: Equatable {
     }
 }
 
-/// Join key for one pull-in section: `(group, project, after, label)`.
+/// Join key for one pull-in section, including note-pull source identity.
 /// Empty strings collapse to nil so older payloads without `after` still
 /// group with Bob groups that omit it.
 private struct PullInSectionIdentity: Hashable {
     let group: String
     let project: String?
+    let note: String?
     let after: String?
     let label: String?
 
-    init(group: String, project: String?, after: String?, label: String?) {
+    init(group: String, project: String?, note: String? = nil, after: String?, label: String?) {
         self.group = group
         self.project = pullInNonempty(project)
+        self.note = pullInNonempty(note)
         self.after = pullInNonempty(after)
         self.label = pullInNonempty(label)
     }
@@ -968,9 +1023,21 @@ private struct PullInSectionIdentity: Hashable {
         // metadata for display; it must not split Bob's group, lose authored
         // copy, or fall back to legacy ordering.
         if row.group == "relation" {
-            self.init(group: row.group, project: row.project, after: row.after, label: row.label)
+            self.init(
+                group: row.group,
+                project: row.project,
+                note: row.isNotePull ? row.notePath : nil,
+                after: row.after,
+                label: row.label
+            )
         } else {
-            self.init(group: row.group, project: row.project, after: nil, label: nil)
+            self.init(
+                group: row.group,
+                project: row.project,
+                note: row.isNotePull ? row.notePath : nil,
+                after: nil,
+                label: nil
+            )
         }
     }
 
@@ -978,6 +1045,7 @@ private struct PullInSectionIdentity: Hashable {
         self.init(
             group: group.group,
             project: group.project,
+            note: group.note,
             after: group.after?.key,
             label: group.label
         )

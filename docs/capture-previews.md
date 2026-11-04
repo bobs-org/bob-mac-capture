@@ -3,12 +3,12 @@ title: "Mac Capture previews"
 description: "Preview cards, Pomodoro blocks, session controls, dependencies, completions, and successor offers."
 ---
 
-Every card below renders what `bob capture --dry-run [--no-clip] --format json` returns for the current draft, in `bob`'s own order. Continuous live preview passes `--no-clip` unless the draft's accepted parse reported a `%c` directive span, in which case it reads the clipboard through the same path the capture will use; the explicit Preview button and Capture always resolve the clipboard and mirror the full block. Insertion behavior for the rows is in [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
+Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard data unless the accepted parse reports `%c`; Preview and Capture read it and mirror the full block. See [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md) for insertion.
 
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion.png#only-light)](images/task-completion.png)
 [![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
 
-Synthetic CI render. Open the image for full-size text.
+Synthetic CI render.
 
 ## Start overrides
 
@@ -406,23 +406,29 @@ the task they start after, and never use dependency wording; missing copy keeps
 the legacy presentation. Project offers show the new project and its `^prj`
 task beside the offered rows.
 
-Nothing starts selected. Return chooses marked offers, or the highlighted
-offer when none are marked; Space toggles the highlight, Command-A marks all,
-and the filter supports keyboard navigation. Shift-Return skips all offers and
-commits, Escape returns to the unchanged draft, and Control-Return confirms
-and opens Bob's reported notes. The card shows global numbers, destinations,
-folds, blocked residents, and projected plan-link budget.
+Nothing starts selected. Return chooses marked offers, or the highlight when
+none are marked; Space toggles it, Command-A marks all, and the filter supports
+keyboard navigation. Shift-Return skips offers and commits, but returns a
+note-pull draft unchanged. Escape returns unchanged; Control-Return confirms and
+opens Bob's reported notes. Cards show numbers, destinations, folds, blocked
+residents, and plan-link budget.
 
-When no chooser opens, muted held-relation lines explain rows that are already
-started, wait for another task, are dependency-, schedule-, or project-blocked,
-or are hidden; `already_planned` rows stay silent, and an unavailable check
-says “Couldn't check … · nothing offered”, naming one distinct label or the
-generic “relation links”. Relation-only picks notify as
-`🪢 Pulled in n · label “T”`; mixed picks keep their copy and count relation
-picks once. Relation block-diff lines carry a `link` badge (“Offered by your
-relation link” help) and dependency successors retain the unlock badge;
-project picks count once as Task Links “Linked N tasks into …”, never again
-as pulled-in successors.
+`@route` previews up to five offers in `Pull from ‹route›`, with ready tag, lane,
+Pomodoro destination, overflow, and fold. Return opens a `tray.and.arrow.down.fill`
+chooser with Next tint and **Pull In** footer; it links marked offers, or the
+highlight. Shift-Return returns to draft without writing. Inbox picks changing
+status continue to route selection. Calm `nothing_to_pull_in` refusals show
+`Nothing ready in ‹route›`; missing notes remain errors. Notifications name the
+note and pulled tasks.
+
+When no chooser opens, muted relation lines explain rows already started, waiting,
+blocked by dependency, schedule, or project, or hidden. `already_planned` stays
+silent; failed checks say “Couldn't check … · nothing offered” with one distinct
+label or “relation links”. Relation-only picks notify as
+`🪢 Pulled in n · label “T”`; mixed picks keep their copy and count each relation
+once. Relation diffs carry a `link` badge, dependency successors an unlock badge,
+and project picks count once as Task Links (“Linked N tasks into …”), not as
+pulled-in successors.
 
 ## Project-note moves
 

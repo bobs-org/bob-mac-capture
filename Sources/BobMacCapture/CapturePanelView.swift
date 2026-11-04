@@ -113,6 +113,90 @@ enum CapturePanelLayout {
     static let panelMinimumContentSize = CGSize(width: panelMinimumContentWidth, height: panelMinimumContentHeight)
 }
 
+@available(macOS 26.0, *)
+struct CaptureNotePullPreviewCard: View {
+    let presentation: CaptureNotePullPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .foregroundStyle(CaptureEditorPalette.checkboxSymbolColor("*"))
+                    .accessibilityHidden(true)
+                Text(presentation.title)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                Text(presentation.tag)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(String(row.number))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 14, alignment: .trailing)
+                    Text(row.text)
+                        .font(.callout)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(row.lane)
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                    if let destination = row.destination {
+                        CapturePullInDestinationCapsule(text: destination, isEffective: false)
+                    }
+                }
+            }
+            if presentation.moreCount > 0 {
+                Text("+\(presentation.moreCount) more")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let foldLine = presentation.foldLine {
+                Text(foldLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(presentation.hintText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.previewAccessibilitySummary)
+    }
+}
+
+@available(macOS 26.0, *)
+struct CaptureNotePullEmptyCard: View {
+    let presentation: CaptureNotePullEmptyPresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(presentation.title, systemImage: "tray.and.arrow.down.fill")
+                .font(.system(.callout, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            if let foldLine = presentation.foldLine {
+                Text(foldLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.accessibilitySummary)
+    }
+}
+
 struct CaptureEditorHeightPolicy: Equatable {
     var lineHeight: CGFloat = CapturePanelLayout.editorLineHeight
     var verticalPadding: CGFloat = CapturePanelLayout.editorContentPadding * 2
@@ -3554,10 +3638,14 @@ struct PreviewPane: View {
             case .ready(let response):
                 previewContent(response)
             case .failed(let message):
-                Text(message)
-                    .foregroundStyle(.red)
-                    .lineLimit(3)
-                    .textSelection(.enabled)
+                if let emptyPull = model.emptyNotePullPresentation {
+                    CaptureNotePullEmptyCard(presentation: emptyPull)
+                } else {
+                    Text(message)
+                        .foregroundStyle(.red)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
             }
         }
         .font(.callout)
@@ -3689,7 +3777,8 @@ struct PreviewPane: View {
                 total: captures.count,
                 globalDestination: success.globalDestination,
                 blocks: success.pomodoroBlocks,
-                taskBlocks: orderedTaskBlocks
+                taskBlocks: orderedTaskBlocks,
+                pullIn: success.pullIn
             )
         }
 
@@ -3786,7 +3875,8 @@ struct PreviewPane: View {
         total: Int,
         globalDestination: CaptureGlobalDestination?,
         blocks: [CapturePomodoroBlock],
-        taskBlocks: [CaptureTaskBlock] = []
+        taskBlocks: [CaptureTaskBlock] = [],
+        pullIn: CapturePullIn? = nil
     ) -> some View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
@@ -3803,11 +3893,21 @@ struct PreviewPane: View {
         if let moves = CaptureProjectNoteMovePresentation(capture: success) {
             projectNoteMovesPreview(for: moves)
         }
+        if let notePull = success.notePull,
+           let presentation = CaptureNotePullPresentation(
+               notePull: notePull,
+               group: pullIn?.groups.first(where: {
+                   $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
+               })
+           )
+        {
+            CaptureNotePullPreviewCard(presentation: presentation)
+        }
         let previewOffers = success.allUnblockedRows + success.allKeepMovingRows
             + success.allRelationSuccessors
         pullInPreviewSummary(
             for: previewOffers,
-            pullIn: success.pullIn,
+            pullIn: pullIn,
             held: success.allRelationHeld,
             check: success.allRelationCheck
         )

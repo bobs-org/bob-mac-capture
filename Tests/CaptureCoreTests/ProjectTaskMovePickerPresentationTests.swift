@@ -140,7 +140,9 @@ final class ProjectTaskMovePickerPresentationTests: XCTestCase {
 
     func testResponseDecodesMoveHeader() throws {
         let url = Bundle(for: Self.self).url(forResource: "move-complete-mc1", withExtension: "json")
-        try XCTSkipUnless(url != nil, "move-complete-mc1 fixture missing")
+        guard url != nil else {
+            throw XCTSkip("move-complete-mc1 fixture missing")
+        }
     }
 
     func testEmptyQueryKeepsDocumentOrderWithSectionGroups() throws {

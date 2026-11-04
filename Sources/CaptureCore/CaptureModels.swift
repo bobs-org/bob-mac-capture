@@ -4568,6 +4568,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // `project_note` capture. Older Bob binaries omit it entirely; decode
     // as nil.
     public let projectNote: CaptureProjectNoteSummary?
+    /// Additive note-pull result. Older Bob binaries omit it; malformed
+    /// values degrade to nil so the rest of capture still previews.
+    public let notePull: CaptureNotePull?
     // Additive `ref` object on a `ref` capture. Older Bob binaries omit it
     // entirely; decode as nil, and a malformed value decodes as nil so it
     // can never fail the capture decode.
@@ -4697,6 +4700,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         mirrorSkipped: [CaptureMirrorSkipped] = [],
         taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
+        notePull: CaptureNotePull? = nil,
         ref: CaptureRef? = nil,
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
@@ -4784,6 +4788,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.mirrorSkipped = mirrorSkipped
         self.taskComplete = taskComplete
         self.projectNote = projectNote
+        self.notePull = notePull
         self.ref = ref
         self.planBudget = planBudget
         self.pullIn = pullIn
@@ -4964,6 +4969,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
         )
+        notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
         planBudget = try container.decodeIfPresent(
             CapturePlanBudget.self,
@@ -5101,6 +5107,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case mirrorSkipped = "mirror_skipped"
         case taskComplete = "task_complete"
         case projectNote = "project_note"
+        case notePull = "note_pull"
         case ref
         case planBudget = "plan_budget"
         case pullIn = "pull_in"
@@ -6475,6 +6482,8 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
 public struct CapturePullInGroup: Codable, Equatable, Sendable {
     public let group: String
     public let project: String?
+    /// Note path for `note_pull` sections. Older groups omit it.
+    public let note: String?
     public let after: CapturePullInAfter?
     public let label: String?
     public let event: String?
@@ -6484,6 +6493,7 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
     public init(
         group: String = "",
         project: String? = nil,
+        note: String? = nil,
         after: CapturePullInAfter? = nil,
         label: String? = nil,
         event: String? = nil,
@@ -6492,6 +6502,7 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
     ) {
         self.group = group
         self.project = project
+        self.note = note
         self.after = after
         self.label = label
         self.event = event
@@ -6503,6 +6514,7 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
         project = try? container.decodeIfPresent(String.self, forKey: .project)
+        note = try? container.decodeIfPresent(String.self, forKey: .note)
         after = try? container.decodeIfPresent(CapturePullInAfter.self, forKey: .after)
         label = try? container.decodeIfPresent(String.self, forKey: .label)
         event = try? container.decodeIfPresent(String.self, forKey: .event)
@@ -6513,6 +6525,7 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case group
         case project
+        case note
         case after
         case label
         case event
@@ -6562,6 +6575,42 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         case pickedCount = "picked_count"
         case groups
         case copy
+    }
+}
+
+/// Bob's note-pull result or refusal payload. The same tolerant shape is
+/// used for successful offers and `nothing_to_pull_in` failures.
+public struct CaptureNotePull: Codable, Equatable, Sendable {
+    public let note: String
+    public let route: String
+    public let successors: [TaskCompleteUnblocked]
+    public let folded: CapturePullInFolded?
+
+    public init(
+        note: String = "",
+        route: String = "",
+        successors: [TaskCompleteUnblocked] = [],
+        folded: CapturePullInFolded? = nil
+    ) {
+        self.note = note
+        self.route = route
+        self.successors = successors
+        self.folded = folded
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        note = (try? container.decodeIfPresent(String.self, forKey: .note)) ?? ""
+        route = (try? container.decodeIfPresent(String.self, forKey: .route)) ?? ""
+        successors = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .successors)) ?? []
+        folded = (try? container.decodeIfPresent(CapturePullInFolded.self, forKey: .folded)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case note
+        case route
+        case successors
+        case folded
     }
 }
 
@@ -6908,6 +6957,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
     // `unknown_directive`). Other failures and older Bob omit it, and it decodes as nil.
     public let code: String?
     public let pullIn: CapturePullIn?
+    /// Additive payload for `nothing_to_pull_in`; absent on older Bob and
+    /// on other refusal codes.
+    public let notePull: CaptureNotePull?
     public let offers: [TaskCompleteUnblocked]
     /// Additive batch-level inbox-route payload on
     /// `inbox_route_choice_required`, `inbox_route_refused`, and
@@ -6924,6 +6976,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         error: String,
         code: String? = nil,
         pullIn: CapturePullIn? = nil,
+        notePull: CaptureNotePull? = nil,
         offers: [TaskCompleteUnblocked] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         refused: CaptureInboxRouteRefused? = nil
@@ -6932,6 +6985,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.error = error
         self.code = code
         self.pullIn = pullIn
+        self.notePull = notePull
         self.offers = offers
         self.inboxRoute = inboxRoute
         self.refused = refused
@@ -6943,6 +6997,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         error = try container.decodeIfPresent(String.self, forKey: .error) ?? ""
         code = try container.decodeIfPresent(String.self, forKey: .code)
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
+        notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
@@ -6955,6 +7010,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case error
         case code
         case pullIn = "pull_in"
+        case notePull = "note_pull"
         case offers
         case inboxRoute = "inbox_route"
         case refused

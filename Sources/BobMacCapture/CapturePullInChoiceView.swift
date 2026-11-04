@@ -293,6 +293,9 @@ struct CapturePullInChoiceCard: View {
         if choice.isOnlyKeepMoving {
             return CapturePullInGlyph.systemImageName(for: "keep_moving")
         }
+        if choice.isOnlyNotePull {
+            return CapturePullInGlyph.systemImageName(for: "note_pull")
+        }
         if choice.isOnlyRelation {
             return CapturePullInGlyph.systemImageName(for: "relation")
         }
@@ -308,7 +311,7 @@ struct CapturePullInChoiceCard: View {
         if choice.isNewProjectPrompt {
             return .brown
         }
-        return choice.isOnlyKeepMoving
+        return choice.isOnlyKeepMoving || choice.isOnlyNotePull
             ? CaptureEditorPalette.checkboxSymbolColor("*")
             : .green
     }
@@ -322,6 +325,9 @@ struct CapturePullInChoiceCard: View {
         }
         if choice.isOnlyKeepMoving {
             return "Keep moving"
+        }
+        if choice.isOnlyNotePull {
+            return "Pull In"
         }
         if choice.isOnlyRelation {
             return "Starts after"
@@ -590,7 +596,7 @@ struct CapturePullInSectionHeader: View {
         if section.isNewProject {
             return .brown
         }
-        if section.isKeepMoving {
+        if section.isKeepMoving || section.isNotePull {
             return CaptureEditorPalette.checkboxSymbolColor("*")
         }
         if section.isRelation {
@@ -740,7 +746,7 @@ struct CapturePullInOfferRow: View {
         for detail in row.metaDetails {
             parts.append((detail, nil))
         }
-        if row.isKeepMoving || row.isRelation, let lane = row.laneText {
+        if row.isKeepMoving || row.isNotePull || row.isRelation, let lane = row.laneText {
             parts.append((lane, nil))
         }
         if !row.isKeepMoving,
@@ -887,6 +893,10 @@ struct CapturePullInChoiceFooter: View {
         model.pullInChoice?.openAfterCapture == true
     }
 
+    private var isOnlyNotePull: Bool {
+        model.pullInChoice?.isOnlyNotePull == true
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             ViewThatFits(in: .horizontal) {
@@ -900,20 +910,26 @@ struct CapturePullInChoiceFooter: View {
                 hintRow(items: Array(Self.hintItems(openAfterCapture: true).prefix(2)))
             }
             Spacer(minLength: 12)
-            Button {
-                model.chooseNoPullInOffers()
-            } label: {
-                HStack(spacing: 4) {
-                    Text("Skip")
-                    if openAfterCapture {
-                        Image(systemName: "arrow.up.forward")
+            if isOnlyNotePull {
+                Text("⇧↩ Back to draft")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    model.chooseNoPullInOffers()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Skip")
+                        if openAfterCapture {
+                            Image(systemName: "arrow.up.forward")
+                        }
+                        Text("⇧↩")
+                            .opacity(0.7)
                     }
-                    Text("⇧↩")
-                        .opacity(0.7)
                 }
+                .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
+                .disabled(model.isSubmitting)
             }
-            .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
-            .disabled(model.isSubmitting)
             Button {
                 model.confirmPullInChoice()
             } label: {
@@ -933,7 +949,9 @@ struct CapturePullInChoiceFooter: View {
         .frame(minHeight: 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            openAfterCapture ? Self.openIntentAccessibilityText : Self.accessibilityText
+            isOnlyNotePull
+                ? "Shift-Return returns to the draft. Escape returns to the draft without writing."
+                : openAfterCapture ? Self.openIntentAccessibilityText : Self.accessibilityText
         )
         .onChange(of: model.statusAnnouncementTick) { _, _ in
             guard !model.statusText.isEmpty else {

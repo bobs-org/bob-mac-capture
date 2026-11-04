@@ -37,6 +37,15 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testNotePullNotificationNamesPickedNoteTasksAndDestinations() throws {
+        let success = try closeSuccessFixture("note-pull-inbox-routed.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertEqual(content.title, "📥 Pulled in 1 task from ‹mac_inbox›")
+        XCTAssertTrue(content.body.contains("Route me → WORK"), content.body)
+        XCTAssertFalse(content.body.contains("Already Next"), content.body)
+    }
+
     func testSinglePomodoroStartSuccessContentAppendsSessionDetail() {
         let content = NotificationService.successContent(captures: [
             capture(

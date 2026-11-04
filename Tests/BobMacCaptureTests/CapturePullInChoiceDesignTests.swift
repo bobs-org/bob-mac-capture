@@ -200,6 +200,52 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         }
     }
 
+    func testRenderNotePullPreviewAndChoiceCards() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent("note-pull-np1.json"))
+        guard case .success(let success) = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: data
+        ), let notePull = success.notePull,
+           let preview = CaptureNotePullPresentation(
+               notePull: notePull,
+               group: success.pullIn?.groups.first
+           ), let pullIn = success.pullIn
+        else {
+            return XCTFail("Expected the real-bob note-pull fixture")
+        }
+        let model = CapturePanelModel()
+        model.installPullInChoiceForPreviews(
+            offers: notePull.successors,
+            pullIn: pullIn,
+            draft: "@sase"
+        )
+        let choice = try XCTUnwrap(model.pullInChoice)
+        let view = VStack(spacing: 12) {
+            CaptureNotePullPreviewCard(presentation: preview)
+            CapturePullInChoiceCard(model: model, choice: choice, previewMode: true)
+            CapturePullInChoiceFooter(model: model)
+        }
+        .padding(18)
+        for width in [CGFloat(760), CGFloat(CapturePanelLayout.panelMinimumContentWidth)] {
+            try RenderFixtureWriter.write(
+                view,
+                name: "capture-note-pull-preview-and-choice",
+                width: width,
+                appearance: .aqua
+            )
+            try RenderFixtureWriter.write(
+                view,
+                name: "capture-note-pull-preview-and-choice",
+                width: width,
+                appearance: .darkAqua
+            )
+        }
+    }
+
     func testRenderRelationCard() throws {
         try writeCardFixtures(name: "capture-pull-in-choice-relation") { model in
             model.installPullInChoiceForPreviews(

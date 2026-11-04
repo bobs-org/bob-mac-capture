@@ -200,6 +200,38 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 2)
     }
 
+    func testNotePullFromInboxUsesTheExistingRouteChoiceAfterPicking() async throws {
+        let record = temporaryURL()
+        let responseFile = temporaryURL()
+        try write(fixture("note-pull-inbox-choice.json"), to: responseFile)
+        let model = makeModel(
+            record: record,
+            responseFile: responseFile,
+            dryRunResponse: notePullInboxPreview()
+        )
+        model.plainDraft = "@mac_inbox"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let pullChoice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(pullChoice.isOnlyNotePull)
+        XCTAssertEqual(pullChoice.selectableKeys, ["mac_inbox.md#^route-task"])
+        model.confirmPullInChoice()
+        try await waitUntil { model.inboxRouteChoiceVisible }
+
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertEqual(model.inboxRouteChoice?.currentCandidate?.key, "mac_inbox.md#^route-task")
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(write.contains("--pull-in mac_inbox.md#^route-task"), write)
+        XCTAssertTrue(write.contains("--require-inbox-route-choice"), write)
+
+        model.backInboxRouteChoice()
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(model.pullInChoice?.effectiveSelectionKeys, ["mac_inbox.md#^route-task"])
+    }
+
     func testRouteAfterPullInResubmitsBothChoicesAndReusesSeed() async throws {
         let record = temporaryURL()
         let responseFile = temporaryURL()
@@ -336,6 +368,12 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
     private func pullInAndRoutePreview() -> String {
         #"""
         {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"dev.md","target":"/tmp/dev.md","text":"!dev:prereq","task_line":"- [x] #task Prereq ^prereq","kind":"task_complete","created":"2026-10-24","placement":"updated","pull_in":{"supported":true,"offer_count":1,"choice":null,"picked_count":0},"task_complete":{"raw":"!dev:prereq","unblocked":[{"note_path":"dev.md","block_id":"dep","line":6,"text":"Dependent","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"dev.md#^dep","n":1,"group":"hand_off","destination":{"day_file":"20261024.md","entry_name":"WORK","entry_role":"current"}}}]},"inbox_route":{"supported":true,"candidate_count":1,"routed_count":0,"kept_count":0,"candidates":[{"key":"mac_inbox.md#^route-task","n":1,"note_path":"mac_inbox.md","inbox":"mac_inbox","block_id":"route-task","line":6,"text":"Route me","previous_status_symbol":" ","previous_status_name":"Ready","status_symbol":"*","status_name":"Next","outcome":"pending"}],"destinations":[{"relative_path":"health.md","route":"health","label":"health","kind":"area","blocked":false}]}}
+        """#
+    }
+
+    private func notePullInboxPreview() -> String {
+        #"""
+        {"ok":true,"dry_run":true,"routed":true,"route":"mac_inbox","route_label":"mac_inbox","relative_target":"mac_inbox.md","target":"/tmp/mac_inbox.md","text":"","task_line":"","kind":"note_pull","created":"2026-10-05","placement":"created","note_pull":{"note":"mac_inbox.md","route":"mac_inbox","successors":[{"note_path":"mac_inbox.md","block_id":"route-task","line":6,"text":"Route me","previous_status_symbol":" ","previous_status_name":"Ready","status_symbol":"*","status_name":"Next","inbox":true,"not_linked":"not_selected","trigger":"note_pull","offer":{"key":"mac_inbox.md#^route-task","n":1,"group":"note_pull","selected":false,"destination":{"day_file":"20261005.md","entry_name":"WORK","entry_role":"implicit","fallback":true}}}],"folded":{}},"pull_in":{"supported":true,"offer_count":1,"choice":null,"picked_count":0,"groups":[{"group":"note_pull","note":"mac_inbox.md","copy":{"title":"Pull from ‹mac_inbox›","tag":"ready in mac_inbox","glyph":"note_pull"}}],"copy":{"title":"Pull from ‹mac_inbox›","capsule":"Pull in","glyph":"note_pull"}},"inbox_route":{"supported":true,"candidate_count":0,"routed_count":0,"kept_count":0,"candidates":[],"destinations":[{"relative_path":"health.md","route":"health","label":"health","kind":"area","blocked":false}]}}
         """#
     }
 }

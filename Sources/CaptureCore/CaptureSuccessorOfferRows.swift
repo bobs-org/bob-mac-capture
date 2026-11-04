@@ -23,6 +23,11 @@ extension CaptureCommandSuccess {
         return rows
     }
 
+    /// Note-pull offers from this item, in Bob's resident order.
+    public var allNotePullRows: [TaskCompleteUnblocked] {
+        notePull?.successors ?? []
+    }
+
     /// Relation offers in Bob's deterministic item → task completion → nested
     /// relation completion → Pomodoro close order. Batch roots mirror the first
     /// item for legacy compatibility, so normalized children are authoritative.

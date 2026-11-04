@@ -190,8 +190,8 @@ public enum CaptureListHeaderNewline {
     public static let insertion = "\n- "
 
     /// True when the caret ends the header line of an item `parse` reports as
-    /// needing a `list_item` and no content follows the header. `caretUTF8` is
-    /// a UTF-8 offset into `draft`, the draft `parse` was computed for.
+    /// needing a `list_item` or as a `note_pull`, with no content after it.
+    /// `caretUTF8` is a UTF-8 offset into `draft`, the draft `parse` was computed for.
     public static func startsFirstBullet(
         parse: CaptureParseResponse,
         draft: String,
@@ -199,7 +199,8 @@ public enum CaptureListHeaderNewline {
     ) -> Bool {
         guard let line = lineNumber(of: caretUTF8, in: draft),
             parse.items.contains(where: {
-                $0.needs.contains("list_item") && $0.lineStart == line && $0.lineEnd == line
+                ($0.needs.contains("list_item") || $0.mode == "note_pull")
+                    && $0.lineStart == line && $0.lineEnd == line
             })
         else {
             return false

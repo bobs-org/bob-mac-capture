@@ -472,6 +472,8 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResult: CaptureCommandSuccess?
     @Published var lastSuccessResults: [CaptureCommandSuccess] = []
     @Published var previewResults: [CaptureCommandSuccess] = []
+    /// Calm-card state for Bob's `nothing_to_pull_in` refusal.
+    @Published var emptyNotePullPresentation: CaptureNotePullEmptyPresentation?
     /// The exact draft string the current preview outputs were computed
     /// for. The move ghost titles render only while this still equals the
     /// current draft; any keystroke hides them until the next preview lands.
@@ -1855,6 +1857,9 @@ final class CapturePanelModel: ObservableObject {
     /// via its presentation. It never varies with `dryRun` — it always names
     /// what Return will do next.
     var primaryActionTitle: String {
+        if previewResults.count == 1, previewResults.first?.kind == "note_pull" {
+            return "Pull In"
+        }
         if resetPresentation != nil {
             return "Reset"
         }
@@ -1991,6 +1996,7 @@ final class CapturePanelModel: ObservableObject {
         globalDestination: CaptureGlobalDestination?,
         previewDraft: String
     ) {
+        emptyNotePullPresentation = nil
         previewResult = captures.first
         previewResults = captures
         previewGlobalDestination = globalDestination
@@ -1999,6 +2005,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func clearPreviewOutputs() {
+        emptyNotePullPresentation = nil
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
@@ -3193,6 +3200,10 @@ final class CapturePanelModel: ObservableObject {
 
     func chooseNoPullInOffers() {
         guard let choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        if choice.isOnlyNotePull {
+            announceStatus("Escape returns to the draft without pulling in")
             return
         }
         commitPullInChoice(choice, selection: .none)
@@ -12602,6 +12613,9 @@ final class CapturePanelModel: ObservableObject {
             }
             panelDismisser()
         case .failure(let failure):
+            if showEmptyNotePull(failure) {
+                return
+            }
             if failure.code == "pomodoro_override_refused" {
                 errorMessage = nil
                 errorCode = nil
@@ -12813,6 +12827,9 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
         case .failure(let failure):
+            if showEmptyNotePull(failure) {
+                return
+            }
             // A failed explicit dry run drops the preview result for the same
             // reason `failPreview` does: no stale card beside the red error.
             clearPreviewOutputs()
@@ -12848,6 +12865,7 @@ final class CapturePanelModel: ObservableObject {
             if let projectNote = capture.projectNote, projectNote.form == "offer" {
                 offers.append(contentsOf: projectNote.successors)
             }
+            offers.append(contentsOf: capture.allNotePullRows)
             // Complete-label commits offer successors exactly like `!`:
             // the close carries the same `task_complete` offers.
             for relationComplete in capture.relationCompletes {
@@ -13013,6 +13031,28 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Preview failed"
     }
 
+    /// Turns Bob's decided empty-pull refusal into the calm preview card.
+    /// The CLI payload supplies both the note name and fold counts.
+    @discardableResult
+    private func showEmptyNotePull(_ failure: CaptureCommandFailure) -> Bool {
+        guard failure.code == "nothing_to_pull_in",
+              let notePull = failure.notePull,
+              let presentation = CaptureNotePullEmptyPresentation(notePull: notePull)
+        else {
+            return false
+        }
+        clearPreviewOutputs()
+        previewPullInSnapshot = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+        emptyNotePullPresentation = presentation
+        previewState = .failed(failure.error)
+        errorMessage = nil
+        errorCode = nil
+        statusText = presentation.title
+        return true
+    }
+
     private func setPlainDraft(
         _ text: String,
         cursorUTF8Offset: Int? = nil,
@@ -13023,6 +13063,7 @@ final class CapturePanelModel: ObservableObject {
             templateOrigin = nil
         }
         if previousDraft != text {
+            emptyNotePullPresentation = nil
             if let pullInChoice, pullInChoice.draftSnapshot != text {
                 self.pullInChoice = nil
                 clearEditorInputLockIfFree()
@@ -13569,16 +13610,18 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = "A Pomodoro is running — review the override, then press Return again"
                         }
                     case .failure(let failure):
-                        self?.previewState = .failed(failure.error)
-                        // Like `failPreview`: a failed live dry run must never
-                        // leave a stale card beside the red error.
-                        self?.clearPreviewOutputs()
-                        self?.previewPullInSnapshot = nil
-                        self?.closePendingText = nil
-                        self?.closePendingAction = "Close"
-                        self?.errorMessage = failure.error
-                        self?.errorCode = failure.code
-                        self?.statusText = "Preview failed"
+                        if self?.showEmptyNotePull(failure) != true {
+                            self?.previewState = .failed(failure.error)
+                            // Like `failPreview`: a failed live dry run must never
+                            // leave a stale card beside the red error.
+                            self?.clearPreviewOutputs()
+                            self?.previewPullInSnapshot = nil
+                            self?.closePendingText = nil
+                            self?.closePendingAction = "Close"
+                            self?.errorMessage = failure.error
+                            self?.errorCode = failure.code
+                            self?.statusText = "Preview failed"
+                        }
                     }
                 }
             } catch is CancellationError {
