@@ -62,6 +62,17 @@ enum CaptureKeyCommand: Equatable {
     case toggleRelationLabelHiddenSection
     case openRelationLabelRename
     case relationLabelPromptBackspace
+    case confirmMoveChoice
+    case confirmMoveChoiceAndOpen
+    case chooseNoMoves
+    case cancelMoveChoice
+    case nextMoveChoice
+    case previousMoveChoice
+    case toggleMoveChoice
+    case selectAllMoveChoices
+    case setMoveChoice(CaptureMoveChoiceAnswer)
+    case editMoveChoiceFilter(String)
+    case deleteMoveChoiceFilter
     case confirmPullInChoice
     case confirmPullInChoiceAndOpen
     case chooseNoPullInOffers
@@ -130,6 +141,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var relationLabelPromptOneOff = false
     var relationLabelRenameActive = false
     var pickerSourceIsRelation = false
+    var moveChoiceVisible = false
+    var moveChoiceFilterFocused = false
+    var moveChoiceFilterIsEmpty = true
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
@@ -269,6 +283,9 @@ struct CaptureKeyCommandRouter {
             )
         }
 
+        if context.moveChoiceVisible {
+            return moveChoiceCommand(for: event, modifiers: modifiers, context: context)
+        }
         if context.pullInChoiceVisible {
             return pullInChoiceCommand(
                 for: event,
@@ -473,6 +490,56 @@ struct CaptureKeyCommandRouter {
             }
             return nil
         }
+    }
+
+    private func moveChoiceCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        let repeated = context.keyIsRepeat || event.isARepeat
+        if modifiers.subtracting(.shift).isEmpty,
+            let text = event.characters, text == "^" || text == ":"
+        {
+            return repeated ? .consumeKey : .setMoveChoice(text == "^" ? .move : .moveAndLink)
+        }
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !repeated else { return .consumeKey }
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys == .control { return .confirmMoveChoiceAndOpen }
+            if keys == .shift { return .chooseNoMoves }
+            return keys.isEmpty ? .confirmMoveChoice : .consumeKey
+        case KeyCode.escape: return .cancelMoveChoice
+        case KeyCode.leftBracket:
+            if modifiers == .control { return .cancelMoveChoice }
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .previousMoveChoice : nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .nextMoveChoice : nil
+        case KeyCode.n:
+            if modifiers == .control { return .nextMoveChoice }
+        case KeyCode.p:
+            if modifiers == .control { return .previousMoveChoice }
+        case KeyCode.a:
+            if modifiers == .command { return repeated ? .consumeKey : .selectAllMoveChoices }
+        case KeyCode.space:
+            if modifiers.isEmpty, context.moveChoiceFilterIsEmpty {
+                return repeated ? .consumeKey : .toggleMoveChoice
+            }
+        case KeyCode.delete:
+            if modifiers.isEmpty, !context.moveChoiceFilterFocused {
+                return .deleteMoveChoiceFilter
+            }
+        default: break
+        }
+        if !context.moveChoiceFilterFocused, modifiers.subtracting(.shift).isEmpty,
+            let text = event.characters, !text.isEmpty,
+            text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+        {
+            return .editMoveChoiceFilter(text)
+        }
+        return nil
     }
 
     private func pullInChoiceCommand(

@@ -93,6 +93,27 @@ final class CaptureMoveChoiceDesignTests: XCTestCase {
         }
     }
 
+    @available(macOS 26.0, *)
+    func testManySectionsKeepCardBoundedAndLastTaskReachable() throws {
+        let rows = (0..<76).map { index in
+            task(
+                "cash.md#^task-\(index)",
+                text:
+                    "A long task title \(index) that still has a visible consequence and identity",
+                section: "Section \(index)")
+        }
+        let slot = CaptureMoveChoiceSlot(parent: "cash.md", destination: "cash_new.md", rows: rows)
+        var choice = CaptureMoveChoiceState(slot: slot)
+        choice.moveHighlight(by: 75)
+        XCTAssertEqual(choice.currentRow?.key, "cash.md#^task-75")
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let host = NSHostingView(rootView: MoveChoiceFixtureHost(slot: slot).frame(width: 640))
+            host.appearance = NSAppearance(named: appearance)
+            host.layoutSubtreeIfNeeded()
+            XCTAssertLessThan(host.fittingSize.height, 650)
+        }
+    }
+
     private func task(
         _ key: String,
         text: String,

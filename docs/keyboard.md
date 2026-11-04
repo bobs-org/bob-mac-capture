@@ -113,6 +113,28 @@ as Command-Y L does.
 
 While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. With an empty Go To filter, `\` is consumed or, right after `\` opened Go To, types a literal `\`. Command-X switches between open and completed tasks only in the Go To (`/`) picker, where it replaces native cut; other picker fields keep native Command-X. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. The Move picker (`- ^` / `- :`) inserts the ID on Return and inserts the ID plus Bob's continuation on Shift-Return. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
+## Move choices
+
+A first-level `- ^^` in a sealed project-note draft opens the Move card on
+Return, before any write and before successor choices or inbox routing.
+
+| Key | Action |
+| --- | --- |
+| `^` / `:` | Set Move / Move & link, then advance to the next enabled row |
+| Space | Toggle Leave ↔ Move; a linked mark returns to Leave |
+| Up/Down, Control-P/Control-N | Move the highlight without selecting |
+| Command-A | Mark visible Leave rows as Move; repeat to clear those marks |
+| Other typing / Backspace | Filter in parent order; marks outside the filter stay |
+| Return | Apply marks; with no marks, show a hint and stay |
+| Shift-Return | Explicitly create without moving any chosen tasks |
+| Control-Return | Apply marks, capture, and open Bob's reported notes |
+| Escape | Return to the unchanged draft, keeping marks for this parent |
+
+Space types into a nonempty filter. `^` and `:` always set a row's state.
+A named project requiring a link blocks Return and Shift-Return until a `:`
+pick is made (or the name is removed). Escape from a following successor
+card returns to the Move card with its marks. See [Move card](task-pickers.md#move-card).
+
 ## Successor choices
 
 When a preview reports successor offers, Return opens the grouped choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).

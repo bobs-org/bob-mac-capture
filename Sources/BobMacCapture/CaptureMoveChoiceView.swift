@@ -9,7 +9,7 @@ extension CapturePanelLayout {
     static let moveChoiceListPadding: CGFloat = 6
     static let moveChoiceMaxVisibleRows = 7
     static let moveChoiceMinVisibleRows = 2
-    static let moveChoiceDetailHeight: CGFloat = 62
+    static let moveChoiceDetailHeight: CGFloat = 76
 }
 
 /// The Move card is a presentation of one Bob-reported `move_choice` slot.
@@ -20,6 +20,8 @@ struct CaptureMoveChoiceCard: View {
     @Binding var choice: CaptureMoveChoiceState
     let todayBadge: TodayBadgePresentation?
     let previewMode: Bool
+    let focusRequest: CapturePanelFocusRequest
+    let message: String?
     let onConfirm: () -> Void
     let onNone: () -> Void
     let onBack: () -> Void
@@ -28,6 +30,8 @@ struct CaptureMoveChoiceCard: View {
         choice: Binding<CaptureMoveChoiceState>,
         todayBadge: TodayBadgePresentation? = nil,
         previewMode: Bool = false,
+        focusRequest: CapturePanelFocusRequest = .init(sequence: 0, target: .moveChoiceRows),
+        message: String? = nil,
         onConfirm: @escaping () -> Void = {},
         onNone: @escaping () -> Void = {},
         onBack: @escaping () -> Void = {}
@@ -35,6 +39,8 @@ struct CaptureMoveChoiceCard: View {
         _choice = choice
         self.todayBadge = todayBadge
         self.previewMode = previewMode
+        self.focusRequest = focusRequest
+        self.message = message
         self.onConfirm = onConfirm
         self.onNone = onNone
         self.onBack = onBack
@@ -44,7 +50,7 @@ struct CaptureMoveChoiceCard: View {
 
     private var listContentHeight: CGFloat {
         let sections = choice.sections.count
-        let rows = choice.rows.count
+        let rows = choice.visibleRows.count
         return CapturePanelLayout.moveChoiceListPadding * 2
             + CGFloat(sections) * CapturePanelLayout.moveChoiceSectionHeight
             + CGFloat(rows) * CapturePanelLayout.moveChoiceRowHeight
@@ -54,7 +60,7 @@ struct CaptureMoveChoiceCard: View {
         let scale = max(displayScale, 1)
         let rowHeight = CapturePanelLayout.moveChoiceRowHeight
         let sectionHeight =
-            CGFloat(max(choice.sections.count, 1))
+            CGFloat(min(max(choice.sections.count, 1), 3))
             * CapturePanelLayout.moveChoiceSectionHeight
         let minimum =
             CapturePanelLayout.moveChoiceListPadding * 2
@@ -72,6 +78,15 @@ struct CaptureMoveChoiceCard: View {
         VStack(spacing: 0) {
             header
                 .frame(height: CapturePanelLayout.moveChoiceBarHeight)
+            CapturePickerFilterField(
+                text: choice.filterText, placeholder: "Filter",
+                accessibilityLabel: "Filter parent tasks", focusRequest: focusRequest,
+                onTextChange: { choice.updateFilter($0) },
+                fieldIdentifier: moveChoiceFilterFieldAccessibilityIdentifier,
+                focusTarget: .moveChoiceFilter
+            )
+            .frame(height: 28)
+            .padding(.horizontal, 12)
             Divider()
             if previewMode {
                 staticRows
@@ -154,7 +169,7 @@ struct CaptureMoveChoiceCard: View {
                     sectionHeader(section)
                 }
             }
-            if choice.rows.isEmpty {
+            if choice.visibleRows.isEmpty {
                 Text("No open tasks in \(choice.slot.parent)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -173,7 +188,7 @@ struct CaptureMoveChoiceCard: View {
                         .id(row.key)
                 }
             }
-            if choice.rows.isEmpty {
+            if choice.visibleRows.isEmpty {
                 Text("No open tasks in \(choice.slot.parent)")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -217,12 +232,18 @@ struct CaptureMoveChoiceCard: View {
                         .foregroundStyle(statusColor(for: row.statusSymbol))
                         .frame(width: 16)
                         .accessibilityHidden(true)
-                    Text(row.text)
+                    highlightedTitle(row.text)
                         .font(.callout.weight(highlighted ? .semibold : .regular))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     if let pomodoro = row.pomodoro {
                         smallChip(pomodoro.name ?? "TODAY", symbol: "timer")
+                    }
+                    if answer == .moveAndLink,
+                        row.choices.contains(where: { $0.sigil == ":" && $0.addsLink }),
+                        let name = choice.slot.pomodoroName
+                    {
+                        Text("→ \(name)").font(.caption2).foregroundStyle(.secondary)
                     }
                     if let scheduled = row.scheduled, !scheduled.isEmpty {
                         smallChip(scheduled, symbol: "calendar")
@@ -290,8 +311,18 @@ struct CaptureMoveChoiceCard: View {
             .padding(2)
             .background(.background.opacity(0.72), in: Capsule())
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
-            .accessibilityElement(children: .contain)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Move state for \(row.text)")
+            .accessibilityValue(choice.consequence(for: row))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    _ = choice.setAnswer(answer == nil ? .move : .moveAndLink, for: row.key)
+                case .decrement:
+                    _ = choice.setAnswer(answer == .moveAndLink ? .move : nil, for: row.key)
+                @unknown default: break
+                }
+            }
         } else {
             let sigil = answer?.sigil ?? "·"
             Text(sigil)
@@ -333,6 +364,15 @@ struct CaptureMoveChoiceCard: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    private func highlightedTitle(_ title: String) -> Text {
+        guard !choice.filterText.isEmpty,
+            let range = title.range(of: choice.filterText, options: [.caseInsensitive])
+        else { return Text(title) }
+        return Text(String(title[..<range.lowerBound]))
+            + Text(String(title[range])).bold().foregroundColor(.accentColor)
+            + Text(String(title[range.upperBound...]))
+    }
+
     private func smallChip(_ text: String, symbol: String) -> some View {
         Label(text, systemImage: symbol)
             .font(.caption2)
@@ -360,11 +400,17 @@ struct CaptureMoveChoiceCard: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            Text(choice.slot.copy?.slot ?? "In \(choice.slot.parent) order")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            Text(
+                message ?? choice.nameRequirementMessage
+                    ?? choice.slot.copy?.slot ?? "In \(choice.slot.parent) order"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            if let then = choice.slot.copy?.then {
+                Text(then).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -373,11 +419,13 @@ struct CaptureMoveChoiceCard: View {
     }
 
     private var detailAccessibilityText: String {
-        guard let row = choice.currentRow else {
-            return choice.slot.copy?.slot ?? "In \(choice.slot.parent) order"
-        }
-        return
-            "\(row.text). \(detailText(for: row)). \(choice.slot.copy?.slot ?? "In \(choice.slot.parent) order")"
+        var parts: [String] = []
+        if let row = choice.currentRow { parts.append("\(row.text). \(detailText(for: row))") }
+        parts.append(
+            message ?? choice.nameRequirementMessage
+                ?? choice.slot.copy?.slot ?? "In \(choice.slot.parent) order")
+        if let then = choice.slot.copy?.then { parts.append(then) }
+        return parts.joined(separator: ". ")
     }
 
     private func detailText(for row: CaptureMoveChoiceRow) -> String {
@@ -391,27 +439,29 @@ struct CaptureMoveChoiceCard: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 6) {
             Text("^ move  : move & link  Space toggle  ⌘A all")
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            Spacer(minLength: 4)
-            Button("Back  esc", action: onBack)
-                .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
-                .disabled(previewMode)
-            Button("None  ⇧↩", action: onNone)
-                .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
-                .disabled(previewMode)
-            Button(action: onConfirm) {
-                HStack(spacing: 4) {
-                    Text(choice.primaryLabel)
-                    Text("↩").opacity(0.7)
+            HStack(spacing: 8) {
+                Spacer(minLength: 4)
+                Button("Back  esc", action: onBack)
+                    .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
+                    .disabled(previewMode)
+                Button("None  ⇧↩", action: onNone)
+                    .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
+                    .disabled(previewMode || choice.slot.nameNeedsLink)
+                Button(action: onConfirm) {
+                    HStack(spacing: 4) {
+                        Text(choice.primaryLabel)
+                        Text("↩").opacity(0.7)
+                    }
                 }
+                .buttonStyle(CapturePullInActionButtonStyle(prominent: true))
+                .disabled(previewMode || !choice.canConfirm)
             }
-            .buttonStyle(CapturePullInActionButtonStyle(prominent: true))
-            .disabled(previewMode || !choice.canConfirm)
         }
         .frame(minHeight: 30)
         .accessibilityElement(children: .contain)

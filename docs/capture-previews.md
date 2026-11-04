@@ -432,16 +432,17 @@ pulled-in successors.
 
 ## Project-note moves
 
-Move bullets (`- ^id`, `- :id`) preview a `↪ Moves N tasks from cash.md` band
-above the Links and Offers bands: one row per moved task (status glyph, title,
-`^id`, Bob's detail) plus a repair footer. Each bullet also shows a ghost
-title — truncated with `…`, never in the draft — with ` · becomes Next` for
-`:` lane changes; any keystroke hides ghosts until the next preview lands.
-VoiceOver reads each row's title, status, `^id`, and detail. With no moves
-and a movable parent, a muted line under the project card reads
-`Type - ^ to move tasks from cash.md (12 open)`; moved Pull-In rows read
-`moved from cash.md`, and the notification reads `Created cash_goog_exit`
-with a `moved 2 tasks from cash` lead.
+Move bullets (`- ^id`, `- :id`) show a `↪ Moves N tasks from cash.md` band
+above Links and Offers: status, title, `^id`, Bob's detail, and repair counts.
+VoiceOver reads those details. Ghost titles never enter the draft; `:` lane
+changes add `becomes Next`. Edits hide ghosts until preview catches up.
+
+`- ^^` adds Bob's `choose from cash.md's N open tasks on ↩` ghost and
+`↪ Asks about…` band. Return opens the [Move card](task-pickers.md#move-card)
+before writing. The ghost requires the matching draft and exact `^^` range;
+choice rows have no individual ghosts. A move-less hint teaches `- ^` and `- ^^`.
+Offers show `moved from cash.md`. Notices read `Created cash_goog_exit`:
+`moved N tasks from cash · K linked under ADMIN` when links were added.
 
 ## Inbox routing
 

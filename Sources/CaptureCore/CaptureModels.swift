@@ -3320,6 +3320,7 @@ public struct CaptureProjectTaskLink: Codable, Equatable, Sendable {
 /// never drops its siblings.
 public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
     /// `"^"` or `":"`.
+    public let via: String?
     public let sigil: String
     /// UTF-8 byte range of the sigil+ID token in the submitted TEXT.
     public let draftRange: [Int]
@@ -3344,6 +3345,7 @@ public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
     public let detail: String?
 
     public init(
+        via: String? = nil,
         sigil: String = "",
         draftRange: [Int] = [],
         itemLine: Int = 0,
@@ -3362,6 +3364,7 @@ public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
         notLinked: String? = nil,
         detail: String? = nil
     ) {
+        self.via = via
         self.sigil = sigil
         self.draftRange = draftRange
         self.itemLine = itemLine
@@ -3383,6 +3386,7 @@ public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        via = try? container.decodeIfPresent(String.self, forKey: .via)
         sigil = (try? container.decodeIfPresent(String.self, forKey: .sigil)) ?? ""
         draftRange =
             (try? container.decodeIfPresent([Int].self, forKey: .draftRange)) ?? []
@@ -3412,6 +3416,7 @@ public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case via
         case sigil
         case draftRange = "draft_range"
         case itemLine = "item_line"

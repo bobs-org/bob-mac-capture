@@ -67,7 +67,7 @@ docs-test:
     bash -n Scripts/docs-media.sh Scripts/docs-check.sh Scripts/generate-task-type-fixtures.sh \
       Scripts/generate-directive-fixtures.sh Scripts/generate-drawer-fixtures.sh \
       Scripts/generate-list-fixtures.sh Scripts/generate-move-preview-fixtures.sh \
-      Scripts/generate-transfer-preview-fixtures.sh
+      Scripts/generate-transfer-preview-fixtures.sh Scripts/generate-move-choice-fixtures.sh
     python3 -B Scripts/test_docs_scripts.py
 
 # Offline script tests, including the macOS CI precommit gate.

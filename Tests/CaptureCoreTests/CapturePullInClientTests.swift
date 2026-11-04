@@ -34,6 +34,32 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)
     }
 
+    func testMoveAnswerPrecedesPullInAndRequiresCapability() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+        do {
+            _ = try await client.capture("draft", moveInSelection: "none")
+            XCTFail("Expected move capability guard")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--move-in")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: record.path))
+        _ = try await client.capture(
+            "draft", priorityRollSeed: "same-seed",
+            moveInSelection: "cash.md#^one,:cash.md@hash",
+            moveInCapabilityAdvertised: true, pullInSelection: CapturePullInSelection.none,
+            pullInCapabilityAdvertised: true
+        )
+        _ = try await client.capture(
+            "draft", moveInSelection: "none", moveInCapabilityAdvertised: true
+        )
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains("--move-in cash.md#^one,:cash.md@hash --pull-in none -- draft"))
+        XCTAssertTrue(calls.contains("--move-in none -- draft"))
+        XCTAssertTrue(calls.contains("BOB_PRIORITY_ROLL_SEED=same-seed"))
+    }
+
     func testRefuseOverrideIsPassedOnlyWhenRequested() async throws {
         let record = temporaryRecordURL()
         let client = try makeClient(record: record)

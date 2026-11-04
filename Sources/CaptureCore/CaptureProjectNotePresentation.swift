@@ -141,7 +141,13 @@ public struct CaptureProjectNoteMovePresentation: Equatable, Sendable {
         notificationTitle =
             "Created \((note.basename as NSString).deletingPathExtension)"
         let displayRoute = (parent as NSString).deletingPathExtension
-        notificationDetail = "moved \(count) \(noun) from \(displayRoute)"
+        let links = note.taskLinks.filter { link in
+            note.movedTasks.contains { $0.blockID == link.blockID }
+        }
+        let linkedDetail =
+            links.isEmpty
+            ? "" : " · \(links.count) linked under \(capture.pomodoroName ?? "today's Pomodoro")"
+        notificationDetail = "moved \(count) \(noun) from \(displayRoute)" + linkedDetail
         let rowSummaries = movedTasks.map { row in
             var parts = [row.text]
             if !row.statusName.isEmpty { parts.append(row.statusName) }
@@ -182,16 +188,18 @@ public struct CaptureProjectNoteMoveHintPresentation: Equatable, Sendable {
     public let hintText: String
     public let previewAccessibilitySummary: String
 
-    public init?(capture: CaptureCommandSuccess) {
+    public init?(capture: CaptureCommandSuccess, moveChoiceSupported: Bool = false) {
         guard let note = capture.projectNote,
-              note.movedTasks.isEmpty,
-              let hint = note.moveHint
+            note.movedTasks.isEmpty,
+            let hint = note.moveHint
         else {
             return nil
         }
         let noun = hint.openCount == 1 ? "task" : "tasks"
         hintText =
-            "Type - ^ to move \(noun) from \(hint.parent) (\(hint.openCount) open)"
+            moveChoiceSupported || capture.moveChoice?.supported == true
+            ? "Type - ^ to move a task from \(hint.parent), or - ^^ to choose several (\(hint.openCount) open)"
+            : "Type - ^ to move \(noun) from \(hint.parent) (\(hint.openCount) open)"
         previewAccessibilitySummary = hintText
     }
 }
@@ -238,7 +246,7 @@ public enum CaptureProjectNoteMoveGhosts {
         guard draft == previewDraft else { return [] }
         let utf8 = Array(draft.utf8)
         var result: [CaptureProjectNoteMoveGhost] = []
-        for task in movedTasks {
+        for task in movedTasks where task.via != "choice" {
             guard let ghost = ghost(utf8: utf8, task: task) else {
                 continue
             }

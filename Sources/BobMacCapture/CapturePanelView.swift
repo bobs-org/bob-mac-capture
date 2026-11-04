@@ -540,6 +540,10 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
+            .onChange(of: model.moveChoiceVisible) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
             .onChange(of: model.pullInChoiceVisible) { _, _ in
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
@@ -671,7 +675,9 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var footerRegion: some View {
-        if model.inboxRouteChoiceVisible {
+        if model.moveChoiceVisible {
+            EmptyView()
+        } else if model.inboxRouteChoiceVisible {
             CaptureInboxRouteChoiceFooter(model: model)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(2)
@@ -737,7 +743,7 @@ struct CapturePanelView: View {
             || model.errorMessage != nil
             || model.previewState != .idle
             || model.agendaVisible
-            || model.relationCapabilityWarning != nil
+            || model.relationCapabilityWarning != nil || model.moveChoiceCapabilityWarning != nil
             || model.captureGrammarWarning != nil
             || model.inboxRouteChoiceVisible
             || model.pullInChoiceVisible
@@ -745,7 +751,23 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if model.inboxRouteChoiceVisible, let choice = model.inboxRouteChoice {
+        if let choice = model.moveChoice {
+            CaptureMoveChoiceCard(
+                choice: Binding(get: { model.moveChoice ?? choice }, set: model.updateMoveChoice),
+                todayBadge: model.moveChoiceTodayBadge,
+                focusRequest: model.focusRequest,
+                message: model.moveChoiceMessage,
+                onConfirm: { model.confirmMoveChoice() },
+                onNone: { model.confirmMoveChoice(none: true) },
+                onBack: model.cancelMoveChoice
+            )
+            .focused($focusedControl, equals: .moveChoiceRows)
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: { height in
+                updateMeasuredAuxiliaryContentHeight(height)
+            }
+        } else if model.inboxRouteChoiceVisible, let choice = model.inboxRouteChoice {
             CaptureInboxRouteChoiceCard(model: model, choice: choice)
                 .layoutPriority(0)
                 .focused($focusedControl, equals: .inboxRouteRows)
@@ -951,7 +973,7 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var relationCapabilityNotice: some View {
-        if let warning = model.relationCapabilityWarning {
+        if let warning = model.moveChoiceCapabilityWarning ?? model.relationCapabilityWarning {
             Label(warning, systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1071,8 +1093,9 @@ struct CapturePanelView: View {
         // owned by AppKit (`BlockIDField` / `PomodoroNameField` /
         // `CapturePickerFilterField`), so SwiftUI's stored focus value is cleared
         // while the AppKit field claims first responder directly.
-        focusedControl = request.target == .editor || request.target == .pullInOfferList
-            || request.target == .inboxRouteRows
+        focusedControl =
+            request.target == .editor || request.target == .pullInOfferList
+                || request.target == .inboxRouteRows || request.target == .moveChoiceRows
             ? request.target : nil
     }
 
@@ -1081,8 +1104,14 @@ struct CapturePanelView: View {
             return nil
         }
 
+        if model.moveChoiceVisible {
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(260, measuredAuxiliaryContentHeight), minimumVisibleHeight: 260
+            )
+        }
         if model.inboxRouteChoiceVisible, let choice = model.inboxRouteChoice {
-            let policy = CaptureInboxRouteChoiceHeightPolicy(choice: choice, displayScale: displayScale)
+            let policy = CaptureInboxRouteChoiceHeightPolicy(
+                choice: choice, displayScale: displayScale)
             return CapturePanelAuxiliaryHeight(
                 idealHeight: max(policy.idealHeight, measuredAuxiliaryContentHeight),
                 minimumVisibleHeight: policy.minimumVisibleHeight
@@ -3779,7 +3808,8 @@ struct PreviewPane: View {
                 globalDestination: success.globalDestination,
                 blocks: success.pomodoroBlocks,
                 taskBlocks: orderedTaskBlocks,
-                pullIn: success.pullIn
+                pullIn: success.pullIn,
+                moveChoice: success.moveChoice
             )
         }
 
@@ -3877,10 +3907,12 @@ struct PreviewPane: View {
         globalDestination: CaptureGlobalDestination?,
         blocks: [CapturePomodoroBlock],
         taskBlocks: [CaptureTaskBlock] = [],
-        pullIn: CapturePullIn? = nil
+        pullIn: CapturePullIn? = nil,
+        moveChoice: CaptureMoveChoice? = nil
     ) -> some View {
-        let isLocalOverride = globalDestination.map {
-            !captureUsesGlobalDestination(success, $0)
+        let isLocalOverride =
+            globalDestination.map {
+                !captureUsesGlobalDestination(success, $0)
         } ?? false
         // The destination row sits above the per-kind preview item, so every
         // link landing names where its Task Link went without disturbing the
@@ -3900,8 +3932,17 @@ struct PreviewPane: View {
         if let moves = CaptureProjectNoteMovePresentation(capture: success) {
             projectNoteMovesPreview(for: moves)
         }
+        if moveChoice?.supported == true {
+            ForEach((moveChoice?.slots ?? []).filter { $0.item == index + 1 }, id: \.itemLine) {
+                slot in
+                if let band = slot.copy?.band, !band.isEmpty {
+                    Text("↪ " + band).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityLabel(band)
+                }
+            }
+        }
         if let notePull = success.notePull,
-           let presentation = CaptureNotePullPresentation(
+            let presentation = CaptureNotePullPresentation(
                notePull: notePull,
                group: pullIn?.groups.first(where: {
                    $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
@@ -3988,7 +4029,9 @@ struct PreviewPane: View {
         // project-note draft with no move bullets whose parent still has
         // movable open tasks. It renders after the kind card so the card
         // itself stays the first thing a move-less draft shows.
-        if let hint = CaptureProjectNoteMoveHintPresentation(capture: success) {
+        if let hint = CaptureProjectNoteMoveHintPresentation(
+            capture: success, moveChoiceSupported: moveChoice?.supported == true
+        ) {
             Text(hint.hintText)
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -4108,6 +4108,41 @@ JSON
         break
       fi
     done
+    if [[ "${FAKE_BOB_MOVE_CHOICE:-}" == "1" ]]; then
+      python3 - "$fixtures_dir" "$dry_run" "$@" <<'MOVE_PY'
+import json, os, pathlib, sys
+fixtures = pathlib.Path(sys.argv[1])
+preview = sys.argv[2] == "true"
+args = sys.argv[3:]
+load = lambda name: json.loads((fixtures/name).read_text())
+payload = load(os.environ.get("FAKE_BOB_MOVE_CHOICE_FIXTURE", "move-choice-mq5.json"))
+if preview:
+    if os.environ.get("FAKE_BOB_MOVE_CHOICE_OLD") == "1":
+        payload.pop("move_choice", None)
+    if os.environ.get("FAKE_BOB_MOVE_CHOICE_INBOX") == "1":
+        payload["inbox_route"] = load("inbox-route-preview-one.json")["inbox_route"]
+elif os.environ.get("FAKE_BOB_MOVE_CHOICE_OLD") == "1":
+    payload.pop("move_choice", None)
+    payload["dry_run"] = False
+else:
+    code = os.environ.get("FAKE_BOB_MOVE_CHOICE_FAILURE")
+    if "--move-in" not in args:
+        code = "move_choice_required"
+    if code:
+        report = payload["move_choice"]
+        gone = os.environ.get("FAKE_BOB_MOVE_CHOICE_GONE")
+        if gone:
+            report["slots"][0]["rows"] = [r for r in report["slots"][0]["rows"] if r["key"] != gone]
+        payload = dict(ok=False, code=code, error="Parent tasks changed: " + code, move_choice=report)
+    elif os.environ.get("FAKE_BOB_MOVE_CHOICE_INBOX") == "1" and "--inbox-route" not in args:
+        payload = load("inbox-route-choice-required.json")
+    else:
+        payload = load("move-choice-mq7.json")
+print(json.dumps(payload))
+sys.exit(0 if payload["ok"] else 1)
+MOVE_PY
+      exit $?
+    fi
     if [[ "${dry_run}" == "true" \
        && -n "${FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE:-}" \
        && -n "${FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE:-}" ]]; then

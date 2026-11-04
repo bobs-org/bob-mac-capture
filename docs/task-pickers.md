@@ -217,9 +217,69 @@ route accent, `project_task_move_link_marker` (`:`) uses the explicit-toggle
 yellow, and `project_task_move_block_id` uses block-ID indigo. Older Bob
 builds never report the need, so behaviour there is unchanged.
 
+For several tasks, use the [Move card](#move-card).
+
 Move Picker keys: Return Move, Shift-Return Move & add another, Escape Close,
 Backspace on empty filter removes Bob's trigger range. In the move Add block
 ID prompt, Tab / Shift-Tab cycle suggestions.
+
+## Move card
+
+Use `- ^` when you know a task; type `^` again with an empty Move picker to
+write `- ^^` and choose several after Return. The [Move card keys](keyboard.md#move-choices)
+let you sweep the parent note in its own order. Every row starts as Leave (`·`);
+the highlight alone never selects it. `^` means Move and `:` means Move & link.
+Bob's consequence strip names the destination and explains whether a link is
+actually added; the TODAY badge projects only those new links.
+
+The card includes ID-less tasks: marking one shows Bob's proposed ID, which is
+created only with the final capture. Explicit `- ^id` / `- :id` rows are locked
+and show their sigil and draft line. Disabled rows show Bob's reason. Filtering
+keeps parent order and retains marks outside the filter, with a visible count.
+Command-A marks only visible Leave rows; repeating it undoes only its own marks.
+
+Return applies the marks; Shift-Return explicitly answers none. Cancel returns
+to the unchanged draft without writing or assigning IDs. Marks survive edits
+under the same parent, but are cleared on parent changes, capture success,
+discard, or leaving the panel session; stashes do not save them. If the parent
+changes before capture, Bob returns fresh rows and surviving marks stay selected.
+The strip reports how many marked tasks disappeared.
+
+Under an offer (`:`) seal, the successor card follows the Move card; Escape
+returns to the marks. Inbox routing follows those choices. Tasks answered on
+the Move card are never offered again; explicit move bullets can still be offered.
+The whole draft and every answer are submitted together in one atomic capture.
+
+### Move card protocol
+
+`capture` reports the additive batch-level `move_choice: {supported, slots}`
+on success and `move_choice_*` refusals. Each slot supplies rows, opaque keys,
+choices, consequences, `adds_link`, locked/disabled reasons, draft byte ranges,
+and Bob-authored card/preview copy. The Mac renders these without parsing
+capture grammar or reading the vault. `moved_tasks[].via == "choice"` identifies
+rows expanded from the slot rather than explicit move bullets.
+
+The app opens an unanswered slot from the matching preview before Pull-In.
+It sends one `--move-in` comma list in parent order (`KEY` for move, `:KEY`
+for move and link, or `none`), before `--pull-in` and the `--` delimiter.
+Pull-In and inbox-route submit contexts retain that answer and the preview's
+priority seed. The flag is sent only with positive `move_choice.supported`
+capability evidence for the same executable; no unadvertised flag fallback is used.
+
+`move_choice_required` and `move_choice_stale` reopen from Bob's returned rows;
+only surviving enabled marks remain. `move_choice_refused`,
+`move_choice_conflict`, and `move_choice_empty` display Bob's message in place.
+A changed draft, executable, or analysis generation invalidates the submit context.
+
+| App × Bob | Behavior |
+| --- | --- |
+| New × new | Move → Pull-In → inbox routing → one capture |
+| Old × new | Bob refuses unanswered `- ^^` before writing |
+| New × old | First submit warns that `^^` would be a literal task; second submit of the same draft proceeds without `--move-in` |
+| Old × old | Existing literal-task behavior |
+
+The minimum capture grammar revision is unchanged. All new fields decode
+optionally, preserving responses from older Bob versions.
 
 ## Block ID Picker
 

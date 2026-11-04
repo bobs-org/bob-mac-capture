@@ -555,6 +555,8 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
 /// and metadata, plus local focus/filter state. It has no vault or eligibility
 /// logic.
 struct CapturePullInChoiceState: Equatable {
+    var moveInSelection: String? = nil
+
     let draftSnapshot: String
     let processClientIdentity: String
     var openAfterCapture: Bool

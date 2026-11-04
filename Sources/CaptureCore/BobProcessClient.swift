@@ -753,6 +753,8 @@ public final class BobProcessClient: @unchecked Sendable {
         dryRun: Bool = false,
         readClipboard: Bool = true,
         priorityRollSeed: String? = nil,
+        moveInSelection: String? = nil,
+        moveInCapabilityAdvertised: Bool = false,
         pullInSelection: CapturePullInSelection? = nil,
         requirePullInChoice: Bool = false,
         refuseOverride: Bool = false,
@@ -762,6 +764,9 @@ public final class BobProcessClient: @unchecked Sendable {
         inboxRouteCapabilityAdvertised: Bool = false,
         templateOrigin: String? = nil
     ) async throws -> CaptureCommandResponse {
+        if moveInSelection != nil, !moveInCapabilityAdvertised {
+            throw BobClientError.unsupportedOption("--move-in")
+        }
         if pullInSelection != nil, !pullInCapabilityAdvertised {
             throw BobClientError.unsupportedOption("--pull-in")
         }
@@ -778,6 +783,13 @@ public final class BobProcessClient: @unchecked Sendable {
         }
         if !readClipboard {
             arguments.append("--no-clip")
+        }
+        if let moveInSelection {
+            guard !moveInSelection.isEmpty else {
+                throw BobClientError.unsupportedOption(
+                    "--move-in requires opaque task keys or none")
+            }
+            arguments += ["--move-in", moveInSelection]
         }
         if let pullInSelection {
             switch pullInSelection {

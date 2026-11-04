@@ -59,26 +59,20 @@ Capabilities are response-driven: unknown spans render neutral, unknown contexts
   the additive `created_pomodoro` capture summary for new and "again"
   sessions),
   plus Pomodoro close `x` and its additive `pomodoro_close` capture summary,
-  plus the project-note `@route^block-id@#pomodoro` marker (the retired
-  `@route^block-id+` and `@route:block-id+` spellings are parse diagnostics),
-  with the `@` seal reported as a `project_note_marker` span, the separator as a
-  `project_note_separator` span, and an additive `project_note` span modifier
-  (`create` or `offer`) on every span of the marker, which paints the manila chip
-  (an older bob sends no modifier or separator span, so the seal paints brown with
-  no wash, and a modifier value this app does not know washes without recoloring),
-  the offer form `@route:block-id@#pomodoro` (`project_note_offer_marker` seal
-  span, modifier `offer`), the trailing ` :id` /
-  ` ^id` project-task tokens (`project_task_block_id` completion context with
-  intent `new`, `project_task_link_marker` / `project_task_block_id` parse
-  spans, and the additive `project_note.task_links` capture object).
-  The offer form adds `project_note.form: "offer"` and
-  `project_note.successors`, reusing Bob's successor-offer rows and opaque keys for the
-  Pull-In card. A picked row also appears in `project_note.task_links`, because a
-  pick is a ` :` link; the app counts it once, in the project note's Linked summary,
-  and never again as a pulled-in successor.
-  The block-ID `project_note` completion intent now comes from either separator
-  followed by the seal, with no new intent value, because an older Mac would read
-  an unknown intent as `link`.
+  plus project-note `@route^block-id@#pomodoro` (create) and
+  `@route:block-id@#pomodoro` (offer). Retired `@route^block-id+` and
+  `@route:block-id+` forms produce diagnostics. The seal span is
+  `project_note_marker` or `project_note_offer_marker`; the separator is
+  `project_note_separator`. Each marker span carries the `project_note`
+  modifier (`create`/`offer`) for its manila chip: absent modifiers paint
+  brown without wash; unknown modifiers wash without recoloring.
+  Trailing ` :id`/` ^id` tokens use `project_task_block_id` completion intent
+  `new`, `project_task_link_marker`/`project_task_block_id` spans, and
+  `project_note.task_links`. Offer JSON adds `project_note.form: "offer"` and
+  `project_note.successors` with Pull-In keys. Picked rows also enter
+  `task_links`; count them once as Linked, never again as pulled-in successors.
+  Either separator plus seal uses existing `project_note` completion intent;
+  new intents would be misread as `link` by older Macs.
   Lists under a lone `@file` or `@file#section` header (grammar 6; the gate requires
   grammar 5) add the `list` object on `capture` results and `capture-parse` items,
   the `list_item` need, and `block_id.owner_line` / `block_id.splice` on
@@ -242,6 +236,19 @@ The app never invokes a login shell to find `bob`. A Settings override must be a
 absolute executable path.
 
 The executable search paths and the Settings override live in [Install](install.md#requirements).
+
+## Move-choice submission
+
+`move_choice.supported` gates `--move-in KEY,:KEY|none`, sent before `--pull-in`.
+[Move-card protocol](task-pickers.md#move-card-protocol) documents slots, refusals,
+answer chaining, and optional decoding.
+
+| App × Bob | Behavior |
+| --- | --- |
+| New × new | Move → Pull-In → inbox → capture |
+| Old × new | Unanswered `^^` refuses before writing |
+| New × old | Warn once; second submit captures literally without `--move-in` |
+| Old × old | Literal task |
 
 ## Timeouts and guards
 

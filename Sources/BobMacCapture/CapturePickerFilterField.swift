@@ -4,6 +4,7 @@ import SwiftUI
 /// Lets `CapturePanelController` find this field in the window's view tree without a
 /// reference back into SwiftUI.
 let pickerFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.picker-filter"
+let moveChoiceFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.move-choice-filter"
 let pullInFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.pull-in-filter"
 let inboxRouteFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.inbox-route-filter"
 

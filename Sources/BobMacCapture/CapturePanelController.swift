@@ -2022,6 +2022,39 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .relationLabelPromptBackspace:
             return model.relationLabelPromptBackspace()
+        case .confirmMoveChoice:
+            model.confirmMoveChoice()
+            return true
+        case .confirmMoveChoiceAndOpen:
+            model.confirmMoveChoice(openAfterCapture: true)
+            return true
+        case .chooseNoMoves:
+            model.confirmMoveChoice(none: true)
+            return true
+        case .cancelMoveChoice:
+            model.cancelMoveChoice()
+            return true
+        case .nextMoveChoice:
+            model.moveMoveChoiceHighlight(by: 1)
+            return true
+        case .previousMoveChoice:
+            model.moveMoveChoiceHighlight(by: -1)
+            return true
+        case .setMoveChoice(let answer):
+            model.setMoveChoiceAnswer(answer)
+            return true
+        case .toggleMoveChoice:
+            model.toggleMoveChoice()
+            return true
+        case .selectAllMoveChoices:
+            model.selectAllMoveChoices()
+            return true
+        case .editMoveChoiceFilter(let text):
+            model.editMoveChoiceFilter(text)
+            return true
+        case .deleteMoveChoiceFilter:
+            model.editMoveChoiceFilter(nil)
+            return true
         case .confirmPullInChoice:
             model.confirmPullInChoice()
             return true
@@ -2140,11 +2173,19 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 relationLabelPromptFieldIsEmpty: model.relationLabelFieldText.isEmpty,
                 relationLabelPromptOneOff: model.relationLabelPrompt?.oneOff ?? false,
                 relationLabelRenameActive: model.relationLabelRenameIsActive,
-                pickerSourceIsRelation: model.pickerSourceIsRelation,
-                pullInChoiceVisible: model.pullInChoiceVisible,
-                pullInFilterFocused: model.pullInChoiceVisible
-                    && (Self.findPickerFilterField(
-                        in: panel?.contentView,
+                    pickerSourceIsRelation: model.pickerSourceIsRelation,
+                    moveChoiceVisible: model.moveChoiceVisible,
+                    moveChoiceFilterFocused: model.moveChoiceVisible
+                        && (Self.findPickerFilterField(
+                            in: panel?.contentView,
+                            identifier: moveChoiceFilterFieldAccessibilityIdentifier,
+                            firstResponder: panel?.firstResponder
+                        )?.holdsFirstResponder ?? false),
+                    moveChoiceFilterIsEmpty: model.moveChoice?.filterText.isEmpty ?? true,
+                    pullInChoiceVisible: model.pullInChoiceVisible,
+                    pullInFilterFocused: model.pullInChoiceVisible
+                        && (Self.findPickerFilterField(
+                            in: panel?.contentView,
                         identifier: pullInFilterFieldAccessibilityIdentifier,
                         firstResponder: panel?.firstResponder
                     )?.holdsFirstResponder ?? false),

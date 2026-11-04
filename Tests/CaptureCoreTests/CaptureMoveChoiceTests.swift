@@ -192,6 +192,87 @@ final class CaptureMoveChoiceTests: XCTestCase {
         )
     }
 
+    func testFilterSelectAllRetainsExplicitLinkAndSerializesInParentOrder() {
+        var state = CaptureMoveChoiceState(slot: slot())
+        _ = state.setAnswer(.moveAndLink, for: "cash.md#^first")
+        state.updateFilter("ID-less")
+        state.selectAll()
+        XCTAssertEqual(state.selectedCount, 2)
+        XCTAssertEqual(state.outsideFilterCount, 1)
+        XCTAssertEqual(state.selection, ":cash.md#^first,cash.md#^idless")
+        state.selectAll()
+        XCTAssertEqual(state.selection, ":cash.md#^first")
+        XCTAssertEqual(state.linkedCount, 1)
+        state.updateFilter("no matching rows")
+        XCTAssertNil(state.currentRow)
+        XCTAssertFalse(state.answerCurrent(.move))
+    }
+
+    func testReseedKeepsSurvivingKeysAndNameRequiresColonEvenWhenHeld() {
+        var state = CaptureMoveChoiceState(slot: slot())
+        state.selectAll()
+        let rows = Array(state.rows.prefix(1))
+        let fresh = CaptureMoveChoiceSlot(
+            parent: "cash.md", destination: "cash_new.md", pomodoroName: "ADMIN",
+            nameNeedsLink: true, rows: rows
+        )
+        XCTAssertEqual(state.reseed(slot: fresh), 1)
+        XCTAssertEqual(state.selection, "cash.md#^first")
+        XCTAssertFalse(state.canConfirm)
+        XCTAssertEqual(state.nameRequirementMessage, "#admin needs a : pick, or remove #admin")
+        XCTAssertTrue(state.answerCurrent(.moveAndLink))
+        XCTAssertTrue(state.canConfirm)
+    }
+
+    func testChoiceGhostRequiresExactDraftAndUTF8Anchor() {
+        let draft = "Café @cash^exit@\n- ^^"
+        let end = draft.utf8.count
+        let slot = CaptureMoveChoiceSlot(
+            draftRange: [end - 2, end], parent: "cash.md",
+            copy: CaptureMoveChoiceCopy(ghost: "choose on ↩")
+        )
+        let report = CaptureMoveChoice(supported: true, slots: [slot])
+        let ghosts = CaptureMoveChoicePresentation.ghosts(
+            draft: draft, previewDraft: draft, report: report
+        )
+        XCTAssertEqual(ghosts.first?.text, "choose on ↩")
+        XCTAssertEqual(ghosts.first?.insertionUTF8Offset, end)
+        XCTAssertEqual(ghosts.first?.lineNumber, 2)
+        XCTAssertTrue(
+            CaptureMoveChoicePresentation.ghosts(
+                draft: draft + "x", previewDraft: draft, report: report
+            ).isEmpty)
+        XCTAssertTrue(
+            CaptureMoveChoicePresentation.ghosts(
+                draft: draft.replacingOccurrences(of: "^^", with: "^x"),
+                previewDraft: draft.replacingOccurrences(of: "^^", with: "^x"), report: report
+            ).isEmpty)
+        XCTAssertFalse(CaptureMoveChoicePresentation.hasWholeLineMarker("task\n  - ^^"))
+    }
+
+    func testRealBobAnsweredFixturesAndNotification() throws {
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Fixtures")
+        for name in ["mq7", "mq10"] {
+            let data = try Data(
+                contentsOf: fixtures.appendingPathComponent("move-choice-\(name).json"))
+            let success = try JSONDecoder().decode(CaptureCommandSuccess.self, from: data)
+            let slot = try XCTUnwrap(success.moveChoice?.slots.first)
+            XCTAssertTrue(slot.answered)
+            XCTAssertEqual(slot.movedCount, 2)
+            XCTAssertEqual(slot.linkedCount, 1)
+            let note = try XCTUnwrap(success.projectNote)
+            XCTAssertEqual(note.movedTasks.filter { $0.via == "choice" }.count, 2)
+            XCTAssertFalse(
+                note.successors.contains { row in
+                    note.movedTasks.contains { $0.via == "choice" && $0.blockID == row.blockID }
+                })
+            let presentation = try XCTUnwrap(CaptureProjectNoteMovePresentation(capture: success))
+            XCTAssertTrue(
+                presentation.notificationDetail.contains("moved 3 tasks from cash · 1 linked"))
+        }
+    }
+
     private func tryUnwrappedRow(
         _ state: CaptureMoveChoiceState,
         key: String

@@ -28,7 +28,9 @@ public struct CaptureMoveChoiceSection: Equatable, Sendable, Identifiable {
 /// highlighted row; all task eligibility, ordering, status, copy, and link
 /// consequences come from Bob's decoded slot.
 public struct CaptureMoveChoiceState: Equatable, Sendable {
-    public let slot: CaptureMoveChoiceSlot
+    public private(set) var slot: CaptureMoveChoiceSlot
+    public private(set) var filterText = ""
+    private var selectAllKeys: Set<String> = []
     public private(set) var cursor: Int
     public private(set) var answers: [String: CaptureMoveChoiceAnswer]
 
@@ -60,7 +62,9 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
     }
 
     public var currentRow: CaptureMoveChoiceRow? {
-        guard rows.indices.contains(cursor) else {
+        guard rows.indices.contains(cursor),
+            visibleRows.contains(where: { $0.key == rows[cursor].key })
+        else {
             return nil
         }
         return rows[cursor]
@@ -84,7 +88,58 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
     }
 
     public var canConfirm: Bool {
-        selectedCount > 0
+        selectedCount > 0 && nameRequirementMessage == nil
+    }
+
+    public var nameRequirementMessage: String? {
+        guard slot.nameNeedsLink, !answers.values.contains(.moveAndLink) else { return nil }
+        return
+            "#\(slot.pomodoroName?.lowercased() ?? "name") needs a : pick, or remove #\(slot.pomodoroName?.lowercased() ?? "name")"
+    }
+
+    /// Opaque keys in Bob's parent order, never the highlight or filter order.
+    public var selection: String {
+        let keys = rows.compactMap { row -> String? in
+            guard let answer = answers[row.key] else { return nil }
+            return (answer == .moveAndLink ? ":" : "") + row.key
+        }
+        return keys.isEmpty ? "none" : keys.joined(separator: ",")
+    }
+
+    public var visibleRows: [CaptureMoveChoiceRow] {
+        guard !filterText.isEmpty else { return rows }
+        return rows.filter { row in
+            [row.text, row.section ?? "", row.blockID ?? "", row.mint ?? ""]
+                .contains { $0.localizedCaseInsensitiveContains(filterText) }
+        }
+    }
+
+    public var outsideFilterCount: Int {
+        let visible = Set(visibleRows.map(\.key))
+        return answers.keys.filter { !visible.contains($0) }.count
+    }
+
+    public mutating func updateFilter(_ text: String) {
+        filterText = text
+        if !visibleRows.contains(where: { $0.key == currentRow?.key }),
+            let row = visibleRows.first
+        {
+            highlight(rowKey: row.key)
+        }
+    }
+
+    /// Keep only surviving, still-enabled marks when Bob refreshes the parent.
+    @discardableResult
+    public mutating func reseed(slot: CaptureMoveChoiceSlot) -> Int {
+        let oldAnswers = answers
+        let oldKey = currentRow?.key
+        let filter = filterText
+        self = Self(slot: slot, answers: oldAnswers)
+        updateFilter(filter)
+        if let oldKey, visibleRows.contains(where: { $0.key == oldKey }) {
+            highlight(rowKey: oldKey)
+        }
+        return oldAnswers.keys.filter { answers[$0] == nil }.count
     }
 
     public var counterText: String {
@@ -95,12 +150,15 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
             linkedCount == 0
             ? ""
             : " · \(linkedCount) link\(linkedCount == 1 ? "" : "s") today"
-        return "\(selectedCount) move in\(linkText)"
+        let outside =
+            outsideFilterCount == 0
+            ? "" : " · \(outsideFilterCount) marked outside this filter"
+        return "\(selectedCount) move in\(linkText)\(outside)"
     }
 
     public var primaryLabel: String {
         guard canConfirm else {
-            return "Move"
+            return "Mark tasks with ^ or :"
         }
         let linked = linkedCount == 0 ? "" : " · link \(linkedCount)"
         return "Move \(selectedCount)\(linked)"
@@ -109,7 +167,7 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
     public var sections: [CaptureMoveChoiceSection] {
         var order: [String] = []
         var rowsBySection: [String: [CaptureMoveChoiceRow]] = [:]
-        for row in rows {
+        for row in visibleRows {
             let section = row.section?.isEmpty == false ? row.section! : "Tasks"
             if rowsBySection[section] == nil {
                 order.append(section)
@@ -161,6 +219,7 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
         guard let row = rows.first(where: { $0.key == key }) else {
             return false
         }
+        selectAllKeys.remove(key)
         if let answer {
             guard row.choices.contains(where: { $0.sigil == answer.sigil }) else {
                 return false
@@ -173,10 +232,10 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
     }
 
     public mutating func moveHighlight(by delta: Int) {
-        guard !rows.isEmpty, delta != 0 else {
-            return
-        }
-        cursor = (cursor + delta % rows.count + rows.count) % rows.count
+        let visible = visibleRows
+        guard !visible.isEmpty, delta != 0 else { return }
+        let index = visible.firstIndex(where: { $0.key == currentRow?.key }) ?? 0
+        highlight(rowKey: visible[min(max(index + delta, 0), visible.count - 1)].key)
     }
 
     public mutating func highlight(rowKey: String) {
@@ -200,13 +259,23 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
 
     /// Marks every enabled and unlocked row as Move, keeping Bob's row order.
     public mutating func selectAll() {
-        for row in rows where row.choices.contains(where: { $0.sigil == "^" }) {
+        if !selectAllKeys.isEmpty {
+            for key in selectAllKeys where answers[key] == .move {
+                answers.removeValue(forKey: key)
+            }
+            selectAllKeys.removeAll()
+            return
+        }
+        for row in visibleRows
+        where answers[row.key] == nil && row.choices.contains(where: { $0.sigil == "^" }) {
             answers[row.key] = .move
+            selectAllKeys.insert(row.key)
         }
     }
 
     public mutating func clearAnswers() {
         answers.removeAll()
+        selectAllKeys.removeAll()
     }
 
     private mutating func advanceToNextSelectable(after index: Int) {
@@ -215,7 +284,9 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
         }
         for offset in 1..<rows.count {
             let candidate = (index + offset) % rows.count
-            if rows[candidate].choices.contains(where: { $0.sigil == "^" }) {
+            if visibleRows.contains(where: { $0.key == rows[candidate].key }),
+                rows[candidate].choices.contains(where: { $0.sigil == "^" })
+            {
                 cursor = candidate
                 return
             }
@@ -225,6 +296,40 @@ public struct CaptureMoveChoiceState: Equatable, Sendable {
 
 /// Bob-authored strings used by the Move card's title and context strip.
 public enum CaptureMoveChoicePresentation {
+    public static let oldBobWarning =
+        "This bob predates - ^^; it would capture a task named ^^ · update bob"
+
+    /// Only the compatibility warning inspects legacy text. Bob still owns grammar.
+    public static func hasWholeLineMarker(_ draft: String) -> Bool {
+        draft.split(separator: "\n").contains {
+            guard let first = $0.first, "-*+".contains(first) else { return false }
+            return ["- ^^", "* ^^", "+ ^^"].contains($0.trimmingCharacters(in: .whitespaces))
+        }
+    }
+
+    public static func ghosts(
+        draft: String, previewDraft: String, report: CaptureMoveChoice?
+    ) -> [CaptureProjectNoteMoveGhost] {
+        guard draft == previewDraft, report?.supported == true else { return [] }
+        let bytes = Array(draft.utf8)
+        return (report?.slots ?? []).compactMap { slot in
+            guard slot.draftRange.count == 2, let ghost = slot.copy?.ghost, !ghost.isEmpty else {
+                return nil
+            }
+            let start = slot.draftRange[0]
+            let end = slot.draftRange[1]
+            guard start >= 0, end > start, end <= bytes.count,
+                String(decoding: bytes[start..<end], as: UTF8.self) == "^^"
+            else { return nil }
+            var lineEnd = end
+            while lineEnd < bytes.count, bytes[lineEnd] != 10 { lineEnd += 1 }
+            return CaptureProjectNoteMoveGhost(
+                lineNumber: bytes[..<start].filter { $0 == 10 }.count + 1,
+                insertionUTF8Offset: lineEnd, text: ghost, accessibilityText: ghost
+            )
+        }
+    }
+
     public static func title(for slot: CaptureMoveChoiceSlot) -> String {
         if let title = nonempty(slot.copy?.title) {
             return title
