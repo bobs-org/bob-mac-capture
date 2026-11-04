@@ -1702,6 +1702,42 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Ctrl-L / Ctrl-H / Ctrl-Shift-L / Ctrl-Shift-H: move the caret by one vim-style
+    /// word (`W` / `B` / `w` / `b`). Returns `true` whenever the draft's text view holds
+    /// focus, **including** when the move declines at the start or end of the draft or
+    /// the target is invalid: a declined motion must never reach AppKit's Ctrl-H
+    /// `deleteBackward:` or Ctrl-L binding. Returns `false` only when there is no
+    /// editable text view to move in, where falling through is harmless. Like Ctrl-A /
+    /// Ctrl-E this never dismisses completion: a caret move is not an edit, and
+    /// `editorSelectionDidChange` re-anchors the completion list at the new caret on
+    /// its own.
+    static func moveByWord(
+        _ direction: CaptureWordMotion.Direction,
+        _ unit: CaptureWordMotion.Unit,
+        firstResponder: NSResponder?
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard
+            let target = CaptureWordMotion.targetLocation(
+                direction,
+                unit,
+                in: textView.string,
+                selectedRange: selection
+            )
+        else {
+            return true
+        }
+        let collapsed = NSRange(location: target, length: 0)
+        if collapsed != selection {
+            textView.setSelectedRange(collapsed)
+            textView.scrollRangeToVisible(collapsed)
+        }
+        return true
+    }
+
     /// Backspace: remove an unused `- ` placeholder row in one action. Returns `false`
     /// whenever `emptyBulletRowDeletionRange(in:)` declines, so ordinary Backspace
     /// behavior stays AppKit's.
@@ -1791,6 +1827,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return moveVertically(.next, firstResponder: panel?.firstResponder)
         case .moveToPreviousLineKeepingColumn:
             return moveVertically(.previous, firstResponder: panel?.firstResponder)
+        case .moveByWord(let direction, let unit):
+            if model.isSimilarRowFocused {
+                model.unfocusSimilarRow()
+            }
+            verticalMovementGoal = nil
+            return Self.moveByWord(direction, unit, firstResponder: panel?.firstResponder)
         case .deleteBackward:
             if Self.deleteCloseTaskCommaInEditableTextView(
                 firstResponder: panel?.firstResponder,

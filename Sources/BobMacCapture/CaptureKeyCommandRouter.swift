@@ -12,6 +12,7 @@ enum CaptureKeyCommand: Equatable {
     case moveToEndOfLineOrNextLine
     case moveToNextLineKeepingColumn
     case moveToPreviousLineKeepingColumn
+    case moveByWord(CaptureWordMotion.Direction, CaptureWordMotion.Unit)
     case deleteBackward
     case escape
     case focusSimilarRow(Int)
@@ -227,6 +228,7 @@ struct CaptureKeyCommandRouter {
         static let d: UInt16 = 2
         static let g: UInt16 = 5
         static let h: UInt16 = 4
+        static let l: UInt16 = 37
         static let r: UInt16 = 15
         static let e: UInt16 = 14
         static let n: UInt16 = 45
@@ -340,6 +342,13 @@ struct CaptureKeyCommandRouter {
             if let focused = similarFocusedCommand(for: event, modifiers: modifiers) {
                 return focused
             }
+            if let motion = Self.wordMotionCommand(
+                for: event,
+                modifiers: modifiers,
+                context: context
+            ) {
+                return motion
+            }
             // Any other key unfocuses and passes through. The controller
             // unfocuses on the nil return, then returns the event to AppKit.
             return nil
@@ -396,6 +405,14 @@ struct CaptureKeyCommandRouter {
 
         if event.keyCode == KeyCode.s, modifiers == .command {
             return .saveTemplate
+        }
+
+        if let motion = Self.wordMotionCommand(
+            for: event,
+            modifiers: modifiers,
+            context: context
+        ) {
+            return motion
         }
 
         switch event.keyCode {
@@ -741,6 +758,31 @@ struct CaptureKeyCommandRouter {
             }
         }
         return nil
+    }
+
+    private static func wordMotionCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        guard event.keyCode == KeyCode.h || event.keyCode == KeyCode.l else {
+            return nil
+        }
+        let keys = modifiers.subtracting(.capsLock)
+        let unit: CaptureWordMotion.Unit
+        if keys == .control {
+            unit = .bigWord
+        } else if keys == [.control, .shift] {
+            unit = .word
+        } else {
+            return nil
+        }
+        guard !context.editorHasMarkedText else {
+            return nil
+        }
+        let direction: CaptureWordMotion.Direction =
+            event.keyCode == KeyCode.l ? .forward : .backward
+        return .moveByWord(direction, unit)
     }
 
     private func taskIDPromptCommand(

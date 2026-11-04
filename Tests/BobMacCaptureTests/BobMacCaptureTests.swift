@@ -1784,6 +1784,133 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterMapsControlHLWordMotions() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}")),
+            .moveByWord(.forward, .bigWord)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 4, modifiers: .control, characters: "\u{8}")),
+            .moveByWord(.backward, .bigWord)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(
+                    keyCode: 37,
+                    modifiers: [.control, .shift],
+                    characters: "\u{c}"
+                )
+            ),
+            .moveByWord(.forward, .word)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(
+                    keyCode: 4,
+                    modifiers: [.control, .shift],
+                    characters: "\u{8}"
+                )
+            ),
+            .moveByWord(.backward, .word)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}"),
+                completionVisible: true
+            ),
+            .moveByWord(.forward, .bigWord)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(
+                    keyCode: 37,
+                    modifiers: [.control, .shift, .capsLock],
+                    characters: "\u{c}"
+                ),
+                completionVisible: true
+            ),
+            .moveByWord(.forward, .word)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 4, modifiers: .control, characters: "\u{8}"),
+                context: CaptureKeyRoutingContext(similarRowFocused: true)
+            ),
+            .moveByWord(.backward, .bigWord)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(
+                    keyCode: 37,
+                    modifiers: [.control, .shift],
+                    characters: "\u{c}"
+                ),
+                context: CaptureKeyRoutingContext(similarRowFocused: true)
+            ),
+            .moveByWord(.forward, .word)
+        )
+
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}"),
+                context: CaptureKeyRoutingContext(editorHasMarkedText: true)
+            )
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 37)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 4)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 37, modifiers: .shift)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 4, modifiers: .shift)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 37, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 4, modifiers: .command)))
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 37, modifiers: [.control, .option]))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 4, modifiers: [.control, .option]))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 37, modifiers: [.control, .command]))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 4, modifiers: [.control, .command]))
+        )
+
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 4, modifiers: .control, characters: "\u{8}"),
+                context: CaptureKeyRoutingContext(relationLabelPromptVisible: true)
+            ),
+            .toggleRelationLabelHiddenSection
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}"),
+                context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 4, modifiers: .control, characters: "\u{8}"),
+                context: CaptureKeyRoutingContext(pickerVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}"),
+                context: CaptureKeyRoutingContext(pickerVisible: true)
+            )
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 37, modifiers: .control, characters: "\u{c}"),
+                context: CaptureKeyRoutingContext(editorLeaderPending: true)
+            ),
+            .rejectEditorLeaderKey
+        )
+    }
+
     func testKeyRouterMatchesPlainBackspaceButNotModifiedVariants() {
         let router = CaptureKeyCommandRouter()
 

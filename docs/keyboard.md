@@ -86,6 +86,10 @@ as Command-Y L does.
 | Ctrl-E | Move to the end of the current physical line; when the caret is already there, move to the end of the next line, stopping on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-J | Move the caret to the next physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-L | Move the caret to the start of the next WORD (vim `W`), a run of non-blank characters or an empty line. From the last WORD, move to the end of the draft | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-H | Move the caret to the start of the current or previous WORD (vim `B`), a run of non-blank characters or an empty line. From the first WORD, move to the start of the draft | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-Shift-L | Move the caret to the start of the next word (vim `w`), a keyword, emoji, or punctuation run. From the last word, move to the end of the draft | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-Shift-H | Move the caret to the start of the current or previous word (vim `b`), a keyword, emoji, or punctuation run. From the first word, move to the start of the draft | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | @ | Insert `@`; Bob may return route completion when the draft contains a global `@@route` declaration | Insert `@` and refresh Bob's completion for the edited draft | Native text-field behavior | Native text-field behavior |
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
@@ -362,6 +366,18 @@ touch the draft's text, undo history, or an in-flight IME composition. Exact Ctr
 is again left to AppKit's native delete-to-end-of-paragraph binding, while
 Ctrl-Shift-K is the custom upward move and Ctrl-U remains Bob's custom line-deleting
 shortcut.
+
+Ctrl-L and Ctrl-H move by WORD (vim `W` / `B`): a WORD is a run of non-blank
+characters, so `@foo#bar` is one WORD but four words (`@`, `foo`, `#`, `bar`).
+Ctrl-Shift-L and Ctrl-Shift-H move by word (vim `w` / `b`): a word is one
+keyword, emoji, or punctuation run. Empty lines are stops; lines holding only
+spaces are not. A selection collapses first — forward motions start from its
+end and backward motions from its start. The motions stop at the start and end
+of the draft rather than wrapping around. They only move the caret, so they never
+touch the draft's text, undo history, or an in-flight IME composition. In the
+editor, Ctrl-H no longer acts as AppKit's delete-backward; Backspace and Ctrl-U
+still delete. Prompts and pickers keep their own Ctrl-H, including the relation
+card's Hidden-section toggle.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
