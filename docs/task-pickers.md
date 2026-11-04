@@ -96,8 +96,20 @@ context), the same card as `:` with scope `/` and caption Go To. When
 `capture-parse` reports `task_goto` in `needs`, the app skips the doomed live
 dry run and shows "Pick a task to open — press Tab to browse".
 
-Bob lists the same open tasks as `:`, in the same order. Every row is
-selectable, including ID-less ones: they show `note.md:line` with no
+Bob lists the same open tasks as `:`, in the same order. Press Command-X to
+toggle completed tasks for this `/` session. With the toggle on, Bob adds all
+closed tasks from the vault catalog, including done archives, reference notes,
+and daily notes; done and canceled rows both appear. Open rows stay first.
+The grouped view adds a trailing **Completed** section in Bob's newest-close-date
+order, with undated rows last. A filtered view ranks open matches before
+completed matches, then ranks by Bob's match score. A completed row shows its
+status glyph, locator, and `Closed Oct 3` date capsule. The capsule reads
+**Go To · + Completed** while the toggle is on. Each new `/` session starts
+with completed tasks hidden; Escape and the reopen chip preserve the session's
+toggle state. On older Bob, Command-X leaves the picker open and shows
+**Update bob to show completed tasks**.
+
+Every row is selectable, including ID-less ones: open rows show `note.md:line` with no
 `plus.circle` suggestion and no Add block ID prompt. The detail strip reads
 "↩ Opens note.md at ^id" or "↩ Opens note.md at line N". A scheduled date
 still shows as context; there is no "pulls it forward" warning. Accepting a
@@ -112,9 +124,10 @@ filter, then cancels to the reopen chip; Backspace on an empty filter removes
 the `/` token and the idle agenda returns. Control-C on a Go To draft
 discards it instead of pushing it to the canceled-draft stash.
 
-Go To Picker keys: Return/Tab/Command-Return/Control-Return Go To, Shift-Return consumed,
-Escape Clear/Cancel, Backspace on empty filter removes `/`, Control-C
-discards.
+Go To Picker keys: Return/Tab/Command-Return/Control-Return Go To, Command-X
+Show/Hide Completed, Shift-Return consumed, Escape Clear/Cancel, Backspace on
+empty filter removes `/`, Control-C discards. Command-X replaces the native cut
+shortcut only while the Go To picker is open.
 
 ## Parent Task Picker
 

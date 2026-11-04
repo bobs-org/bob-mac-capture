@@ -3,9 +3,9 @@ title: "Mac Capture protocol"
 description: "Bob Mac Capture subprocess commands, JSON boundaries, capability requirements, and compatibility."
 ---
 
-Bob Mac Capture owns presentation, process orchestration, and settings. Capture grammar, completion data, previews, and vault mutation belong to `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). New capture behavior lands in `bob` and [Capture syntax](https://bobs-org.github.io/reference/capture-syntax/) first; the app then decodes and presents it.
+Bob Mac Capture owns presentation and process orchestration. Bob owns capture grammar, completion, previews, and vault mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). New capture contracts land in `bob` first; the app decodes and presents them.
 
-Capabilities are detected per response, never pinned to release numbers: unknown span kinds decode as neutral text, unknown contexts as generic rows, and absent additive fields decode to the behavior in the compatibility table. Upgrade `bob` when a row says so; nothing below invents a minimum release.
+Capabilities are response-driven: unknown spans render neutral, unknown contexts generic, and missing fields follow the compatibility table. Upgrade `bob` where noted.
 
 ## Capability requirements
 
@@ -274,7 +274,7 @@ Template saves send `--template-origin` only after a successful template-list re
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
-- `capture-complete --all-tasks --cursor BYTE --format json` (candidates, replacements)
+- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows only when Go To requests them)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` is omitted only when the draft's accepted parse reported a `%c` directive span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
@@ -331,7 +331,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
 | `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label` | `@@` absorbs eligible markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token | With an older bob, `+` types literally; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+` and relation-label attachment |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
-| `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
+| `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
+| `--closed-tasks` in Go To | Command-X adds closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |
 | `pomodoro_name` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |

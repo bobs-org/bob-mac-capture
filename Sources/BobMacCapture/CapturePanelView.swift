@@ -692,7 +692,8 @@ struct CapturePanelView: View {
         } else if model.pickerVisible {
             CapturePickerKeyHints(
                 source: model.picker?.source ?? .activeTask,
-                showOperatorHint: model.pickerFilterIsEmpty
+                showOperatorHint: model.pickerFilterIsEmpty,
+                includesClosedTasks: model.picker?.includesClosedTasks ?? false
             )
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(2)

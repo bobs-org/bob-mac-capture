@@ -681,6 +681,9 @@ final class CapturePanelModel: ObservableObject {
     /// counter reads, so observation stays at or under 1 Hz.
     static let clipboardPollIntervalNanoseconds: UInt64 = 1_000_000_000
     private var similarTasksGeneration: UInt64 = 0
+    /// Drops older Go To completed-task toggle snapshots when the user presses
+    /// Command-X again or this picker session is replaced.
+    private var gotoClosedTasksGeneration: UInt64 = 0
     private var relationLabelSuggestionGeneration: UInt64 = 0
     /// In-flight `relation_label` probe. Submit must not start a second
     /// request for the same prompt/draft/authored label: bumping generation
@@ -6029,8 +6032,10 @@ final class CapturePanelModel: ObservableObject {
         snapshotIsPartial: Bool,
         dependencyOwner: DependencyOwner? = nil,
         taskCompleteContinuationKeys: [String] = [],
-        opensWithoutSelection: Bool = false
+        opensWithoutSelection: Bool = false,
+        includesClosedTasks: Bool = false
     ) {
+        gotoClosedTasksGeneration &+= 1
         let presentation = index.presentation(filter: query)
         pickerIndex = index
         pickerPresentation = presentation
@@ -6058,7 +6063,8 @@ final class CapturePanelModel: ObservableObject {
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLine,
             dependencyOwner: dependencyOwner,
-            taskCompleteContinuationKeys: taskCompleteContinuationKeys
+            taskCompleteContinuationKeys: taskCompleteContinuationKeys,
+            includesClosedTasks: includesClosedTasks
         )
         pickerMarkerHighlight = markerRange
         applyPickerMarkerHighlight()
@@ -6067,6 +6073,145 @@ final class CapturePanelModel: ObservableObject {
         editorInputLocked = true
         applyOwnerModeParentStatus(source: source)
         requestFocus(.pickerFilter)
+    }
+
+    /// Toggle completed rows for the current Go To session. Each fetch is a
+    /// full Bob snapshot at the replacement start; only the latest response
+    /// for the unchanged draft/session can replace the rows.
+    func toggleGotoClosedTasks() {
+        guard let openPicker = picker,
+            openPicker.source == .taskGoto,
+            plainDraft == openPicker.draftSnapshot,
+            let processClient
+        else {
+            return
+        }
+
+        let includesClosedTasks = !openPicker.includesClosedTasks
+        gotoClosedTasksGeneration &+= 1
+        let generation = gotoClosedTasksGeneration
+        let draft = openPicker.draftSnapshot
+        let range = openPicker.replacementRange
+        picker?.includesClosedTasks = includesClosedTasks
+
+        Task { [weak self, processClient] in
+            do {
+                let snapshot = try await processClient.captureComplete(
+                    draft,
+                    cursor: range.start,
+                    includeClosedTasks: includesClosedTasks
+                )
+                await MainActor.run {
+                    guard let self,
+                        self.isCurrentGotoClosedTasksFetch(
+                            generation: generation,
+                            draft: draft,
+                            range: range,
+                            includesClosedTasks: includesClosedTasks
+                        ),
+                        snapshot.context == "task_goto",
+                        snapshot.replacement == range
+                    else {
+                        return
+                    }
+                    self.applyGotoClosedTasksSnapshot(
+                        snapshot, includesClosedTasks: includesClosedTasks)
+                }
+            } catch let error as BobClientError {
+                let unsupportedClosedTasks: Bool
+                if case .unsupportedOption(let option) = error {
+                    unsupportedClosedTasks = option == "--closed-tasks"
+                } else {
+                    unsupportedClosedTasks = false
+                }
+                let errorMessage = error.description
+                await MainActor.run {
+                    guard let self,
+                        self.isCurrentGotoClosedTasksFetch(
+                            generation: generation,
+                            draft: draft,
+                            range: range,
+                            includesClosedTasks: includesClosedTasks
+                        )
+                    else {
+                        return
+                    }
+                    if unsupportedClosedTasks {
+                        self.picker?.includesClosedTasks = false
+                        let updateHint = "Update bob to show completed tasks"
+                        if self.picker?.warnings.contains(updateHint) != true {
+                            self.picker?.warnings.append(updateHint)
+                        }
+                        self.announceStatus(updateHint)
+                    } else {
+                        self.picker?.includesClosedTasks = !includesClosedTasks
+                        self.announceStatus(errorMessage)
+                    }
+                }
+            } catch {
+                let errorMessage = error.localizedDescription
+                await MainActor.run {
+                    guard let self,
+                        self.isCurrentGotoClosedTasksFetch(
+                            generation: generation,
+                            draft: draft,
+                            range: range,
+                            includesClosedTasks: includesClosedTasks
+                        )
+                    else {
+                        return
+                    }
+                    self.picker?.includesClosedTasks = !includesClosedTasks
+                    self.announceStatus(errorMessage)
+                }
+            }
+        }
+    }
+
+    private func isCurrentGotoClosedTasksFetch(
+        generation: UInt64,
+        draft: String,
+        range: CaptureRange,
+        includesClosedTasks: Bool
+    ) -> Bool {
+        gotoClosedTasksGeneration == generation
+            && plainDraft == draft
+            && picker?.source == .taskGoto
+            && picker?.draftSnapshot == draft
+            && picker?.replacementRange == range
+            && picker?.includesClosedTasks == includesClosedTasks
+    }
+
+    private func applyGotoClosedTasksSnapshot(
+        _ snapshot: CaptureCompletionResponse,
+        includesClosedTasks: Bool
+    ) {
+        guard var openPicker = picker else {
+            return
+        }
+        let index = TaskLinkPickerIndex(candidates: snapshot.candidates, mode: .taskGoto)
+        let presentation = index.presentation(filter: openPicker.filterText)
+        let selectedID =
+            openPicker.selectedRowID.flatMap {
+                presentation.rowsByID[$0] == nil ? nil : $0
+            } ?? CapturePickerNavigation.first(in: presentation.orderedRowIDs)
+
+        pickerIndex = .taskGoto(index)
+        pickerPresentation = presentation
+        openPicker.candidates = snapshot.candidates
+        openPicker.warnings = snapshot.warnings
+        openPicker.includesClosedTasks = includesClosedTasks
+        openPicker.selectedRowID = selectedID
+        openPicker.visibleRowBudget = presentation.visibleRowBudget
+        openPicker.snapshotIsPartial = false
+        picker = openPicker
+
+        let countText =
+            snapshot.candidates.count == 1
+            ? "1 task"
+            : "\(snapshot.candidates.count) tasks"
+        announceStatus(
+            "\(includesClosedTasks ? "Showing" : "Hiding") completed tasks, \(countText)")
     }
 
     private func applyOwnerModeParentStatus(source: CapturePickerSource) {
@@ -7208,6 +7353,7 @@ final class CapturePanelModel: ObservableObject {
         guard let openPicker = picker else {
             return
         }
+        gotoClosedTasksGeneration &+= 1
         let range = openPicker.replacementRange
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         picker = nil
@@ -7231,7 +7377,8 @@ final class CapturePanelModel: ObservableObject {
             replacementRange: range,
             cursor: openPicker.restoreCursor,
             candidates: openPicker.candidates,
-            warnings: openPicker.warnings
+            warnings: openPicker.warnings,
+            includesClosedTasks: openPicker.includesClosedTasks
         )
         if case .projectTaskMove(let context) = openPicker.source {
             statusText = movePickerEscStatus(context: context)
@@ -7519,7 +7666,13 @@ final class CapturePanelModel: ObservableObject {
             // lives). A keystroke in the meantime abandons the open.
             let refetchCursor = chip.source.isWikilinkTask ? r.start + 2 : r.start
             Task { [weak self, processClient] in
-                guard let snapshot = try? await processClient.captureComplete(draft, cursor: refetchCursor) else {
+                guard
+                    let snapshot = try? await processClient.captureComplete(
+                        draft,
+                        cursor: refetchCursor,
+                        includeClosedTasks: chip.source == .taskGoto && chip.includesClosedTasks
+                    )
+                else {
                     return
                 }
                 await MainActor.run {
@@ -7591,7 +7744,8 @@ final class CapturePanelModel: ObservableObject {
                             range: r,
                             restoreCursor: chip.cursor,
                             query: query,
-                            snapshotIsPartial: false
+                            snapshotIsPartial: false,
+                            includesClosedTasks: chip.includesClosedTasks
                         )
                     case .dependency, .blockedTask, .linksTo, .linkedFrom:
                         let direction = chip.source.dependencyDirection ?? .prerequisite
@@ -7729,7 +7883,8 @@ final class CapturePanelModel: ObservableObject {
                 range: r,
                 restoreCursor: chip.cursor,
                 query: query,
-                snapshotIsPartial: false
+                snapshotIsPartial: false,
+                includesClosedTasks: chip.includesClosedTasks
             )
         case .dependency, .blockedTask, .linksTo, .linkedFrom:
             let direction = chip.source.dependencyDirection ?? .prerequisite

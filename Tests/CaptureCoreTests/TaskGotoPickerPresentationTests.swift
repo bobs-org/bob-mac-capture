@@ -14,6 +14,18 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
         )
     }
 
+    private func closedCandidates() throws -> [CaptureCompletionCandidate] {
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/task-goto-complete-closed.json")
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any]
+        )
+        let data = try JSONSerialization.data(withJSONObject: try XCTUnwrap(object["candidates"]))
+        return try JSONDecoder().decode([CaptureCompletionCandidate].self, from: data)
+    }
+
     func testDecodesTaskGotoDestinationFieldsAndBuildsSelectableRows() throws {
         let candidates = try candidates()
         XCTAssertEqual(candidates[0].notePath, "Areas/dev.md")
@@ -26,7 +38,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.mode, .grouped)
         XCTAssertEqual(presentation.countText, "3 tasks")
 
-        let idless = try XCTUnwrap(presentation.row(id: "dev|42:abcd1234"))
+        let idless = try XCTUnwrap(presentation.row(id: "Areas/dev.md|42:abcd1234"))
         XCTAssertTrue(idless.isSelectable)
         XCTAssertNil(idless.insertion)
         XCTAssertNil(idless.pendingBlockID)
@@ -55,14 +67,20 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
 
         let gotoAll = goto.presentation(filter: "")
         let linkAll = link.presentation(filter: "")
-        XCTAssertEqual(gotoAll.orderedRowIDs, linkAll.orderedRowIDs)
+        XCTAssertEqual(
+            gotoAll.sections.flatMap(\.rows).map(\.displayText),
+            linkAll.sections.flatMap(\.rows).map(\.displayText)
+        )
 
         let gotoMatches = goto.presentation(filter: "/ship")
         let linkMatches = link.presentation(filter: ":ship")
-        XCTAssertEqual(gotoMatches.orderedRowIDs, linkMatches.orderedRowIDs)
-        XCTAssertEqual(gotoMatches.orderedRowIDs, ["launch|9:beef9876"])
+        XCTAssertEqual(
+            gotoMatches.sections.flatMap(\.rows).map(\.displayText),
+            linkMatches.sections.flatMap(\.rows).map(\.displayText)
+        )
+        XCTAssertEqual(gotoMatches.orderedRowIDs, ["Projects/Launch.md|9:beef9876"])
 
-        let project = try XCTUnwrap(gotoMatches.row(id: "launch|9:beef9876"))
+        let project = try XCTUnwrap(gotoMatches.row(id: "Projects/Launch.md|9:beef9876"))
         XCTAssertEqual(
             goto.actionLine(for: project),
             "↩ Opens Projects/Launch.md at ^ship-it"
@@ -72,7 +90,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
             "/Users/example/Vault/Projects/Launch.md"
         )
 
-        let inbox = try XCTUnwrap(gotoAll.row(id: "inbox|4:1020abcd"))
+        let inbox = try XCTUnwrap(gotoAll.row(id: "Inbox.md|4:1020abcd"))
         XCTAssertEqual(
             goto.actionLine(for: inbox),
             "↩ Opens Inbox.md at line 4"
@@ -90,7 +108,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
             notePath: "Inbox.md"
         )
         let index = TaskLinkPickerIndex(candidates: [candidate], mode: .taskGoto)
-        let row = try XCTUnwrap(index.presentation(filter: "/").row(id: "inbox|1:abcd1234"))
+        let row = try XCTUnwrap(index.presentation(filter: "/").row(id: "Inbox.md|1:abcd1234"))
 
         XCTAssertTrue(row.isSelectable)
         XCTAssertNil(row.insertion)
@@ -99,15 +117,85 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
         XCTAssertEqual(index.actionLine(for: row), "Task location unavailable")
     }
 
+    func testCompletedTasksTrailOpenRowsAndUseVaultPathKeys() throws {
+        let all = try closedCandidates()
+        let index = TaskLinkPickerIndex(candidates: all, mode: .taskGoto)
+        let presentation = index.presentation(filter: "/")
+        let openCandidates = all.filter { $0.group != "completed" }
+        let openOnly = TaskLinkPickerIndex(candidates: openCandidates, mode: .taskGoto)
+            .presentation(filter: "/")
+
+        XCTAssertEqual(
+            Array(presentation.orderedRowIDs.prefix(openOnly.orderedRowIDs.count)),
+            openOnly.orderedRowIDs
+        )
+        XCTAssertEqual(presentation.sections.last?.title, "Completed")
+        XCTAssertEqual(presentation.sections.last?.kind, .other)
+        XCTAssertEqual(
+            presentation.sections.last?.rows.map(\.id),
+            [
+                "done/old.md|12:deadbeef", "mac_inbox.md|13:cafebabe",
+                "References/old.md|12:deadbeef",
+            ]
+        )
+
+        let done = try XCTUnwrap(presentation.row(id: "done/old.md|12:deadbeef"))
+        XCTAssertEqual(done.glyph, .task(.done))
+        XCTAssertEqual(done.scheduledText, "Closed Oct 31, 2020")
+        XCTAssertEqual(done.taskGotoDestination?.target, "/tmp/bob-fixture/done/old.md")
+        XCTAssertEqual(
+            index.actionLine(for: done),
+            "↩ Opens done/old.md at ^old-fix"
+        )
+        let duplicateLocator = try XCTUnwrap(presentation.row(id: "References/old.md|12:deadbeef"))
+        XCTAssertEqual(duplicateLocator.route, "shared")
+    }
+
+    func testFilteredGoToMatchesKeepOpenTasksBeforeCompletedTasks() throws {
+        var all = try closedCandidates()
+        all.insert(
+            CaptureCompletionCandidate(
+                replacement: "",
+                route: "old-work",
+                taskRef: "1:11111111",
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Old issue follow-up",
+                line: 1,
+                group: "note",
+                notePath: "Areas/old-work.md"
+            ),
+            at: 0
+        )
+        let index = TaskLinkPickerIndex(candidates: all, mode: .taskGoto)
+        let rows = index.presentation(filter: "/old").sections.flatMap(\.rows)
+
+        XCTAssertGreaterThan(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, "Areas/old-work.md|1:11111111")
+        XCTAssertTrue(
+            rows.dropFirst().allSatisfy {
+                $0.id.contains("|") && $0.id != "Areas/old-work.md|1:11111111"
+            })
+    }
+
     func testTaskGotoSourceNeedAndCompletionContextStrings() throws {
         XCTAssertEqual(CapturePickerSource.taskGoto.triggerByte, 47)
         XCTAssertEqual(CapturePickerSource.taskGoto.scopeSymbolText, "/")
         XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To")
         XCTAssertEqual(
+            CapturePickerSource.taskGoto.scopeCaption(includesClosedTasks: true),
+            "Go To · + Completed"
+        )
+        XCTAssertEqual(
             CapturePickerSource.taskGoto.filterPlaceholder,
             "Search tasks to open by text, note, or ^id"
         )
         XCTAssertEqual(CapturePickerSource.taskGoto.appearedAnnouncementPrefix, "Go To")
+        XCTAssertEqual(
+            CapturePickerSource.taskGoto.keyHintItems(includesClosedTasks: true)
+                .first(where: { $0.keys == "⌘X" })?.action,
+            "Hide Completed"
+        )
         XCTAssertEqual(
             CapturePickerNeed.taskGoto.statusText,
             "Pick a task to open — press Tab to browse"

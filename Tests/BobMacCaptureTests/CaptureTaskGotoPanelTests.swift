@@ -90,7 +90,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         }
         model.panelDismisser = { dismissed += 1 }
 
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: false)
 
         XCTAssertEqual(opened, [expectedURL(line: 6, ref: "6:41d049f2", blockID: "deep-fix")])
         XCTAssertEqual(dismissed, 1)
@@ -108,7 +108,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             opened.append(url)
             completion(true)
         }
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: true)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: true)
         XCTAssertEqual(opened.count, 1)
         XCTAssertEqual(model.plainDraft, "")
     }
@@ -120,7 +120,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             opened.append(url)
             completion(true)
         }
-        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|7:446bd057", submitAfterInsert: false)
         XCTAssertEqual(opened, [expectedURL(line: 7, ref: "7:446bd057")])
         XCTAssertFalse(model.taskIDPromptVisible)
         XCTAssertEqual(model.plainDraft, "")
@@ -133,7 +133,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             opened.append(url)
             completion(true)
         }
-        model.acceptPickerRowAndStart(id: "sase|6:41d049f2")
+        model.acceptPickerRowAndStart(id: "sase.md|6:41d049f2")
         XCTAssertTrue(opened.isEmpty)
         XCTAssertEqual(model.plainDraft, "/")
         XCTAssertTrue(model.pickerVisible)
@@ -148,7 +148,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             completion(false)
         }
         model.panelDismisser = { dismissed += 1 }
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: false)
         XCTAssertEqual(dismissed, 0)
         XCTAssertTrue(model.pickerVisible)
         XCTAssertEqual(model.plainDraft, "/")
@@ -177,7 +177,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             opened += 1
             completion(true)
         }
-        model.acceptPickerRow(id: "inbox|1:abcd1234", submitAfterInsert: false)
+        model.acceptPickerRow(id: "Inbox.md|1:abcd1234", submitAfterInsert: false)
         XCTAssertEqual(opened, 0)
         XCTAssertTrue(model.pickerVisible)
         XCTAssertEqual(model.plainDraft, "/")
@@ -195,9 +195,9 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             opened.append(url)
             pending = completion
         }
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: false)
         XCTAssertTrue(model.taskGotoDispatchInFlight)
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: true)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: true)
         XCTAssertEqual(opened.count, 1)
         pending?(true)
         XCTAssertEqual(model.plainDraft, "")
@@ -212,7 +212,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             completion(true)
         }
         model.plainDraft = "/changed"
-        model.acceptPickerRow(id: "sase|6:41d049f2", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|6:41d049f2", submitAfterInsert: false)
         XCTAssertEqual(opened, 0)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.plainDraft, "/changed")
@@ -223,7 +223,8 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(
             pickerVisible: true,
-            pickerSourceIsTaskLink: false
+            pickerSourceIsTaskLink: false,
+            pickerSourceIsTaskGoto: true
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36), context: context),
@@ -248,6 +249,30 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 8, modifiers: .control), context: context),
             .stashDraftAndClose
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 7, modifiers: .command, characters: "x"),
+                context: context
+            ),
+            .toggleGotoClosedTasks
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 7, modifiers: .command, characters: "x"),
+                context: CaptureKeyRoutingContext(
+                    keyIsRepeat: true,
+                    pickerVisible: true,
+                    pickerSourceIsTaskGoto: true
+                )
+            ),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 7, modifiers: .command, characters: "x"),
+                context: CaptureKeyRoutingContext(pickerVisible: true)
+            )
         )
         let inFlight = CaptureKeyRoutingContext(
             pickerVisible: true,
@@ -274,6 +299,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
 
         XCTAssertTrue(model.pickerSourceIsTaskGoto)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
         XCTAssertFalse(model.pickerSourceIsTaskLink)
         XCTAssertEqual(model.picker?.filterText, "")
         XCTAssertEqual(model.picker?.candidates.count, 8)
@@ -284,6 +310,120 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
         XCTAssertFalse(record.contains("argv=capture --"))
         XCTAssertFalse(record.contains("argv=capture-task-id"))
+    }
+
+    func testCommandXShowsAndHidesCompletedTasksWhileKeepingFilterAndSelection() async throws {
+        let (model, recordURL) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.updatePickerFilter("fix")
+        let selectedID = model.picker?.selectedRowID
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            model.picker?.includesClosedTasks == true
+                && model.picker?.candidates.count == 11
+        }
+        XCTAssertEqual(model.picker?.filterText, "fix")
+        XCTAssertEqual(model.picker?.selectedRowID, selectedID)
+        XCTAssertNotNil(model.pickerPresentation?.row(id: "done/old.md|12:deadbeef"))
+        XCTAssertEqual(model.statusText, "Showing completed tasks, 11 tasks")
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            model.picker?.includesClosedTasks == false
+                && model.picker?.candidates.count == 8
+                && model.statusText == "Hiding completed tasks, 8 tasks"
+        }
+        XCTAssertEqual(model.picker?.filterText, "fix")
+        XCTAssertNil(model.pickerPresentation?.row(id: "done/old.md|12:deadbeef"))
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --closed-tasks --cursor 0 --format json -- /"))
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 0 --format json -- /"))
+    }
+
+    func testCompletedToggleSurvivesEscapeChipAndReopen() async throws {
+        let (model, _) = try gotoModel()
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+
+        model.escapePicker()
+        XCTAssertEqual(model.pickerChip?.includesClosedTasks, true)
+        model.openPickerFromChip()
+
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
+        XCTAssertEqual(model.picker?.candidates.count, 11)
+    }
+
+    func testUnsupportedClosedTasksKeepsPickerOpenWithUpdateHint() async throws {
+        let (model, _) = try gotoModel(extraEnvironment: ["FAKE_BOB_CLOSED_TASKS_UNSUPPORTED": "1"])
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            model.picker?.warnings.contains("Update bob to show completed tasks") == true
+        }
+
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertEqual(model.statusText, "Update bob to show completed tasks")
+    }
+
+    func testSecondToggleWinsOverAnEarlierSlowSnapshot() async throws {
+        let (model, recordURL) = try gotoModel(extraEnvironment: ["FAKE_BOB_DELAY_SECONDS": "0.4"])
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.toggleGotoClosedTasks()
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains("--closed-tasks") == true
+        }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.statusText == "Hiding completed tasks, 8 tasks" }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+    }
+
+    func testAcceptingCompletedRowOpensItsVaultArchivePath() async throws {
+        let (model, _) = try gotoModel()
+        var opened: [URL] = []
+        model.taskGotoOpener = { url, completion in
+            opened.append(url)
+            completion(true)
+        }
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.toggleGotoClosedTasks()
+        await waitUntil { model.picker?.candidates.count == 11 }
+
+        model.acceptPickerRow(id: "done/old.md|12:deadbeef", submitAfterInsert: false)
+
+        XCTAssertEqual(
+            opened,
+            [
+                ObsidianOpenURL.taskGotoURL(
+                    path: "/tmp/bob-fixture/done/old.md",
+                    line: 12,
+                    ref: "12:deadbeef",
+                    blockID: "old-fix"
+                )!
+            ]
+        )
     }
 
     func testSlashChipReopensWithoutRefetch() async throws {
@@ -360,7 +500,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
 
-        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+        model.acceptPickerRow(id: "sase.md|7:446bd057", submitAfterInsert: false)
 
         XCTAssertEqual(opened, [expectedURL(line: 7, ref: "7:446bd057")])
         XCTAssertFalse(model.taskIDPromptVisible)
@@ -440,18 +580,21 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
 
     private func gotoModel(
         recordURL: URL? = nil,
-        stash: CanceledDraftStash? = nil
+        stash: CanceledDraftStash? = nil,
+        extraEnvironment: [String: String] = [:]
     ) throws -> (CapturePanelModel, URL) {
         let url = recordURL ?? FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
+        var environment = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+            "FAKE_BOB_RECORD_PATH": url.path,
+        ]
+        environment.merge(extraEnvironment) { _, replacement in replacement }
         let model = CapturePanelModel(
             processClient: BobProcessClient(
                 executablePath: try fakeBobPath(),
-                environment: [
-                    "HOME": "/tmp",
-                    "PATH": "/usr/bin:/bin",
-                    "FAKE_BOB_RECORD_PATH": url.path,
-                ]
+                environment: environment
             ),
             debounceNanoseconds: 5_000_000,
             canceledDraftStash: stash

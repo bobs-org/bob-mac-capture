@@ -322,6 +322,13 @@ public enum CapturePickerSource: Equatable, Sendable {
     /// Scope-token caption (`Active Tasks`, `Tasks`, `New ID`) shown in the
     /// filter bar capsule.
     public var scopeCaption: String {
+        scopeCaption(includesClosedTasks: false)
+    }
+
+    public func scopeCaption(includesClosedTasks: Bool) -> String {
+        if self == .taskGoto, includesClosedTasks {
+            return "Go To · + Completed"
+        }
         switch self {
         case .activeTask:
             return "Active Tasks"
@@ -612,13 +619,16 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     /// Footer key hints in display order. Control-Return sits just before
     /// Escape so ViewThatFits can drop it first.
-    public func keyHintItems() -> [(keys: String, action: String)] {
-        insertingControlReturnHint(into: coreKeyHintItems())
+    public func keyHintItems(includesClosedTasks: Bool = false) -> [(keys: String, action: String)]
+    {
+        insertingControlReturnHint(into: coreKeyHintItems(includesClosedTasks: includesClosedTasks))
     }
 
     /// Full hints, then the same list without Control-Return.
-    public func keyHintVariants() -> [[(keys: String, action: String)]] {
-        let items = keyHintItems()
+    public func keyHintVariants(includesClosedTasks: Bool = false) -> [[(
+        keys: String, action: String
+    )]] {
+        let items = keyHintItems(includesClosedTasks: includesClosedTasks)
         let compact = items.filter { $0.keys != "⌃↩" }
         if compact.count == items.count {
             return [items]
@@ -649,7 +659,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         return items
     }
 
-    private func coreKeyHintItems() -> [(keys: String, action: String)] {
+    private func coreKeyHintItems(
+        includesClosedTasks: Bool
+    ) -> [(keys: String, action: String)] {
         switch self {
         case .activeTask:
             return [
@@ -667,12 +679,15 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("esc", "Clear / Cancel"),
             ]
         case .taskGoto:
-            return [
+            var items: [(keys: String, action: String)] = [
                 ("↑↓", "Move"),
                 ("↩", "Open"),
                 ("⌘↩", "Open"),
                 ("esc", "Clear / Cancel"),
             ]
+            let toggleHint = ("⌘X", includesClosedTasks ? "Hide Completed" : "Show Completed")
+            items.insert(toggleHint, at: items.count - 1)
+            return items
         case .dependency:
             // Shift-Return has no start-session behavior on this source:
             // dependencies never smuggle a Pomodoro start into the capture.
@@ -752,13 +767,22 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     /// Footer key-hints accessibility label.
     public var keyHintsAccessibilityLabel: String {
+        keyHintsAccessibilityLabel(includesClosedTasks: false)
+    }
+
+    public func keyHintsAccessibilityLabel(includesClosedTasks: Bool) -> String {
         switch self {
         case .activeTask:
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .taskLink:
             return "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Control Return to link, capture, and open, Escape to clear or cancel."
         case .taskGoto:
-            return "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, Escape to clear or cancel."
+            let toggle =
+                includesClosedTasks
+                ? "Command X to hide completed tasks"
+                : "Command X to show completed tasks"
+            return
+                "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, \(toggle), Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Control Return to use it, capture, and open, Escape to clear or cancel."
         case .blockedTask:

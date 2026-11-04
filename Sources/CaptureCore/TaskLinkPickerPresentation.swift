@@ -10,9 +10,9 @@ public enum TaskLinkPickerMode: Equatable, Sendable {
 /// One fetched `task_link` or `task_goto` snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
 /// Presents `CapturePickerPresentation` values for the source-agnostic card.
-/// Rows are keyed by `"route|ref"` (never by `replacement`, which Bob sends
-/// as `""` for ID-less tasks), and the grouped view follows Bob's order and
-/// `group` instead of the `^` buckets.
+/// Rows are keyed by `"route|ref"` for links and `"note_path|ref"` for Go To
+/// (never by `replacement`, which Bob sends as `""` for ID-less tasks). The
+/// grouped view follows Bob's order and `group` instead of the `^` buckets.
 public struct TaskLinkPickerIndex: Sendable {
     private let entries: [TaskLinkPickerIndexEntry]
     public let mode: TaskLinkPickerMode
@@ -27,7 +27,7 @@ public struct TaskLinkPickerIndex: Sendable {
         var seen: Set<String> = []
         var entries: [TaskLinkPickerIndexEntry] = []
         for candidate in candidates {
-            let key = Self.key(for: candidate)
+            let key = Self.key(for: candidate, mode: mode)
             if seen.contains(key) {
                 continue
             }
@@ -53,8 +53,12 @@ public struct TaskLinkPickerIndex: Sendable {
 
     /// Deduped row key: route plus the stale-safe task ref. ID-less rows
     /// share Bob's empty replacement, so keying on it would collapse them.
-    static func key(for candidate: CaptureCompletionCandidate) -> String {
-        "\(candidate.route ?? "")|\(candidate.taskRef ?? "")"
+    static func key(for candidate: CaptureCompletionCandidate, mode: TaskLinkPickerMode) -> String {
+        let locator =
+            mode == .taskGoto
+            ? candidate.notePath ?? candidate.route ?? ""
+            : candidate.route ?? ""
+        return "\(locator)|\(candidate.taskRef ?? "")"
     }
 
     public var count: Int {
@@ -133,6 +137,7 @@ public struct TaskLinkPickerIndex: Sendable {
         var pomodoroRows: [Int: [CapturePickerRow]] = [:]
         var inProgress: [CapturePickerRow] = []
         var next: [CapturePickerRow] = []
+        var completed: [CapturePickerRow] = []
         var noteOrder: [String] = []
         var noteRows: [String: [CapturePickerRow]] = [:]
         var noteKinds: [String: String?] = [:]
@@ -149,6 +154,16 @@ public struct TaskLinkPickerIndex: Sendable {
                 inProgress.append(groupedRow(for: entry))
             case .next:
                 next.append(groupedRow(for: entry))
+            case .completed where mode == .taskGoto:
+                completed.append(groupedRow(for: entry))
+            case .completed:
+                let route = entry.route ?? "Unknown"
+                if noteRows[route] == nil {
+                    noteOrder.append(route)
+                    noteRows[route] = []
+                    noteKinds[route] = entry.candidate.noteKind
+                }
+                noteRows[route]!.append(groupedNoteRow(for: entry))
             case .queued, .note:
                 // A queued row without a Pomodoro line cannot happen per the
                 // contract; bucket it with its note rather than dropping it.
@@ -201,6 +216,15 @@ public struct TaskLinkPickerIndex: Sendable {
                 rows: noteRows[route] ?? []
             ))
         }
+        if !completed.isEmpty {
+            sections.append(
+                CapturePickerSection(
+                    id: "completed",
+                    kind: .other,
+                    title: "Completed",
+                    rows: completed
+                ))
+        }
         return sections
     }
 
@@ -244,6 +268,14 @@ public struct TaskLinkPickerIndex: Sendable {
             }
         }
         return ranked.sorted {
+            if mode == .taskGoto, $0.entry.group != $1.entry.group {
+                if $0.entry.group == .completed {
+                    return false
+                }
+                if $1.entry.group == .completed {
+                    return true
+                }
+            }
             if $0.score != $1.score {
                 return $0.score > $1.score
             }
@@ -301,7 +333,7 @@ public struct TaskLinkPickerIndex: Sendable {
             insertion = candidate.replacement
         }
         return CapturePickerRow(
-            id: Self.key(for: candidate),
+            id: Self.key(for: candidate, mode: mode),
             bobIndex: entry.bobIndex,
             glyph: .task(entry.status),
             displayText: entry.display.text,
@@ -316,7 +348,8 @@ public struct TaskLinkPickerIndex: Sendable {
             depth: depth,
             insertion: insertion,
             pendingBlockID: pending,
-            scheduledText: candidate.scheduled.map { Self.formattedScheduledDate($0) },
+            scheduledText: candidate.closed.map { "Closed \(Self.formattedScheduledDate($0))" }
+                ?? candidate.scheduled.map { Self.formattedScheduledDate($0) },
             pullsForward: mode == .taskLink && candidate.pullsForward,
             taskGotoDestination: destination(for: candidate),
             detail: CapturePickerRowDetail(
@@ -454,6 +487,9 @@ public struct TaskLinkPickerIndex: Sendable {
         } else if let route = entry.candidate.route {
             parts.append("Note \(route)")
         }
+        if let closed = entry.candidate.closed {
+            parts.append("Closed \(Self.formattedScheduledDate(closed))")
+        }
         parts.append(pomodoroSummary(for: entry))
         return parts.joined(separator: ". ") + "."
     }
@@ -464,11 +500,12 @@ public struct TaskLinkPickerIndex: Sendable {
 /// Bob's `group` wire value, in precedence order. A missing or unknown group
 /// (including the retired `now` group) falls back to `note` so the row
 /// still appears under its note.
-private enum TaskLinkGroup: Sendable {
+private enum TaskLinkGroup: Equatable, Sendable {
     case queued
     case inProgress
     case next
     case note
+    case completed
 
     init(wireValue: String?) {
         switch wireValue {
@@ -478,6 +515,8 @@ private enum TaskLinkGroup: Sendable {
             self = .inProgress
         case "next":
             self = .next
+        case "completed":
+            self = .completed
         default:
             self = .note
         }

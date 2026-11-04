@@ -81,6 +81,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptPickerRowAndContinue
     case acceptPickerRowAndSubmit
     case acceptPickerRowAndSubmitAndOpen
+    case toggleGotoClosedTasks
     case nextPickerRow
     case previousPickerRow
     case pagePickerRowsDown
@@ -187,6 +188,7 @@ struct CaptureKeyCommandRouter {
         static let s: UInt16 = 1
         static let t: UInt16 = 17
         static let c: UInt16 = 8
+        static let x: UInt16 = 7
         static let d: UInt16 = 2
         static let g: UInt16 = 5
         static let h: UInt16 = 4
@@ -736,7 +738,8 @@ struct CaptureKeyCommandRouter {
     }
 
     /// Keyboard while the capture picker is open. Every key the picker
-    /// table leaves to native field editing (printables, Cmd-A/C/V/X/Z,
+    /// table leaves to native field editing (printables, Cmd-A/C/V/X/Z except
+    /// Command-X in Go To,
     /// Ctrl-A/E, Left/Right) returns nil here — notably Ctrl-A/E, which must
     /// not fall through to the editor line-edge commands.
     private func pickerCommand(
@@ -745,6 +748,11 @@ struct CaptureKeyCommandRouter {
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
         switch event.keyCode {
+        case KeyCode.x:
+            guard modifiers == .command, context.pickerSourceIsTaskGoto else {
+                return nil
+            }
+            return context.keyIsRepeat || event.isARepeat ? .consumeKey : .toggleGotoClosedTasks
         case KeyCode.return, KeyCode.keypadEnter:
             let keys = Self.strippedReturnModifiers(modifiers)
             if keys.contains(.command) {

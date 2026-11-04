@@ -9134,6 +9134,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let group: String?
     public let scheduled: String?
     public let pullsForward: Bool
+    /// Additive completion date for closed `task_goto` rows. Older Bob and
+    /// every other completion context omit it.
+    public let closed: String?
     // Additive `task_dependency` fields from Bob's vault-wide prerequisite
     // scanner: the exact vault-relative note path including extension (never
     // the lowercased display route), the short human locator, whether the
@@ -9308,6 +9311,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         group: String? = nil,
         scheduled: String? = nil,
         pullsForward: Bool = false,
+        closed: String? = nil,
         notePath: String? = nil,
         locator: String? = nil,
         alreadyDependency: Bool = false,
@@ -9392,6 +9396,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.group = group
         self.scheduled = scheduled
         self.pullsForward = pullsForward
+        self.closed = closed
         self.notePath = notePath
         self.locator = locator
         self.alreadyDependency = alreadyDependency
@@ -9480,6 +9485,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         group = try container.decodeIfPresent(String.self, forKey: .group)
         scheduled = try container.decodeIfPresent(String.self, forKey: .scheduled)
         pullsForward = try container.decodeIfPresent(Bool.self, forKey: .pullsForward) ?? false
+        closed = try container.decodeIfPresent(String.self, forKey: .closed)
         notePath = try container.decodeIfPresent(String.self, forKey: .notePath)
         locator = try container.decodeIfPresent(String.self, forKey: .locator)
         alreadyDependency =
@@ -9570,6 +9576,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case group
         case scheduled
         case pullsForward = "pulls_forward"
+        case closed
         case notePath = "note_path"
         case locator
         case alreadyDependency = "already_dependency"

@@ -1825,6 +1825,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .acceptPickerRowAndSubmitAndOpen:
             model.acceptSelectedPickerRowAndSubmitAndOpen()
             return true
+        case .toggleGotoClosedTasks:
+            model.toggleGotoClosedTasks()
+            return true
         case .cycleTaskLinkSuggestionForward:
             model.cycleTaskLinkSuggestion(forward: true)
             return true

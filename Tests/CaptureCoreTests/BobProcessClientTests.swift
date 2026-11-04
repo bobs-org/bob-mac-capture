@@ -363,6 +363,53 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- idea @"))
     }
 
+    func testCaptureCompleteOptionallyIncludesClosedTasks() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureComplete(
+            "/",
+            cursor: 0,
+            includeClosedTasks: true
+        )
+
+        XCTAssertEqual(response.candidates.count, 11)
+        XCTAssertEqual(response.candidates.last?.closed, "2020-10-18")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --closed-tasks --cursor 0 --format json -- /")
+        )
+    }
+
+    func testCaptureCompleteClosedTasksUnsupportedOptionMapsOldBob() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_CLOSED_TASKS_UNSUPPORTED": "1",
+            ]
+        )
+
+        do {
+            _ = try await client.captureComplete("/", cursor: 0, includeClosedTasks: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--closed-tasks")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+    }
+
     func testCaptureCompleteRunsBatchDraftAsOneArgvElement() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

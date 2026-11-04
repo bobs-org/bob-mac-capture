@@ -49,6 +49,9 @@ struct CapturePickerState: Equatable {
     /// is empty, typing one closes the picker and types the key so `!!`
     /// falls back to prose and `![` hands off to embed completion.
     var taskCompleteContinuationKeys: [String] = []
+    /// Whether this Go To session currently includes completed tasks.
+    /// New `/` sessions start open-only; Escape carries this into its chip.
+    var includesClosedTasks = false
 }
 
 /// The compact reopen affordance shown instead of the picker: after a
@@ -68,6 +71,8 @@ struct CapturePickerChipState: Equatable {
     /// refetch-free reopen keeps the capture-and-open gate. Nil for other
     /// sources and ownerless picks.
     var dependencyOwner: DependencyOwner? = nil
+    /// Go To's completed-task toggle for this session.
+    var includesClosedTasks = false
 }
 
 /// Whether an analysis was triggered by a draft edit or by a caret-only

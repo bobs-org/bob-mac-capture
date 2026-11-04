@@ -448,13 +448,17 @@ private struct CapturePickerFilterBar: View {
         model.picker?.source ?? .activeTask
     }
 
+    private var includesClosedTasks: Bool {
+        model.picker?.includesClosedTasks ?? false
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
                 Text(source.scopeSymbolText)
                     .font(.system(.body, design: .monospaced).weight(.semibold))
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
-                Text(source.scopeCaption)
+                Text(source.scopeCaption(includesClosedTasks: includesClosedTasks))
                     .font(.caption.weight(.semibold))
                     // A sealed project note's caption shares the editor chip's brown.
                     .foregroundStyle(
@@ -1269,19 +1273,27 @@ struct CapturePickerChip: View {
 struct CapturePickerKeyHints: View {
     var source: CapturePickerSource = .activeTask
     var showOperatorHint = false
+    var includesClosedTasks = false
 
     /// Keycap plus action pairs, in display order. Kept static so tests can
     /// assert the documented keyboard contract without rendering.
-    static func items(for source: CapturePickerSource) -> [(keys: String, action: String)] {
-        source.keyHintItems()
+    static func items(
+        for source: CapturePickerSource,
+        includesClosedTasks: Bool = false
+    ) -> [(keys: String, action: String)] {
+        source.keyHintItems(includesClosedTasks: includesClosedTasks)
+    }
+
+    private var items: [(keys: String, action: String)] {
+        source.keyHintItems(includesClosedTasks: includesClosedTasks)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 ViewThatFits(in: .horizontal) {
-                    hintRow(items: source.keyHintItems())
-                    hintRow(items: source.keyHintItems().filter { $0.keys != "⌃↩" })
+                    hintRow(items: items)
+                    hintRow(items: items.filter { $0.keys != "⌃↩" })
                 }
                 Spacer(minLength: 12)
             }
@@ -1292,7 +1304,9 @@ struct CapturePickerKeyHints: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(source.keyHintsAccessibilityLabel)
+        .accessibilityLabel(
+            source.keyHintsAccessibilityLabel(includesClosedTasks: includesClosedTasks)
+        )
     }
 
     private func hintRow(items: [(keys: String, action: String)]) -> some View {

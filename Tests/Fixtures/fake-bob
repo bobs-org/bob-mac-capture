@@ -89,6 +89,11 @@ if [[ "${FAKE_BOB_INBOX_ROUTE_GUARD_UNSUPPORTED:-}" == "1" && " $* " == *" --req
   exit 2
 fi
 
+if [[ "${FAKE_BOB_CLOSED_TASKS_UNSUPPORTED:-}" == "1" && " $* " == *" --closed-tasks "* ]]; then
+  printf "error: unexpected argument '--closed-tasks' found\n\nUsage: bob capture-complete [OPTIONS] -- <TEXT>\n" >&2
+  exit 2
+fi
+
 if [[ "${FAKE_BOB_ATTENDED_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" -a "* ]]; then
   printf "error: unexpected argument '-a' found\n\nUsage: bob ref scan [OPTIONS]\n" >&2
   exit 2
@@ -3145,10 +3150,18 @@ JSON
         cat "${fixtures_dir}/task-link-complete-dee.json"
       fi
     elif [[ "${draft}" == "/" ]]; then
-      cat "${fixtures_dir}/task-goto-complete-full.json"
+      if [[ " $* " == *" --closed-tasks "* ]]; then
+        cat "${fixtures_dir}/task-goto-complete-closed.json"
+      else
+        cat "${fixtures_dir}/task-goto-complete-full.json"
+      fi
     elif [[ "${draft}" == "/dee" ]]; then
       if [[ "${cursor}" == "0" ]]; then
-        cat "${fixtures_dir}/task-goto-complete-full.json"
+        if [[ " $* " == *" --closed-tasks "* ]]; then
+          cat "${fixtures_dir}/task-goto-complete-closed.json"
+        else
+          cat "${fixtures_dir}/task-goto-complete-full.json"
+        fi
       else
         cat "${fixtures_dir}/task-goto-complete-dee.json"
       fi

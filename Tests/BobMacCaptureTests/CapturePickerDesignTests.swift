@@ -315,7 +315,16 @@ final class CapturePickerDesignTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskGoto).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⌘↩", "⌘X", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskGoto).map { $0.action },
+            ["Move", "Open", "Open", "Show Completed", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskGoto, includesClosedTasks: true)
+                .first(where: { $0.keys == "⌘X" })?.action,
+            "Hide Completed"
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskComplete).map { $0.action },

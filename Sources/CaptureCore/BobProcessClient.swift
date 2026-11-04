@@ -380,23 +380,29 @@ public final class BobProcessClient: @unchecked Sendable {
 
     public func captureComplete(
         _ draft: String,
-        cursor: Int
+        cursor: Int,
+        includeClosedTasks: Bool = false
     ) async throws -> CaptureCompletionResponse {
-        let response: CaptureCompletionResponse = try await decode(
-            arguments: [
-                "capture-complete",
-                "--all-tasks",
-                "--cursor",
-                String(cursor),
-                "--format",
-                "json",
-                "--",
-                draft,
-            ],
-            expectedSchema: 1,
-            lane: "completion"
-        )
-        return response
+        var arguments = ["capture-complete", "--all-tasks"]
+        if includeClosedTasks {
+            arguments.append("--closed-tasks")
+        }
+        arguments += ["--cursor", String(cursor), "--format", "json", "--", draft]
+        do {
+            return try await decode(
+                arguments: arguments,
+                expectedSchema: 1,
+                lane: "completion"
+            )
+        } catch let error as BobClientError {
+            if includeClosedTasks,
+                case .processFailed(_, _, let stderr) = error,
+                Self.isUnsupportedOptionFailure(stderr: stderr, option: "--closed-tasks")
+            {
+                throw BobClientError.unsupportedOption("--closed-tasks")
+            }
+            throw error
+        }
     }
 
     /// Read recent theme suggestions from Bob's catalog for the Name it prompt.
