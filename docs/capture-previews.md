@@ -61,6 +61,10 @@ Showing the panel refreshes the preview. While the panel is key and the current
   debounced preview. The counter reads no content. Polling stops when the panel hides,
   loses focus, the draft is removed, or the clip evidence lapses.
 
+A visible past preview re-requests one dry run at each five-minute boundary;
+  windows always come from Bob. Refreshes never edit the draft or submit, and
+  failures keep the refusal with no stale card.
+
 ## Clip card
 
 Each `%c` item renders its own Clip card beneath its preview card, built only from
@@ -114,8 +118,8 @@ The additive `sub_bullets` field on `capture` output is the exact rendered autho
   (whole-item `x`, link `=x`, new-task `=x`) becomes **Close**; a single
   whole-item `=`/`=<X>` start becomes **Start**, a `=` restart of the running
   session **Restart**, and a `=#name` swap **Swap**; a single whole-item
-  `!note:block-id` completion becomes **Complete**. Batches keep **Capture**,
-  since Return submits more.
+  `!note:block-id` completion becomes **Complete**; past stacks become **Record**.
+  Batches keep **Capture**, since Return submits more.
   Ensure Next preview, VoiceOver, and notifications report status and relocation
   separately ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
   "Already in CURRENT; no Pomodoro changes"), never the two-way "adds link" or
@@ -133,7 +137,8 @@ The additive `sub_bullets` field on `capture` output is the exact rendered autho
   writes. A project note that links tasks previews a link section
   ("Links 2 tasks into ADMIN (new)", one row per task with its text and `^id`),
   notifies "Linked 2 tasks into ADMIN", and includes the daily note in Open
-  Note(s) whenever `task_links` is non-empty.
+  Note(s) whenever `task_links` is non-empty. Past stacks notify
+  `Recorded past Pomodoro`.
 
 ## Preview stack
 
@@ -180,15 +185,8 @@ A Pomodoro close instead shows its own card whenever
   or a `plus.circle` row for new-task closes, up to six task rows with per-role
   glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
   with strikethrough on struck rows, trailing locators, and Work Log previews —
-  badges, transitions, and tags never wrap or shrink, and at narrow widths the
-  locator truncates first, then the one-line task title; row titles show wikilink
-  display text (`[[path|Alias]]` reads `Alias`), like the pickers —
-  each row shows its `typed_work_log` entries first, all of them, with its date
-  or date-time stamp stripped, a `square.and.pencil` glyph in the cyan log tint,
-  and primary text,
-  each followed by its `typed_work_log_details` lines in secondary callout
-  text, indented to the entry text with no glyph and never capped, followed by
-  the remaining `work_log` entries in secondary text capped at two —
+  each row shows its `typed_work_log` entries first with date stripped, then
+  `typed_work_log_details` lines, then remaining `work_log` entries capped at two —
   then a notes row (`1 note stays`), a next-session footer row, and an
   empty state (`No Task Links — the session simply closes`) when there are no
   task rows. When Bob reports the created continuation was placed last
@@ -241,18 +239,10 @@ A whole-item `=`/`=<X>` start instead shows its own card
   `Would swap in BUGS 0920-0945 (takes over CAPTURE) at line 5` for a kept
   ledger (or the fresh session range otherwise), adds a `Takes over` capsule
   next to the title when the swap keeps the running ledger, and adds an
-  `arrow.uturn.down` demoted row (`CAPTURE → first future · keeps 2 Task Links`,
-  plus ` and its notes`). Each numbered row gets the close
-  card's number badge (`n.circle`, filled for dropped rows, capsule above 50) with
-  status glyphs (`circle` Ready, `circle.inset.filled` Next,
-  `circle.lefthalf.filled` In Progress, `questionmark.circle` other,
-  `minus.circle` dropped, `exclamationmark.triangle` unresolved with the warning
-  as help text), task text (wikilink display text, like the pickers) with a
-  truncating `note ^id` locator; dropped rows
-  render struck and dimmed with a
-  caption joining `stays <status>` and `with N nested line(s)`. Numbered rows never
-  hide under `+N more`; rows without numbers (older Bob) render exactly like
-  today's card. A created session shows a
+  `arrow.uturn.down` demoted row. Each numbered row gets the close card's number
+  badge with status glyphs and a truncating `note ^id` locator; dropped rows
+  render struck and dimmed. Numbered rows never hide under `+N more`; rows
+  without numbers render like today's card. A created session shows a
   small pink **New** capsule next to the title on a dry run (**Created** once
   committed, and the notification reads `Started NAME` with `0905–0930 (25m)
   · New session`); with no drop typed and a non-empty lineup, a bare `=`/`=<X>`
@@ -288,6 +278,13 @@ A whole-item `=`/`=<X>` start instead shows its own card
   in the merge-span tint (monospaced), then ` · Type #name to absorb a specific
   Pomodoro` (`#name` in the name tint). Missing `explicit` leaves only the
   `#name` line; `=*#fix` keeps **Current** and `Same as`.
+
+### Past card
+
+One `Record past work` card renders per past stack: total minutes, a timeline
+  (`09:00 ── BUILD 10m ── 09:10 ── FIX 15m ── 09:25`, midnight as `0000`),
+  per-member ranges with close task rows, and amber trim rows with `(calendar)`
+  for MEET rows.
 
 ### Pomodoro and task blocks
 

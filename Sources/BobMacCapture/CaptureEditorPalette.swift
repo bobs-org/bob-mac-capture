@@ -127,6 +127,11 @@ enum CaptureEditorPalette {
             return Color(nsColor: .tertiaryLabelColor)
         case .pomodoroStart:
             return .pink
+        case .pomodoroPastRepair:
+            // Amber repair warning for `x=!`: distinct from the close-selection
+            // `!` green and the session pink, with light/dark coverage from
+            // the system yellow.
+            return .yellow
         case .pomodoroCloseInProgress:
             return .orange
         case .pomodoroClosePark:

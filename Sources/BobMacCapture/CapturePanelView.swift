@@ -3406,6 +3406,7 @@ private struct CompletionList: View {
     private func completionSectionTitle(for row: IndexedCompletionCandidate) -> String? {
         guard model.completionResponse?.context == "pomodoro_name"
                 || model.completionResponse?.context == "pomodoro_start_name"
+                || model.completionResponse?.context == "pomodoro_past_name"
         else {
             return nil
         }
@@ -3794,23 +3795,79 @@ struct PreviewPane: View {
         // its results stack beneath it without dividers. A batch with no lists
         // gets no capsule and keeps every divider.
         let listPreview = CaptureListPreview(captures: captures)
+        let pastRuns: [[(index: Int, capture: CaptureCommandSuccess)]] = {
+            var runs: [[(index: Int, capture: CaptureCommandSuccess)]] = []
+            var current: [(index: Int, capture: CaptureCommandSuccess)] = []
+            func flush() {
+                if !current.isEmpty {
+                    runs.append(current)
+                    current = []
+                }
+            }
+            for (idx, candidate) in captures.enumerated() {
+                guard candidate.kind == "pomodoro_past",
+                    candidate.pomodoroPast != nil
+                else {
+                    flush()
+                    continue
+                }
+                let stackIndex = candidate.pomodoroPast?.stack.index ?? 0
+                if stackIndex <= 1, !current.isEmpty {
+                    flush()
+                }
+                current.append((idx, candidate))
+            }
+            flush()
+            return runs
+        }()
+        let pastStartIndices = Set(pastRuns.compactMap(\.first?.index))
+        let pastCoveredIndices = Set(pastRuns.flatMap { $0.map(\.index) })
+        let pastGroupByStart: [Int: CapturePomodoroPastPresentation.Group] = {
+            var map: [Int: CapturePomodoroPastPresentation.Group] = [:]
+            for run in pastRuns {
+                guard let start = run.first?.index else {
+                    continue
+                }
+                let runCaptures = run.map(\.capture)
+                if let presentation = CapturePomodoroPastPresentation(captures: runCaptures),
+                    let group = presentation.groups.first
+                {
+                    map[start] = group
+                }
+            }
+            return map
+        }()
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
-            if index > 0, !listPreview.continuesGroup(at: index) {
-                Divider()
+            if pastCoveredIndices.contains(index), !pastStartIndices.contains(index) {
+                EmptyView()
+            } else {
+                if index > 0, !listPreview.continuesGroup(at: index) {
+                    Divider()
+                }
+                if let group = listPreview.group(startingAt: index) {
+                    CaptureListGroupCapsule(group: group)
+                }
+                if let group = pastGroupByStart[index] {
+                    pastGroupCard(
+                        group,
+                        index: index,
+                        total: captures.count,
+                        globalDestination: success.globalDestination,
+                        pullIn: success.pullIn
+                    )
+                } else {
+                    previewItem(
+                        capture,
+                        index: index,
+                        total: captures.count,
+                        globalDestination: success.globalDestination,
+                        blocks: success.pomodoroBlocks,
+                        taskBlocks: orderedTaskBlocks,
+                        pullIn: success.pullIn,
+                        moveChoice: success.moveChoice
+                    )
+                }
             }
-            if let group = listPreview.group(startingAt: index) {
-                CaptureListGroupCapsule(group: group)
-            }
-            previewItem(
-                capture,
-                index: index,
-                total: captures.count,
-                globalDestination: success.globalDestination,
-                blocks: success.pomodoroBlocks,
-                taskBlocks: orderedTaskBlocks,
-                pullIn: success.pullIn,
-                moveChoice: success.moveChoice
-            )
         }
 
         // Batch-level task blocks render once, after the item stack and
@@ -3976,6 +4033,16 @@ struct PreviewPane: View {
             splitPreviewItem(split, index: index, total: total)
         } else if let merge = CapturePomodoroMergePresentation(capture: success) {
             mergePreviewItem(merge, index: index, total: total)
+        } else if let past = CapturePomodoroPastPresentation(capture: success),
+            let group = past.groups.first
+        {
+            pastGroupCard(
+                group,
+                index: index,
+                total: total,
+                globalDestination: globalDestination,
+                pullIn: pullIn
+            )
         } else if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
         } else if CapturePomodoroStartPresentation.isSessionStart(success),
@@ -4937,6 +5004,255 @@ struct PreviewPane: View {
             isPending ? "\(close.accessibilitySummary), \(model.closePendingText ?? "")"
                 : close.accessibilitySummary
         )
+    }
+
+    /// One chronological Record past work card per past stack. Bob resolves
+    /// every window, trim, task effect, and successor offer; the card renders
+    /// them verbatim with no Swift-side clock or ledger math. Each member
+    /// reuses the close task-row components instead of nesting full Close
+    /// cards. Trims render amber with a `(calendar)` suffix when Bob flags a
+    /// MEET row, and the timeline stays a noninteractive monospaced line so
+    /// midnight `0000` reads faithfully at minimum panel width.
+    @ViewBuilder
+    private func pastGroupCard(
+        _ group: CapturePomodoroPastPresentation.Group,
+        index: Int,
+        total: Int,
+        globalDestination _: CaptureGlobalDestination?,
+        pullIn: CapturePullIn?
+    ) -> some View {
+        let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        let logTint = CaptureEditorPalette.color(for: .pomodoroCloseLog)
+        let isPending = model.closePendingText != nil
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "timer")
+                    .foregroundStyle(sessionTint)
+                    .accessibilityHidden(true)
+                Text(group.title)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+                Text("\(group.totalMinutes)m")
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+            Text(group.timelineText)
+                .font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
+                .accessibilityLabel("Timeline: \(group.timelineText)")
+            ForEach(Array(group.members.enumerated()), id: \.offset) { _, member in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(member.displayName)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 4)
+                        Text(member.windowText)
+                            .font(.system(.callout, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                    }
+                    if let close = member.closePresentation {
+                        let showsBadges = close.taskRows.contains { $0.index != nil }
+                        if close.taskRows.isEmpty {
+                            Text(close.emptyText)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 5) {
+                                ForEach(
+                                    Array(close.visibleTaskRows.enumerated()),
+                                    id: \.offset
+                                ) { _, row in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            if showsBadges {
+                                                closeNumberBadge(for: row)
+                                            }
+                                            closeTaskGlyph(for: row)
+                                            Text(row.displayTitle.text)
+                                                .strikethrough(row.isStruck)
+                                                .layoutPriority(1)
+                                                .lineLimit(1)
+                                                .textSelection(.enabled)
+                                            if let tag = row.tag {
+                                                Text(tag)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                                    .fixedSize(
+                                                        horizontal: true,
+                                                        vertical: false
+                                                    )
+                                            }
+                                            Spacer(minLength: 4)
+                                            Text(row.locatorText)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                                .truncationMode(.tail)
+                                                .textSelection(.enabled)
+                                        }
+                                        ForEach(
+                                            Array(
+                                                row.typedWorkLogPreviews.enumerated()
+                                            ),
+                                            id: \.offset
+                                        ) { entryIndex, entry in
+                                            HStack(
+                                                alignment: .firstTextBaseline,
+                                                spacing: 4
+                                            ) {
+                                                Image(systemName: "square.and.pencil")
+                                                    .foregroundStyle(logTint)
+                                                    .accessibilityHidden(true)
+                                                Text(entry)
+                                                    .font(.callout)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
+                                                    .textSelection(.enabled)
+                                            }
+                                            let details =
+                                                entryIndex < row.typedWorkLogDetails.count
+                                                ? row.typedWorkLogDetails[entryIndex] : []
+                                            ForEach(
+                                                Array(details.enumerated()),
+                                                id: \.offset
+                                            ) { _, detail in
+                                                HStack(
+                                                    alignment: .firstTextBaseline,
+                                                    spacing: 4
+                                                ) {
+                                                    Image(systemName: "square.and.pencil")
+                                                        .foregroundStyle(.clear)
+                                                        .accessibilityHidden(true)
+                                                    Text(detail)
+                                                        .font(.callout)
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                        .truncationMode(.tail)
+                                                        .textSelection(.enabled)
+                                                }
+                                            }
+                                        }
+                                        ForEach(
+                                            Array(row.workLogPreviews.enumerated()),
+                                            id: \.offset
+                                        ) { _, entry in
+                                            HStack(
+                                                alignment: .firstTextBaseline,
+                                                spacing: 4
+                                            ) {
+                                                Image(systemName: "square.and.pencil")
+                                                    .foregroundStyle(.secondary)
+                                                    .accessibilityHidden(true)
+                                                Text(entry)
+                                                    .font(.callout)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
+                                                    .textSelection(.enabled)
+                                            }
+                                        }
+                                        if let warning = row.warning {
+                                            Text(warning)
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                                .textSelection(.enabled)
+                                        }
+                                        if let caption = row.caption {
+                                            Text(caption)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .textSelection(.enabled)
+                                        }
+                                    }
+                                    .opacity(row.isDimmed ? 0.5 : 1)
+                                }
+                                if close.overflowTaskCount > 0 {
+                                    Text("+\(close.overflowTaskCount) more")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if let nextText = close.nextText {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: "arrow.turn.down.right")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                                Text(nextText)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        if let notesText = close.notesText {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: "text.alignleft")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                                Text(notesText)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(Array(group.trimRows.enumerated()), id: \.offset) { _, trim in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text(trim.text)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(trim.accessibilityLabel)
+            }
+            let offers = group.members.flatMap { member in
+                member.capture.allUnblockedRows + member.capture.allKeepMovingRows
+                    + member.capture.allRelationSuccessors
+            }
+            let held = group.members.flatMap(\.capture.allRelationHeld)
+            let check: String? = {
+                var seen: String?
+                for member in group.members {
+                    if let value = member.capture.allRelationCheck {
+                        if value == "unavailable" {
+                            return value
+                        }
+                        seen = value
+                    }
+                }
+                return seen
+            }()
+            pullInPreviewSummary(
+                for: offers,
+                pullIn: pullIn,
+                held: held,
+                check: check
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(isPending ? 0.6 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(group.accessibilitySummary)
     }
 
     /// The fixed-width leading number badge for a close row: a filled

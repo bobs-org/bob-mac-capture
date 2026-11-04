@@ -2,11 +2,13 @@ import Foundation
 
 extension CaptureCommandSuccess {
     /// Unblocked successor rows from every close this capture carries, in
-    /// preview order: `task_complete`, then `pomodoro_close`, then each
-    /// `relation_completes` close.
+    /// preview order: `task_complete`, then `pomodoro_close`, then the nested
+    /// past `pomodoro_past.close`, then each `relation_completes` close.
+    /// Bob's order is preserved; the panel dedupes by offer key.
     public var allUnblockedRows: [TaskCompleteUnblocked] {
         var rows: [TaskCompleteUnblocked] = taskComplete?.unblocked ?? []
         rows.append(contentsOf: pomodoroClose?.unblocked ?? [])
+        rows.append(contentsOf: pomodoroPast?.close.unblocked ?? [])
         for relationComplete in relationCompletes {
             rows.append(contentsOf: relationComplete.taskComplete?.unblocked ?? [])
         }
@@ -17,6 +19,7 @@ extension CaptureCommandSuccess {
     public var allKeepMovingRows: [TaskCompleteUnblocked] {
         var rows: [TaskCompleteUnblocked] = taskComplete?.keepMoving ?? []
         rows.append(contentsOf: pomodoroClose?.keepMoving ?? [])
+        rows.append(contentsOf: pomodoroPast?.close.keepMoving ?? [])
         for relationComplete in relationCompletes {
             rows.append(contentsOf: relationComplete.taskComplete?.keepMoving ?? [])
         }
@@ -29,8 +32,9 @@ extension CaptureCommandSuccess {
     }
 
     /// Relation offers in Bob's deterministic item → task completion → nested
-    /// relation completion → Pomodoro close order. Batch roots mirror the first
-    /// item for legacy compatibility, so normalized children are authoritative.
+    /// relation completion → Pomodoro close → past close order. Batch roots
+    /// mirror the first item for legacy compatibility, so normalized children
+    /// are authoritative.
     public var allRelationSuccessors: [TaskCompleteUnblocked] {
         relationItems.flatMap { item in
             var rows = item.relationSuccessors
@@ -39,6 +43,7 @@ extension CaptureCommandSuccess {
                 rows.append(contentsOf: relationComplete.taskComplete?.relationSuccessors ?? [])
             }
             rows.append(contentsOf: item.pomodoroClose?.relationSuccessors ?? [])
+            rows.append(contentsOf: item.pomodoroPast?.close.relationSuccessors ?? [])
             return rows
         }
     }
@@ -52,6 +57,7 @@ extension CaptureCommandSuccess {
                 rows.append(contentsOf: relationComplete.taskComplete?.relationHeld ?? [])
             }
             rows.append(contentsOf: item.pomodoroClose?.relationHeld ?? [])
+            rows.append(contentsOf: item.pomodoroPast?.close.relationHeld ?? [])
             return rows
         }
     }
@@ -64,7 +70,8 @@ extension CaptureCommandSuccess {
             let values = [item.relationCheck, item.taskComplete?.relationCheck]
                 .compactMap { $0 }
                 + item.relationCompletes.compactMap { $0.taskComplete?.relationCheck }
-                + [item.pomodoroClose?.relationCheck].compactMap { $0 }
+                + [item.pomodoroClose?.relationCheck, item.pomodoroPast?.close.relationCheck]
+                .compactMap { $0 }
             for value in values {
                 if value == "unavailable" {
                     return value

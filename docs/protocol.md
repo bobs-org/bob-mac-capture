@@ -19,23 +19,13 @@ Capabilities are response-driven: unknown spans render neutral, unknown contexts
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
   and `pulls_forward` candidate fields), the `task_goto` completion context for a
   whole-draft `/` query (`note_path` and absolute `target` candidate fields), the
-  `task_parent` completion context for
-  leading and prose-terminal `+` (with the additive `picker` descriptor:
-  `kind: parent_task`, `scope: note|vault`, `scope_token`, `note_target`,
-  `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`
-  /`action_continuation_aliases`, and top-level `query`), the same descriptor
-  on scoped `@route+` `task` responses,
+  `task_parent` completion context for leading and prose-terminal `+` (with the
+  additive `picker` descriptor, including `action_continuation_aliases`), the same descriptor on scoped `@route+` `task` responses,
   `parent_replacement` on `capture-task-id` for vault-wide ID-less picks,
-  `drawer` completion for
-  `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
-  task-toggle `@route+block-id#`, the `task_block_id` completion context for the
-  `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
-  object on both block-ID contexts (intent, marker range, body, allowed-character
-  rule, used IDs, suggestions), the additive `creates_pomodoro`
-  create-future-Pomodoro action, `task_toggle` capture JSON, the additive
-  `dropped_dependencies` rows and `link_guard` object (`reasons`, `promoted`,
-  `detail`, `drop_refused`) on link, toggle, Ensure Next, and link-then-close
-  captures, the
+  `drawer` completion for `@route+block-id#`, `pomodoro_name` completion, the
+  `task_block_id` completion context, the additive `block_id` object, the
+  additive `creates_pomodoro` action, `task_toggle` capture JSON, the additive
+  `dropped_dependencies` rows and `link_guard` object on link captures, the
   `task_toggle_*` parse spans, and the current task-toggle spellings:
   plain `@route+block-id` for Ensure Next relocation to the implicit
   current/next Pomodoro, `@route+block-id#pomodoro` for named Ensure Next
@@ -233,6 +223,10 @@ Capabilities are response-driven: unknown spans render neutral, unknown contexts
   `KEY=` to keep) answers plus the hidden `--require-inbox-route-choice`
   guard; without it the app captures without asking.
 
+Grammar 12 adds past-work `x=` recording: `pomodoro_past` mode, spans, and
+  summaries with windows, trims, and `pomodoro_past_trim` warnings, decoded
+  tolerantly with no synthesized top-level close and an unchanged gate.
+
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
 
@@ -358,6 +352,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
 | `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | No task-type menu or refusal details | Upgrade `bob` for `#` completion |
 | `grammar` ≥ 5 on `capture-parse` | Capture with whole-item `=/` split and `=*` merge syntax, along with earlier capture grammar | Capture disabled; "Update bob to use Pomodoro split and merge syntax"; the draft stays | Upgrade `bob` for split and merge |
+| `grammar` 12 / `pomodoro_past` | Past `x=` stacks with windows and trims | No past card | Upgrade `bob` for past recording |
 | `pomodoro_split` / `pomodoro_merge` spans, modes, and summaries | Split and merge previews show Bob's before/after names, created or absorbed entries, and final destination | Older Bob omits the preview objects and these tokens do not parse | Upgrade `bob` for split and merge |
 | `source_role`, `absorbed[].role`, and `explicit` on `pomodoro_merge` | Implied-pick **Current** / **Next** capsules and the `Same as` caption | Older bob omits them and the card renders as before | Upgrade `bob` for implied-merge captions |
 | `pomodoro_split_type` / `pomodoro_merge_dest` needs and completion contexts | Bob's candidates drive the type and destination pickers | No picker rows; the incomplete draft stays visible | Upgrade `bob` for split and merge pickers |

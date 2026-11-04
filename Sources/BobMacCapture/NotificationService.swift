@@ -624,6 +624,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let past = CapturePomodoroPastPresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: past.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: past.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let close = CapturePomodoroClosePresentation(capture: capture) {
                 return singlePresentation(
                     title: close.notificationTitle,
@@ -737,6 +745,20 @@ final class NotificationService: NSObject, ObservableObject {
             return globalBatchPresentation(
                 captures: nonemptyCaptures,
                 globalDestination: globalDestination,
+                targetPaths: targetPaths
+            )
+        }
+
+        if let past = CapturePomodoroPastPresentation(captures: nonemptyCaptures),
+            past.isHomogeneous
+        {
+            let summary = pulledInSummary(captures: nonemptyCaptures)
+            let heldLines = batchHeldLines(for: nonemptyCaptures)
+            return CaptureNotificationPresentation(
+                title: past.notificationTitle,
+                subtitle: summary,
+                body: ([past.notificationBody, summary] + heldLines)
+                    .filter { !$0.isEmpty }.joined(separator: "\n"),
                 targetPaths: targetPaths
             )
         }
@@ -1106,6 +1128,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Shift"
         case "pomodoro-start", "pomodoro_start":
             return "Start"
+        case "pomodoro-past", "pomodoro_past":
+            return "Past"
         case "project-note", "project_note":
             return "Project"
         case "note-pull", "note_pull":

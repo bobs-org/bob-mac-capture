@@ -1,0 +1,1 @@
+{"error":"capture item 1 starting on line 1: x=build@2 would take 20m from PLAN 0855-0920 (line 2); add ! to take it: x=build@2! (PLAN becomes 0855-0900)\nx=fix@3 would take 20m from PLAN 0855-0920 (line 2); add ! to take it: x=fix@3! (PLAN becomes 0855-0900)","ok":false}

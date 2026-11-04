@@ -251,6 +251,10 @@ public struct CaptureParseResponse: Codable, Equatable {
     // Additive whole-item `x` close or `=x` close suffix on a `@`/`^` link item.
     // Omitted for every non-close mode, so older bob output decodes as nil.
     public let pomodoroClose: PomodoroCloseSpec?
+    // Additive text-only `x=` past object on `pomodoro_past` responses and
+    // items. Omitted for every non-past mode and by older Bob; malformed
+    // optional metadata degrades to nil so the rest still decodes.
+    public let pomodoroPast: PomodoroPastSpec?
     // Additive `&` / `*` markers and the owner they hang on. Older Bob
     // omits them; missing decodes as empty / nil.
     public let dependencies: [CaptureParseRelationshipMarker]
@@ -285,6 +289,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         pomodoroAdjust: PomodoroAdjustSpec? = nil,
         pomodoroShift: PomodoroShiftSpec? = nil,
         pomodoroClose: PomodoroCloseSpec? = nil,
+        pomodoroPast: PomodoroPastSpec? = nil,
         dependencies: [CaptureParseRelationshipMarker] = [],
         blockedTasks: [CaptureParseRelationshipMarker] = [],
         relations: [CaptureParseRelationshipMarker] = [],
@@ -317,6 +322,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.pomodoroPast = pomodoroPast
         self.dependencies = dependencies
         self.blockedTasks = blockedTasks
         self.relations = relations
@@ -370,6 +376,10 @@ public struct CaptureParseResponse: Codable, Equatable {
             PomodoroCloseSpec.self,
             forKey: .pomodoroClose
         )
+        pomodoroPast = (try? container.decodeIfPresent(
+            PomodoroPastSpec.self,
+            forKey: .pomodoroPast
+        )) ?? nil
         dependencies =
             try container.decodeIfPresent(
                 [CaptureParseRelationshipMarker].self,
@@ -440,6 +450,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case pomodoroPast = "pomodoro_past"
         case dependencies
         case blockedTasks = "blocked_tasks"
         case relations
@@ -501,6 +512,9 @@ public struct CaptureParseItem: Codable, Equatable {
     // Per-item additive whole-item `x` close or `=x` link suffix. Omitted for
     // items without one.
     public let pomodoroClose: PomodoroCloseSpec?
+    // Per-item additive `x=` past object. Omitted for items without one and
+    // by older Bob; malformed metadata degrades to nil.
+    public let pomodoroPast: PomodoroPastSpec?
     public let dependencies: [CaptureParseRelationshipMarker]
     public let blockedTasks: [CaptureParseRelationshipMarker]
     public let relations: [CaptureParseRelationshipMarker]
@@ -527,6 +541,7 @@ public struct CaptureParseItem: Codable, Equatable {
         pomodoroAdjust: PomodoroAdjustSpec? = nil,
         pomodoroShift: PomodoroShiftSpec? = nil,
         pomodoroClose: PomodoroCloseSpec? = nil,
+        pomodoroPast: PomodoroPastSpec? = nil,
         dependencies: [CaptureParseRelationshipMarker] = [],
         blockedTasks: [CaptureParseRelationshipMarker] = [],
         relations: [CaptureParseRelationshipMarker] = [],
@@ -551,6 +566,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.pomodoroPast = pomodoroPast
         self.dependencies = dependencies
         self.blockedTasks = blockedTasks
         self.relations = relations
@@ -588,6 +604,10 @@ public struct CaptureParseItem: Codable, Equatable {
             PomodoroCloseSpec.self,
             forKey: .pomodoroClose
         )
+        pomodoroPast = (try? container.decodeIfPresent(
+            PomodoroPastSpec.self,
+            forKey: .pomodoroPast
+        )) ?? nil
         dependencies =
             try container.decodeIfPresent(
                 [CaptureParseRelationshipMarker].self,
@@ -630,6 +650,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case pomodoroPast = "pomodoro_past"
         case dependencies
         case blockedTasks = "blocked_tasks"
         case relations
@@ -797,6 +818,322 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         case completeAll = "complete_all"
         case drop
         case log
+    }
+}
+
+/// Stack position of one `x=` member inside its past stack, in typed order.
+/// `index` is 1-based, `size` is the stack length, and `offsetBlocks` is the
+/// sum of blocks of every later member. Purely lexical; Bob is the sole
+/// authority for the numbers.
+public struct PomodoroPastStackSpec: Codable, Equatable, Sendable {
+    public let index: Int
+    public let size: Int
+    public let offsetBlocks: Int
+
+    public init(index: Int = 0, size: Int = 0, offsetBlocks: Int = 0) {
+        self.index = index
+        self.size = size
+        self.offsetBlocks = offsetBlocks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        size = try container.decodeIfPresent(Int.self, forKey: .size) ?? 0
+        offsetBlocks = try container.decodeIfPresent(Int.self, forKey: .offsetBlocks) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case size
+        case offsetBlocks = "offset_blocks"
+    }
+}
+
+/// Text-only `pomodoro_past` object from `bob capture-parse`, on the response
+/// and on each `pomodoro_past` item. `raw` preserves exactly what was typed,
+/// `name` is nil when unnamed, `blocks` defaults to 5, `minutes` is
+/// `blocks * 5`, `repair` is the trailing `!`, `stack` is the typed position,
+/// and `close` is the existing close-spec shape. Older Bob omits the whole
+/// object; malformed optional metadata degrades to nil at the call site.
+public struct PomodoroPastSpec: Codable, Equatable, Sendable {
+    public let raw: String
+    public let name: String?
+    public let nameIsLiteral: Bool
+    public let blocks: Int
+    public let minutes: Int
+    public let repair: Bool
+    public let stack: PomodoroPastStackSpec
+    public let close: PomodoroCloseSpec
+
+    public init(
+        raw: String = "",
+        name: String? = nil,
+        nameIsLiteral: Bool = false,
+        blocks: Int = 5,
+        minutes: Int = 25,
+        repair: Bool = false,
+        stack: PomodoroPastStackSpec = PomodoroPastStackSpec(),
+        close: PomodoroCloseSpec = PomodoroCloseSpec(raw: "")
+    ) {
+        self.raw = raw
+        self.name = name
+        self.nameIsLiteral = nameIsLiteral
+        self.blocks = blocks
+        self.minutes = minutes
+        self.repair = repair
+        self.stack = stack
+        self.close = close
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        nameIsLiteral = try container.decodeIfPresent(Bool.self, forKey: .nameIsLiteral) ?? false
+        blocks = try container.decodeIfPresent(Int.self, forKey: .blocks) ?? 5
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? (blocks * 5)
+        repair = try container.decodeIfPresent(Bool.self, forKey: .repair) ?? false
+        stack =
+            (try? container.decodeIfPresent(
+                PomodoroPastStackSpec.self,
+                forKey: .stack
+            )) ?? PomodoroPastStackSpec()
+        close =
+            (try? container.decodeIfPresent(
+                PomodoroCloseSpec.self,
+                forKey: .close
+            )) ?? PomodoroCloseSpec(raw: "")
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case name
+        case nameIsLiteral = "name_is_literal"
+        case blocks
+        case minutes
+        case repair
+        case stack
+        case close
+    }
+}
+
+/// One trimmed closed edge from Bob's recorded past session: the span rewrite
+/// staged before any member recorded. `minutes` is the old span minus the new
+/// one (what the whole stack took); `calendar` flags MEET rows. Decodes
+/// tolerantly so a partial trim still previews instead of failing the capture.
+public struct PomodoroPastTrim: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String
+    public let before: String
+    public let after: String
+    public let minutes: Int
+    public let clock: String
+    public let calendar: Bool
+
+    public init(
+        line: Int = 0,
+        name: String = "",
+        before: String = "",
+        after: String = "",
+        minutes: Int = 0,
+        clock: String = "",
+        calendar: Bool = false
+    ) {
+        self.line = line
+        self.name = name
+        self.before = before
+        self.after = after
+        self.minutes = minutes
+        self.clock = clock
+        self.calendar = calendar
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        before = try container.decodeIfPresent(String.self, forKey: .before) ?? ""
+        after = try container.decodeIfPresent(String.self, forKey: .after) ?? ""
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+        clock = try container.decodeIfPresent(String.self, forKey: .clock) ?? ""
+        calendar = try container.decodeIfPresent(Bool.self, forKey: .calendar) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case before
+        case after
+        case minutes
+        case clock
+        case calendar
+    }
+}
+
+/// Record target of one past Pomodoro: the source placeholder's line before
+/// the record and how Bob resolved it (`placeholder`, `again`, `created`).
+public struct PomodoroPastTarget: Codable, Equatable, Sendable {
+    public let source: String
+    public let line: Int
+
+    public init(source: String = "", line: Int = 0) {
+        self.source = source
+        self.line = line
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case line
+    }
+}
+
+/// Stack identity of one recorded past session, in typed order.
+public struct PomodoroPastStack: Codable, Equatable, Sendable {
+    public let index: Int
+    public let size: Int
+
+    public init(index: Int = 0, size: Int = 0) {
+        self.index = index
+        self.size = size
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        size = try container.decodeIfPresent(Int.self, forKey: .size) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case size
+    }
+}
+
+/// Window one recorded past session occupies, half-open `[start, end)`.
+/// An end of `0000` is midnight, rendered faithfully from Bob's window.
+public struct PomodoroPastWindow: Codable, Equatable, Sendable {
+    public let start: String
+    public let end: String
+    public let minutes: Int
+
+    public init(start: String = "", end: String = "", minutes: Int = 0) {
+        self.start = start
+        self.end = end
+        self.minutes = minutes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
+        end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case minutes
+    }
+}
+
+/// Recorded past session from `bob capture --format json`: the authoritative
+/// past contract in `src/native/capture/output.rs`. The nested `close` uses
+/// the existing `PomodoroCloseSummary` shape. Bob intentionally omits a
+/// top-level `pomodoro_close` for this operation. Malformed optional past
+/// metadata degrades to nil at the call site so older successes still decode.
+public struct PomodoroPastSummary: Codable, Equatable, Sendable {
+    public let raw: String
+    public let name: String?
+    public let target: PomodoroPastTarget
+    public let blocks: Int
+    public let repair: Bool
+    public let stack: PomodoroPastStack
+    public let anchor: String
+    public let window: PomodoroPastWindow
+    public let closedAt: String
+    public let line: Int
+    public let trims: [PomodoroPastTrim]
+    public let close: PomodoroCloseSummary
+
+    public init(
+        raw: String = "",
+        name: String? = nil,
+        target: PomodoroPastTarget = PomodoroPastTarget(),
+        blocks: Int = 5,
+        repair: Bool = false,
+        stack: PomodoroPastStack = PomodoroPastStack(),
+        anchor: String = "",
+        window: PomodoroPastWindow = PomodoroPastWindow(),
+        closedAt: String = "",
+        line: Int = 0,
+        trims: [PomodoroPastTrim] = [],
+        close: PomodoroCloseSummary = PomodoroCloseSummary(raw: "")
+    ) {
+        self.raw = raw
+        self.name = name
+        self.target = target
+        self.blocks = blocks
+        self.repair = repair
+        self.stack = stack
+        self.anchor = anchor
+        self.window = window
+        self.closedAt = closedAt
+        self.line = line
+        self.trims = trims
+        self.close = close
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        target =
+            (try? container.decodeIfPresent(
+                PomodoroPastTarget.self,
+                forKey: .target
+            )) ?? PomodoroPastTarget()
+        blocks = try container.decodeIfPresent(Int.self, forKey: .blocks) ?? 5
+        repair = try container.decodeIfPresent(Bool.self, forKey: .repair) ?? false
+        stack =
+            (try? container.decodeIfPresent(
+                PomodoroPastStack.self,
+                forKey: .stack
+            )) ?? PomodoroPastStack()
+        anchor = try container.decodeIfPresent(String.self, forKey: .anchor) ?? ""
+        window =
+            (try? container.decodeIfPresent(
+                PomodoroPastWindow.self,
+                forKey: .window
+            )) ?? PomodoroPastWindow()
+        closedAt = try container.decodeIfPresent(String.self, forKey: .closedAt) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        trims = (try? container.decodeIfPresent(
+            [PomodoroPastTrim].self,
+            forKey: .trims
+        )) ?? []
+        close = try container.decode(PomodoroCloseSummary.self, forKey: .close)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case name
+        case target
+        case blocks
+        case repair
+        case stack
+        case anchor
+        case window
+        case closedAt = "closed_at"
+        case line
+        case trims
+        case close
     }
 }
 
@@ -4526,6 +4863,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // Additive session-close result for whole-item `x` and task-link `=x` closes. Older Bob
     // binaries omit it entirely; decode as nil.
     public let pomodoroClose: PomodoroCloseSummary?
+    // Additive recorded past session for `x=` items. Older Bob binaries omit
+    // it entirely; a malformed value degrades to nil so the rest still previews.
+    // Bob intentionally omits a top-level `pomodoro_close` for this operation.
+    public let pomodoroPast: PomodoroPastSummary?
     /// Additive `=/` split result. Older Bob binaries omit it; malformed
     /// values are ignored so the rest of capture still previews.
     public let pomodoroSplit: PomodoroSplitSummary?
@@ -4698,6 +5039,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
+        pomodoroPast: PomodoroPastSummary? = nil,
         pomodoroSplit: PomodoroSplitSummary? = nil,
         pomodoroMerge: PomodoroMergeSummary? = nil,
         pomodoroReset: PomodoroResetSummary? = nil,
@@ -4790,6 +5132,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.pomodoroPast = pomodoroPast
         self.pomodoroSplit = pomodoroSplit
         self.pomodoroMerge = pomodoroMerge
         self.pomodoroReset = pomodoroReset
@@ -4905,6 +5248,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             PomodoroCloseSummary.self,
             forKey: .pomodoroClose
         )
+        pomodoroPast = (try? container.decodeIfPresent(
+            PomodoroPastSummary.self,
+            forKey: .pomodoroPast
+        )) ?? nil
         pomodoroSplit =
             (try? container.decodeIfPresent(
                 PomodoroSplitSummary.self,
@@ -5119,6 +5466,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case pomodoroPast = "pomodoro_past"
         case pomodoroSplit = "pomodoro_split"
         case pomodoroMerge = "pomodoro_merge"
         case pomodoroReset = "pomodoro_reset"

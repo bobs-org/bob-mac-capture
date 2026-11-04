@@ -659,6 +659,14 @@ final class CapturePanelModel: ObservableObject {
     private var pendingExplicitSubmitTask: Task<Void, Never>?
     private var livePreviewTask: Task<Void, Never>?
     private var livePreviewGeneration: UInt64 = 0
+    /// Cancellable five-minute boundary refresh for a visible past preview.
+    /// While the panel shows a valid current past preview, one dry-run
+    /// request fires at the next wall-clock boundary and re-arms. Local clock
+    /// math only decides when to ask Bob again; windows come from Bob.
+    private var pastRefreshTask: Task<Void, Never>?
+    /// Injectable clock/scheduling seam for deterministic hosted tests.
+    var pastNow: () -> Date = { Date() }
+    var pastSleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     private var similarTasksTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
@@ -1328,6 +1336,7 @@ final class CapturePanelModel: ObservableObject {
         pendingExplicitSubmitTask?.cancel()
         livePreviewTask?.cancel()
         clipboardPollTask?.cancel()
+        pastRefreshTask?.cancel()
         similarTasksTask?.cancel()
         rewriteTask?.cancel()
         todayPomodoroGotoTask?.cancel()
@@ -1849,6 +1858,22 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroClosePresentation(capture: previewResult)
     }
 
+    /// Past-work groups for the on-screen preview, one card per stack. Nil
+    /// when the preview holds no `pomodoro_past` captures. Mixed batches keep
+    /// their ordinary item order; homogeneous past batches use the new card
+    /// and the Record footer action.
+    var pastPresentation: CapturePomodoroPastPresentation? {
+        guard !previewResults.isEmpty else {
+            return nil
+        }
+        return CapturePomodoroPastPresentation(captures: previewResults)
+    }
+
+    /// True when every preview result is a recorded past session.
+    var isHomogeneousPastPreview: Bool {
+        pastPresentation?.isHomogeneous == true
+    }
+
     /// The live preview's reset presentation for a single plain, linked-task,
     /// or new-task note-free `x0` reset. Bob's additive summary is the sole
     /// source of reset effects; mutually exclusive with the close above.
@@ -1936,6 +1961,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if pomodoroMergePresentation != nil {
             return "Merge"
+        }
+        if isHomogeneousPastPreview, let past = pastPresentation {
+            return past.primaryActionTitle
         }
         if closePresentation != nil {
             return "Close"
@@ -2070,6 +2098,7 @@ final class CapturePanelModel: ObservableObject {
         previewGlobalDestination = globalDestination
         previewOpenPlan = CaptureOpenPlan(openNotes: openNotes, captures: captures)
         previewOutputsDraft = previewDraft
+        schedulePastBoundaryRefresh()
     }
 
     private func clearPreviewOutputs() {
@@ -2079,6 +2108,7 @@ final class CapturePanelModel: ObservableObject {
         previewGlobalDestination = nil
         previewOpenPlan = nil
         previewOutputsDraft = nil
+        cancelPastBoundaryRefresh()
     }
 
     /// Follows the agenda store's count publisher. The store nils the
@@ -2143,6 +2173,7 @@ final class CapturePanelModel: ObservableObject {
     /// next show.
     private func noteAgendaDayChanged() {
         resetCalendarBoundaryRefresh()
+        cancelPastBoundaryRefresh()
         agendaPlanningDay = nil
         publishAgendaLoading(today: CaptureAgendaStore.localToday())
     }
@@ -2152,6 +2183,7 @@ final class CapturePanelModel: ObservableObject {
         self.processClient = processClient
         if changed {
             cancelPendingExplicitSubmit()
+            cancelPastBoundaryRefresh()
             // Recheck Bob is not an editor echo of the last splice: drop the
             // suppression so the re-parse below actually runs.
             suppressedCompletionAcceptanceDraft = nil
@@ -2640,6 +2672,7 @@ final class CapturePanelModel: ObservableObject {
 
     func submit(openAfterCapture: Bool) {
         cancelPendingExplicitSubmit()
+        cancelPastBoundaryRefresh()
         clearOpenHintReveal()
         guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
@@ -4392,6 +4425,7 @@ final class CapturePanelModel: ObservableObject {
         panelVisible = false
         cancelPendingExplicitSubmit()
         stopClipboardPolling()
+        cancelPastBoundaryRefresh()
         if similarTasks.focusedRowID != nil {
             unfocusSimilarRow(applyPending: false)
         }
@@ -8538,15 +8572,25 @@ final class CapturePanelModel: ObservableObject {
         }
         // A `=<X>#` draft (or chain token) is `incomplete` with a
         // `pomodoro_name` need and a partial `pomodoro_start` spec. It keeps
-        // the completion list open while the preview stays calm.
-        let scopes: [(mode: String, needs: [String], hasStart: Bool)] =
+        // the completion list open while the preview stays calm. An `x=#`
+        // past draft is the same calm state with a partial `pomodoro_past`
+        // spec; Bob's `pomodoro_past_name` menu applies where the name menu does.
+        let scopes: [(mode: String, needs: [String], hasStart: Bool, hasPast: Bool)] =
             if parse.items.isEmpty {
-                [(parse.mode, parse.needs, parse.pomodoroStart != nil)]
+                [(
+                    parse.mode,
+                    parse.needs,
+                    parse.pomodoroStart != nil,
+                    parse.pomodoroPast != nil
+                )]
             } else {
-                parse.items.map { ($0.mode, $0.needs, $0.pomodoroStart != nil) }
+                parse.items.map {
+                    ($0.mode, $0.needs, $0.pomodoroStart != nil, $0.pomodoroPast != nil)
+                }
             }
         if scopes.contains(where: {
-            $0.mode == "incomplete" && $0.needs.contains("pomodoro_name") && $0.hasStart
+            $0.mode == "incomplete" && $0.needs.contains("pomodoro_name")
+                && ($0.hasStart || $0.hasPast)
         }) {
             return .pomodoroStart
         }
@@ -8844,7 +8888,10 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
 
-        if completionResponse.context == "pomodoro_name", candidate.createsPomodoro {
+        if completionResponse.context == "pomodoro_name"
+            || completionResponse.context == "pomodoro_past_name",
+            candidate.createsPomodoro
+        {
             guard applySelectedCompletionReplacement(
                 candidate: candidate,
                 range: range,
@@ -8860,9 +8907,12 @@ final class CapturePanelModel: ObservableObject {
 
         // A `pomodoro_start_name` name-it row shares the `pomodoro_name`
         // prompt flow and the slug splice: naming the placeholder selects it
-        // for the pending named start.
+        // for the pending named start. A `pomodoro_past_name` name-it row
+        // shares the same calm flow; Bob's replacement already preserves
+        // `@D`, repair `!`, and the second `=` close selection.
         if completionResponse.context == "pomodoro_name"
-            || completionResponse.context == "pomodoro_start_name",
+            || completionResponse.context == "pomodoro_start_name"
+            || completionResponse.context == "pomodoro_past_name",
             candidate.requiresName
         {
             presentPomodoroNamePrompt(
@@ -11896,7 +11946,7 @@ final class CapturePanelModel: ObservableObject {
         let candidate = completionResponse.candidates[index]
         let hideableOrigin: Bool
         switch completionResponse.context {
-        case "pomodoro_name", "pomodoro_start_name":
+        case "pomodoro_name", "pomodoro_start_name", "pomodoro_past_name":
             hideableOrigin = candidate.origin == "history"
         case "task_type":
             hideableOrigin = candidate.origin == "history" || candidate.origin == "configured"
@@ -13541,6 +13591,11 @@ final class CapturePanelModel: ObservableObject {
                 offers.append(contentsOf: close.keepMoving)
                 stillBlocked.append(contentsOf: close.stillBlocked)
             }
+            if let past = capture.pomodoroPast {
+                offers.append(contentsOf: past.close.unblocked)
+                offers.append(contentsOf: past.close.keepMoving)
+                stillBlocked.append(contentsOf: past.close.stillBlocked)
+            }
             if let projectNote = capture.projectNote, projectNote.form == "offer" {
                 offers.append(contentsOf: projectNote.successors)
             }
@@ -14415,6 +14470,86 @@ final class CapturePanelModel: ObservableObject {
         clipboardPollTask = nil
         lastSeenClipboardChangeCount = nil
         cancelLivePreviewRequest()
+    }
+
+    /// Arms one five-minute boundary refresh while the panel shows a valid
+    /// current past preview. Re-arms after each boundary; never overlaps
+    /// tickers and never fires on every view render.
+    private func schedulePastBoundaryRefresh() {
+        cancelPastBoundaryRefresh()
+        guard CapturePastBoundary.shouldArm(
+            panelVisible: panelVisible,
+            hasPastGroups: pastPresentation != nil
+        ) else {
+            return
+        }
+        let delay = CapturePastBoundary.sleepNanoseconds(now: pastNow())
+        pastRefreshTask = Task { [weak self] in
+            do {
+                try await self?.pastSleep(delay) ?? ()
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            await MainActor.run {
+                self?.refreshPastPreviewForBoundary()
+            }
+        }
+    }
+
+    private func cancelPastBoundaryRefresh() {
+        pastRefreshTask?.cancel()
+        pastRefreshTask = nil
+    }
+
+    /// Re-runs the live preview at a five-minute boundary without touching
+    /// the draft, selection, completion, chosen offers, or submission. Uses
+    /// `startLivePreview` and its generation/draft/client/clipboard checks,
+    /// so stale responses cannot resurrect retired offers and failures show
+    /// the normal refusal instead of restoring the old success.
+    private func refreshPastPreviewForBoundary() {
+        guard let processClient,
+            let parse = latestParse,
+            let appliedDraft = lastAppliedParseDraft,
+            appliedDraft == plainDraft,
+            lastAppliedParseGeneration == analysisGeneration,
+            lastAppliedParseClientIdentity == processClient.identityToken,
+            Self.pickerNeed(in: parse) == nil,
+            pastPresentation != nil,
+            panelVisible
+        else {
+            cancelPastBoundaryRefresh()
+            return
+        }
+        let draft = plainDraft
+        let closePending = Self.closePendingTrim(in: parse, draft: draft)
+        let clipAuthorized = CaptureGrammarGate.isCompatible(parse.grammar)
+            && parse.reportsClipDirective
+        startLivePreview(
+            draft: draft,
+            previewDraft: closePending?.trimmed ?? draft,
+            pendingSeparator: closePending?.separator,
+            pendingAction: closePending?.action,
+            generation: analysisGeneration,
+            processClient: processClient,
+            trigger: .edit,
+            clipAuthorized: clipAuthorized
+        )
+        // Re-arm for the next boundary only when the refreshed preview is
+        // still a past preview; `assignPreviewOutputs` re-arms on success,
+        // and failures clear outputs (no stale card) via the normal path.
+    }
+
+    /// Hosted-test hook: whether a boundary refresh is armed.
+    var pastRefreshArmedForTests: Bool {
+        pastRefreshTask != nil
+    }
+
+    /// Hosted-test hook: fire the boundary refresh synchronously.
+    func firePastBoundaryRefreshForTests() {
+        refreshPastPreviewForBoundary()
     }
 
     /// One pasteboard-counter check. A moved counter re-runs the debounced

@@ -35,6 +35,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case taskType
     case taskTypeMarker
     case pomodoroStart
+    case pomodoroPastRepair
     case pomodoroCloseInProgress
     case pomodoroClosePark
     case pomodoroCloseComplete
@@ -166,6 +167,14 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // session, so they share the Pomodoro-session highlight with the start
         // and adjust spans.
         return .pomodoroStart
+    case "pomodoro_past":
+        // The `x=` past token and its `@D` count share the session-operator
+        // highlight; the repair `!` takes its own warning category below.
+        return .pomodoroStart
+    case "pomodoro_past_repair":
+        // The repair `!` on `x=` warns distinctly from the close-selection
+        // `!` (which stays `.pomodoroCloseComplete`).
+        return .pomodoroPastRepair
     case "pomodoro_split", "pomodoro_merge":
         // Whole-item split/merge gestures select Pomodoros, so Bob's tokens
         // share the established session highlight.
@@ -252,6 +261,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case projectTaskBlockID
     case pomodoroName
     case pomodoroStartName
+    case pomodoroPastName
     case pomodoroSplitBase
     case pomodoroSplitType
     case pomodoroMergeSource
@@ -285,6 +295,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "project_task_block_id": self = .projectTaskBlockID
         case "pomodoro_name": self = .pomodoroName
         case "pomodoro_start_name": self = .pomodoroStartName
+        case "pomodoro_past_name": self = .pomodoroPastName
         case "pomodoro_split_base": self = .pomodoroSplitBase
         case "pomodoro_split_type": self = .pomodoroSplitType
         case "pomodoro_merge_src": self = .pomodoroMergeSource
@@ -577,7 +588,7 @@ public func completionRowContent(
             ? "Adds a block ID, then selects this task."
             : "Nests the capture under this task."
 
-    case .pomodoroName, .pomodoroSplitBase, .pomodoroSplitType,
+    case .pomodoroName, .pomodoroPastName, .pomodoroSplitBase, .pomodoroSplitType,
         .pomodoroMergeSource, .pomodoroMergeDestination:
         if candidate.origin == "history", candidate.createsPomodoro {
             category = .pomodoroStart

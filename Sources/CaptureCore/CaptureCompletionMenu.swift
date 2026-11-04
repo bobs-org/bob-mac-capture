@@ -21,7 +21,8 @@ public enum CaptureCompletionMenu: Sendable {
         if completion.opensWithoutSelection {
             return nil
         }
-        if completion.context == "pomodoro_name",
+        if completion.context == "pomodoro_name"
+            || completion.context == "pomodoro_past_name",
             queryIsEmpty,
             let suggested = completion.candidates.firstIndex(where: \.suggested)
         {
