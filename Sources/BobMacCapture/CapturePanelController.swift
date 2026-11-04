@@ -1067,7 +1067,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot `:`/`^`/`+`/`|` rewrite-lane gesture when the focused
+    /// Records a one-shot `:`/`^`/`+`/`|` gesture or `.`/`;` sigil alias when the focused
     /// main draft editor can insert that character natively. The key event still
     /// reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1088,7 +1088,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
             characters == ":" || characters == "^" || characters == "+"
-                || characters == "|"
+                || characters == "|" || characters == "." || characters == ";"
         else {
             return
         }

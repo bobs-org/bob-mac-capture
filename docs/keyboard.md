@@ -91,6 +91,8 @@ as Command-Y L does.
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | 1–9 | Right after a task number in a close task list (`x`, `x*`, `x!`, and their `*`/`!`/`~` groups, including `=x` link closes), insert `,` before the digit (`x1` + `2` → `x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
 | + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
+| . | Immediately after `@route`, ask Bob to rewrite `.` as `^` when the Block ID picker is eligible; Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
+| ; | Immediately after `@route`, ask Bob to rewrite `;` as `:` for the Block ID picker; as a whole item, rewrite it for the Task Link picker. Undo restores `;` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion; with no selected row, select the first | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
@@ -100,7 +102,7 @@ as Command-Y L does.
 | Ctrl-Tab / Ctrl-Shift-Tab | Switch to Bob Refs, retaining the draft and caret | Same switch, closing completion | Same switch; the prompt closes and the draft is retained | Same switch; the prompt closes and the draft is retained |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app-command--then-) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | \ | From a blank draft, replace it with `/` to open Go To; on a bare `/` draft right after, type a literal `\`; otherwise consume the key (reopening from the chip when visible) | Same as in the editor | Native text-field behavior | Native text-field behavior |
 | Command-J | Join the focus calendar event in the default browser when the draft is empty and the band shows a join link; with a nonempty draft the key is unconsumed | Unconsumed (completion stays open) | Native text-field behavior | Native text-field behavior |
 | Command-S | Save the current `%t` draft | Save the current `%t` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
@@ -258,7 +260,7 @@ result is dropped. While the stash, saved-template shelf, Add block ID or
 Name Pomodoro prompt, successor-choice card, or a picker is open, Command-\
 is consumed so you finish or cancel that surface first.
 
-## Going to a task from any app (Command-\ then \)
+## Going to a task from any app (Command-\ then \) {#going-to-a-task-from-any-app}
 
 `Command-\` then `\` searches tasks from any macOS app. The first press opens
 or focuses Capture with the editor focused (release Command); with

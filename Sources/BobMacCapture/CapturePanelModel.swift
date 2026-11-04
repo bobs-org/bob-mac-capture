@@ -18,7 +18,7 @@ struct CaptureRelationLabelRowEntry: Identifiable {
     let candidate: CaptureCompletionCandidate
 }
 
-/// One-shot expected buffer after native `:`/`^`/`+` or `|` insertion.
+/// One-shot expected buffer after native `:`/`^`/`+`/`|` insertion or a `.`/`;` alias.
 /// Cleared on consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
 /// an accepted toggle supersedes that analysis, while any other outcome completes
@@ -2218,13 +2218,15 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a rewrite-lane
-    /// separator gesture (`:`, `^`, `+`, or `|`). The character still inserts
-    /// natively; `editorTextDidChange` consumes this only when the resulting
-    /// buffer matches.
+    /// separator gesture (`:`, `^`, `+`, or `|`) or sigil alias (`.` or `;`).
+    /// The character still inserts natively; `editorTextDidChange` consumes
+    /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
-        guard typed == ":" || typed == "^" || typed == "+" || typed == "|",
-              selectedRange.length == 0,
-              selectedRange.location >= 0
+        guard
+            typed == ":" || typed == "^" || typed == "+" || typed == "|"
+                || typed == "." || typed == ";",
+            selectedRange.length == 0,
+            selectedRange.location >= 0
         else {
             pendingSeparatorToggleIntent = nil
             return
@@ -13719,6 +13721,7 @@ final class CapturePanelModel: ObservableObject {
 
             if response.rule == "switch_block_id_separator"
                 || response.rule == "attach_relation_label"
+                || response.rule == "expand_sigil_alias"
             {
                 applyNativeSingleEditRewrite(response, draft: draft)
                 return
@@ -13791,7 +13794,8 @@ final class CapturePanelModel: ObservableObject {
         }
         scheduleAnalysis(
             cursorUTF8Offset: cursorUTF8Offset,
-            requestCompletion: response.rule == "attach_relation_label",
+            requestCompletion: response.rule == "attach_relation_label"
+                || response.rule == "expand_sigil_alias",
             trigger: .edit
         )
         rewriteExpectedCursorUTF8 = nil

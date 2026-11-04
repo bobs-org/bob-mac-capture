@@ -274,8 +274,8 @@ Template saves send `--template-origin` only after a successful template-list re
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
-- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows only, instead of open rows, when Go To requests them)
-- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, template start)
+- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows instead of open rows when Go To requests them)
+- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` is omitted only when the draft's accepted parse reported a `%c` directive span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
@@ -329,7 +329,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label` | `@@` absorbs eligible markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token | With an older bob, `+` types literally; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+` and relation-label attachment |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | `@@` absorbs eligible markers; `^` / `:` / `+` switch separators, including sub-bullets and sealed forms; `|` attaches to relation tokens; `.` / `;` alias `^` / `:` at picker positions | Older bob leaves `.` / `;` literal and unsupported `+` unchanged; spaces before `|` stay, so only `~note:id|` opens a relation card; other rewrites follow bob | Upgrade `bob` for `+`, relation labels, and sigil aliases |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |

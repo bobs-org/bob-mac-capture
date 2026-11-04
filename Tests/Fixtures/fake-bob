@@ -1820,7 +1820,15 @@ JSON
 JSON
       exit 0
     fi
-    if [[ "${draft}" == "New task ~tasks:target |" ]]; then
+    if [[ "${draft}" == "@file." ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-task-block-id.json"
+    elif [[ "${draft}" == "@file;" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-pomodoro-block-id.json"
+    elif [[ "${draft}" == ";" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-task-link.json"
+    elif [[ "${draft}" == "Buy milk." ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-unchanged.json"
+    elif [[ "${draft}" == "New task ~tasks:target |" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       cat <<'JSON'
@@ -3232,6 +3240,30 @@ JSON
       "creates_pomodoro": true
     }
   ]
+}
+JSON
+    elif [[ "${draft}" == "@file^" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 6, "end": 6 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 0, "end": 6 },
+    "intent": "new",
+    "body": "",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": [],
+    "used": []
+  }
 }
 JSON
     elif [[ "${draft}" == "@file:" ]]; then

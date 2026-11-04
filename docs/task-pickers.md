@@ -50,8 +50,9 @@ Every picker here browses open tasks and inserts exactly what `bob` returns. `bo
 
 ## Task Link Picker
 
-Typing `:` as the whole capture item opens the Task Link Picker (`task_link`
-context), the same card as `^` with scope `:` and caption Open Tasks. When
+Typing `:` or `;` as the whole capture item opens the Task Link Picker (`task_link`
+context), the same card as `^` with scope `:` and caption Open Tasks. Mac Capture
+turns `;` into `:` through Bob's rewrite lane. When
 `capture-parse` reports `task_link` in `needs`, the app skips the doomed live dry
 run and shows "Pick any open task — press Tab to browse".
 
@@ -222,7 +223,8 @@ ID prompt, Tab / Shift-Tab cycle suggestions.
 
 ## Block ID Picker
 
-Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
+Typing `.` or `;` immediately after `@route` uses Mac Capture's rewrite lane to
+type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task
   picker (`project_task_block_id` context),
