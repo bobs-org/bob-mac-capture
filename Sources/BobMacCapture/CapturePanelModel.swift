@@ -1540,7 +1540,8 @@ final class CapturePanelModel: ObservableObject {
     /// Lone-plus operator-continuation keys while the parent-task filter is
     /// empty, plus Bob's Complete (`!`) continuation keys while its filter
     /// is empty. Empty for every other source, a nonempty filter, and scoped
-    /// or prose-terminal plus pickers (Bob omits the keys there).
+    /// or prose-terminal plus pickers (Bob omits the keys there), plus the
+    /// move picker's server-authored marker continuation.
     var pickerOperatorContinuationKeys: [String] {
         guard pickerFilterIsEmpty else {
             return []
@@ -1550,6 +1551,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if picker?.source == .taskComplete {
             return picker?.taskCompleteContinuationKeys ?? []
+        }
+        if case .projectTaskMove(let context) = picker?.source {
+            return context.actionContinuationKeys
         }
         return []
     }
@@ -7152,6 +7156,10 @@ final class CapturePanelModel: ObservableObject {
             }
         } else if openPicker.source == .taskComplete {
             guard openPicker.taskCompleteContinuationKeys.contains(key) else {
+                return
+            }
+        } else if case .projectTaskMove(let context) = openPicker.source {
+            guard context.actionContinuationKeys.contains(key) else {
                 return
             }
         } else {

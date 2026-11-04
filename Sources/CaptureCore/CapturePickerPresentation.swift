@@ -812,12 +812,17 @@ public enum CapturePickerSource: Equatable, Sendable {
         }
     }
 
-    /// Quiet dual-use hint for the exact whole-item `+`. Nil everywhere else.
+    /// Quiet hints for Bob-authored picker continuation keys. Nil when the
+    /// current picker has no continuation action.
     public var operatorContinuationHint: String? {
-        guard case .parentTask(let context) = self, context.isLonePlusOperator else {
+        switch self {
+        case .parentTask(let context) where context.isLonePlusOperator:
+            return "Type a number or + to adjust; Esc to extend +5m"
+        case .projectTaskMove(let context) where context.actionContinuationKeys.contains("^"):
+            return "Type ^ again to choose tasks from \(context.noteFileName)"
+        default:
             return nil
         }
-        return "Type a number or + to adjust; Esc to extend +5m"
     }
 
     /// Locator separator between route and block ID (`:` for `:`/`^`/`&`/`/`,

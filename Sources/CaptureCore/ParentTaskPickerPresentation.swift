@@ -109,6 +109,9 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
     public let markerRange: CaptureRange
     public let triggerRemovalRange: CaptureRange
     public let openCount: Int?
+    /// Bob's keys that extend the move marker instead of filtering. The
+    /// `- ^^` choice marker currently advertises a second caret.
+    public let actionContinuationKeys: [String]
 
     public init(
         scopeToken: String,
@@ -117,7 +120,8 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
         continuation: String? = nil,
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
-        openCount: Int? = nil
+        openCount: Int? = nil,
+        actionContinuationKeys: [String] = []
     ) {
         self.scopeToken = scopeToken
         self.noteTarget = noteTarget
@@ -126,6 +130,7 @@ public struct ProjectTaskMovePickerContext: Equatable, Sendable {
         self.markerRange = markerRange
         self.triggerRemovalRange = triggerRemovalRange
         self.openCount = openCount
+        self.actionContinuationKeys = actionContinuationKeys
     }
 
     /// True when the `:` lane also links (Move & link).

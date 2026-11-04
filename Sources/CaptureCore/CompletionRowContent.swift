@@ -130,6 +130,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .interactivePlaceholder
     case "project_task_move_marker":
         return .route
+    case "project_task_move_choice_marker":
+        return .route
     case "project_task_move_block_id":
         return .blockID
     case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_task_link_marker",

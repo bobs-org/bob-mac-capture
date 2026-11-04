@@ -8268,7 +8268,8 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
             destination: destination,
             continuation: continuation,
             markerRange: markerRange,
-            triggerRemovalRange: triggerRemovalRange
+            triggerRemovalRange: triggerRemovalRange,
+            actionContinuationKeys: actionContinuationKeys
         )
     }
 
