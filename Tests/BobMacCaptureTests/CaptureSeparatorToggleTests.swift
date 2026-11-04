@@ -1420,4 +1420,158 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
         XCTAssertNil(model.completionResponse)
     }
+
+    // MARK: - Backslash hash alias
+
+    func testBackslashAliasAfterTaskTypeOpensTypeMenuAndDoubleTapCloses() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("jot idea ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(model.plainDraft, "jot idea #")
+        XCTAssertEqual(model.completionResponse?.context, "task_type")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 10 --format json -- jot idea \\"))
+        XCTAssertTrue(record.contains("capture-complete --all-tasks --cursor 10 --format json -- jot idea #"))
+
+        let completesBefore = record.components(separatedBy: "argv=capture-complete").count - 1
+        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash())
+        XCTAssertEqual(model.plainDraft, "jot idea \\")
+        XCTAssertEqual(textView.string, "jot idea \\")
+        XCTAssertFalse(model.completionVisible)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let after = try String(contentsOf: recordURL)
+        XCTAssertEqual(after.components(separatedBy: "argv=capture-complete").count - 1, completesBefore)
+        XCTAssertFalse(after.contains("capture-complete --all-tasks --cursor 10 --format json -- jot idea \\"))
+    }
+
+    func testBackslashAliasAfterSectionOpensSectionMenu() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("jot idea @foo")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(model.plainDraft, "jot idea @foo#")
+        XCTAssertEqual(model.completionResponse?.context, "section")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 14 --format json -- jot idea @foo\\"))
+    }
+
+    func testBackslashAliasAfterDrawerOpensDrawerMenuAndDoubleTapCloses() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Postgres 17 minimum @foo+bar")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#")
+        XCTAssertEqual(model.completionResponse?.context, "drawer")
+        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash())
+        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar\\")
+        XCTAssertFalse(model.completionVisible)
+    }
+
+    func testUndoAfterHashAliasRestoresLiteralWithoutRetriggering() async throws {
+        let (textView, window) = makeHostedTextView("jot idea ")
+        defer { window.close() }
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "jot idea \\")
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        await waitUntil { !model.completionVisible }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(textView.string, "jot idea \\")
+    }
+
+    func testOlderBobHashAliasReplyLeavesLiteralWithoutArming() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_HASH_UNCHANGED": "1"]
+        )
+        let textView = makeTextView("jot idea ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(model.plainDraft, "jot idea \\")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.hashAliasLiteralArm)
+
+        typeSeparator("\\", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(model.plainDraft, "jot idea \\\\")
+        XCTAssertNil(model.hashAliasLiteralArm)
+    }
+
+    func testDifferentKeyAfterHashAliasClearsArm() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("jot idea ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { model.completionVisible }
+        XCTAssertNotNil(model.hashAliasLiteralArm)
+
+        _ = model.takeHashAliasLiteralArm()
+        XCTAssertNil(model.hashAliasLiteralArm)
+        let router = CaptureKeyCommandRouter()
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(characters: "\\"),
+                context: CaptureKeyRoutingContext()
+            )
+        )
+    }
+
+    func testDelayedHashAliasRaceKeepsDoubleBackslash() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
+        )
+        let textView = makeTextView("jot idea ")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("\\", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        typeSeparator("\\", into: textView, model: model)
+        await waitUntil { model.plainDraft == "jot idea \\\\" }
+
+        XCTAssertEqual(model.plainDraft, "jot idea \\\\")
+        XCTAssertFalse(model.completionVisible)
+    }
 }

@@ -567,6 +567,10 @@ final class CapturePanelModel: ObservableObject {
     /// One-shot arm after `\` opens Go To: the very next `\` on a bare `/`
     /// draft types a literal `\` instead. Cleared on consume or dismissal.
     @Published private(set) var backslashLiteralArmed = false
+    /// One-shot arm after Bob rewrites `\` to `#`: the very next `\` replaces
+    /// that `#` with a literal `\` and closes the menu. Cleared on consume
+    /// or dismissal.
+    var hashAliasLiteralArm: (draft: String, hashUTF8: Int, caretUTF8: Int)?
     static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
@@ -2286,13 +2290,14 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a rewrite-lane
-    /// separator gesture (`:`, `^`, `+`, or `|`) or sigil alias (`.` or `;`).
+    /// separator gesture (`:`, `^`, `+`, or `|`) or sigil alias (`.`, `;`,
+    /// or `\`).
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
-                || typed == "." || typed == ";",
+                || typed == "." || typed == ";" || typed == "\\",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -4441,6 +4446,7 @@ final class CapturePanelModel: ObservableObject {
         invalidateTodayPomodoroGoto()
         clearEditorLeader()
         clearBackslashLiteralArm()
+        clearHashAliasLiteralArm()
     }
 
     func armEditorLeader() {
@@ -4464,6 +4470,25 @@ final class CapturePanelModel: ObservableObject {
         let armed = backslashLiteralArmed
         backslashLiteralArmed = false
         return armed
+    }
+
+    func clearHashAliasLiteralArm() {
+        hashAliasLiteralArm = nil
+    }
+
+    /// Takes and clears the one-shot hash-alias arm.
+    func takeHashAliasLiteralArm() -> (
+        draft: String, hashUTF8: Int, caretUTF8: Int
+    )? {
+        let arm = hashAliasLiteralArm
+        hashAliasLiteralArm = nil
+        return arm
+    }
+
+    func restoreHashAliasLiteralArm(
+        _ arm: (draft: String, hashUTF8: Int, caretUTF8: Int)
+    ) {
+        hashAliasLiteralArm = arm
     }
 
     /// True when the trimmed draft is exactly `/`, the Go To trigger.
@@ -14195,6 +14220,7 @@ final class CapturePanelModel: ObservableObject {
         suppressedCompletionAcceptanceDraft = response.text
         guard applyNativeRewriteEdit?(nativeEdit) == true else {
             suppressedCompletionAcceptanceDraft = nil
+            hashAliasLiteralArm = nil
             return
         }
         if plainDraft != response.text {
@@ -14206,6 +14232,27 @@ final class CapturePanelModel: ObservableObject {
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
         }
+        if response.rule == "expand_sigil_alias",
+           response.edits.count == 1,
+           let edit = response.edits.first,
+           edit.replacement == "#",
+           edit.range.end == edit.range.start + 1,
+           let inputRange = stringRange(
+               in: response.input,
+               start: edit.range.start,
+               end: edit.range.end
+           ),
+           String(response.input[inputRange]) == "\\",
+           let cursor = response.cursor
+        {
+            hashAliasLiteralArm = (
+                draft: response.text,
+                hashUTF8: edit.range.start,
+                caretUTF8: cursor
+            )
+        } else {
+            hashAliasLiteralArm = nil
+        }
         scheduleAnalysis(
             cursorUTF8Offset: cursorUTF8Offset,
             requestCompletion: response.rule == "attach_relation_label"
@@ -14214,6 +14261,74 @@ final class CapturePanelModel: ObservableObject {
         )
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
+    }
+
+    /// Second `\` right after a `#` alias: replaces that `#` with a literal
+    /// `\` through the native text view so Undo stays native, then closes
+    /// the menu without reopening a picker. Returns false without changing
+    /// state when the arm no longer matches, so the key falls through.
+    func replaceHashAliasWithLiteralBackslash() -> Bool {
+        guard let arm = hashAliasLiteralArm,
+              plainDraft == arm.draft,
+              collapsedSelectionUTF8Offset() == arm.caretUTF8,
+              !isSubmitting,
+              !editorInputLocked,
+              let hashRange = stringRange(
+                  in: plainDraft,
+                  start: arm.hashUTF8,
+                  end: arm.hashUTF8 + 1
+              ),
+              String(plainDraft[hashRange]) == "#",
+              let replacementRange = utf16Range(
+                  in: plainDraft,
+                  byteRange: CaptureRange(
+                      start: arm.hashUTF8,
+                      end: arm.hashUTF8 + 1
+                  )
+              )
+        else {
+            return false
+        }
+        var newDraft = plainDraft
+        newDraft.replaceSubrange(hashRange, with: "\\")
+        let newCaretUTF8 = arm.hashUTF8 + 1
+        guard let caretUTF16 = utf16Range(
+            in: newDraft,
+            start: newCaretUTF8,
+            end: newCaretUTF8
+        )?.location
+        else {
+            return false
+        }
+        let edit = CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: "\\",
+            resultingSelection: NSRange(location: caretUTF16, length: 0),
+            expectedDraft: arm.draft,
+            resultingDraft: newDraft
+        )
+        suppressedCompletionAcceptanceDraft = newDraft
+        guard applyNativeRewriteEdit?(edit) == true else {
+            suppressedCompletionAcceptanceDraft = nil
+            return false
+        }
+        if plainDraft != newDraft {
+            isApplyingProgrammaticDraft = true
+            attributedDraft = AttributedString(newDraft)
+            isApplyingProgrammaticDraft = false
+        }
+        restoreSelection(
+            cursorUTF8Offset: newCaretUTF8,
+            suppressEditorCallbacks: true
+        )
+        dismissCompletion()
+        suppressedCompletionAcceptanceDraft = newDraft
+        scheduleAnalysis(
+            cursorUTF8Offset: newCaretUTF8,
+            requestCompletion: false,
+            trigger: .edit
+        )
+        return true
     }
 
     @discardableResult

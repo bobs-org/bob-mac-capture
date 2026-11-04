@@ -578,4 +578,89 @@ final class CaptureBackslashGotoTests: XCTestCase {
         XCTAssertTrue(stash.entries.isEmpty)
         XCTAssertEqual(model.plainDraft, "")
     }
+
+    // MARK: - Hash alias double-tap
+
+    func testHashAliasArmedTypesLiteral() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(hashAliasLiteralArmed: true)
+            ),
+            .typeLiteralBackslashForHashAlias
+        )
+    }
+
+    func testHashAliasArmedRepeatIsConsumed() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(isRepeat: true),
+                context: CaptureKeyRoutingContext(hashAliasLiteralArmed: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    keyIsRepeat: true,
+                    hashAliasLiteralArmed: true
+                )
+            ),
+            .consumeKey
+        )
+    }
+
+    func testHashAliasArmedWithMarkedTextIsNil() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertNil(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    hashAliasLiteralArmed: true,
+                    editorHasMarkedText: true
+                )
+            )
+        )
+    }
+
+    func testHashAliasArmedCommandBackslashOpensToday() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(modifiers: .command),
+                context: CaptureKeyRoutingContext(hashAliasLiteralArmed: true)
+            ),
+            .openTodayPomodoro
+        )
+    }
+
+    func testUnarmedNonBlankBackslashIsNil() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertNil(
+            router.command(for: backslashEvent(), context: CaptureKeyRoutingContext())
+        )
+    }
+
+    func testHashArmSetOnlyForHashAliasEdit() {
+        let model = CapturePanelModel()
+        XCTAssertNil(model.hashAliasLiteralArm)
+        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
+        XCTAssertNotNil(model.takeHashAliasLiteralArm())
+        XCTAssertNil(model.hashAliasLiteralArm)
+        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
+        model.prepareForDismissal()
+        XCTAssertNil(model.hashAliasLiteralArm)
+    }
+
+    func testStaleHashArmIsInert() {
+        let model = CapturePanelModel()
+        model.plainDraft = "jot idea #"
+        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
+        model.plainDraft = "jot idea #b"
+        XCTAssertFalse(model.replaceHashAliasWithLiteralBackslash())
+        XCTAssertEqual(model.plainDraft, "jot idea #b")
+    }
 }

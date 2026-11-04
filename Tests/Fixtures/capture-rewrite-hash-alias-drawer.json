@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Postgres 17 minimum @foo+bar\\","text":"Postgres 17 minimum @foo+bar#","changed":true,"cursor":29,"rule":"expand_sigil_alias","edits":[{"range":{"start":28,"end":29},"replacement":"#"}],"summary":"Typed # for \\"}

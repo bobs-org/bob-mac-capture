@@ -1067,9 +1067,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot `:`/`^`/`+`/`|` gesture or `.`/`;` sigil alias when the focused
-    /// main draft editor can insert that character natively. The key event still
-    /// reaches AppKit; the model consumes the
+    /// Records a one-shot `:`/`^`/`+`/`|` gesture or `.`/`;`/`\` sigil alias
+    /// when the focused main draft editor can insert that character natively.
+    /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
     /// Modal fields, shortcuts, IME, and non-collapsed selections leave the
     /// event alone.
@@ -1086,11 +1086,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         else {
             return
         }
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-            characters == ":" || characters == "^" || characters == "+"
-                || characters == "|" || characters == "." || characters == ";"
-        else {
-            return
+        if characters == "\\" {
+            guard CaptureKeyCommandRouter.isTypedBackslash(
+                event: event,
+                modifiers: event.modifierFlags.intersection(
+                    .deviceIndependentFlagsMask
+                )
+            ) else {
+                return
+            }
+        } else {
+            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                characters == ":" || characters == "^" || characters == "+"
+                    || characters == "|" || characters == "." || characters == ";"
+            else {
+                return
+            }
         }
         let selection = textView.selectedRange()
         guard selection.length == 0 else {
@@ -1954,6 +1965,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .typeLiteralBackslash:
             model.replaceGotoSigilWithLiteralBackslash()
             return true
+        case .typeLiteralBackslashForHashAlias:
+            return model.replaceHashAliasWithLiteralBackslash()
         case .joinCalendarEvent:
             model.dismissCompletion()
             model.joinFocusCalendarEvent()
@@ -2150,6 +2163,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         repairPickerFilterFocusIfNeeded()
         let editorLeaderPending = takeEditorLeader()
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
+        let takenHashArm = model.takeHashAliasLiteralArm()
+        let hashAliasLiteralArmed: Bool = {
+            guard let arm = takenHashArm,
+                  arm.draft == model.plainDraft,
+                  model.collapsedSelectionUTF8Offset() == arm.caretUTF8
+            else {
+                return false
+            }
+            return true
+        }()
         guard let command = keyRouter.command(
             for: event,
             context: CaptureKeyRoutingContext(
@@ -2208,6 +2231,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 draftIsBlank: !model.hasDraft,
                 draftIsBareGotoSigil: model.draftIsBareGotoSigil,
                 backslashLiteralArmed: backslashLiteralArmed,
+                hashAliasLiteralArmed: hashAliasLiteralArmed,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2222,6 +2246,19 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return event
         }
 
+        if command == .consumeKey,
+           let arm = takenHashArm,
+           hashAliasLiteralArmed,
+           event.isARepeat,
+           CaptureKeyCommandRouter.isTypedBackslash(
+               event: event,
+               modifiers: event.modifierFlags.intersection(
+                   .deviceIndependentFlagsMask
+               )
+           )
+        {
+            model.restoreHashAliasLiteralArm(arm)
+        }
         return perform(command) ? nil : event
     }
 

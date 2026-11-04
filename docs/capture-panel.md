@@ -199,6 +199,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   it does, the app applies the swap natively and requests completion so the picker
   opens through the existing handlers. Undo restores the literal `.` or `;`; an
   older bob leaves either key literal.
+  Typing `\` uses the same lane as an alias for `#` where `#` would open a menu,
+  never at a line start. A second `\` right away replaces that `#` with one
+  literal `\` and closes the menu; the one-shot arm clears on any other key.
+  Undo restores the literal `\`; an older bob leaves `\` literal and never arms
+  the double-tap.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal
