@@ -6153,7 +6153,9 @@ final class CapturePanelModel: ObservableObject {
         cursor: Int,
         processClient: BobProcessClient
     ) {
-        announceStatus("Loading completed tasks…")
+        announceStatus(
+            request.includesClosedTasks ? "Loading completed tasks…" : "Loading open tasks…"
+        )
         Task { [weak self, processClient] in
             do {
                 let snapshot = try await processClient.captureComplete(
@@ -6295,8 +6297,8 @@ final class CapturePanelModel: ObservableObject {
             state.candidates.count == 1
             ? "1 task"
             : "\(state.candidates.count) tasks"
-        let action = state.appliedIncludesClosedTasks ? "Showing" : "Hiding"
-        announceStatus("\(action) completed tasks, \(countText)")
+        let scope = state.appliedIncludesClosedTasks ? "completed" : "open"
+        announceStatus("Showing \(scope) tasks, \(countText)")
     }
 
     private func applyOwnerModeParentStatus(source: CapturePickerSource) {

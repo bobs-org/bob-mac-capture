@@ -324,7 +324,7 @@ final class CapturePickerDesignTests: XCTestCase {
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskGoto, includesClosedTasks: true)
                 .first(where: { $0.keys == "⌘X" })?.action,
-            "Hide Completed"
+            "Show Open"
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskComplete).map { $0.action },

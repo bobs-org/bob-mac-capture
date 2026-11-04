@@ -89,8 +89,6 @@ suggestions.
 
 ## Go To Picker
 
-## Go To Picker
-
 Typing `/` as the whole capture draft — or typing `\` into a blank draft,
 which Mac Capture turns into `/` — opens the Go To picker (`task_goto`
 context), the same card as `:` with scope `/` and caption Go To. When
@@ -98,17 +96,15 @@ context), the same card as `:` with scope `/` and caption Go To. When
 dry run and shows "Pick a task to open — press Tab to browse".
 
 Bob lists the same open tasks as `:`, in the same order. Press Command-X to
-toggle completed tasks for this `/` session. With the toggle on, Bob adds all
-closed tasks from the vault catalog, including done archives, reference notes,
-and daily notes; done and canceled rows both appear. Open rows stay first.
-The grouped view adds a trailing **Completed** section in Bob's newest-close-date
-order, with undated rows last. A filtered view ranks open matches before
-completed matches, then ranks by Bob's match score. A completed row shows its
-status glyph, locator, and `Closed Oct 3` date capsule. The capsule reads
-**Go To · + Completed** while the toggle is on. Each new `/` session starts
-with completed tasks hidden; Escape and the reopen chip preserve the session's
-toggle state. On older Bob, Command-X leaves the picker open and shows
-**Update bob to show completed tasks**.
+switch between open tasks and completed tasks only for this `/` session.
+With the toggle on, Bob lists completed tasks from the whole vault catalog,
+including done archives, reference notes, and daily notes, done and canceled.
+Grouped, one **Completed** section in Bob's newest-close-date order, undated
+rows last. Filters rank by Bob's match score. A completed row shows status
+glyph, locator, and `Closed Oct 3` capsule. Capsule reads
+**Go To · Completed** while on. Each new `/` session starts open; Escape and
+the reopen chip preserve the toggle. On older Bob, Command-X leaves the picker
+open and shows **Update bob to show completed tasks**.
 
 Every row is selectable, including ID-less ones: open rows show `note.md:line` with no
 `plus.circle` suggestion and no Add block ID prompt. The detail strip reads
@@ -126,7 +122,7 @@ the `/` token and the idle agenda returns. Control-C on a Go To draft
 discards it instead of pushing it to the canceled-draft stash.
 
 Go To Picker keys: Return/Tab/Command-Return/Control-Return Go To, Command-X
-Show/Hide Completed, Shift-Return consumed, Escape Clear/Cancel, Backspace on
+Show Completed / Show Open, Shift-Return consumed, Escape Clear/Cancel, Backspace on
 empty filter removes `/`, `\` on an empty filter is consumed (or types a
 literal `\` right after `\` opened Go To), Control-C discards. Command-X
 replaces the native cut shortcut only while the Go To picker is open.

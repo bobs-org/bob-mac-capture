@@ -274,15 +274,15 @@ Template saves send `--template-origin` only after a successful template-list re
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
-- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows only when Go To requests them)
+- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows only, instead of open rows, when Go To requests them)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` is omitted only when the draft's accepted parse reported a `%c` directive span) and `capture --format json` (submit)
-- `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
+- `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
-- `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row still lacks an `added` date or git instant)
+- `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row lacks an `added` date or git instant)
 - `plan -f json` (Refs Today join, schema 2)
-- `ref scan -a -w -f json` (Refs scan report, schema 1; `-a` is omitted after an older bob rejects it)
+- `ref scan -a -w -f json` (Refs scan report, schema 1; `-a` omitted after older bob rejects it)
 - `ref show <note-path> -f json` (inspector hydration)
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
@@ -332,7 +332,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label` | `@@` absorbs eligible markers; `^` / `:` / `+` switch eligible block-ID separators (`+` after `@route^id`, and `:` / `^` between the sealed `@route^id@` and `@route:id@`); `|` attaches to an eligible relation token | With an older bob, `+` types literally; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for separator `+` and relation-label attachment |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
-| `--closed-tasks` in Go To | Command-X adds closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
+| `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |
 | `pomodoro_name` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |

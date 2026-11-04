@@ -378,6 +378,7 @@ public final class BobProcessClient: @unchecked Sendable {
         return response
     }
 
+    /// `true` requests Bob's closed-only Go To list.
     public func captureComplete(
         _ draft: String,
         cursor: Int,

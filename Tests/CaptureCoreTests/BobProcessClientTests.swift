@@ -381,7 +381,7 @@ final class BobProcessClientTests: XCTestCase {
             includeClosedTasks: true
         )
 
-        XCTAssertEqual(response.candidates.count, 11)
+        XCTAssertEqual(response.candidates.count, 3)
         XCTAssertEqual(response.candidates.last?.closed, "2020-10-18")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(

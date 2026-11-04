@@ -318,26 +318,40 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.updatePickerFilter("fix")
-        let selectedID = model.picker?.selectedRowID
 
         model.toggleGotoClosedTasks()
         await waitUntil {
             model.picker?.includesClosedTasks == true
-                && model.picker?.candidates.count == 11
+                && model.picker?.candidates.count == 3
         }
         XCTAssertEqual(model.picker?.filterText, "fix")
-        XCTAssertEqual(model.picker?.selectedRowID, selectedID)
         XCTAssertNotNil(model.pickerPresentation?.row(id: "done/old.md|12:deadbeef"))
-        XCTAssertEqual(model.statusText, "Showing completed tasks, 11 tasks")
+        XCTAssertNil(model.pickerPresentation?.row(id: "sase.md|6:41d049f2"))
+        XCTAssertTrue(
+            model.picker?.candidates.allSatisfy { $0.group == "completed" } ?? false
+        )
+        XCTAssertEqual(
+            model.picker?.selectedRowID,
+            CapturePickerNavigation.first(in: model.pickerPresentation?.orderedRowIDs ?? [])
+        )
+        XCTAssertEqual(model.statusText, "Showing completed tasks, 3 tasks")
 
         model.toggleGotoClosedTasks()
         await waitUntil {
             model.picker?.includesClosedTasks == false
                 && model.picker?.candidates.count == 8
-                && model.statusText == "Hiding completed tasks, 8 tasks"
+                && model.statusText == "Showing open tasks, 8 tasks"
         }
         XCTAssertEqual(model.picker?.filterText, "fix")
         XCTAssertNil(model.pickerPresentation?.row(id: "done/old.md|12:deadbeef"))
+        XCTAssertNotNil(model.pickerPresentation?.row(id: "sase.md|6:41d049f2"))
+        XCTAssertTrue(
+            model.picker?.candidates.allSatisfy { $0.group != "completed" } ?? false
+        )
+        XCTAssertEqual(
+            model.picker?.selectedRowID,
+            CapturePickerNavigation.first(in: model.pickerPresentation?.orderedRowIDs ?? [])
+        )
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains(
@@ -352,7 +366,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
 
         model.escapePicker()
         XCTAssertEqual(model.pickerChip?.includesClosedTasks, true)
@@ -360,7 +374,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
 
         XCTAssertTrue(model.pickerVisible)
         XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
-        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
     }
 
     func testUnsupportedClosedTasksKeepsPickerOpenWithUpdateHint() async throws {
@@ -391,7 +405,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             (try? String(contentsOf: recordURL))?.contains("--closed-tasks") == true
         }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.statusText == "Hiding completed tasks, 8 tasks" }
+        await waitUntil { model.statusText == "Showing open tasks, 8 tasks" }
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         XCTAssertFalse(model.picker?.includesClosedTasks ?? true)
@@ -418,11 +432,11 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
 
         await waitUntil {
             model.picker?.includesClosedTasks == true
-                && model.picker?.candidates.count == 11
+                && model.picker?.candidates.count == 3
         }
         try await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
-        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
     }
 
     func testPendingHideEscapesAndReopenDoesNotKeepCompletedRows() async throws {
@@ -431,7 +445,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
         armGotoMarker("delay-open", recordURL: recordURL)
 
         model.toggleGotoClosedTasks()
@@ -478,7 +492,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.openPickerFromChip()
         await waitUntil {
             model.pickerVisible
-                && model.statusText == "Hiding completed tasks, 8 tasks"
+                && model.statusText == "Showing open tasks, 8 tasks"
         }
         try await Task.sleep(nanoseconds: 500_000_000)
 
@@ -503,13 +517,13 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.openPickerFromChip()
         await waitUntil {
             model.picker?.includesClosedTasks == true
-                && model.picker?.candidates.count == 11
+                && model.picker?.candidates.count == 3
         }
 
         try await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
-        XCTAssertEqual(model.picker?.candidates.count, 11)
-        XCTAssertEqual(model.statusText, "Showing completed tasks, 11 tasks")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+        XCTAssertEqual(model.statusText, "Showing completed tasks, 3 tasks")
     }
 
     func testLatestOffFailureAfterPendingOnKeepsOriginalOpenSnapshot() async throws {
@@ -543,7 +557,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
         let completedID = "done/old.md|12:deadbeef"
         model.selectPickerRow(id: completedID)
         armGotoMarker("delay-open", recordURL: recordURL)
@@ -558,11 +572,11 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         await waitUntil { model.statusText.contains("controlled Go To fixture failure") }
 
         XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
-        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
         XCTAssertEqual(model.picker?.selectedRowID, completedID)
         try await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertTrue(model.picker?.includesClosedTasks ?? false)
-        XCTAssertEqual(model.picker?.candidates.count, 11)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
     }
 
     func testFailureOnChipRefetchRetainsRowsAndReportsError() async throws {
@@ -658,12 +672,12 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
         let completedID = "done/old.md|12:deadbeef"
         model.selectPickerRow(id: completedID)
 
         model.toggleGotoClosedTasks()
-        await waitUntil { model.statusText == "Hiding completed tasks, 8 tasks" }
+        await waitUntil { model.statusText == "Showing open tasks, 8 tasks" }
 
         let selectedID = try XCTUnwrap(model.picker?.selectedRowID)
         XCTAssertNotEqual(selectedID, completedID)
@@ -680,7 +694,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
         model.discardDraft()
         XCTAssertFalse(model.pickerVisible)
 
@@ -703,7 +717,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
         model.toggleGotoClosedTasks()
-        await waitUntil { model.picker?.candidates.count == 11 }
+        await waitUntil { model.picker?.candidates.count == 3 }
 
         model.acceptPickerRow(id: "done/old.md|12:deadbeef", submitAfterInsert: false)
 

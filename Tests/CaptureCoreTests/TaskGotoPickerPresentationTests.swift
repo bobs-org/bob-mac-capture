@@ -178,13 +178,40 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
             })
     }
 
+    func testCompletedOnlyCandidatesGroupIntoSingleCompletedSection() throws {
+        let closed = try closedCandidates()
+        XCTAssertFalse(closed.isEmpty)
+        XCTAssertTrue(closed.allSatisfy { $0.group == "completed" })
+        let index = TaskLinkPickerIndex(candidates: closed, mode: .taskGoto)
+        let presentation = index.presentation(filter: "/")
+        XCTAssertEqual(presentation.sections.count, 1)
+        XCTAssertEqual(presentation.sections.first?.title, "Completed")
+        XCTAssertEqual(
+            presentation.sections.first?.rows.map(\.id),
+            [
+                "done/old.md|12:deadbeef", "mac_inbox.md|13:cafebabe",
+                "References/old.md|12:deadbeef",
+            ]
+        )
+        XCTAssertEqual(
+            presentation.orderedRowIDs,
+            [
+                "done/old.md|12:deadbeef", "mac_inbox.md|13:cafebabe",
+                "References/old.md|12:deadbeef",
+            ]
+        )
+        let filtered = index.presentation(filter: "/old").sections.flatMap(\.rows)
+        XCTAssertEqual(filtered.count, 2)
+        XCTAssertTrue(filtered.allSatisfy { $0.id.contains("old.md|12:deadbeef") })
+    }
+
     func testTaskGotoSourceNeedAndCompletionContextStrings() throws {
         XCTAssertEqual(CapturePickerSource.taskGoto.triggerByte, 47)
         XCTAssertEqual(CapturePickerSource.taskGoto.scopeSymbolText, "/")
         XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To")
         XCTAssertEqual(
             CapturePickerSource.taskGoto.scopeCaption(includesClosedTasks: true),
-            "Go To · + Completed"
+            "Go To · Completed"
         )
         XCTAssertEqual(
             CapturePickerSource.taskGoto.filterPlaceholder,
@@ -194,7 +221,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
         XCTAssertEqual(
             CapturePickerSource.taskGoto.keyHintItems(includesClosedTasks: true)
                 .first(where: { $0.keys == "⌘X" })?.action,
-            "Hide Completed"
+            "Show Open"
         )
         XCTAssertEqual(
             CapturePickerNeed.taskGoto.statusText,

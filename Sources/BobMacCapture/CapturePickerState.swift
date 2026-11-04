@@ -49,8 +49,9 @@ struct CapturePickerState: Equatable {
     /// is empty, typing one closes the picker and types the key so `!!`
     /// falls back to prose and `![` hands off to embed completion.
     var taskCompleteContinuationKeys: [String] = []
-    /// Whether this Go To session currently includes completed tasks.
-    /// New `/` sessions start open-only; Escape carries this into its chip.
+    /// Whether this Go To session shows Bob's closed-only list.
+    /// `true` describes the closed-only scope. New `/` sessions start
+    /// open-only; Escape carries this into its chip.
     var includesClosedTasks = false
 }
 

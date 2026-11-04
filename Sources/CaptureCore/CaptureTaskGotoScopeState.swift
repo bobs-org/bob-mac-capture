@@ -4,7 +4,8 @@ import Foundation
 ///
 /// The requested scope can move ahead of the displayed rows while Bob is
 /// fetching. `appliedIncludesClosedTasks` always describes `candidates`; a
-/// failed request returns the desired scope to that applied snapshot.
+/// failed request returns the desired scope to that applied snapshot. `true`
+/// requests and describes Bob's closed-only Go To list.
 public struct CaptureTaskGotoScopeState: Equatable {
     public struct Snapshot: Equatable {
         public let candidates: [CaptureCompletionCandidate]

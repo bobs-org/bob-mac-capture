@@ -327,7 +327,7 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     public func scopeCaption(includesClosedTasks: Bool) -> String {
         if self == .taskGoto, includesClosedTasks {
-            return "Go To · + Completed"
+            return "Go To · Completed"
         }
         switch self {
         case .activeTask:
@@ -685,7 +685,7 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("⌘↩", "Open"),
                 ("esc", "Clear / Cancel"),
             ]
-            let toggleHint = ("⌘X", includesClosedTasks ? "Hide Completed" : "Show Completed")
+            let toggleHint = ("⌘X", includesClosedTasks ? "Show Open" : "Show Completed")
             items.insert(toggleHint, at: items.count - 1)
             return items
         case .dependency:
@@ -779,7 +779,7 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskGoto:
             let toggle =
                 includesClosedTasks
-                ? "Command X to hide completed tasks"
+                ? "Command X to show open tasks"
                 : "Command X to show completed tasks"
             return
                 "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, \(toggle), Escape to clear or cancel."
