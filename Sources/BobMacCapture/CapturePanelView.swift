@@ -1298,6 +1298,7 @@ private struct AutosizingCaptureEditor: View {
     var heightPolicy: CaptureEditorHeightPolicy
     @State private var editorHeight = CaptureEditorHeightPolicy().minimumHeight
     @State private var measuredTextHeight: CGFloat = 0
+    @State private var monoCharWidth: CGFloat = 0
 
     private var textInset: CGFloat {
         CapturePanelLayout.editorContentPadding
@@ -1347,6 +1348,48 @@ private struct AutosizingCaptureEditor: View {
                         .accessibilityHidden(true)
                 }
 
+                // Ghost titles for project-note move bullets draw over the
+                // editor without touching its text storage, so the submitted
+                // draft is exactly what was typed. The mirror wraps exactly
+                // like the editor (same font and wrap width, same insets as
+                // the placeholder), and each ghost is truncated to the line's
+                // remaining width so it never pushes later lines down. Any
+                // keystroke hides the ghosts until the next preview lands.
+                let ghosts = model.isSubmitting || model.editorInputLocked
+                    ? [] : model.moveGhostTitles()
+                if !ghosts.isEmpty, monoCharWidth > 0 {
+                    ghostMirrorText(
+                        draft: String(model.attributedDraft.characters),
+                        ghosts: ghosts,
+                        wrapWidth: wrapWidth
+                    )
+                    .padding(
+                        .leading,
+                        textInset + CapturePanelLayout.editorLineFragmentPadding
+                    )
+                    .padding(.top, textInset + 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+
+                // Hidden probe measuring one monospaced advance, so ghost
+                // truncation divides the wrap width by the real rendered
+                // character width instead of guessing it.
+                Text(verbatim: "MMMMMMMMMM")
+                    .font(editorFont)
+                    .fixedSize()
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear.preference(
+                                key: MoveGhostCharWidthKey.self,
+                                value: geometry.size.width / 10
+                            )
+                        }
+                    )
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
                 sizingText(width: wrapWidth)
                     .padding(textInset)
                     .accessibilityHidden(true)
@@ -1357,6 +1400,9 @@ private struct AutosizingCaptureEditor: View {
         .frame(height: editorHeight)
         .onPreferenceChange(CaptureEditorMeasuredHeightKey.self) { measuredTextHeight in
             updateHeight(forMeasuredTextHeight: measuredTextHeight)
+        }
+        .onPreferenceChange(MoveGhostCharWidthKey.self) { width in
+            monoCharWidth = width
         }
         .onChange(of: heightPolicy) { _, _ in
             updateHeight(forMeasuredTextHeight: measuredTextHeight)
@@ -1392,9 +1438,99 @@ private struct AutosizingCaptureEditor: View {
         }
         editorHeight = nextHeight
     }
+
+    /// The ghost overlay mirrors the draft invisibly and splices each ghost
+    /// title, truncated to its line's remaining width, at the end of its
+    /// move-bullet line. Invisible runs keep the mirror wrapping exactly
+    /// like the editor; the secondary-color runs are the visible ghosts.
+    private func ghostMirrorText(
+        draft: String,
+        ghosts: [CaptureProjectNoteMoveGhost],
+        wrapWidth: CGFloat
+    ) -> some View {
+        Text(mirroredDraft(draft: draft, ghosts: ghosts, wrapWidth: wrapWidth))
+            .font(editorFont)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: wrapWidth, alignment: .leading)
+    }
+
+    private func mirroredDraft(
+        draft: String,
+        ghosts: [CaptureProjectNoteMoveGhost],
+        wrapWidth: CGFloat
+    ) -> AttributedString {
+        // Append-only construction: the clear draft runs keep the mirror
+        // wrapping exactly like the editor, and each secondary ghost run
+        // splices in at the end of its move-bullet line. Building forward
+        // avoids index mapping between the draft and the mirror entirely.
+        let charsPerLine = max(8, Int(wrapWidth / max(monoCharWidth, 1)))
+        let lines = draft.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).map(String.init)
+        var mirrored = AttributedString()
+        var cursor = draft.startIndex
+        for ghost in ghosts.sorted(by: { $0.insertionUTF8Offset < $1.insertionUTF8Offset }) {
+            guard let end = utf8Offset(ghost.insertionUTF8Offset, in: draft),
+                  cursor <= end
+            else {
+                continue
+            }
+            var plain = AttributedString(String(draft[cursor..<end]))
+            plain.foregroundColor = .clear
+            mirrored += plain
+            let lineChars: Int
+            if ghost.lineNumber > 0, ghost.lineNumber <= lines.count {
+                lineChars = lines[ghost.lineNumber - 1].count
+            } else {
+                lineChars = 0
+            }
+            let room = max(0, charsPerLine - lineChars - 4)
+            let shown: String =
+                ghost.text.count <= room
+                ? ghost.text
+                : String(ghost.text.prefix(max(0, room - 1))) + "…"
+            var suffix = AttributedString("  " + shown)
+            suffix.foregroundColor = .secondary
+            mirrored += suffix
+            cursor = end
+        }
+        if cursor < draft.endIndex {
+            var tail = AttributedString(String(draft[cursor...]))
+            tail.foregroundColor = .clear
+            mirrored += tail
+        }
+        return mirrored
+    }
+
+    /// Converts a UTF-8 byte offset into a string index, for the ghost
+    /// insertion points Bob reports as `draft_range` byte ranges. Walks
+    /// whole characters, so a mid-character offset maps to nil and the
+    /// ghost is skipped instead of splitting a character.
+    private func utf8Offset(_ offset: Int, in draft: String) -> String.Index? {
+        guard offset >= 0 else { return nil }
+        var remaining = offset
+        var index = draft.startIndex
+        while remaining > 0, index < draft.endIndex {
+            let width = String(draft[index]).utf8.count
+            guard width <= remaining else { return nil }
+            remaining -= width
+            index = draft.index(after: index)
+        }
+        return remaining == 0 ? index : nil
+    }
 }
 
 private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct MoveGhostCharWidthKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -3662,6 +3798,11 @@ struct PreviewPane: View {
         if index == 0 {
             inboxRoutePreviewSummary
         }
+        // The moves band sits above the Links and Offers bands, so the
+        // moved tasks read before their links and pull-in rows.
+        if let moves = CaptureProjectNoteMovePresentation(capture: success) {
+            projectNoteMovesPreview(for: moves)
+        }
         let previewOffers = success.allUnblockedRows + success.allKeepMovingRows
             + success.allRelationSuccessors
         pullInPreviewSummary(
@@ -3734,6 +3875,19 @@ struct PreviewPane: View {
                 blocks: blocks,
                 taskBlocks: taskBlocks
             )
+        }
+
+        // The move hint is a muted one-liner under the project card for a
+        // project-note draft with no move bullets whose parent still has
+        // movable open tasks. It renders after the kind card so the card
+        // itself stays the first thing a move-less draft shows.
+        if let hint = CaptureProjectNoteMoveHintPresentation(capture: success) {
+            Text(hint.hintText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityLabel(hint.previewAccessibilitySummary)
         }
 
         // The Clip card belongs to this item, so every `%c` in a batch
@@ -3936,6 +4090,45 @@ struct PreviewPane: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Offers \(count) \(noun). Press Return to choose what to pull in")
                 pullInPreviewSummary(for: presentation.successors, showsInvitation: false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.previewAccessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func projectNoteMovesPreview(
+        for presentation: CaptureProjectNoteMovePresentation
+    ) -> some View {
+        // The moves band renders Bob's resolved `moved_tasks` rows above
+        // the Links and Offers bands: one row per moved task with its
+        // status glyph, title, `^id`, and Bob's detail, plus the repair
+        // footer when Bob repaired links. No Swift-side move math, only
+        // Bob's rows and wording.
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(presentation.headerText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+            }
+            ForEach(
+                Array(presentation.movedTasks.enumerated()),
+                id: \.offset
+            ) { _, task in
+                Text(
+                    "\(task.glyph) \(task.text) ^\(task.blockID)"
+                        + (task.detail.map { " · \($0)" } ?? "")
+                )
+                .font(.system(.callout, design: .monospaced))
+                .lineLimit(2)
+                .textSelection(.enabled)
+            }
+            if let footer = presentation.repairFooterText {
+                Text(footer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

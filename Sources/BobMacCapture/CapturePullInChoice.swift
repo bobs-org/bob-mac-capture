@@ -149,6 +149,12 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
         }
     }
 
+    /// The parent note a moved offer row came from (`cash.md`), or nil for
+    /// ordinary offers. Moved rows keep this label in every Pull-In surface.
+    var movedFrom: String? {
+        pullInNonempty(offerRow?.offer?.movedFrom)
+    }
+
     /// Presentation-only meta fragments for offer rows. Unlike `detailText`,
     /// this never includes the recovered "Ready · not pulled in" caption.
     var metaDetails: [String] {
@@ -156,6 +162,9 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
             return []
         }
         var details: [String] = []
+        if let movedFrom {
+            details.append("moved from \(movedFrom)")
+        }
         if offerRow.hideRemoved {
             details.append("removed #hide")
         }

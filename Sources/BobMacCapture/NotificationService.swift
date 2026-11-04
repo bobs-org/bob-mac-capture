@@ -676,6 +676,16 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let moves = CaptureProjectNoteMovePresentation(capture: capture) {
+                return singlePresentation(
+                    title: moves.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: ([moves.notificationDetail, singleCaptureBody(capture)]
+                        .filter { !$0.isEmpty }.joined(separator: "\n")),
+                    capture: capture,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return singlePresentation(
                 title: "\(kind) captured",

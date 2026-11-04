@@ -396,11 +396,43 @@ final class CapturePullInChoiceTests: XCTestCase {
             hideRemoved: false
         )
         XCTAssertEqual(newProject.metaDetails, [])
+        XCTAssertNil(newProject.movedFrom)
         XCTAssertFalse(newProject.detailText?.contains("trigger: project_created") == true)
         let relation = row(n: 6, group: "relation", trigger: "relation", hideRemoved: false)
         XCTAssertEqual(relation.metaDetails, [])
         XCTAssertFalse(relation.metaDetails.contains(where: { $0.contains("trigger:") }))
         XCTAssertFalse(relation.statusText.contains("→"))
+    }
+
+    func testMovedOfferRowLabelsItsParentFirst() {
+        let row = CapturePullInChoiceRow(
+            offerRow: TaskCompleteUnblocked(
+                notePath: "cash_goog_exit.md",
+                blockID: "call-ms",
+                line: 13,
+                text: "Call Morgan Stanley about the 401k",
+                previousStatusSymbol: " ",
+                previousStatusName: "Ready",
+                statusSymbol: "*",
+                statusName: "Next",
+                offer: TaskCompleteOffer(
+                    key: "cash_x.md#^call-ms",
+                    n: 1,
+                    group: "project",
+                    project: "cash_x.md",
+                    destination: TaskCompleteOfferDestination(dayFile: "20260920.md"),
+                    movedFrom: "cash.md"
+                ),
+                trigger: "project_created"
+            ),
+            blockedRow: nil,
+            group: "project",
+            project: "cash_x.md"
+        )
+        XCTAssertEqual(row.movedFrom, "cash.md")
+        XCTAssertEqual(row.metaDetails.first, "moved from cash.md")
+        XCTAssertTrue(row.detailText?.contains("moved from cash.md") == true)
+        XCTAssertTrue(row.accessibilityLabel.contains("moved from cash.md"))
     }
 
     func testRelationOnlyUsesBobCopyOrderAndGlyph() throws {

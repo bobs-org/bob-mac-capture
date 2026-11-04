@@ -106,35 +106,34 @@ The additive `sub_bullets` field on `capture` output is the exact rendered autho
   The app normalizes both shapes to one collection before updating preview, status,
   VoiceOver announcements, and notification content; it forwards the batch-level
   `open_notes` array unchanged for Control-Return instead of re-deriving destinations.
-  It keeps the additive top-level `global_destination` summary alongside that normalized collection
-  and never splits a draft into multiple mutating `bob` subprocesses. When live preview
-  reports exactly one `task_toggle`, the footer's primary action changes from
-  **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
-  Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
-  the action becomes **Start** if the link starts a session and **Link** otherwise;
-  a single close — whole-item `x`, link `=x`, or new-task `=x` — becomes
-  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**, a `=`
-  restart of the running session becomes **Restart**, and a `=#name` swap becomes **Swap**; a single
-  whole-item `!note:block-id` completion becomes **Complete**;
-  batches keep **Capture** because Return will submit more than the toggle.
-  Ensure Next preview, VoiceOver, and notifications present status and relocation
-  independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
-  "Already in CURRENT; no Pomodoro changes") and never show the two-way "adds
-  link" or "removed later links" rows. Committed notification titles summarize
-  the actual result (combined, status-only, move-only, or already-Next no-op);
+  It keeps the additive top-level `global_destination` summary alongside that
+  collection and never splits a draft across mutating `bob` subprocesses. With
+  exactly one `task_toggle`, the footer action follows Bob's behavior metadata
+  (**Set Next**, **Set Open**, **Ensure Next**); with one `pomodoro_link`, it
+  becomes **Start** for a session start and **Link** otherwise. A single close
+  (whole-item `x`, link `=x`, new-task `=x`) becomes **Close**; a single
+  whole-item `=`/`=<X>` start becomes **Start**, a `=` restart of the running
+  session **Restart**, and a `=#name` swap **Swap**; a single whole-item
+  `!note:block-id` completion becomes **Complete**. Batches keep **Capture**,
+  since Return submits more.
+  Ensure Next preview, VoiceOver, and notifications report status and relocation
+  separately ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
+  "Already in CURRENT; no Pomodoro changes"), never the two-way "adds link" or
+  "removed later links" rows. Committed notification titles summarize the
+  actual result (combined, status-only, move-only, or already-Next no-op);
   Open Note/Open Notes includes the daily note only when `pomodoro_link_action`
   is `moved`. Pomodoro-link captures notify as `Started NAME`, `Linked to NAME`,
-  `Moved to NAME`, or `Already in NAME`, batch lines use the link transition text
-  under a `Link` kind, and Open Note/Open Notes includes the daily note whenever
-  the link inserted, moved, or started a session. A Pomodoro close notifies as
-  `Closed NAME` with a session-and-timing line, a tasks-and-Work-Log line (with a
-  completed count when nonzero), and
-  the next-session line; link and new-task closes use the same title and body,
-  batch lines append ` (closed NAME)` under a `Close` kind, and Open Note
-  targets the day file, which a close always writes. A project note that links
-  tasks previews a link section ("Links 2 tasks into ADMIN (new)", one row per
-  task with its text and `^id`), notifies "Linked 2 tasks into ADMIN", and
-  includes the daily note in Open Note(s) whenever `task_links` is non-empty.
+  `Moved to NAME`, or `Already in NAME`; batch lines use the link transition
+  text under a `Link` kind, and Open Note/Open Notes includes the daily note
+  whenever the link inserted, moved, or started a session. A Pomodoro close
+  notifies as `Closed NAME` with session-and-timing, tasks-and-Work-Log
+  (completed count when nonzero), and next-session lines; link and new-task
+  closes reuse that title and body, batch lines append ` (closed NAME)` under a
+  `Close` kind, and Open Note targets the day file, which a close always
+  writes. A project note that links tasks previews a link section
+  ("Links 2 tasks into ADMIN (new)", one row per task with its text and `^id`),
+  notifies "Linked 2 tasks into ADMIN", and includes the daily note in Open
+  Note(s) whenever `task_links` is non-empty.
 
 ## Preview stack
 
@@ -399,49 +398,61 @@ Queueing can be turned off per draft with `bob capture -R/--no-ref`. The queued 
 
 ## Successor offers
 
-For `!` completion, `x` close, and project captures, current Bob can return
-successor offers. Return opens the grouped choice card before capture writes.
-Bob's group order and supplied copy control the headings and captions. Relation
-groups use Bob's title, reason, tag, fold, and glyph with a neutral `link`
-accent; they name the task they start after and never use dependency wording.
-Missing group copy keeps the legacy presentation. Project offers show the new
-project and its `^prj` task beside the offered rows.
+For `!` completion, `x` close, and project captures, Bob can return successor
+offers, and Return opens the grouped choice card before capture writes. Bob's
+group order and copy control the headings and captions: relation groups use
+Bob's title, reason, tag, fold, and glyph with a neutral `link` accent, name
+the task they start after, and never use dependency wording; missing copy keeps
+the legacy presentation. Project offers show the new project and its `^prj`
+task beside the offered rows.
 
-Nothing starts selected. Return chooses marked offers, or the highlighted offer
-when none are marked. Space toggles the highlight, Command-A marks all, and the
-filter supports keyboard navigation. Shift-Return skips all offers and commits;
-Escape returns to the unchanged draft. Control-Return confirms the same choice
-and opens Bob's reported notes. The card shows Bob's global numbers,
-destinations, folds, blocked residents, and projected plan-link budget.
+Nothing starts selected. Return chooses marked offers, or the highlighted
+offer when none are marked; Space toggles the highlight, Command-A marks all,
+and the filter supports keyboard navigation. Shift-Return skips all offers and
+commits, Escape returns to the unchanged draft, and Control-Return confirms
+and opens Bob's reported notes. The card shows global numbers, destinations,
+folds, blocked residents, and projected plan-link budget.
 
 When no chooser opens, muted held-relation lines explain rows that are already
-started, wait for another task, are dependency/schedule or project blocked, or
-are hidden. `already_planned` rows stay silent. An unavailable check says
-“Couldn't check … · nothing offered”, naming one distinct label or the generic
-“relation links”. Relation-only picks notify as `🪢 Pulled in n · label “T”`;
-mixed dependency picks retain their existing copy and count relation picks once.
-Relation block-diff lines carry a `link` badge with “Offered by your relation
-link” help; dependency successors retain the unlock badge. Project picks are
-Task Links counted once as “Linked N tasks into …”, never again as pulled-in
-successors.
+started, wait for another task, are dependency-, schedule-, or project-blocked,
+or are hidden; `already_planned` rows stay silent, and an unavailable check
+says “Couldn't check … · nothing offered”, naming one distinct label or the
+generic “relation links”. Relation-only picks notify as
+`🪢 Pulled in n · label “T”`; mixed picks keep their copy and count relation
+picks once. Relation block-diff lines carry a `link` badge (“Offered by your
+relation link” help) and dependency successors retain the unlock badge;
+project picks count once as Task Links “Linked N tasks into …”, never again
+as pulled-in successors.
+
+## Project-note moves
+
+Move bullets (`- ^id`, `- :id`) preview a `↪ Moves N tasks from cash.md` band
+above the Links and Offers bands: one row per moved task (status glyph, title,
+`^id`, Bob's detail) plus a repair footer. Each bullet also shows a ghost
+title — truncated with `…`, never in the draft — with ` · becomes Next` for
+`:` lane changes; any keystroke hides ghosts until the next preview lands.
+VoiceOver reads each row's title, status, `^id`, and detail. With no moves
+and a movable parent, a muted line under the project card reads
+`Type - ^ to move tasks from cash.md (12 open)`; moved Pull-In rows read
+`moved from cash.md`, and the notification reads `Created cash_goog_exit`
+with a `moved 2 tasks from cash` lead.
 
 ## Inbox routing
 
-When a matching Bob preview reports that a capture will change the status of an
-existing inbox task, the preview adds an `Inbox · … · ↩ choose where it goes`
-row. Return opens the route card before writing, after the successor choice when
-both choices are needed. The card shows each changed task and Bob's available
-areas and open projects, with the destination path, parent, project status, and
-Blocked mark. Filter the list locally, then use Return to move the task or
-Shift-Return to keep it in its inbox. Control-Return moves it and opens the
-capture notes. With multiple tasks, answer them one at a time; the previous
-destination is highlighted when it remains available.
+When a matching preview reports a capture changing an inbox task's status,
+the preview adds an `Inbox · … · ↩ choose where it goes` row. Return opens the
+route card before writing — after the successor choice when both are needed.
+The card shows each changed task with Bob's available areas and open projects:
+destination path, parent, project status, Blocked mark. Filter locally, then
+Return moves the task, Shift-Return keeps it in its inbox. Control-Return
+moves it and opens the capture notes. With multiple tasks, answer one at a
+time; the previous destination stays highlighted when available.
 
-Escape goes back one task. From the first task it returns to the earlier
-successor card, when present, or to the unchanged draft. If Bob refuses a move,
-the card reopens on that task with Bob's reason. If the task changed since the
-preview, the card closes and Return asks Bob for a fresh choice. The success
-notice says which destination was used or that the task stayed in its inbox.
+Escape goes back one task — from the first, to the earlier successor card when
+present, else the unchanged draft. If Bob refuses a move, the card reopens on
+that task with Bob's reason. If the task changed since the preview, the card
+closes and Return asks Bob for a fresh choice. The success notice names the
+destination used, or that the task stayed in its inbox.
 
 ## Relationship rows
 
@@ -450,17 +461,15 @@ Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Pr
 relationship, in Bob's `dependency_updates[]` order. Already-present rows say
 `already depends on` or `already blocks`; project-resident counts remain on the
 block row. Managed Depends-On/Blocks Markdown is omitted from task cards while
-these rows are present. A `task_dependency` item uses an owner header with its
-text, note and block ID, and resulting status; the owner task card appears
-before related task cards, and its repeated task line is omitted when the card
-covers it. Success notifications name the owner and relationship, use the route
-label as their subtitle, and include consumed-link detail when Bob reports one.
-Consumed links use Bob's session name, time, state, action, and removal flag;
-deleted sessions render red, and removed Pomodoro lines keep the red diff style.
-A dependency-only action is never labeled "Create task". The `&` and `*` editor
-spans are supplied by Bob; Swift never scans either sigil to parse capture
-grammar. Older Bob payloads without resolved relationship details keep their
-legacy preview and notification copy.
+these rows are present. A `task_dependency` item uses an owner header (text,
+note and block ID, resulting status) ahead of the related task cards, omitting
+its repeated task line when the card covers it. Success notifications name the
+owner and relationship over the route label, with consumed-link detail when Bob
+reports one. Consumed links carry Bob's session name, time, state, action, and
+removal flag; deleted sessions render red, removed Pomodoro lines keep the red
+diff style. A dependency-only action is never labeled "Create task". Bob
+supplies the `&` and `*` editor spans; Swift never scans either sigil. Older
+Bob payloads keep their legacy preview and notification copy.
 
 ## Relation rows (`~` / `~~`)
 
@@ -478,37 +487,33 @@ commit appends `· hid "label" from relation suggestions` to the notification.
 Cancel-label drafts add one ⊘ row per `relation_cancels[]` under the 🪢
 row, using Bob's message (`⊘ would cancel “Sell stocks!” · Todo → Cancelled`
 on a dry run). The matching `relation_cancelled_source` warning is skipped
-when that row is present, so it never appears as an orange duplicate; if
-Bob sends the warning without `relation_cancels[]`, it uses the ⊘ tint.
-The draft's `cancels_source` label span takes the cancelled tint. While the
-latest dry run has cancels, the submit button reads `Capture & cancel 1
-task`.
+with the row present — never an orange duplicate — and uses the ⊘ tint
+without `relation_cancels[]`.
+The `cancels_source` span takes the cancelled tint. With cancels in the
+latest dry run, the submit button reads `Capture & cancel 1 task`.
 Complete-label drafts add one ✓ row per `relation_completes[]` under the 🪢
 row, using Bob's message (`✓ would complete “Ship retry policy” · Todo →
-Done` on a dry run), followed by the same transition, ledger, and unblocked
-rows `!` would print for that source. The matching
-`relation_completed_source` warning is skipped when those rows are present,
-so it never appears as an orange duplicate; if Bob sends the warning without
-`relation_completes[]`, it uses the ✓ tint. The draft's `completes_source`
-label span takes the complete tint, distinct from the `!` sigil's role. While
-the latest dry run has completes, the submit button reads
-`Capture & complete 1 task`; a mixed cancel-and-complete dry run reads
-`Capture & close N tasks`. A complete-label commit with offers opens the
-in-panel successor choice exactly as `!` does.
-`offers_source` candidates and spans show a neutral `link` / **offers** cue;
-the relation source stays undimmed. The card renders Bob's message unchanged,
-released-source caveats amber, and inverse hints muted even without a verdict.
-Swift never derives the outcome.
+Done` on a dry run), followed by the transition, ledger, and unblocked rows
+`!` would print for that source. The matching `relation_completed_source`
+warning is skipped with those rows present — never an orange duplicate —
+and uses the ✓ tint without `relation_completes[]`. The `completes_source`
+span takes the complete tint, distinct from the `!` sigil. With completes in
+the latest dry run, the submit button reads `Capture & complete 1 task`
+(`Capture & close N tasks` for a mixed dry run). A complete-label commit
+with offers opens the in-panel successor choice like `!`.
+`offers_source` candidates and spans show a neutral `link` / **offers** cue
+with the source undimmed. The card renders Bob's message unchanged,
+released-source caveats amber, inverse hints muted without a verdict; Swift
+never derives the outcome.
 Success notifications count relations separately:
 a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
 `🪢 "source" now links here`, and larger or mixed batches read
 `owner · depends on D · links R`. New relation IDs render as
-`🪢 New relation ID · path ^id (source|target)` captions. The `~` editor spans
-are supplied by Bob; Swift never scans the sigil to parse capture grammar.
-When the draft contains `~` but the parse response lacks `relation_grammar`,
-the panel shows the calm `This bob predates ~ links; ~ text would be captured
-literally · update bob` warning: the first ⌘↩ only shows the warning, the
-second ⌘↩ submits.
+`🪢 New relation ID · path ^id (source|target)` captions. Bob supplies the
+`~` editor spans; Swift never scans the sigil. When the draft contains `~`
+but the parse lacks `relation_grammar`, the panel shows the calm `This bob
+predates ~ links; ~ text would be captured literally · update bob` warning:
+the first ⌘↩ only shows the warning, the second ⌘↩ submits.
 
 ## Similar tasks
 

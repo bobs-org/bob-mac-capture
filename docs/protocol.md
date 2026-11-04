@@ -404,6 +404,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 | `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination` and `continuation`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, section groups, Bob consequence footer, Shift-Return chaining, Add block ID flow, Esc calm status, new span colours | Older Bob never reports the need, so behaviour is unchanged there | Upgrade `bob` for move bullets |
+| `moved_tasks[]` / `move_summary` / `move_hint` on `project_note`, `moved_from` on offers | Moves band with repair footer, ghost titles, move hint, `moved from` label, `Created` notification | Band, ghosts, hint, and labels stay hidden; legacy copy remains | Upgrade `bob` for move previews |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
 that rejects the command is remembered for that executable identity, so the app keeps

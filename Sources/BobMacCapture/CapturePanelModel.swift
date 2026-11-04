@@ -472,6 +472,11 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResult: CaptureCommandSuccess?
     @Published var lastSuccessResults: [CaptureCommandSuccess] = []
     @Published var previewResults: [CaptureCommandSuccess] = []
+    /// The exact draft string the current preview outputs were computed
+    /// for. The move ghost titles render only while this still equals the
+    /// current draft; any keystroke hides them until the next preview lands.
+    /// Nil when there is no preview.
+    @Published var previewOutputsDraft: String?
     @Published var lastSuccessGlobalDestination: CaptureGlobalDestination?
     @Published var previewGlobalDestination: CaptureGlobalDestination?
     /// The latest settled related-task response, shaped for the band renderer.
@@ -1308,6 +1313,26 @@ final class CapturePanelModel: ObservableObject {
         set { setPlainDraft(newValue) }
     }
 
+    /// Ghost titles for the editor overlay, in draft order. Empty unless
+    /// the latest successful preview's draft still equals the current
+    /// draft; any keystroke hides them until the next preview lands. The
+    /// overlay draws these without touching the text storage, so the
+    /// submitted draft is exactly what was typed.
+    func moveGhostTitles() -> [CaptureProjectNoteMoveGhost] {
+        guard let previewDraft = previewOutputsDraft,
+              previewDraft == plainDraft
+        else {
+            return []
+        }
+        let moved = previewResults.flatMap { $0.projectNote?.movedTasks ?? [] }
+        guard !moved.isEmpty else { return [] }
+        return CaptureProjectNoteMoveGhosts.ghosts(
+            draft: plainDraft,
+            previewDraft: previewDraft,
+            movedTasks: moved
+        )
+    }
+
     var hasDraft: Bool {
         !plainDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -1963,12 +1988,14 @@ final class CapturePanelModel: ObservableObject {
     private func assignPreviewOutputs(
         captures: [CaptureCommandSuccess],
         openNotes: [CaptureOpenNote]?,
-        globalDestination: CaptureGlobalDestination?
+        globalDestination: CaptureGlobalDestination?,
+        previewDraft: String
     ) {
         previewResult = captures.first
         previewResults = captures
         previewGlobalDestination = globalDestination
         previewOpenPlan = CaptureOpenPlan(openNotes: openNotes, captures: captures)
+        previewOutputsDraft = previewDraft
     }
 
     private func clearPreviewOutputs() {
@@ -1976,6 +2003,7 @@ final class CapturePanelModel: ObservableObject {
         previewResults = []
         previewGlobalDestination = nil
         previewOpenPlan = nil
+        previewOutputsDraft = nil
     }
 
     /// Follows the agenda store's count publisher. The store nils the
@@ -12760,7 +12788,8 @@ final class CapturePanelModel: ObservableObject {
             assignPreviewOutputs(
                 captures: captures,
                 openNotes: success.openNotes,
-                globalDestination: success.globalDestination
+                globalDestination: success.globalDestination,
+                previewDraft: draft
             )
             errorMessage = nil
             errorCode = nil
@@ -13477,7 +13506,8 @@ final class CapturePanelModel: ObservableObject {
                         self?.assignPreviewOutputs(
                             captures: captures,
                             openNotes: success.openNotes,
-                            globalDestination: success.globalDestination
+                            globalDestination: success.globalDestination,
+                            previewDraft: previewDraft
                         )
                         self?.errorMessage = nil
                         self?.errorCode = nil

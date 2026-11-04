@@ -3313,6 +3313,242 @@ public struct CaptureProjectTaskLink: Codable, Equatable, Sendable {
 /// the new note's identity, any Task Links written into the Pomodoro, and
 /// (for the offer form) the successor rows Bob offers for an explicit pick.
 /// Older Bob binaries omit the whole object and decode as nil.
+/// One task Bob moved from the parent note into the new project note, in
+/// draft order. `draftRange` is the UTF-8 byte range of the `^id` / `:id`
+/// token in the submitted TEXT; the editor draws the ghost title after the
+/// line holding it. Every field decodes tolerantly so one malformed row
+/// never drops its siblings.
+public struct CaptureProjectNoteMovedTask: Codable, Equatable, Sendable {
+    /// `"^"` or `":"`.
+    public let sigil: String
+    /// UTF-8 byte range of the sigil+ID token in the submitted TEXT.
+    public let draftRange: [Int]
+    /// 1-based physical line holding the move bullet.
+    public let itemLine: Int
+    public let source: String
+    public let sourceLine: Int
+    /// 1-based landing line in the new note.
+    public let line: Int
+    public let blockID: String
+    public let text: String
+    public let previousStatusSymbol: String
+    public let previousStatusName: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let fresh: String?
+    public let planned: CaptureProjectNotePlannedLink?
+    public let link: CaptureProjectTaskLink?
+    public let notLinked: String?
+    /// Bob-authored row suffix (`WORK link follows`,
+    /// `becomes Next · links under ADMIN`); nil when the move stays unlinked.
+    public let detail: String?
+
+    public init(
+        sigil: String = "",
+        draftRange: [Int] = [],
+        itemLine: Int = 0,
+        source: String = "",
+        sourceLine: Int = 0,
+        line: Int = 0,
+        blockID: String = "",
+        text: String = "",
+        previousStatusSymbol: String = "",
+        previousStatusName: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        fresh: String? = nil,
+        planned: CaptureProjectNotePlannedLink? = nil,
+        link: CaptureProjectTaskLink? = nil,
+        notLinked: String? = nil,
+        detail: String? = nil
+    ) {
+        self.sigil = sigil
+        self.draftRange = draftRange
+        self.itemLine = itemLine
+        self.source = source
+        self.sourceLine = sourceLine
+        self.line = line
+        self.blockID = blockID
+        self.text = text
+        self.previousStatusSymbol = previousStatusSymbol
+        self.previousStatusName = previousStatusName
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.fresh = fresh
+        self.planned = planned
+        self.link = link
+        self.notLinked = notLinked
+        self.detail = detail
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sigil = (try? container.decodeIfPresent(String.self, forKey: .sigil)) ?? ""
+        draftRange =
+            (try? container.decodeIfPresent([Int].self, forKey: .draftRange)) ?? []
+        itemLine = (try? container.decodeIfPresent(Int.self, forKey: .itemLine)) ?? 0
+        source = (try? container.decodeIfPresent(String.self, forKey: .source)) ?? ""
+        sourceLine = (try? container.decodeIfPresent(Int.self, forKey: .sourceLine)) ?? 0
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        previousStatusSymbol =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatusSymbol)) ?? ""
+        previousStatusName =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+        statusSymbol =
+            (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        fresh = try? container.decodeIfPresent(String.self, forKey: .fresh)
+        planned =
+            try? container.decodeIfPresent(
+                CaptureProjectNotePlannedLink.self,
+                forKey: .planned
+            )
+        link =
+            try? container.decodeIfPresent(CaptureProjectTaskLink.self, forKey: .link)
+        notLinked = try? container.decodeIfPresent(String.self, forKey: .notLinked)
+        detail = try? container.decodeIfPresent(String.self, forKey: .detail)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sigil
+        case draftRange = "draft_range"
+        case itemLine = "item_line"
+        case source
+        case sourceLine = "source_line"
+        case line
+        case blockID = "block_id"
+        case text
+        case previousStatusSymbol = "previous_status_symbol"
+        case previousStatusName = "previous_status_name"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case fresh
+        case planned
+        case link
+        case notLinked = "not_linked"
+        case detail
+    }
+}
+
+/// Where a moved task's Task Link landed in the day file, when one followed.
+public struct CaptureProjectNotePlannedLink: Codable, Equatable, Sendable {
+    public let entryName: String
+    public let entryLine: Int
+
+    public init(entryName: String = "", entryLine: Int = 0) {
+        self.entryName = entryName
+        self.entryLine = entryLine
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entryName = (try? container.decodeIfPresent(String.self, forKey: .entryName)) ?? ""
+        entryLine = (try? container.decodeIfPresent(Int.self, forKey: .entryLine)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entryName = "entry_name"
+        case entryLine = "entry_line"
+    }
+}
+
+/// Totals for one batch of project-note moves: the parent file, how many
+/// tasks moved, and how many vault links Bob repaired for them.
+public struct CaptureProjectNoteMoveSummary: Codable, Equatable, Sendable {
+    public let parent: String
+    public let moved: Int
+    public let repairedLinks: Int
+    public let repairedNotes: Int
+    public let needsReconcile: Bool
+
+    public init(
+        parent: String = "",
+        moved: Int = 0,
+        repairedLinks: Int = 0,
+        repairedNotes: Int = 0,
+        needsReconcile: Bool = false
+    ) {
+        self.parent = parent
+        self.moved = moved
+        self.repairedLinks = repairedLinks
+        self.repairedNotes = repairedNotes
+        self.needsReconcile = needsReconcile
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        parent = (try? container.decodeIfPresent(String.self, forKey: .parent)) ?? ""
+        moved = (try? container.decodeIfPresent(Int.self, forKey: .moved)) ?? 0
+        repairedLinks =
+            (try? container.decodeIfPresent(Int.self, forKey: .repairedLinks)) ?? 0
+        repairedNotes =
+            (try? container.decodeIfPresent(Int.self, forKey: .repairedNotes)) ?? 0
+        needsReconcile =
+            (try? container.decodeIfPresent(Bool.self, forKey: .needsReconcile)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case parent
+        case moved
+        case repairedLinks = "repaired_links"
+        case repairedNotes = "repaired_notes"
+        case needsReconcile = "needs_reconcile"
+    }
+}
+
+/// One vault file Bob repaired links in for a project-note move.
+public struct CaptureProjectNoteRepairedFile: Codable, Equatable, Sendable {
+    public let path: String
+    public let linkCount: Int
+    public let dependencyTokenCount: Int
+
+    public init(path: String = "", linkCount: Int = 0, dependencyTokenCount: Int = 0) {
+        self.path = path
+        self.linkCount = linkCount
+        self.dependencyTokenCount = dependencyTokenCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        linkCount = (try? container.decodeIfPresent(Int.self, forKey: .linkCount)) ?? 0
+        dependencyTokenCount =
+            (try? container.decodeIfPresent(Int.self, forKey: .dependencyTokenCount)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case linkCount = "link_count"
+        case dependencyTokenCount = "dependency_token_count"
+    }
+}
+
+/// Discoverability hint for a project-note draft with no move bullets whose
+/// parent still has movable open tasks. Present only then; older Bob
+/// binaries never send it.
+public struct CaptureProjectNoteMoveHint: Codable, Equatable, Sendable {
+    public let parent: String
+    public let openCount: Int
+
+    public init(parent: String = "", openCount: Int = 0) {
+        self.parent = parent
+        self.openCount = openCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        parent = (try? container.decodeIfPresent(String.self, forKey: .parent)) ?? ""
+        openCount = (try? container.decodeIfPresent(Int.self, forKey: .openCount)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case parent
+        case openCount = "open_count"
+    }
+}
+
 public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
     public let basename: String
     public let parentRoute: String
@@ -3324,6 +3560,14 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
     public let form: String?
     /// Open task offers from the new project; absent on the create form.
     public let successors: [TaskCompleteUnblocked]
+    /// Moved tasks in draft order; empty when the draft has no move bullets.
+    public let movedTasks: [CaptureProjectNoteMovedTask]
+    /// Move totals; present only when the draft moved at least one task.
+    public let moveSummary: CaptureProjectNoteMoveSummary?
+    /// Files Bob repaired move links in; present only with a move summary.
+    public let repairedFiles: [CaptureProjectNoteRepairedFile]?
+    /// Discoverability hint; present only with no moves and a movable parent.
+    public let moveHint: CaptureProjectNoteMoveHint?
 
     public init(
         basename: String,
@@ -3333,7 +3577,11 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         sections: [String] = [],
         taskLinks: [CaptureProjectTaskLink] = [],
         form: String? = nil,
-        successors: [TaskCompleteUnblocked] = []
+        successors: [TaskCompleteUnblocked] = [],
+        movedTasks: [CaptureProjectNoteMovedTask] = [],
+        moveSummary: CaptureProjectNoteMoveSummary? = nil,
+        repairedFiles: [CaptureProjectNoteRepairedFile]? = nil,
+        moveHint: CaptureProjectNoteMoveHint? = nil
     ) {
         self.basename = basename
         self.parentRoute = parentRoute
@@ -3343,6 +3591,10 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         self.taskLinks = taskLinks
         self.form = form
         self.successors = successors
+        self.movedTasks = movedTasks
+        self.moveSummary = moveSummary
+        self.repairedFiles = repairedFiles
+        self.moveHint = moveHint
     }
 
     public init(from decoder: Decoder) throws {
@@ -3363,6 +3615,26 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
                 [TaskCompleteUnblocked].self,
                 forKey: .successors
             )) ?? []
+        movedTasks =
+            (try? container.decodeIfPresent(
+                [CaptureProjectNoteMovedTask].self,
+                forKey: .movedTasks
+            )) ?? []
+        moveSummary =
+            try? container.decodeIfPresent(
+                CaptureProjectNoteMoveSummary.self,
+                forKey: .moveSummary
+            )
+        repairedFiles =
+            try? container.decodeIfPresent(
+                [CaptureProjectNoteRepairedFile].self,
+                forKey: .repairedFiles
+            )
+        moveHint =
+            try? container.decodeIfPresent(
+                CaptureProjectNoteMoveHint.self,
+                forKey: .moveHint
+            )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3374,6 +3646,10 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
         case taskLinks = "task_links"
         case form
         case successors
+        case movedTasks = "moved_tasks"
+        case moveSummary = "move_summary"
+        case repairedFiles = "repaired_files"
+        case moveHint = "move_hint"
     }
 }
 
@@ -6091,6 +6367,9 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     public let destination: TaskCompleteOfferDestination
     public let selected: Bool
     public let blockIDNeeded: Bool
+    /// Source parent for a moved project offer (`cash.md` on a `^`/`:` row).
+    /// Absent on every other offer; older Bob binaries never send it.
+    public let movedFrom: String?
 
     public init(
         key: String = "",
@@ -6100,7 +6379,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         after: String? = nil,
         destination: TaskCompleteOfferDestination = TaskCompleteOfferDestination(),
         selected: Bool = false,
-        blockIDNeeded: Bool = false
+        blockIDNeeded: Bool = false,
+        movedFrom: String? = nil
     ) {
         self.key = key
         self.n = n
@@ -6110,6 +6390,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         self.destination = destination
         self.selected = selected
         self.blockIDNeeded = blockIDNeeded
+        self.movedFrom = movedFrom
     }
 
     public init(from decoder: Decoder) throws {
@@ -6126,6 +6407,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
             )) ?? TaskCompleteOfferDestination()
         selected = (try? container.decodeIfPresent(Bool.self, forKey: .selected)) ?? false
         blockIDNeeded = (try? container.decodeIfPresent(Bool.self, forKey: .blockIDNeeded)) ?? false
+        movedFrom = try? container.decodeIfPresent(String.self, forKey: .movedFrom)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6137,6 +6419,7 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         case destination
         case selected
         case blockIDNeeded = "block_id_needed"
+        case movedFrom = "moved_from"
     }
 }
 

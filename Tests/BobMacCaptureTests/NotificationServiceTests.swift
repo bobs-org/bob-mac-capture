@@ -571,6 +571,55 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testSingleProjectNoteWithMovesNamesCreatedNoteAndMoveCount() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "project_note",
+                routeLabel: "cash_goog_exit.md",
+                target: "/Users/bryan/bob/cash_goog_exit.md",
+                text: "Finish the Google exit packet!",
+                dayFile: "/Users/bryan/bob/2026/20260920.md",
+                projectNote: CaptureProjectNoteSummary(
+                    basename: "cash_goog_exit.md",
+                    parentRoute: "cash",
+                    parentLink: "[[cash]]",
+                    tasks: 1,
+                    movedTasks: [
+                        CaptureProjectNoteMovedTask(
+                            sigil: "^",
+                            draftRange: [42, 54],
+                            itemLine: 2,
+                            source: "cash.md",
+                            sourceLine: 6,
+                            line: 13,
+                            blockID: "equity-docs",
+                            text: "Collect the equity paperwork",
+                            previousStatusSymbol: " ",
+                            previousStatusName: "Ready",
+                            statusSymbol: " ",
+                            statusName: "Ready",
+                            fresh: "2026-09-20",
+                            detail: "Task Link follows"
+                        ),
+                    ],
+                    moveSummary: CaptureProjectNoteMoveSummary(
+                        parent: "cash.md",
+                        moved: 1,
+                        repairedLinks: 1,
+                        repairedNotes: 1
+                    )
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Created cash_goog_exit")
+        XCTAssertEqual(content.subtitle, "cash_goog_exit.md")
+        XCTAssertEqual(
+            content.body,
+            "moved 1 task from cash\nFinish the Google exit packet!"
+        )
+    }
+
     func testSameTargetBatchUsesOrderedBodyLinesAndSingleOpenAction() {
         let content = NotificationService.successContent(captures: [
             capture(
