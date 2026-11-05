@@ -42,6 +42,18 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         )
     }
 
+    private func slashEvent(
+        modifiers: NSEvent.ModifierFlags = [],
+        isRepeat: Bool = false
+    ) -> NSEvent {
+        keyEvent(
+            keyCode: 44,
+            modifiers: modifiers,
+            characters: "/",
+            isRepeat: isRepeat
+        )
+    }
+
     private func makeHostedEditor(
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
@@ -344,5 +356,155 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         XCTAssertFalse(textView.string.contains("#"))
         XCTAssertNil(model.hashAliasProbe)
         XCTAssertNil(model.hashAliasLiteralArm)
+    }
+
+    // MARK: - Slow slash double-tap
+
+    func testSlowSlashDoubleTapClosesMenuWithOneLiteralSlash() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(
+            text: "Postgres 17 minimum @foo+bar"
+        )
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "Postgres 17 minimum @foo+bar#" && model.completionVisible }
+        XCTAssertEqual(model.completionResponse?.context, "drawer")
+        XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 29 --format json -- Postgres 17 minimum @foo+bar/"))
+        let completesBefore = record.components(separatedBy: "argv=capture-complete").count - 1
+
+        XCTAssertNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "Postgres 17 minimum @foo+bar/")
+        XCTAssertFalse(model.completionVisible)
+
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let after = try String(contentsOf: recordURL)
+        XCTAssertEqual(after.components(separatedBy: "argv=capture-complete").count - 1, completesBefore)
+        XCTAssertFalse(after.contains("capture-complete --cursor 29 --format json -- Postgres 17 minimum @foo+bar/"))
+    }
+
+    func testSlashRepeatWhileArmedIsConsumedAndArmStays() async throws {
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient()
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+
+        XCTAssertNil(
+            typeKey(
+                slashEvent(isRepeat: true),
+                into: textView,
+                model: model,
+                controller: controller
+            )
+        )
+        XCTAssertEqual(textView.string, "jot idea #")
+        XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
+
+        XCTAssertNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "jot idea /")
+        XCTAssertFalse(model.completionVisible)
+    }
+
+    func testMixedKeysBackslashThenSlashEndsHashSlash() async throws {
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient()
+
+        XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        XCTAssertEqual(model.hashAliasLiteralArm?.key, "\\")
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { model.plainDraft == "jot idea #/" }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(textView.string, "jot idea #/")
+        XCTAssertNil(model.hashAliasLiteralArm)
+        XCTAssertNil(model.hashAliasProbe)
+    }
+
+    func testMixedKeysSlashThenBackslashEndsHashBackslash() async throws {
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient()
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
+
+        XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { model.plainDraft == "jot idea #\\" }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(textView.string, "jot idea #\\")
+        XCTAssertNil(model.hashAliasLiteralArm)
+        XCTAssertNil(model.hashAliasProbe)
+    }
+
+    // MARK: - Fast slash double-tap (collapse)
+
+    func testFastSlashDoubleTapCollapsesToOneLiteralSlash() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
+        )
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "jot idea //")
+
+        let deadline = Date().addingTimeInterval(5)
+        var sawHash = false
+        while Date() < deadline {
+            if textView.string.contains("#") {
+                sawHash = true
+                break
+            }
+            if textView.string == "jot idea /" && model.hashAliasProbe == nil {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertFalse(sawHash, "The alias # must never appear during a fast double-tap")
+        XCTAssertEqual(textView.string, "jot idea /")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 10, length: 0))
+        XCTAssertFalse(model.completionVisible)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 10 --format json -- jot idea /"))
+        let rewriteLines = record
+            .components(separatedBy: "\n")
+            .filter { $0.hasPrefix("argv=capture-rewrite") }
+        XCTAssertTrue(rewriteLines.allSatisfy { !$0.hasSuffix("jot idea //") })
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "jot idea //")
+    }
+
+    func testFastSlashDoubleTapWithoutAliasKeepsTwoSlashes() async throws {
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            extra: ["FAKE_BOB_REWRITE_HASH_UNCHANGED": "1"]
+        )
+
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { model.plainDraft == "jot idea //" }
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(textView.string, "jot idea //")
+        XCTAssertEqual(model.plainDraft, "jot idea //")
+        XCTAssertNil(model.hashAliasLiteralArm)
+        XCTAssertNil(model.hashAliasProbe)
     }
 }

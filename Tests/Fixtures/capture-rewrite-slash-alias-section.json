@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"jot idea @foo/","text":"jot idea @foo#","changed":true,"cursor":14,"rule":"expand_sigil_alias","edits":[{"range":{"start":13,"end":14},"replacement":"#"}],"summary":"Typed # for /"}

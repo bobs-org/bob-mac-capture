@@ -457,8 +457,9 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   drawer row (see [Drawer menu](capture-panel.md#drawer-menu)). A bare `#` at an item edge opens Bob's
   `task_type` completion, also unselected; `@route#` stays note-section completion. Typing `#` immediately after a
   resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion
-  for today's open Pomodoros. Typing `\` in these positions is turned into `#`
-  through Bob's rewrite lane. Colon-Pomodoro (`@route:id#name`) selects or creates a
+  for today's open Pomodoros. Typing `\` or `/` in these positions is turned
+  into `#` through Bob's rewrite lane. Colon-Pomodoro (`@route:id#name`)
+  selects or creates a
   named Pomodoro; plus-sub-bullet (`@route+id#drawer`) keeps its drawer selector
   as soon as body text exists. For
   blank-line-separated drafts, completion still sends the complete draft as one argv

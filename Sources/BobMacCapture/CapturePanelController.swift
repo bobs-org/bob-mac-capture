@@ -1096,6 +1096,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             ) else {
                 return
             }
+        } else if characters == "/" {
+            guard CaptureKeyCommandRouter.isTypedSlash(
+                event: event,
+                modifiers: event.modifierFlags.intersection(
+                    .deviceIndependentFlagsMask
+                )
+            ) else {
+                return
+            }
+            // A blank-draft `/` is the Go To trigger: Bob would answer
+            // changed: false, and recording it would gate Go To's completion
+            // behind a capture-rewrite call.
+            if textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return
+            }
         } else {
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                 characters == ":" || characters == "^" || characters == "+"
@@ -2024,9 +2039,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .typeLiteralBackslash:
             model.replaceGotoSigilWithLiteralBackslash()
             return true
-        case .typeLiteralBackslashForHashAlias:
+        case .typeLiteralForHashAlias:
             return false
-        case .typeBackslashBeforeHashAliasReply:
+        case .typeKeyBeforeHashAliasReply:
             return false
         case .joinCalendarEvent:
             model.dismissCompletion()
@@ -2230,32 +2245,44 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
         // The action takes the arm passed here and never re-reads the
         // property just cleared.
-        let hashAliasLiteralArmed: Bool = {
+        let deviceIndependentModifiers = event.modifierFlags.intersection(
+            .deviceIndependentFlagsMask
+        )
+        let typedHashAliasKey = CaptureKeyCommandRouter.typedHashAliasKey(
+            event: event,
+            modifiers: deviceIndependentModifiers
+        )
+        let hashAliasLiteralKey: String? = {
             guard let arm = takenHashArm,
                   let textView = Self.editableTextView(panel?.firstResponder),
                   !textView.hasMarkedText(),
                   textView.string == arm.draft
             else {
-                return false
+                return nil
             }
-            return textView.selectedRange() == NSRange(location: arm.caretUTF16, length: 0)
+            guard textView.selectedRange() == NSRange(location: arm.caretUTF16, length: 0) else {
+                return nil
+            }
+            return arm.key
         }()
-        let hashAliasReplyPending: Bool = {
-            guard !hashAliasLiteralArmed,
+        let hashAliasReplyPendingKey: String? = {
+            guard hashAliasLiteralKey == nil,
+                  let typedKey = typedHashAliasKey,
                   let textView = Self.editableTextView(panel?.firstResponder),
                   !textView.hasMarkedText()
             else {
-                return false
+                return nil
             }
             let selection = textView.selectedRange()
             guard selection.length == 0 else {
-                return false
+                return nil
             }
             return model.hashAliasReplyPending(
                 liveString: textView.string,
                 liveCaretUTF16: selection.location,
-                hasMarkedText: false
-            )
+                hasMarkedText: false,
+                typedKey: typedKey
+            ) ? typedKey : nil
         }()
         guard let command = keyRouter.command(
             for: event,
@@ -2317,8 +2344,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 draftIsBlank: !model.hasDraft,
                 draftIsBareGotoSigil: model.draftIsBareGotoSigil,
                 backslashLiteralArmed: backslashLiteralArmed,
-                hashAliasLiteralArmed: hashAliasLiteralArmed,
-                hashAliasReplyPending: hashAliasReplyPending,
+                hashAliasLiteralKey: hashAliasLiteralKey,
+                hashAliasReplyPendingKey: hashAliasReplyPendingKey,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2335,42 +2362,45 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         if command == .consumeKey,
            let arm = takenHashArm,
-           hashAliasLiteralArmed,
+           let literalKey = hashAliasLiteralKey,
            event.isARepeat,
-           CaptureKeyCommandRouter.isTypedBackslash(
+           CaptureKeyCommandRouter.typedHashAliasKey(
                event: event,
-               modifiers: event.modifierFlags.intersection(
-                   .deviceIndependentFlagsMask
-               )
-           )
+               modifiers: deviceIndependentModifiers
+           ) == literalKey
         {
             model.restoreHashAliasLiteralArm(arm)
         }
-        if command == .typeLiteralBackslashForHashAlias,
+        if command == .typeLiteralForHashAlias,
            let arm = takenHashArm,
-           hashAliasLiteralArmed
+           hashAliasLiteralKey != nil
         {
-            return model.replaceHashAliasWithLiteralBackslash(arm) ? nil : event
+            return model.replaceHashAliasWithLiteralKey(arm) ? nil : event
         }
-        if command == .typeBackslashBeforeHashAliasReply {
+        if command == .typeKeyBeforeHashAliasReply {
             // The probe stores the one-shot re-ask; AppKit types the second
-            // `\` natively. No separator intent is recorded for this key.
-            Self.noteBackslashProbeIfEligible(
+            // key natively. No separator intent is recorded for this key.
+            guard let typedKey = typedHashAliasKey else {
+                return event
+            }
+            Self.noteHashAliasProbeIfEligible(
                 firstResponder: panel?.firstResponder,
-                model: model
+                model: model,
+                typedKey: typedKey
             )
             return event
         }
         return perform(command) ? nil : event
     }
 
-    /// Records the one-shot fast double-tap probe for a second `\` typed
-    /// before Bob answers the first. Computes the post-key buffer from the
-    /// live editor at key-down time, so nothing depends on when SwiftUI
+    /// Records the one-shot fast double-tap probe for a second alias key
+    /// typed before Bob answers the first. Computes the post-key buffer from
+    /// the live editor at key-down time, so nothing depends on when SwiftUI
     /// delivers the text change.
-    static func noteBackslashProbeIfEligible(
+    static func noteHashAliasProbeIfEligible(
         firstResponder: NSResponder?,
-        model: CapturePanelModel
+        model: CapturePanelModel,
+        typedKey: String
     ) {
         guard let textView = editableTextView(firstResponder),
               !textView.hasMarkedText()
@@ -2387,13 +2417,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard selection.location <= nsString.length else {
             return
         }
-        let secondDraft = nsString.replacingCharacters(in: selection, with: "\\")
-        let secondUTF16 = selection.location + 1
+        let secondDraft = nsString.replacingCharacters(in: selection, with: typedKey)
+        let secondUTF16 = selection.location + (typedKey as NSString).length
         guard let secondCaretUTF8 = utf8Offset(in: secondDraft, utf16Offset: secondUTF16)
         else {
             return
         }
-        model.noteBackslashBeforeHashAliasReply(
+        model.noteHashAliasBeforeReply(
             secondDraft: secondDraft,
             secondCaretUTF8: secondCaretUTF8
         )

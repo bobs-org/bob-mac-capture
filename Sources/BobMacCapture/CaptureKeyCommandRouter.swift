@@ -111,8 +111,8 @@ enum CaptureKeyCommand: Equatable {
     case openTodayPomodoro
     case openGotoFromBackslash
     case typeLiteralBackslash
-    case typeBackslashBeforeHashAliasReply
-    case typeLiteralBackslashForHashAlias
+    case typeKeyBeforeHashAliasReply
+    case typeLiteralForHashAlias
     case joinCalendarEvent
     case switchPanel
     case armEditorLeader
@@ -171,8 +171,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var draftIsBlank = false
     var draftIsBareGotoSigil = false
     var backslashLiteralArmed = false
-    var hashAliasLiteralArmed = false
-    var hashAliasReplyPending = false
+    var hashAliasLiteralKey: String? = nil
+    var hashAliasReplyPendingKey: String? = nil
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -200,6 +200,36 @@ struct CaptureKeyCommandRouter {
         }
         return !modifiers.contains(.command)
             && !modifiers.contains(.control)
+    }
+
+    /// Typed `/` by characters, not key code, so layouts needing Shift or
+    /// Option for `/` still match. Command and Control veto; marked text is
+    /// checked by the caller through `editorHasMarkedText`.
+    static func isTypedSlash(
+        event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Bool {
+        guard event.characters == "/" else {
+            return false
+        }
+        return !modifiers.contains(.command)
+            && !modifiers.contains(.control)
+    }
+
+    /// The typed hash-alias key (`\` or `/`) by characters, or nil for any
+    /// other key. Command and Control veto; marked text is checked by the
+    /// caller through `editorHasMarkedText`.
+    static func typedHashAliasKey(
+        event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> String? {
+        if isTypedBackslash(event: event, modifiers: modifiers) {
+            return "\\"
+        }
+        if isTypedSlash(event: event, modifiers: modifiers) {
+            return "/"
+        }
+        return nil
     }
 
     private enum KeyCode {
@@ -380,11 +410,13 @@ struct CaptureKeyCommandRouter {
             return .openTodayPomodoro
         }
 
-        if Self.isTypedBackslash(event: event, modifiers: modifiers),
+        if let hashAliasKey = Self.typedHashAliasKey(event: event, modifiers: modifiers),
            !context.editorHasMarkedText
         {
             let isRepeat = context.keyIsRepeat || event.isARepeat
-            if context.draftIsBlank || context.draftIsBareGotoSigil {
+            if hashAliasKey == "\\",
+               context.draftIsBlank || context.draftIsBareGotoSigil
+            {
                 if isRepeat {
                     return .consumeKey
                 }
@@ -399,17 +431,17 @@ struct CaptureKeyCommandRouter {
                 }
                 return .consumeKey
             }
-            if context.hashAliasLiteralArmed {
+            if context.hashAliasLiteralKey == hashAliasKey {
                 if isRepeat {
                     return .consumeKey
                 }
-                return .typeLiteralBackslashForHashAlias
+                return .typeLiteralForHashAlias
             }
-            if context.hashAliasReplyPending {
+            if context.hashAliasReplyPendingKey == hashAliasKey {
                 if isRepeat {
                     return nil
                 }
-                return .typeBackslashBeforeHashAliasReply
+                return .typeKeyBeforeHashAliasReply
             }
         }
 

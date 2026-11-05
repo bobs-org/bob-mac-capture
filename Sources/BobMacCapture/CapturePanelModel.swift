@@ -28,11 +28,14 @@ private struct SeparatorToggleIntent: Equatable {
     let expectedCursorUTF8: Int
 }
 
-/// One-shot arm after Bob rewrites `\` to `#`: the very next `\` replaces
-/// that `#` with a literal `\` and closes the menu. The UTF-16 caret and the
-/// `#` range are computed once from Bob's response so the action can judge
-/// the live editor instead of the SwiftUI mirror.
+/// One-shot arm after Bob rewrites a `\` or `/` alias to `#`: the very
+/// next press of the same key replaces that `#` with one literal key and
+/// closes the menu. The UTF-16 caret and the `#` range are computed once
+/// from Bob's response so the action can judge the live editor instead of
+/// the SwiftUI mirror.
 struct CaptureHashAliasArm: Equatable {
+    /// The alias key Bob replaced (`\` or `/`), taken from Bob's response.
+    let key: String
     let draft: String
     let hashUTF8: Int
     let caretUTF8: Int
@@ -40,10 +43,11 @@ struct CaptureHashAliasArm: Equatable {
     let hashUTF16Range: NSRange
 }
 
-/// One-shot probe for a second `\` that lands before Bob answers the first:
-/// re-asks Bob about `firstDraft` and deletes the extra `\` only when Bob
-/// says the first `\` would have become `#`.
+/// One-shot probe for a second alias key that lands before Bob answers the
+/// first: re-asks Bob about `firstDraft` and deletes the extra key only when
+/// Bob says the first key would have become `#`.
 struct HashAliasProbe: Equatable {
+    let key: String
     let firstDraft: String
     let firstCaretUTF8: Int
     let secondDraft: String
@@ -760,7 +764,7 @@ final class CapturePanelModel: ObservableObject {
     /// A `\` sent to the rewrite lane whose reply has not landed: the
     /// expected post-key draft and caret from key-down time. Lets a second
     /// `\` before Bob's reply re-ask Bob about the first `\`.
-    var pendingBackslashAlias: (draft: String, caretUTF8: Int)?
+    var pendingHashAlias: (key: String, draft: String, caretUTF8: Int)?
     /// One-shot fast double-tap probe; see `HashAliasProbe`.
     var hashAliasProbe: HashAliasProbe?
     private var isApplyingProgrammaticDraft = false
@@ -2340,7 +2344,8 @@ final class CapturePanelModel: ObservableObject {
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
-                || typed == "," || typed == "." || typed == ";" || typed == "\\",
+                || typed == "," || typed == "." || typed == ";" || typed == "\\"
+                || typed == "/",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -2363,26 +2368,28 @@ final class CapturePanelModel: ObservableObject {
             expectedDraft: expectedDraft,
             expectedCursorUTF8: expectedCursorUTF8
         )
-        if typed == "\\" {
-            pendingBackslashAlias = (
+        if typed == "\\" || typed == "/" {
+            pendingHashAlias = (
+                key: typed,
                 draft: expectedDraft,
                 caretUTF8: expectedCursorUTF8
             )
         }
     }
 
-    /// Stores the one-shot fast double-tap probe for a second `\\` typed
-    /// before Bob answers the first. Called from the
-    /// `.typeBackslashBeforeHashAliasReply` command; returns nothing so the
-    /// caller passes the key through for native insertion.
-    func noteBackslashBeforeHashAliasReply(
+    /// Stores the one-shot fast double-tap probe for a second alias key
+    /// typed before Bob answers the first. Called from the
+    /// `.typeKeyBeforeHashAliasReply` command; returns nothing so the caller
+    /// passes the key through for native insertion.
+    func noteHashAliasBeforeReply(
         secondDraft: String,
         secondCaretUTF8: Int
     ) {
-        guard let pending = pendingBackslashAlias else {
+        guard let pending = pendingHashAlias else {
             return
         }
         hashAliasProbe = HashAliasProbe(
+            key: pending.key,
             firstDraft: pending.draft,
             firstCaretUTF8: pending.caretUTF8,
             secondDraft: secondDraft,
@@ -2390,16 +2397,18 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// True when a second `\\` before Bob's reply should re-ask Bob about
-    /// the first: no live arm, a pending first `\\`, and the live editor
-    /// still showing that pending draft and caret.
+    /// True when a second alias key before Bob's reply should re-ask Bob
+    /// about the first: no live arm, a pending first key matching `typedKey`,
+    /// and the live editor still showing that pending draft and caret.
     func hashAliasReplyPending(
         liveString: String,
         liveCaretUTF16: Int,
-        hasMarkedText: Bool
+        hasMarkedText: Bool,
+        typedKey: String
     ) -> Bool {
         guard hashAliasLiteralArm == nil,
-              let pending = pendingBackslashAlias,
+              let pending = pendingHashAlias,
+              pending.key == typedKey,
               !hasMarkedText,
               liveString == pending.draft,
               let pendingCaretUTF16 = utf16Range(
@@ -14312,7 +14321,7 @@ final class CapturePanelModel: ObservableObject {
                     }
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
-                    self?.pendingBackslashAlias = nil
+                    self?.pendingHashAlias = nil
                 }
             }
         }
@@ -14320,8 +14329,8 @@ final class CapturePanelModel: ObservableObject {
         return task
     }
 
-    /// Re-asks Bob about the first `\\` for a fast double-tap. Reuses the
-    /// rewrite generation and task so any later edit, caret move, or
+    /// Re-asks Bob about the first alias key for a fast double-tap. Reuses
+    /// the rewrite generation and task so any later edit, caret move, or
     /// dismissal cancels the probe through the existing paths. The live
     /// caret, not the request cursor, is the expected cursor.
     @discardableResult
@@ -14365,7 +14374,7 @@ final class CapturePanelModel: ObservableObject {
                     }
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
-                    self?.pendingBackslashAlias = nil
+                    self?.pendingHashAlias = nil
                     self?.hashAliasProbe = nil
                 }
             }
@@ -14376,9 +14385,9 @@ final class CapturePanelModel: ObservableObject {
 
     /// Applies a fast double-tap probe reply without running it through
     /// `applyCaptureRewrite`, whose guards compare against the request
-    /// draft. On a matching alias reply deletes the second `\\` natively,
-    /// so `#` is never shown and no arm is set; any other reply leaves the
-    /// typed `\\\\` alone. Always clears the probe and the
+    /// draft. On a matching alias reply deletes the second key natively, so
+    /// `#` is never shown and no arm is set; any other reply leaves the
+    /// typed doubled key alone. Always clears the probe and the
     /// expected-cursor state.
     private func applyHashAliasProbeRewrite(
         _ response: CaptureRewriteResponse,
@@ -14396,7 +14405,7 @@ final class CapturePanelModel: ObservableObject {
             if rewriteGeneration == generation {
                 rewriteExpectedCursorUTF8 = nil
                 rewriteSawMatchingSelection = false
-                pendingBackslashAlias = nil
+                pendingHashAlias = nil
                 hashAliasProbe = nil
             }
         }
@@ -14411,7 +14420,7 @@ final class CapturePanelModel: ObservableObject {
                   start: edit.range.start,
                   end: edit.range.end
               ),
-              String(response.input[inputRange]) == "\\",
+              String(response.input[inputRange]) == probe.key,
               let secondBackslashRange = utf16Range(
                   in: probe.secondDraft,
                   start: probe.secondCaretUTF8 - 1,
@@ -14422,7 +14431,7 @@ final class CapturePanelModel: ObservableObject {
                   start: probe.secondCaretUTF8 - 1,
                   end: probe.secondCaretUTF8
               ),
-              String(probe.secondDraft[secondRange]) == "\\",
+              String(probe.secondDraft[secondRange]) == probe.key,
               let secondCaretUTF16 = utf16Range(
                   in: probe.secondDraft,
                   start: probe.secondCaretUTF8,
@@ -14489,7 +14498,7 @@ final class CapturePanelModel: ObservableObject {
             if rewriteGeneration == generation {
                 rewriteExpectedCursorUTF8 = nil
                 rewriteSawMatchingSelection = false
-                pendingBackslashAlias = nil
+                pendingHashAlias = nil
             }
         }
         if let current = collapsedSelectionUTF8Offset(), current != cursorUTF8Offset {
@@ -14587,7 +14596,8 @@ final class CapturePanelModel: ObservableObject {
                start: edit.range.start,
                end: edit.range.end
            ),
-           String(response.input[inputRange]) == "\\",
+           (String(response.input[inputRange]) == "\\"
+               || String(response.input[inputRange]) == "/"),
            let cursor = response.cursor,
            let caretUTF16 = utf16Range(
                in: response.text,
@@ -14600,6 +14610,7 @@ final class CapturePanelModel: ObservableObject {
            )
         {
             hashAliasLiteralArm = CaptureHashAliasArm(
+                key: String(response.input[inputRange]),
                 draft: response.text,
                 hashUTF8: edit.range.start,
                 caretUTF8: cursor,
@@ -14619,13 +14630,13 @@ final class CapturePanelModel: ObservableObject {
         rewriteSawMatchingSelection = false
     }
 
-    /// Second `\` right after a `#` alias: replaces that `#` with a literal
-    /// `\` through the native text view so Undo stays native, then closes
-    /// the menu without reopening a picker. The caller passes the arm it
-    /// took at key-down time; the live editor decides through
+    /// Second alias key right after a `#` alias: replaces that `#` with the
+    /// arm's literal key through the native text view so Undo stays native,
+    /// then closes the menu without reopening a picker. The caller passes
+    /// the arm it took at key-down time; the live editor decides through
     /// `expectedDraft`/`expectedSelection`. Returns false without changing
     /// state when the arm no longer matches, so the key falls through.
-    func replaceHashAliasWithLiteralBackslash(_ arm: CaptureHashAliasArm) -> Bool {
+    func replaceHashAliasWithLiteralKey(_ arm: CaptureHashAliasArm) -> Bool {
         guard !isSubmitting,
               !editorInputLocked,
               let hashRange = stringRange(
@@ -14638,8 +14649,8 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         var newDraft = arm.draft
-        newDraft.replaceSubrange(hashRange, with: "\\")
-        let newCaretUTF8 = arm.hashUTF8 + 1
+        newDraft.replaceSubrange(hashRange, with: arm.key)
+        let newCaretUTF8 = arm.hashUTF8 + arm.key.utf8.count
         guard let caretUTF16 = utf16Range(
             in: newDraft,
             start: newCaretUTF8,
@@ -14650,7 +14661,7 @@ final class CapturePanelModel: ObservableObject {
         }
         let edit = CaptureNativeRewriteEdit(
             replacementRange: arm.hashUTF16Range,
-            replacementText: "\\",
+            replacementText: arm.key,
             resultingSelection: NSRange(location: caretUTF16, length: 0),
             expectedDraft: arm.draft,
             resultingDraft: newDraft,
@@ -15792,7 +15803,7 @@ final class CapturePanelModel: ObservableObject {
     private func invalidateRewrite() {
         cancelInFlightRewrite()
         pendingSeparatorToggleIntent = nil
-        pendingBackslashAlias = nil
+        pendingHashAlias = nil
         hashAliasProbe = nil
     }
 

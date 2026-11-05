@@ -1831,7 +1831,7 @@ JSON
       fi
     fi
     if [[ "${FAKE_BOB_REWRITE_HASH_UNCHANGED:-}" == "1" ]]; then
-      if [[ "${draft}" == 'jot idea \' || "${draft}" == 'jot idea @foo\' || "${draft}" == 'Postgres 17 minimum @foo+bar\' ]]; then
+      if [[ "${draft}" == 'jot idea \' || "${draft}" == 'jot idea @foo\' || "${draft}" == 'Postgres 17 minimum @foo+bar\' || "${draft}" == 'jot idea /' || "${draft}" == 'jot idea @foo/' || "${draft}" == 'Postgres 17 minimum @foo+bar/' ]]; then
         printf '{"ok":true,"schema_version":1,"input":'
         json_string "${draft}"
         printf ',"text":'
@@ -1846,6 +1846,14 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-hash-alias-section.json"
     elif [[ "${draft}" == 'Postgres 17 minimum @foo+bar\' ]]; then
       cat "${fixtures_dir}/capture-rewrite-hash-alias-drawer.json"
+    elif [[ "${draft}" == 'jot idea /' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-slash-alias-task-type.json"
+    elif [[ "${draft}" == 'jot idea @foo/' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-slash-alias-section.json"
+    elif [[ "${draft}" == 'Postgres 17 minimum @foo+bar/' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-slash-alias-drawer.json"
+    elif [[ "${draft}" == '=/' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-slash-alias-split-unchanged.json"
     elif [[ "${draft}" == $'jot idea\n\\' ]]; then
       cat "${fixtures_dir}/capture-rewrite-hash-alias-unchanged.json"
     elif [[ "${draft}" == "@file." ]]; then
