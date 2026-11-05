@@ -463,8 +463,9 @@ the clipboard. Each `%c` item shows a Clip card with Bob's exact clipboard conte
 (see [Clip card](capture-previews.md#clip-card)). Bob treats `%l` as a
 companion-audio request on an eligible URL-only reference, so
 `https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type. Pressing the
-explicit **Preview** button or **Capture** resolves the clipboard and Clipy history
-normally, exactly as the final capture would. While the panel is key and the current
+explicit **Preview** button or **Capture** resolves the clipboard and the
+clipboard-history provider Bob selects normally, exactly as the final capture would.
+While the panel is key and the current
 compatible parse reports a clip directive, the app observes only the pasteboard change
 counter at no more than 1 Hz and re-runs the debounced preview when it moves; the
 counter reads no content. A `$<N>` random

@@ -89,6 +89,41 @@ final class CaptureClipPresentationTests: XCTestCase {
         XCTAssertEqual(history.accessibilitySummary, "Last 3 clips: 3 lines")
     }
 
+    func testHistoryHeaderShowsProviderAndAges() throws {
+        let history = try XCTUnwrap(
+            CaptureClipPresentation(capture: decodeFixture("clip-history-provenance.json")))
+        XCTAssertEqual(history.headerText, "Last 3 clips · Alfred · newest 3s · oldest 2h")
+        XCTAssertEqual(
+            history.historyEntries.map(\.dividerText),
+            [
+                "Entry 1 of 3 · 3s ago · Safari",
+                "Entry 2 of 3 · 4m ago",
+                "Entry 3 of 3 · 2h ago · Notes",
+            ])
+        XCTAssertEqual(
+            history.accessibilitySummary, "Last 3 clips · Alfred · newest 3s · oldest 2h: 3 lines")
+    }
+
+    func testCommandHistoryShowsProviderWithoutAges() throws {
+        let history = try XCTUnwrap(
+            CaptureClipPresentation(capture: decodeFixture("clip-history-command.json")))
+        XCTAssertEqual(history.headerText, "Last 3 clips · command")
+        XCTAssertEqual(
+            history.historyEntries.map(\.dividerText),
+            ["Entry 1 of 3", "Entry 2 of 3", "Entry 3 of 3"])
+        XCTAssertEqual(history.accessibilitySummary, "Last 3 clips · command: 3 lines")
+    }
+
+    func testMalformedHistoryKeepsTodaysStrings() throws {
+        let history = try XCTUnwrap(
+            CaptureClipPresentation(capture: decodeFixture("clip-history-malformed.json")))
+        XCTAssertEqual(history.headerText, "Last 3 clips")
+        XCTAssertEqual(
+            history.historyEntries.map(\.dividerText),
+            ["Entry 1 of 3", "Entry 2 of 3", "Entry 3 of 3"])
+        XCTAssertEqual(history.accessibilitySummary, "Last 3 clips: 3 lines")
+    }
+
     func testHistoryAttachmentEntryKeepsItsRows() throws {
         let history = try XCTUnwrap(
             CaptureClipPresentation(capture: decodeFixture("clip-history-attachments.json")))

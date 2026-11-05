@@ -125,16 +125,27 @@ public struct CaptureClipPresentation: Equatable, Sendable {
         switch mode {
         case "history":
             let total = clip.entries.count
+            let history = clip.history
             let entries = clip.entries.enumerated().map { index, entry in
                 HistoryEntry(
-                    dividerText: "Entry \(index + 1) of \(total)",
+                    dividerText: Self.historyDividerText(
+                        index: index, total: total, history: history),
                     modeText: entry.mode ?? "clip",
                     lines: entry.lines,
                     snippetDestination: entry.snippet,
                     attachmentRows: entry.attachments.map(Self.attachmentRow(for:))
                 )
             }
-            let header = total == 1 ? "Last 1 clip" : "Last \(total) clips"
+            var header = total == 1 ? "Last 1 clip" : "Last \(total) clips"
+            if let history {
+                header += " · \(Self.providerDisplayName(history.provider))"
+                if let newest = history.entries.first?.ageSeconds,
+                    let oldest = history.entries.last?.ageSeconds
+                {
+                    header +=
+                        " · newest \(Self.clipAgeText(newest)) · oldest \(Self.clipAgeText(oldest))"
+                }
+            }
             self.init(
                 headerText: header,
                 childLines: clip.lines,
@@ -236,6 +247,67 @@ public struct CaptureClipPresentation: Equatable, Sendable {
         self.showsPlaceholder = showsPlaceholder
         self.placeholderText = placeholderText
         self.accessibilitySummary = accessibilitySummary
+    }
+
+    /// `%c<N>` provider key as Bob reports it (`alfred`, `clipy`,
+    /// `command`, …): known keys render with house capitalization, unknown
+    /// keys render verbatim so a future provider never blanks the card.
+    private static func providerDisplayName(_ provider: String) -> String {
+        switch provider {
+        case "alfred":
+            return "Alfred"
+        case "clipy":
+            return "Clipy"
+        case "command":
+            return "command"
+        default:
+            return provider
+        }
+    }
+
+    /// Compact age matching bob's `age_unit` buckets (`3s`, `4m`, `2h`, `5d`,
+    /// `1w`, `2mo`, `1y`); negative values clamp to zero.
+    private static func clipAgeText(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        switch clamped {
+        case 0..<60:
+            return "\(clamped)s"
+        case 0..<3_600:
+            return "\(clamped / 60)m"
+        case 0..<86_400:
+            return "\(clamped / 3_600)h"
+        case 0..<604_800:
+            return "\(clamped / 86_400)d"
+        case 0..<2_419_200:
+            return "\(clamped / 604_800)w"
+        case 0..<31_536_000:
+            return "\(clamped / 2_419_200)mo"
+        default:
+            return "\(clamped / 31_536_000)y"
+        }
+    }
+
+    /// History entry divider with the entry's age and app when Bob knows
+    /// them (`"Entry 2 of 3 · 4m ago · Safari"`); provenance entries align
+    /// with the aggregate clip's entries, and a missing row leaves the plain
+    /// divider so a short `history.entries` never breaks the card.
+    private static func historyDividerText(
+        index: Int, total: Int, history: CaptureClipHistory?
+    ) -> String {
+        var divider = "Entry \(index + 1) of \(total)"
+        guard let provenanceEntries = history?.entries,
+            provenanceEntries.indices.contains(index)
+        else {
+            return divider
+        }
+        let provenance = provenanceEntries[index]
+        if let ageSeconds = provenance.ageSeconds {
+            divider += " · \(clipAgeText(ageSeconds)) ago"
+        }
+        if let app = provenance.app, !app.isEmpty {
+            divider += " · \(app)"
+        }
+        return divider
     }
 
     private static func attachmentRow(for attachment: CaptureAttachmentOutput) -> AttachmentRow {

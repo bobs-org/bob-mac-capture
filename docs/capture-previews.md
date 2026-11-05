@@ -73,9 +73,14 @@ Each `%c` item renders its own Clip card beneath its preview card, built only fr
   that item's `clip` object: a kind header (`Clipboard · 3 lines`, `2 files · 1 image`,
   `Snippet · 42 lines → file/clip-…md`, `Last 3 clips`), Bob's exact child lines, the
   snippet destination, one summary row per attachment with a thumbnail for readable
-  images, and entry dividers for `%c<N>` history. A missing or unreadable image source
+  images, and entry dividers for `%c<N>` history. A history card names the manager
+  Bob read (`Last 3 clips · Alfred · newest 3s · oldest 2h`; `command` for a history
+  command, verbatim otherwise) and appends each entry's age and app
+  (`Entry 2 of 3 · 4m ago · Safari`); without `clip.history` it keeps the header
+  and dividers. A missing or unreadable image source
   keeps its summary row. A `clip` Bob did not read (`status: "not_read"`) shows a quiet
-  placeholder. Clip lines never enter a task block: the task-block dedup keeps matching
+  placeholder. Clip lines never enter
+  a task block: the task-block dedup keeps matching
   them through the item's verbatim `previewBlockLines`.
 
 ## Drawer captures
@@ -332,8 +337,6 @@ The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycl
 
 ## Completing tasks with `!`
 
-## Completing tasks with `!`
-
 A capture item that is exactly `!note:block-id` completes that existing open task
 without closing a Pomodoro: the task line closes exactly as `x!N` would write it,
 its Task Links retire in today's ledger the way `bob task reconcile` would retire
@@ -368,8 +371,6 @@ Bob before using `!`.
 
 ## Saving links to your reading queue
 
-## Saving links to your reading queue
-
 A capture item that is exactly one bare link (alone, one per line in a pasted
 URL list, or mixed with ordinary tasks in a blank-line-separated batch) queues
 that link for the reading queue instead of becoming an inbox task. Bob classifies
@@ -395,7 +396,7 @@ alias. An older Bob without the `ref` object keeps capturing the
 link as an ordinary task with the standard card; upgrade Bob before queueing
 links. Queueing can be turned off per draft with `bob capture -R/--no-ref`.
 
-Queueing can be turned off per draft with `bob capture -R/--no-ref`. The queued job itself is filed by `bob` in the background; the app never touches the network.
+The queued job itself is filed by `bob` in the background; the app never touches the network.
 
 ## Successor offers
 

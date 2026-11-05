@@ -7917,6 +7917,11 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
     public let attachments: [CaptureAttachmentOutput]
     public let snippet: String?
     public let entries: [CaptureClipOutput]
+    /// `%c<N>` provenance (`clip.history`): which clipboard manager supplied
+    /// the entries plus per-entry ages and apps. Nil for a single `%c`, for an
+    /// older bob that omits `history`, and for a malformed value, which never
+    /// breaks clip decoding.
+    public let history: CaptureClipHistory?
 
     public static let readStatus = "read"
     public static let notReadStatus = "not_read"
@@ -7930,7 +7935,8 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
         lines: [String] = [],
         attachments: [CaptureAttachmentOutput] = [],
         snippet: String? = nil,
-        entries: [CaptureClipOutput] = []
+        entries: [CaptureClipOutput] = [],
+        history: CaptureClipHistory? = nil
     ) {
         self.status = status
         self.count = count
@@ -7939,6 +7945,7 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
         self.attachments = attachments
         self.snippet = snippet
         self.entries = entries
+        self.history = history
     }
 
     public init(from decoder: Decoder) throws {
@@ -7955,6 +7962,7 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
             try container.decodeIfPresent([CaptureAttachmentOutput].self, forKey: .attachments) ?? []
         snippet = try container.decodeIfPresent(String.self, forKey: .snippet)
         entries = try container.decodeIfPresent([CaptureClipOutput].self, forKey: .entries) ?? []
+        history = try? container.decodeIfPresent(CaptureClipHistory.self, forKey: .history)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7965,6 +7973,51 @@ public struct CaptureClipOutput: Codable, Equatable, Sendable {
         case attachments
         case snippet
         case entries
+        case history
+    }
+}
+
+/// Provenance for a `%c<N>` history read: the clipboard manager that supplied
+/// the entries (`alfred`, `clipy`, `command`, or a future provider key) plus
+/// per-entry ages and apps aligned with the aggregate clip's `entries`.
+public struct CaptureClipHistory: Codable, Equatable, Sendable {
+    public let provider: String
+    public let entries: [CaptureClipHistoryEntry]
+
+    public init(provider: String, entries: [CaptureClipHistoryEntry] = []) {
+        self.provider = provider
+        self.entries = entries
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(String.self, forKey: .provider)
+        entries =
+            try container.decodeIfPresent(
+                [CaptureClipHistoryEntry].self, forKey: .entries) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case provider
+        case entries
+    }
+}
+
+/// One `%c<N>` provenance entry: seconds since the row was copied
+/// (`age_seconds`, nil when the provider stores no timestamp) and the source
+/// app (`app`, nil when unknown).
+public struct CaptureClipHistoryEntry: Codable, Equatable, Sendable {
+    public let ageSeconds: Int?
+    public let app: String?
+
+    public init(ageSeconds: Int? = nil, app: String? = nil) {
+        self.ageSeconds = ageSeconds
+        self.app = app
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ageSeconds = "age_seconds"
+        case app
     }
 }
 

@@ -443,6 +443,17 @@ final class CaptureDirectiveWireTests: XCTestCase {
         )
         XCTAssertEqual(try roundTrip(read), read)
 
+        let provenance = CaptureClipOutput(
+            mode: "history",
+            lines: ["\t- a"],
+            entries: [CaptureClipOutput(mode: "inline", lines: ["\t- a"])],
+            history: CaptureClipHistory(
+                provider: "alfred",
+                entries: [CaptureClipHistoryEntry(ageSeconds: 3, app: "Safari")]
+            )
+        )
+        XCTAssertEqual(try roundTrip(provenance), provenance)
+
         let destination = CaptureGlobalDestination(
             range: CaptureRange(start: 0, end: 5), line: 1, route: "dev")
         XCTAssertEqual(try roundTrip(destination), destination)
