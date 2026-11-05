@@ -3673,7 +3673,11 @@ struct PreviewPane: View {
             case .ready(let response):
                 previewContent(response)
             case .failed(let message):
-                if let emptyPull = model.emptyNotePullPresentation {
+                if let pending = model.transferPendingPresentation {
+                    CaptureTransferPendingCardView(presentation: pending)
+                } else if let refusal = model.transferRefusalPresentation {
+                    CaptureTransferRefusalCardView(presentation: refusal)
+                } else if let emptyPull = model.emptyNotePullPresentation {
                     CaptureNotePullEmptyCard(presentation: emptyPull)
                 } else {
                     Text(message)

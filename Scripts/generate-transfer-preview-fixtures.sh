@@ -108,6 +108,32 @@ run_dry() {
   bob "$vault" capture --dry-run --format json -- "$draft" > "$output"
 }
 
+run_failure() {
+  local vault="$1"
+  local draft="$2"
+  local output="$3"
+  local expected_code="$4"
+  local exit_code
+  set +e
+  bob "$vault" capture --dry-run --format json -- "$draft" > "$output"
+  exit_code=$?
+  set -e
+  if [[ "$exit_code" -eq 0 ]]; then
+    echo "expected $expected_code for: $draft" >&2
+    exit 1
+  fi
+  python3 - "$output" "$expected_code" <<'PY'
+import json
+import pathlib
+import sys
+
+path, expected = sys.argv[1:]
+response = json.loads(pathlib.Path(path).read_text())
+assert response.get("ok") is False, response
+assert response.get("code") == expected, response
+PY
+}
+
 shot_vault="$scratch_root/screenshot"
 make_vault "$shot_vault"
 cat > "$shot_vault/work.md" <<'EOF'
@@ -226,6 +252,40 @@ bob "$parse_vault" capture-parse --format json -- \
   > "$scratch_root/parse-merge.json"
 bob "$parse_vault" capture-parse --format json -- '@inbox+bench > @' \
   > "$scratch_root/parse-incomplete.json"
+bob "$parse_vault" capture-parse --format json -- '@inbox+bench > @db+' \
+  > "$scratch_root/parse-pending-block-id.json"
+bob "$parse_vault" capture-parse --format json -- '@inbox+bench > @db#' \
+  > "$scratch_root/parse-pending-section.json"
+bob "$parse_vault" capture-parse --format json -- '@inbox+bench > @db+upgrade#' \
+  > "$scratch_root/parse-pending-drawer.json"
+
+pending_vault="$scratch_root/pending"
+write_basic_vault "$pending_vault"
+run_failure "$pending_vault" '@inbox+bench > ' \
+  "$scratch_root/pending-destination.json" incomplete_transfer
+run_failure "$pending_vault" '@inbox+bench > @db+' \
+  "$scratch_root/pending-block-id.json" incomplete_transfer_block_id
+run_failure "$pending_vault" '@inbox+bench > @db#' \
+  "$scratch_root/pending-section.json" incomplete_transfer_section
+run_failure "$pending_vault" '@inbox+bench > @db+upgrade#' \
+  "$scratch_root/pending-drawer.json" incomplete_transfer_drawer
+run_failure "$pending_vault" '@inbox+bnch > ' \
+  "$scratch_root/pending-typo-source.json" incomplete_transfer
+
+refusal_vault="$scratch_root/refusal"
+write_basic_vault "$refusal_vault"
+cat > "$refusal_vault/inbox.md" <<'EOF'
+---
+type: "[[area]]"
+---
+## Tasks
+- [ ] #task Benchmark logical replication ^bench
+  - [ ] #task Add a load test ^bench-sub
+EOF
+run_failure "$refusal_vault" '@inbox+bench > @db+upgrade' \
+  "$scratch_root/refusal-open-subtasks.json" merge_source_open_subtasks
+run_failure "$pending_vault" '@inbox+bench > @db extra' \
+  "$scratch_root/refusal-extra-text.json" transfer_extra_text
 
 python3 - "$scratch_root" <<'PY'
 import json
@@ -246,6 +306,16 @@ unchanged = load("unchanged-rerun.json")
 parse_move = load("parse-move.json")
 parse_merge = load("parse-merge.json")
 parse_incomplete = load("parse-incomplete.json")
+parse_pending_block_id = load("parse-pending-block-id.json")
+parse_pending_section = load("parse-pending-section.json")
+parse_pending_drawer = load("parse-pending-drawer.json")
+pending_destination = load("pending-destination.json")
+pending_block_id = load("pending-block-id.json")
+pending_section = load("pending-section.json")
+pending_drawer = load("pending-drawer.json")
+pending_typo = load("pending-typo-source.json")
+refusal_open_subtasks = load("refusal-open-subtasks.json")
+refusal_extra_text = load("refusal-extra-text.json")
 
 assert shot.get("kind") == "task_merge" and len(shot.get("merges", [])) == 2, shot
 assert "[[org]]" in shot["merges"][0]["source"]["title"], shot
@@ -312,6 +382,26 @@ assert not unchanged.get("section_blocks"), unchanged
 assert parse_move.get("mode") == "task_move", parse_move
 assert parse_merge.get("mode") == "task_merge", parse_merge
 assert "transfer_destination" in parse_incomplete.get("needs", []), parse_incomplete
+assert "block_id" in parse_pending_block_id.get("needs", []), parse_pending_block_id
+assert "section" in parse_pending_section.get("needs", []), parse_pending_section
+assert "drawer" in parse_pending_drawer.get("needs", []), parse_pending_drawer
+for response, need in [
+    (pending_destination, "transfer_destination"),
+    (pending_block_id, "block_id"),
+    (pending_section, "section"),
+    (pending_drawer, "drawer"),
+]:
+    pending = response.get("transfer_pending")
+    assert pending and pending.get("need") == need, response
+    assert len(pending.get("sources", [])) == 1, response
+    assert len(pending.get("forms", [])) == 4, response
+assert not any(row.get("active") for row in pending_destination["transfer_pending"]["forms"]), pending_destination
+assert next(row for row in pending_block_id["transfer_pending"]["forms"] if row["form"] == "@note+task")["active"], pending_block_id
+assert next(row for row in pending_section["transfer_pending"]["forms"] if row["form"] == "@note#section")["active"], pending_section
+assert next(row for row in pending_drawer["transfer_pending"]["forms"] if row["form"] == "@note+task#drawer")["active"], pending_drawer
+assert pending_typo["transfer_pending"]["sources"][0]["error"]["code"] == "missing_task", pending_typo
+assert refusal_open_subtasks.get("code") == "merge_source_open_subtasks", refusal_open_subtasks
+assert refusal_extra_text.get("code") == "transfer_extra_text", refusal_extra_text
 for parsed in (parse_move, parse_merge):
     kinds = {span["kind"] for span in parsed.get("spans", [])}
     assert {"transfer_source", "transfer_arrow", "transfer_destination"} <= kinds, parsed
@@ -327,4 +417,14 @@ persist "$scratch_root/unchanged-rerun.json" capture-transfer-unchanged-merge.js
 persist "$scratch_root/parse-move.json" capture-parse-transfer-move.json
 persist "$scratch_root/parse-merge.json" capture-parse-transfer-merge.json
 persist "$scratch_root/parse-incomplete.json" capture-parse-transfer-incomplete.json
+persist "$scratch_root/parse-pending-block-id.json" capture-parse-transfer-pending-block-id.json
+persist "$scratch_root/parse-pending-section.json" capture-parse-transfer-pending-section.json
+persist "$scratch_root/parse-pending-drawer.json" capture-parse-transfer-pending-drawer.json
+persist "$scratch_root/pending-destination.json" capture-transfer-pending-destination.json
+persist "$scratch_root/pending-block-id.json" capture-transfer-pending-block-id.json
+persist "$scratch_root/pending-section.json" capture-transfer-pending-section.json
+persist "$scratch_root/pending-drawer.json" capture-transfer-pending-drawer.json
+persist "$scratch_root/pending-typo-source.json" capture-transfer-pending-typo-source.json
+persist "$scratch_root/refusal-open-subtasks.json" capture-transfer-refusal-open-subtasks.json
+persist "$scratch_root/refusal-extra-text.json" capture-transfer-refusal-extra-text.json
 echo "wrote capture transfer fixtures to $fixtures"

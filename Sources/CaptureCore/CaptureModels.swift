@@ -7469,6 +7469,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
     /// Additive payload for `nothing_to_pull_in`; absent on older Bob and
     /// on other refusal codes.
     public let notePull: CaptureNotePull?
+    /// Read-only resolved source context for an unfinished capture transfer.
+    /// Older Bob omits it; malformed additive data degrades to nil.
+    public let transferPending: CaptureTransferPending?
     public let offers: [TaskCompleteUnblocked]
     /// Additive batch-level inbox-route payload on
     /// `inbox_route_choice_required`, `inbox_route_refused`, and
@@ -7489,6 +7492,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         code: String? = nil,
         pullIn: CapturePullIn? = nil,
         notePull: CaptureNotePull? = nil,
+        transferPending: CaptureTransferPending? = nil,
         offers: [TaskCompleteUnblocked] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
@@ -7499,6 +7503,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.code = code
         self.pullIn = pullIn
         self.notePull = notePull
+        self.transferPending = transferPending
         self.offers = offers
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
@@ -7512,6 +7517,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
         code = try container.decodeIfPresent(String.self, forKey: .code)
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
+        transferPending =
+            (try? container.decodeIfPresent(CaptureTransferPending.self, forKey: .transferPending))
+            ?? nil
         offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
@@ -7527,6 +7535,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case code
         case pullIn = "pull_in"
         case notePull = "note_pull"
+        case transferPending = "transfer_pending"
         case offers
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"

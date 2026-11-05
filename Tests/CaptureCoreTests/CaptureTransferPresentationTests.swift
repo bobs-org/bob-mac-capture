@@ -26,6 +26,18 @@ final class CaptureTransferPresentationTests: XCTestCase {
         )
     }
 
+    private func captureFailure(_ name: String) throws -> CaptureCommandFailure {
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        guard
+            case .failure(let failure) = try JSONDecoder().decode(
+                CaptureCommandResponse.self, from: data)
+        else {
+            XCTFail("expected a failed Bob response in \(name)")
+            throw NSError(domain: "CaptureTransferPresentationTests", code: 1)
+        }
+        return failure
+    }
+
     func testScreenshotMergeFixtureBuildsDraftOrderedCardRows() throws {
         let capture = try success("capture-transfer-merge.json")
         let presentation = try XCTUnwrap(CaptureTransferPresentation(capture: capture))
@@ -239,6 +251,62 @@ final class CaptureTransferPresentationTests: XCTestCase {
         XCTAssertTrue(response.needs.contains("transfer_destination"))
         let destination = try XCTUnwrap(response.spans.first { $0.kind == "transfer_destination" })
         XCTAssertEqual(captureSemanticCategory(forSpan: destination), .route)
+    }
+
+    func testPendingFixturesDecodeResolvedAndUnresolvedSourcesAndActiveForms() throws {
+        let fixtures = [
+            ("capture-transfer-pending-destination.json", "transfer_destination", nil),
+            ("capture-transfer-pending-block-id.json", "block_id", "@note+task"),
+            ("capture-transfer-pending-drawer.json", "drawer", "@note+task#drawer"),
+            ("capture-transfer-pending-section.json", "section", "@note#section"),
+        ]
+        for (fixture, need, activeForm) in fixtures {
+            let failure = try captureFailure(fixture)
+            XCTAssertTrue(failure.code?.hasPrefix("incomplete_transfer") == true)
+            let pending = try XCTUnwrap(failure.transferPending)
+            XCTAssertEqual(pending.need, need, fixture)
+            XCTAssertEqual(pending.sources.count, 1, fixture)
+            XCTAssertEqual(pending.forms.count, 4, fixture)
+            XCTAssertEqual(
+                pending.forms.filter(\.active).map(\.form), activeForm.map { [$0] } ?? [], fixture)
+            let presentation = try XCTUnwrap(
+                CaptureTransferPendingPresentation(pending: pending), fixture)
+            XCTAssertEqual(
+                presentation.sourceRows.first?.title?.text, "Benchmark logical replication", fixture
+            )
+            XCTAssertTrue(presentation.title.contains("1 task ready"), fixture)
+            XCTAssertEqual(presentation.forms.count, 4, fixture)
+        }
+
+        let typo = try XCTUnwrap(
+            try captureFailure("capture-transfer-pending-typo-source.json").transferPending
+        )
+        let typoPresentation = try XCTUnwrap(CaptureTransferPendingPresentation(pending: typo))
+        XCTAssertEqual(
+            typoPresentation.sourceRows.first?.errorMessage?.text, typo.sources[0].error?.message)
+        XCTAssertNil(typoPresentation.sourceRows.first?.title)
+        let blockForm = try XCTUnwrap(
+            typoPresentation.forms.first { $0.form == "@note+task#drawer" })
+        XCTAssertEqual(blockForm.segments.map(\.part), [.route, .blockID, .section])
+    }
+
+    func testTransferRefusalPresentationUsesBobMessageAndCode() throws {
+        let mergeFailure = try captureFailure("capture-transfer-refusal-open-subtasks.json")
+        let merge = try XCTUnwrap(
+            CaptureTransferRefusalPresentation(failure: mergeFailure, parseMode: "task_merge")
+        )
+        XCTAssertEqual(merge.verb, .merge)
+        XCTAssertEqual(merge.verb.title, "Can't merge")
+        XCTAssertTrue(merge.message.text.contains("1 open subtasks"))
+        XCTAssertEqual(merge.code, "merge_source_open_subtasks")
+
+        let unknownFailure = try captureFailure("capture-transfer-refusal-extra-text.json")
+        let unknown = try XCTUnwrap(
+            CaptureTransferRefusalPresentation(failure: unknownFailure, parseMode: nil)
+        )
+        XCTAssertEqual(unknown.verb, .transfer)
+        XCTAssertEqual(unknown.verb.title, "Can't transfer")
+        XCTAssertEqual(unknown.code, "transfer_extra_text")
     }
 
     func testNonTransferResponseHasNoTransferPresentation() throws {

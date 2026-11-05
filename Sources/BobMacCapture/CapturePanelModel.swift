@@ -511,6 +511,10 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResults: [CaptureCommandSuccess] = []
     /// Calm-card state for Bob's `nothing_to_pull_in` refusal.
     @Published var emptyNotePullPresentation: CaptureNotePullEmptyPresentation?
+    /// Calm in-progress transfer context returned by Bob's `transfer_pending` payload.
+    @Published var transferPendingPresentation: CaptureTransferPendingPresentation?
+    /// Designed refusal content for a failed live transfer preview.
+    @Published var transferRefusalPresentation: CaptureTransferRefusalPresentation?
     /// The exact draft string the current preview outputs were computed
     /// for. The move ghost titles render only while this still equals the
     /// current draft; any keystroke hides them until the next preview lands.
@@ -2153,6 +2157,8 @@ final class CapturePanelModel: ObservableObject {
             transferVerbAnnouncementTick += 1
         }
         emptyNotePullPresentation = nil
+        transferPendingPresentation = nil
+        transferRefusalPresentation = nil
         previewResult = captures.first
         previewResults = captures
         previewGlobalDestination = globalDestination
@@ -2163,6 +2169,8 @@ final class CapturePanelModel: ObservableObject {
 
     private func clearPreviewOutputs() {
         emptyNotePullPresentation = nil
+        transferPendingPresentation = nil
+        transferRefusalPresentation = nil
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
@@ -8751,6 +8759,7 @@ final class CapturePanelModel: ObservableObject {
         func needs(_ need: String) -> Bool {
             parse.needs.contains(need) || itemNeeds.contains(need)
         }
+        let hasTransferSource = parse.spans.contains { $0.kind == "transfer_source" }
         if needs("active_task") {
             return .activeTask
         }
@@ -8793,7 +8802,10 @@ final class CapturePanelModel: ObservableObject {
         if needs("pomodoro_merge_dest") {
             return .pomodoroMergeDestination
         }
-        if needs("block_id") {
+        // Transfer destination needs run Bob's read-only dry run so the panel
+        // can show resolved sources and destination forms. Ordinary block-ID
+        // and section pickers retain their existing quiet behavior.
+        if needs("block_id"), !hasTransferSource {
             return .blockID
         }
         if needs("project_task_move") {
@@ -8810,7 +8822,7 @@ final class CapturePanelModel: ObservableObject {
         // An unterminated quoted section selector (`@route#"…`) is an
         // editing state with a `section` need, never a mistake: keep the
         // preview calm like `list_item`, never a flashed refusal.
-        if needs("section") {
+        if needs("section"), !hasTransferSource {
             return .section
         }
         // A `=<X>#` draft (or chain token) is `incomplete` with a
@@ -13799,6 +13811,9 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
         case .failure(let failure):
+            if showTransferFailure(failure, parseMode: latestParse?.mode) {
+                return
+            }
             if showEmptyNotePull(failure) {
                 return
             }
@@ -14036,6 +14051,57 @@ final class CapturePanelModel: ObservableObject {
         return true
     }
 
+    /// Transfer destination needs are preview states. Bob's additive payload
+    /// gives the calm card; older Bob keeps the diagnostic in the muted footer.
+    /// Complete transfer drafts that Bob refuses get a designed card instead
+    /// of the generic red preview callout.
+    @discardableResult
+    private func showTransferFailure(
+        _ failure: CaptureCommandFailure,
+        parseMode: String?
+    ) -> Bool {
+        if failure.code?.hasPrefix("incomplete_transfer") == true {
+            clearPreviewOutputs()
+            previewPullInSnapshot = nil
+            closePendingText = nil
+            closePendingAction = "Close"
+            errorMessage = nil
+            errorCode = nil
+            if let presentation = failure.transferPending.flatMap(
+                CaptureTransferPendingPresentation.init(pending:)
+            ) {
+                transferPendingPresentation = presentation
+                previewState = .failed(failure.error)
+                statusText = presentation.title
+            } else {
+                // Prior Bob versions have the diagnostic, but not the additive
+                // pending payload. Keep the preview itself quiet in that case.
+                previewState = .idle
+                statusText = failure.error
+            }
+            return true
+        }
+
+        guard
+            let presentation = CaptureTransferRefusalPresentation(
+                failure: failure,
+                parseMode: parseMode
+            )
+        else {
+            return false
+        }
+        clearPreviewOutputs()
+        previewPullInSnapshot = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+        transferRefusalPresentation = presentation
+        previewState = .failed(failure.error)
+        errorMessage = nil
+        errorCode = nil
+        statusText = presentation.verb.title
+        return true
+    }
+
     private func setPlainDraft(
         _ text: String,
         cursorUTF8Offset: Int? = nil,
@@ -14048,6 +14114,8 @@ final class CapturePanelModel: ObservableObject {
         }
         if previousDraft != text {
             emptyNotePullPresentation = nil
+            transferPendingPresentation = nil
+            transferRefusalPresentation = nil
             if let pullInChoice, pullInChoice.draftSnapshot != text {
                 self.pullInChoice = nil
                 clearEditorInputLockIfFree()
@@ -14845,7 +14913,10 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = "A Pomodoro is running — review the override, then press Return again"
                         }
                     case .failure(let failure):
-                        if self?.showEmptyNotePull(failure) != true {
+                        if self?.showTransferFailure(
+                            failure,
+                            parseMode: self?.latestParse?.mode
+                        ) != true, self?.showEmptyNotePull(failure) != true {
                             self?.previewState = .failed(failure.error)
                             // Like `failPreview`: a failed live dry run must never
                             // leave a stale card beside the red error.

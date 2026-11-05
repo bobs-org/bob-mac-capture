@@ -59,6 +59,75 @@ final class CaptureTransferCardDesignTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testRenderPendingAndRefusalTransferCardsToPNG() throws {
+        guard let renderDir = ProcessInfo.processInfo.environment["BOB_MAC_CAPTURE_RENDER_DIR"],
+            !renderDir.isEmpty
+        else {
+            throw XCTSkip(
+                "Set BOB_MAC_CAPTURE_RENDER_DIR to render transfer failure review images.")
+        }
+        let directory = URL(fileURLWithPath: renderDir, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let fixtures = [
+            "capture-transfer-pending-destination.json",
+            "capture-transfer-pending-block-id.json",
+            "capture-transfer-pending-drawer.json",
+            "capture-transfer-pending-section.json",
+            "capture-transfer-pending-typo-source.json",
+            "capture-transfer-refusal-open-subtasks.json",
+            "capture-transfer-refusal-extra-text.json",
+        ]
+        for fixture in fixtures {
+            let data = try Data(contentsOf: fixtureURL(fixture))
+            guard
+                case .failure(let failure) = try JSONDecoder().decode(
+                    CaptureCommandResponse.self, from: data)
+            else {
+                XCTFail("expected a failed Bob response in \(fixture)")
+                continue
+            }
+            let model = CapturePanelModel()
+            model.previewState = .failed(failure.error)
+            if let pending = failure.transferPending {
+                model.transferPendingPresentation = CaptureTransferPendingPresentation(
+                    pending: pending)
+                XCTAssertNotNil(model.transferPendingPresentation, fixture)
+            } else {
+                let mode = failure.code?.hasPrefix("merge_") == true ? "task_merge" : nil
+                model.transferRefusalPresentation = CaptureTransferRefusalPresentation(
+                    failure: failure,
+                    parseMode: mode
+                )
+                XCTAssertNotNil(model.transferRefusalPresentation, fixture)
+            }
+
+            let name = fixture.replacingOccurrences(of: ".json", with: "")
+            for width in [760, 620] as [CGFloat] {
+                for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                    let pane = PreviewPane(model: model)
+                        .frame(width: width)
+                        .environment(
+                            \.colorScheme,
+                            appearance == .darkAqua ? .dark : .light
+                        )
+                    let renderer = ImageRenderer(content: pane)
+                    renderer.scale = 2
+                    guard let image = renderer.nsImage else {
+                        XCTFail("Could not render \(name) (\(appearance.rawValue))")
+                        continue
+                    }
+                    let style = appearance == .darkAqua ? "dark" : "light"
+                    let url = directory.appendingPathComponent(
+                        "transfer-card-\(name)-\(Int(width))-\(style).png"
+                    )
+                    try Self.pngData(for: image).write(to: url)
+                }
+            }
+        }
+    }
+
     private func transferFixture(_ name: String) throws -> CaptureCommandSuccess {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -71,6 +140,13 @@ final class CaptureTransferCardDesignTests: XCTestCase {
             throw NSError(domain: "CaptureTransferCardDesignTests", code: 1)
         }
         return success
+    }
+
+    private func fixtureURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/\(name)")
     }
 
     private static func pngData(for image: NSImage) throws -> Data {

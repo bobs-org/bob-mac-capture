@@ -35,3 +35,11 @@ verb changes while editing, the panel announces the new verb and Bob-resolved ta
 An all-unchanged merge is muted and says `Already merged into “T”` and `Nothing to
 write`. Older Bob responses keep working: message rows render as styled fallback text,
 and consequence rows are omitted when their additive fields are missing.
+
+While a transfer destination is unfinished, the preview stays neutral and runs Bob's
+read-only dry run. When Bob returns `transfer_pending`, the card shows resolved source
+tasks, any source-resolution message, and the four destination forms with the active
+form highlighted. Older Bob versions keep the preview idle and put Bob's diagnostic in
+the muted status line. A complete transfer that Bob refuses shows a `Can't move` or
+`Can't merge` card with Bob's message and the muted refusal code; submit-time failures
+keep the usual error callout.
