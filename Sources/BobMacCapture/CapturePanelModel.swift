@@ -53,6 +53,15 @@ struct CaptureRelationDashArm: Equatable {
     let tildeUTF16Range: NSRange
 }
 
+/// One-shot record after Bob rewrites a relation `=` alias (`~=` to `~~` or
+/// `-=` to `~~`): lets the still-matching Linked From completion open its
+/// picker even when a caret-selection analysis beats the edit-triggered
+/// request, mirroring the dash-alias allowance.
+struct CaptureRelationFlipAliasOpen: Equatable {
+    let draft: String
+    let caretUTF8: Int
+}
+
 /// One-shot probe for a second alias key that lands before Bob answers the
 /// first: re-asks Bob about `firstDraft` and deletes the extra key only when
 /// Bob says the first key would have become `#`.
@@ -626,6 +635,8 @@ final class CapturePanelModel: ObservableObject {
     var hashAliasLiteralArm: CaptureHashAliasArm?
     /// One-shot restore for the `-` → `~` Links To alias.
     var relationDashLiteralArm: CaptureRelationDashArm?
+    /// One-shot allowance for the `=` → `~~` Linked From alias.
+    var relationFlipAliasOpen: CaptureRelationFlipAliasOpen?
     static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
@@ -2401,14 +2412,14 @@ final class CapturePanelModel: ObservableObject {
 
     /// Records the expected post-key draft and caret for a rewrite-lane
     /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
-    /// `\\`, `/`, or the relation-picker `-` alias).
+    /// `\\`, `/`, the relation-picker `-` alias, or the relation `=` alias).
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
                 || typed == "," || typed == "." || typed == ";" || typed == "\\"
-                || typed == "/" || typed == "-",
+                || typed == "/" || typed == "-" || typed == "=",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -4671,6 +4682,7 @@ final class CapturePanelModel: ObservableObject {
     func clearHashAliasLiteralArm() {
         hashAliasLiteralArm = nil
         relationDashLiteralArm = nil
+        relationFlipAliasOpen = nil
     }
 
     /// Takes and clears the one-shot hash-alias arm.
@@ -4689,6 +4701,11 @@ final class CapturePanelModel: ObservableObject {
         let arm = relationDashLiteralArm
         relationDashLiteralArm = nil
         return arm
+    }
+
+    /// Clears the one-shot relation-flip allowance on the next key-down.
+    func clearRelationFlipAliasOpen() {
+        relationFlipAliasOpen = nil
     }
 
     func restoreRelationDashLiteralArm(_ arm: CaptureRelationDashArm) {
@@ -6242,7 +6259,18 @@ final class CapturePanelModel: ObservableObject {
                     && $0.caretUTF8 == cursor
                     && cursor == r.end
             } == true
-        guard trigger == .edit || openedByRelationDashAlias,
+        // The `=` alias replaces its sigil(s) through the native editor
+        // before requesting completion. Like the dash alias, let the
+        // still-matching one-shot record open its empty Linked From picker
+        // even when a caret-selection analysis wins the race.
+        let openedByRelationFlipAlias =
+            direction == .linkedFrom
+            && relationFlipAliasOpen.map {
+                $0.draft == draft
+                    && $0.caretUTF8 == cursor
+                    && cursor == r.end
+            } == true
+        guard trigger == .edit || openedByRelationDashAlias || openedByRelationFlipAlias,
             pickerAutoOpenSuppressedStart != r.start
         else {
             var chip = CapturePickerChipState(
@@ -6718,6 +6746,7 @@ final class CapturePanelModel: ObservableObject {
         pickerMarkerHighlight = markerRange
         applyPickerMarkerHighlight()
         dismissCompletion()
+        relationFlipAliasOpen = nil
         pickerChip = nil
         editorInputLocked = true
         applyOwnerModeParentStatus(source: source)
@@ -14621,6 +14650,7 @@ final class CapturePanelModel: ObservableObject {
         }
         hashAliasLiteralArm = nil
         relationDashLiteralArm = nil
+        relationFlipAliasOpen = nil
         if plainDraft != probe.firstDraft {
             isApplyingProgrammaticDraft = true
             attributedDraft = AttributedString(probe.firstDraft)
@@ -14730,11 +14760,13 @@ final class CapturePanelModel: ObservableObject {
         response: CaptureRewriteResponse,
         cursorUTF8Offset: Int
     ) {
+        relationFlipAliasOpen = nil
         suppressedCompletionAcceptanceDraft = response.text
         guard applyNativeRewriteEdit?(nativeEdit) == true else {
             suppressedCompletionAcceptanceDraft = nil
             hashAliasLiteralArm = nil
             relationDashLiteralArm = nil
+            relationFlipAliasOpen = nil
             return
         }
         if plainDraft != response.text {
@@ -14748,6 +14780,27 @@ final class CapturePanelModel: ObservableObject {
         }
         hashAliasLiteralArm = nil
         relationDashLiteralArm = nil
+        relationFlipAliasOpen = nil
+        if response.rule == "expand_sigil_alias",
+           response.edits.count == 1,
+           let flipEdit = response.edits.first,
+           let flipInputRange = stringRange(
+               in: response.input,
+               start: flipEdit.range.start,
+               end: flipEdit.range.end
+           ),
+           let flipCursor = response.cursor
+        {
+            let flipTrigger = String(response.input[flipInputRange])
+            if (flipTrigger == "=" && flipEdit.replacement == "~")
+                || (flipTrigger == "-=" && flipEdit.replacement == "~~")
+            {
+                relationFlipAliasOpen = CaptureRelationFlipAliasOpen(
+                    draft: response.text,
+                    caretUTF8: flipCursor
+                )
+            }
+        }
         if response.rule == "expand_sigil_alias",
            response.edits.count == 1,
            let edit = response.edits.first,
@@ -16065,6 +16118,7 @@ final class CapturePanelModel: ObservableObject {
         pendingHashAlias = nil
         hashAliasProbe = nil
         relationDashLiteralArm = nil
+        relationFlipAliasOpen = nil
     }
 
     private func cancelInFlightRewrite() {

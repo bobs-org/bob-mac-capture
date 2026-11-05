@@ -567,7 +567,7 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .blockedTask:
             return "Arrow keys move, Return inserts the task to block, Command Return inserts and captures, Control-Return inserts, captures, and opens, Escape cancels."
         case .linksTo, .linkedFrom:
-            return "Arrow keys move, Return inserts the relation, Shift Return links with a relation, Command Return inserts and captures, Control-Return inserts, captures, and opens, tilde flips direction, Escape cancels."
+            return "Arrow keys move, Return inserts the relation, Shift Return links with a relation, Command Return inserts and captures, Control-Return inserts, captures, and opens, tilde or equals flips direction, Escape cancels."
         case .taskComplete:
             return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Control-Return completes and opens, Escape cancels."
         case .wikilinkTask(_):

@@ -402,7 +402,7 @@ final class DependencyPickerPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             DependencyPickerIndex.headerSubtitle(owner: owner, direction: .linksTo),
-            "any task · ~ flips direction"
+            "any task · ~ or = flips direction"
         )
         XCTAssertEqual(
             DependencyPickerIndex.headerTitle(owner: nil, direction: .linksTo),
@@ -476,7 +476,7 @@ final class DependencyPickerPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             insertIndex.actionLine(for: insertRow),
-            "↩ link · ⇧↩ link with a relation · ~ flips direction"
+            "↩ link · ⇧↩ link with a relation · ~ or = flips direction"
         )
     }
 

@@ -89,17 +89,21 @@ Control-Return Insert, Capture & Open when the owner is complete.
 Typing `~` in Bob's valid relation position opens the Links To picker
 (`relation_to` context): scope `~`, caption Links To, and the header
 **🪢 “Owner” links to…** (or **🪢 Choose a task to link to…** when there is
-no owner yet). The subtitle is **any task · ~ flips direction**. Typing `~`
-anywhere in the filter live-flips Links To ↔ Linked From in place: to
-Linked From (`relation_from`) it shows scope `~~`, caption Linked From, and
-the header **🪢 Choose a task that will link to “Owner”**. The filter keeps
-its text and the typed `~` never enters it; repeats are ignored. Auto-open
-is never suppressed. Backspace on an empty `~~` filter flips back by
-removing one `~`; Backspace on empty-filter `~` removes the token.
-Typing `-` after a space or tab aliases `~` where Bob opens Links To. While
-that alias-opened picker still has an empty filter, Space restores `- `,
-another `-` restores `--`, and Escape restores `-`; other keys enter the
-filter normally. Undo after a restore returns to the post-key `~` draft.
+no owner yet). The subtitle is **any task · ~ or = flips direction**.
+Typing `~` anywhere in the filter live-flips Links To ↔ Linked From in place:
+to Linked From (`relation_from`) it shows scope `~~`, caption Linked From,
+and the header **🪢 Choose a task that will link to “Owner”**. The filter
+keeps its text and the typed `~` never enters it; repeats are ignored.
+Typing `=` anywhere in the filter flips exactly like `~`, keeping the filter.
+Auto-open is never suppressed. Backspace on an empty `~~` filter flips back
+by removing one `~`; Backspace on empty-filter `~` removes the token.
+Typing `=` right after the `~`, or right after the `-` alias, flips to
+Linked From before the picker appears: `Fix it ~=` and `Fix it -=` both open
+Linked From (`Fix it ~~`). After the `-` alias, `=` flips instead of
+restoring. Typing `-` after a space or tab aliases `~` where Bob opens Links
+To. While that alias-opened picker still has an empty filter, Space restores
+`- `, another `-` restores `--`, and Escape restores `-`; other keys enter
+the filter normally. Undo after a restore returns to the post-key `~` draft.
 
 Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
 disabled reasons, and backend-formatted `~note:id` / `~~note:id`
@@ -109,7 +113,7 @@ an existing label. Prerequisite-too rows show **Prerequisite too**. Archived row
 Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
 `read-only note`, `archived tasks can't get an id`).
 
-The action line reads `↩ link · ⇧↩ link with a relation · ~ flips direction`.
+The action line reads `↩ link · ⇧↩ link with a relation · ~ or = flips direction`.
 Shift-Return inserts the token and opens the relation card. Typing `|` after a
 relation token also opens the card; Bob removes any spaces or tabs before the
 pipe through the rewrite lane, and Undo restores the typed ` |`. The card keeps
@@ -155,7 +159,7 @@ ID-less rows use `capture-task-id --note-path` and splice
 read Add ID & Use / Add ID & Capture.
 
 Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
-(opens the relation card), tilde Flip direction, Command-Return Insert & Capture,
+(opens the relation card), tilde or equals Flip direction, Command-Return Insert & Capture,
 Control-Return Insert, Capture & Open when the owner is complete.
 
 Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return

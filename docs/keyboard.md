@@ -3,11 +3,11 @@ title: "Mac Capture keyboard"
 description: "Every Bob Mac Capture key binding: editor, completion, prompts, stash, shelf, and today's Pomodoro."
 ---
 
-Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash behavior in [Capture panel](capture-panel.md); template shelf behavior in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash in [Capture panel](capture-panel.md); template shelf in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## Switching panels
 
-In either panel, Ctrl-Tab and Ctrl-Shift-Tab switch to the other panel. From Capture the draft and caret are retained; from Bob Refs the remembered query, scope, filters, selection, and inspector place are restored. The switch works even while a picker, prompt, stash, shelf, or Refs card is open: that surface closes exactly as on a hotkey switch, with the draft and view kept. While IME-composing, the key belongs to the text system; a held key repeats without ping-ponging.
+In either panel, Ctrl-Tab and Ctrl-Shift-Tab switch to the other panel. From Capture the draft and caret are retained; from Bob Refs the query, scope, filters, selection, and inspector place are restored. The switch works even with a picker, prompt, stash, shelf, or Refs card open: that surface closes as on a hotkey switch, with the draft and view kept. While IME-composing, the key belongs to the text system; a held key repeats without ping-ponging.
 
 ## Bob Refs shortcuts
 
@@ -20,10 +20,10 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults with the focused PDF selected; configurable to Shift-Command-O, Command-E, or Off |
 | Command-Y | Open the Copy card for the selected row |
-| Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off. Keys typed before the PDF is known are replayed on the card |
+| Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off. Keys typed before the PDF is known replay on the card |
 | Command-B | Open the Copy card for the selected row with the code picker pressed |
 | Command-L | Open the Copy card for the selected row with the link picker pressed |
-| Command-B / Command-L (in Highlights) | Registered only while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off. Keys typed before the PDF is known replay on the card |
+| Command-B / Command-L (in Highlights) | Registered while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off. Keys typed before the PDF is known replay on the card |
 | Control-Return | Open the reading task's file in Obsidian (at the task line) |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
@@ -35,12 +35,12 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 
 ## Copy card keys
 
-Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or for the focused Highlights PDF when Highlights is frontmost. Command-B starts in the code picker; Command-L starts in the link picker. While the card is open:
+Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or the focused Highlights PDF when it is frontmost. Command-B starts in the code picker; Command-L starts in the link picker. While the card is open:
 
 | Key | Action |
 | --- | --- |
-| C | Open the code picker when the reference has saved Markdown and recorded blocks (from Markdown or a web page) |
-| L | Open the link picker when the reference has saved Markdown and recorded links (from Markdown or a web page); Option-U copies the Markdown link |
+| C | Open the code picker when the reference has saved Markdown and recorded blocks (Markdown or web page) |
+| L | Open the link picker when the reference has saved Markdown and recorded links (Markdown or web page); Option-U copies the Markdown link |
 | M | Copy the saved Markdown source; Option-M copies its `~` path |
 | 1–9 | Copy the visible note or the picker row matching the keycap currently shown; the hint names that live range |
 | Shift-1–9 / Shift-Return | In a link picker, open that visible / selected web link in the default browser |
@@ -50,8 +50,8 @@ Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or 
 | Up / Down | Move the selection (and the code or link preview well) |
 | Escape / Ctrl-[ | Return to the card from a picker, then to the inspector |
 
-Command-B Return from Highlights copies the code block on the current PDF page.
-Command-L Return copies the link on the current PDF page. Without saved Markdown,
+Command-B Return from Highlights copies the code block on the current page.
+Command-L Return copies the link on the current page. Without saved Markdown,
 Command-L Shift-Return opens the current page's web link in the default browser.
 Without saved Markdown, Command-L copies the reference's Markdown link immediately,
 as Command-Y L does.
@@ -99,6 +99,7 @@ as Command-Y L does.
 | . | Right after `@route`, Bob rewrites `.` as `^` where the Block ID picker opens, or after `- ` on a sealed project-note first-level bullet; Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
 | ; | Right after `@route`, Bob rewrites `;` as `:` for the Block ID picker; as a whole item, for the Task Link picker; or after `- ` on a sealed project-note first-level bullet. Undo restores `;` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
 | - | After a space or tab, aliases `~` where the Links To picker opens | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
+| = | Right after `~` or an aliasable ` -`, Bob makes `~~` (Linked From) | In a relation picker, flips Links To ↔ Linked From | Native text-field behavior | Native text-field behavior |
 | \ or / | In a blank draft, `\` becomes `/` and `/` stays `/` to open Go To (see [Going to a task from any app](#going-to-a-task-from-any-app)); elsewhere Bob rewrites either as `#` where `#` would open a menu, never at a line start. A second press of the same key at any speed leaves one literal and closes the menu. Undo restores the typed key | The same rewrite and menu behavior | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
@@ -118,7 +119,7 @@ as Command-Y L does.
 
 ## Capture picker keys
 
-While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. With an empty Go To filter, `\` is consumed or, right after `\` opened Go To, types a literal `\`. Command-X switches between open and completed tasks only in the Go To (`/`) picker, where it replaces native cut; other picker fields keep native Command-X. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. After the `-` alias opens Links To, Space, `-`, or Escape restores `-` on an empty filter; Escape restores instead of canceling. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. The Move picker (`- ^` / `- :`) inserts the ID on Return and inserts the ID plus Bob's continuation on Shift-Return. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. With an empty Go To filter, `\` is consumed or, right after `\` opened Go To, types a literal `\`. Command-X switches between open and completed tasks only in the Go To (`/`) picker, where it replaces native cut; other picker fields keep native Command-X. Relation pickers (`~` / `~~`) treat `~` or `=` anywhere in the filter as the live direction flip and Backspace on `~~` as a flip back. After the `-` alias opens Links To, Space, `-`, or Escape restores `-` on an empty filter; Escape restores instead of canceling. Shift-Return inserts the relation token and opens its label card. In the editor, `|` after a relation token opens that card with or without preceding spaces; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. The Move picker (`- ^` / `- :`) inserts the ID on Return and inserts the ID plus Bob's continuation on Shift-Return. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ## Move choices
 
@@ -144,24 +145,24 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-When a preview reports successor offers, Return opens the grouped choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).
+When a preview reports successor offers, Return opens the choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).
 
 ## Inbox routing
 
-When a matching preview reports inbox tasks whose status will change, Return
+When a preview reports changing inbox tasks, Return
 opens the route card after any successor choice. Up/Down or Control-N/Control-P
 moves the destination highlight. Return moves the current task, Control-Return
 moves it and opens the capture notes, and Shift-Return keeps it in its inbox.
-Escape goes back one task, then returns to the successor card when one preceded
+Escape goes back one task, then to the successor card when one preceded
 the route card, or to the unchanged draft. Control-T and Command-\ are consumed
-while the route card is open so the template shelf and Pomodoro action cannot
+while the route card is open so the shelf and Pomodoro action cannot
 take over its modal keys. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Similar tasks keys
 
-While a similar-tasks row is focused, the strip owns its keys and any other
+While a similar-tasks row is focused, the strip owns its keys; any other
 key unfocuses first, then passes through unchanged (including `⌘Z` and `⌘↩`).
-The footer names the default so the meaning of Return stays visible.
+The footer names the default so Return stays meaningful.
 
 | Key while a row is focused | Action |
 | --- | --- |
@@ -186,7 +187,7 @@ completion request.
 | Tab | Insert the selected label, or the first visible match when none is selected |
 | Shift-Tab | Consume the key |
 | Return | Insert the selected label; otherwise insert the authored label Bob validated. With an empty field, insert a plain link and drop the pipe |
-| Ctrl-D | Hide what Return would insert (the row stays as a ghost; Ctrl-D on the ghost undoes). With no selection, toggle one-off for the typed label. Key auto-repeat is ignored |
+| Ctrl-D | Hide what Return would insert (the row stays as a ghost; Ctrl-D on the ghost undoes). With no selection, toggle one-off. Key auto-repeat is ignored |
 | `\|` | Turn one-off on; the pipe never enters the field |
 | Backspace on an empty field | Turn one-off off |
 | Ctrl-H | Show or hide the Hidden section; the query and selection are kept |
@@ -196,27 +197,27 @@ completion request.
 | Escape / Ctrl-[ | Leave rename mode first; otherwise return to the relation picker, or to the editor when the card opened from `|` |
 
 With one-off on, Return inserts the `||` form: capturing hides the label from
-suggestions everywhere. On an existing visible label the card warns in amber
-before capturing; on an already-hidden label it notes the label stays hidden.
+suggestions everywhere. On a visible label the card warns in amber
+before capturing; on a hidden label it notes the label stays hidden.
 Ghost-hide rows read `hidden everywhere · ⌃D undo`; ghost-unhide rows read
-`visible again · ⌃D undo`. Hidden labels stay usable and stay hidden: accepting
+`visible again · ⌃D undo`. Hidden labels stay usable and hidden: accepting
 one inserts the `|` form with a `(stays hidden)` footer. An older Bob shows no
 Hidden pill; Ctrl-D and Ctrl-H give the update hint, and `||` is never
 downgraded to `|`.
 
 Ctrl-R opens rename mode with the old name prefilled: the card shows a live
 dry-run preview (`N links in M notes · mirrors · 1 commit`), Return renames
-everywhere in one commit, and Escape returns to the picker with the query and
-selection kept. Merging into an existing label asks twice (`↩ again to merge`).
+everywhere in one commit, and Escape returns to the picker keeping the query and
+selection. Merging into an existing label asks twice (`↩ again to merge`).
 After a rename the card selects the new label and rewrites matching relations
 in the open draft. An older Bob shows `Update bob to rename relation labels`.
 
 ## Focus
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
-list, Stash/Capture/Preview/Discard buttons, the Open chip, and stash picker never require a pointer.
+list, Stash/Capture/Preview/Discard buttons, Open chip, and stash picker never need a pointer.
 Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt moves keyboard
-focus into that prompt's field; the field's first responder is owned directly by AppKit
+focus into its field; the first responder is owned directly by AppKit
 rather than SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims
 the field.
 
@@ -234,7 +235,7 @@ the field.
 | Control-T | Close the stash and open the saved-template shelf |
 | Command-\ | Consume the key; finish or cancel the stash first |
 
-The 36-entry upper bound exists so every retained row always has a unique one-key
+The 36-entry bound exists so every retained row has a unique one-key
 accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
 through `C`, `-`, and `E` through `Z`.
 
@@ -251,8 +252,8 @@ through `C`, `-`, and `E` through `Z`.
 | Command-\ | Consume the key; finish or cancel the shelf first |
 | Escape / Ctrl-[ | Disarm deletion, or close the shelf |
 
-Control-T replaces AppKit's transpose-characters shortcut in the capture editor. Inside
-capture pickers, prompts, and successor choices it is consumed so it never edits or
+Control-T replaces AppKit's transpose-characters shortcut in the capture editor; in
+pickers, prompts, and successor choices it is consumed so it never edits or
 transposes text.
 
 ## Opening today's Pomodoro (Command-\)

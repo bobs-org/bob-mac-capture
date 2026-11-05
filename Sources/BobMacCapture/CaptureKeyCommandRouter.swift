@@ -1097,7 +1097,7 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
             if context.pickerSourceIsRelation,
-               event.characters == "~",
+               event.characters == "~" || event.characters == "=",
                modifiers.intersection([.command, .option, .control]).isEmpty,
                !context.editorHasMarkedText
             {

@@ -677,6 +677,93 @@ final class CaptureDependencyPanelTests: XCTestCase {
         )
     }
 
+    func testRouterEqualsFlipsRelationPickerAnywhere() {
+        let router = CaptureKeyCommandRouter()
+        let emptyContext = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: true
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: emptyContext
+            ),
+            .flipRelationDirection
+        )
+        let filteredContext = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: false
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: filteredContext
+            ),
+            .flipRelationDirection
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: CaptureKeyRoutingContext(
+                    pickerSourceIsRelation: true,
+                    keyIsRepeat: true,
+                    pickerVisible: true,
+                    pickerFilterIsEmpty: false
+                )
+            ),
+            .consumeKey
+        )
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, .control] {
+            let vetoed = CaptureKeyRoutingContext(
+                pickerSourceIsRelation: true,
+                pickerVisible: true,
+                pickerFilterIsEmpty: false
+            )
+            XCTAssertNil(
+                router.command(
+                    for: keyEvent(keyCode: 24, modifiers: modifiers, characters: "="),
+                    context: vetoed
+                )
+            )
+        }
+        let marked = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: false,
+            editorHasMarkedText: true
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: marked
+            )
+        )
+        let nonRelation = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerFilterIsEmpty: false
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: nonRelation
+            )
+        )
+        var armed = CaptureKeyRoutingContext()
+        armed.pickerSourceIsRelation = true
+        armed.pickerVisible = true
+        armed.pickerFilterIsEmpty = true
+        armed.relationDashLiteralArmed = true
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 24, characters: "="),
+                context: armed
+            ),
+            .flipRelationDirection
+        )
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags = [],

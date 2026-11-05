@@ -193,6 +193,41 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         return record.contains("argv=capture-rewrite")
     }
 
+    private func relationEqualsWasForwarded(
+        text: String,
+        modifiers: NSEvent.ModifierFlags = [],
+        selection: NSRange? = nil,
+        modalFieldActive: Bool = false
+    ) async throws -> Bool {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = text
+        let textView = makeTextView(text)
+        if let selection {
+            textView.setSelectedRange(selection)
+        }
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: keyEvent(characters: "=", modifiers: modifiers),
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: modalFieldActive
+        )
+        textView.insertText("=", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
+        let caretUTF8 = utf8Offset(
+            in: textView.string,
+            utf16Offset: textView.selectedRange().location
+        ) ?? textView.string.utf8.count
+        model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
+        try await Task.sleep(nanoseconds: 160_000_000)
+        guard let record = try? String(contentsOf: recordURL) else {
+            return false
+        }
+        return record.contains("argv=capture-rewrite")
+    }
+
     // MARK: - Intent
 
     func testIntentRecordsCollapsedColonAndCaret() {
@@ -359,6 +394,33 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertTrue(afterSpace)
         XCTAssertTrue(afterTab)
         XCTAssertFalse(afterLetter)
+        XCTAssertFalse(command)
+        XCTAssertFalse(control)
+        XCTAssertFalse(option)
+        XCTAssertFalse(selection)
+        XCTAssertFalse(modal)
+    }
+
+    func testRelationEqualsIntentForwardsOnlyAfterTildeOrDash() async throws {
+        let afterTilde = try await relationEqualsWasForwarded(text: "New task ~")
+        let afterDash = try await relationEqualsWasForwarded(text: "Fix it -")
+        let afterLetter = try await relationEqualsWasForwarded(text: "New task x")
+        let afterSpace = try await relationEqualsWasForwarded(text: "New task ")
+        let command = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .command)
+        let control = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .control)
+        let option = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .option)
+        let selection = try await relationEqualsWasForwarded(
+            text: "New task ~",
+            selection: NSRange(location: 9, length: 1)
+        )
+        let modal = try await relationEqualsWasForwarded(
+            text: "New task ~",
+            modalFieldActive: true
+        )
+        XCTAssertTrue(afterTilde)
+        XCTAssertTrue(afterDash)
+        XCTAssertFalse(afterLetter)
+        XCTAssertFalse(afterSpace)
         XCTAssertFalse(command)
         XCTAssertFalse(control)
         XCTAssertFalse(option)

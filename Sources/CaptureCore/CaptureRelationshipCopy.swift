@@ -232,7 +232,7 @@ public enum CaptureRelationshipCopy: Sendable {
         direction: DependencyPickerDirection
     ) -> String? {
         if direction.isRelation {
-            return "any task · ~ flips direction"
+            return "any task · ~ or = flips direction"
         }
         if let owner, owner.isExistingTask {
             return owner.locationSubtitle

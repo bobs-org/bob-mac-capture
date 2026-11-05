@@ -209,6 +209,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   caret follows the restored text and the picker closes. Undo restores the
   post-key `~` draft; Undo immediately after the alias restores the literal
   `-`. Older bob leaves `-` literal.
+  Typing `=` right after a bare `~` that opens Links To, or right after a `-`
+  that would alias `~`, uses the same lane to make `~~` (Linked From) and open
+  Linked From. Everywhere else `=` stays literal, including after `~~` and
+  inside a wikilink. Undo right after the swap restores the typed `~=` or
+  `-=`; an older bob leaves `=` literal.
   Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
   `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
   project-note item (where the Move picker would open) and `- ^.` (which makes

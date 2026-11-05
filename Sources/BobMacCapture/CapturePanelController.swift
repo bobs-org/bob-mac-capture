@@ -1069,7 +1069,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     /// Records a one-shot rewrite-lane separator gesture or sigil alias
-    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, or relation `-`) when
+    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, relation `-`, or relation `=`) when
     /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1116,7 +1116,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                 characters == ":" || characters == "^" || characters == "+"
                     || characters == "|" || characters == "," || characters == "."
-                    || characters == ";" || characters == "-"
+                    || characters == ";" || characters == "-" || characters == "="
             else {
                 return
             }
@@ -1134,6 +1134,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             }
             let previous = nsText.character(at: selection.location - 1)
             guard previous == 0x20 || previous == 0x09 else {
+                return
+            }
+        }
+        if characters == "=" {
+            let nsText = textView.string as NSString
+            guard selection.location > 0,
+                  selection.location <= nsText.length
+            else {
+                return
+            }
+            let previous = nsText.character(at: selection.location - 1)
+            guard previous == 0x7E || previous == 0x2D else {
                 return
             }
         }
@@ -2256,6 +2268,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
         let takenRelationDashArm = model.takeRelationDashLiteralArm()
+        model.clearRelationFlipAliasOpen()
         // The arm is judged against the live editor, not the SwiftUI
         // mirror: SwiftUI can report the caret one edit behind, and right
         // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
