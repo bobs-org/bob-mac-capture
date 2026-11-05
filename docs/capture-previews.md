@@ -319,7 +319,9 @@ Whenever Bob reports batch-level `pomodoro_blocks`, every Pomodoro the capture
   of 4 or more unchanged rows into `⋯ N unchanged lines` rows that expand on click
   (with a **Show all lines** action); smaller blocks never fold. A single sub-bullet
   names its parent in the status and summary (`Preview → sase.md › ^id`), and an older
-  Bob without `task_blocks` previews exactly as before. `TaskBlockDesignTests` renders
+  Bob without `task_blocks` previews exactly as before. Transfer roles add **Merge
+  target**, **Merged**, or **Moved** capsules; moved captions name the source. Tombstones
+  fold removed runs, and `section_blocks` render a section target before tombstones.
 
 ## Deterministic scheduling
 

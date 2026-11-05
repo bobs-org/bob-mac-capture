@@ -183,6 +183,25 @@ write_basic_vault "$section_vault"
 run_dry "$section_vault" '@inbox+bench > @db#future-work' \
   "$scratch_root/section-merge.json"
 
+tombstone_vault="$scratch_root/tombstone"
+write_basic_vault "$tombstone_vault"
+python3 - "$tombstone_vault/inbox.md" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+needle = "  - Try pgbench at 10k TPS\n"
+assert needle in text
+path.write_text(text.replace(
+    needle,
+    needle + "  - Check replica lag\n  - Capture failover time\n",
+    1,
+))
+PY
+run_dry "$tombstone_vault" '@inbox+bench > @db+upgrade' \
+  "$scratch_root/tombstone-merge.json"
+
 move_vault="$scratch_root/move"
 write_basic_vault "$move_vault"
 cat >> "$move_vault/inbox.md" <<'EOF'
@@ -221,6 +240,7 @@ shot = load("screenshot-merge.json")
 effects = load("consequences-offers.json")
 drawer = load("drawer-merge.json")
 section = load("section-merge.json")
+tombstone = load("tombstone-merge.json")
 move = load("move.json")
 unchanged = load("unchanged-rerun.json")
 parse_move = load("parse-move.json")
@@ -230,6 +250,8 @@ parse_incomplete = load("parse-incomplete.json")
 assert shot.get("kind") == "task_merge" and len(shot.get("merges", [])) == 2, shot
 assert "[[org]]" in shot["merges"][0]["source"]["title"], shot
 assert "`=<ch>`" in shot["merges"][0]["source"]["title"], shot
+shot_roles = [role for block in shot.get("task_blocks", []) for role in block.get("roles", [])]
+assert "merge_target" in shot_roles and shot_roles.count("merge_source") == 2, shot
 
 records = effects.get("merges", [])
 assert effects.get("kind") == "task_merge" and len(records) == 2, effects
@@ -254,14 +276,38 @@ assert len(effects.get("merge_offers", [])) >= 1, effects
 assert all(row.get("trigger") == "merge" for row in effects["merge_offers"]), effects
 
 assert drawer.get("kind") == "task_merge" and drawer["merges"][0]["target"]["created"] is True, drawer
+assert any(
+    "merge_target" in block.get("roles", []) for block in drawer.get("task_blocks", [])
+), drawer
 assert section.get("kind") == "task_merge" and section["merges"][0]["target"]["created"] is True, section
 assert section["merges"][0]["target"].get("section") == "Future Work", section
+section_blocks = section.get("section_blocks", [])
+assert len(section_blocks) == 1 and section_blocks[0].get("heading") == "Future Work", section
+assert section_blocks[0].get("created") is True, section_blocks
+assert section_blocks[0].get("roles") == ["merge_target"], section_blocks
+assert section_blocks[0].get("lines", [])[0].get("text") == "## Future Work", section_blocks
+assert tombstone.get("kind") == "task_merge", tombstone
+assert any(
+    "merge_source" in block.get("roles", [])
+    and any(line.get("change") == "removed" for line in block.get("lines", []))
+    for block in tombstone.get("task_blocks", [])
+), tombstone
 
 assert move.get("kind") == "task_move" and len(move.get("moves", [])) == 2, move
 assert all(row.get("destination_line") and row.get("destination_section") == "Tasks" for row in move["moves"]), move
 assert all(row.get("status_name") == "Ready" for row in move["moves"]), move
+move_blocks = [block for block in move.get("task_blocks", []) if "moved" in block.get("roles", [])]
+assert len(move_blocks) == 2, move
+assert all(block.get("moved_from", {}).get("relative_target") == "inbox.md" for block in move_blocks), move
+assert move_blocks[0]["moved_from"]["line"] == 5, move_blocks
+assert all(block["moved_from"]["line"] > 0 for block in move_blocks), move_blocks
 assert unchanged.get("kind") == "task_merge", unchanged
 assert all(row.get("outcome") == "unchanged" for row in unchanged.get("merges", [])), unchanged
+assert not any(
+    role in {"merge_target", "merge_source", "moved"}
+    for block in unchanged.get("task_blocks", []) for role in block.get("roles", [])
+), unchanged
+assert not unchanged.get("section_blocks"), unchanged
 
 assert parse_move.get("mode") == "task_move", parse_move
 assert parse_merge.get("mode") == "task_merge", parse_merge
@@ -275,6 +321,7 @@ persist "$scratch_root/screenshot-merge.json" capture-transfer-merge.json
 persist "$scratch_root/consequences-offers.json" capture-transfer-consequences-offers.json
 persist "$scratch_root/drawer-merge.json" capture-transfer-drawer-merge.json
 persist "$scratch_root/section-merge.json" capture-transfer-section-merge.json
+persist "$scratch_root/tombstone-merge.json" capture-transfer-tombstone-merge.json
 persist "$scratch_root/move.json" capture-transfer-move.json
 persist "$scratch_root/unchanged-rerun.json" capture-transfer-unchanged-merge.json
 persist "$scratch_root/parse-move.json" capture-parse-transfer-move.json

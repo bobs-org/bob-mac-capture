@@ -142,6 +142,165 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
         XCTAssertEqual(committed.badgeText, "Created")
     }
 
+    func testTransferRoleCapsulesAndMoveOriginCaption() {
+        let baseLines = [CaptureBlockLine(text: "- [ ] #task Transfer ^task")]
+        let target = CaptureTaskBlockPresentation(
+            block: CaptureTaskBlock(
+                relativeTarget: "db.md",
+                route: "db",
+                line: 4,
+                blockID: "task",
+                text: "Transfer",
+                statusSymbol: " ",
+                statusName: "Ready",
+                roles: ["merge_target"],
+                lines: baseLines
+            ),
+            dryRun: true
+        )
+        XCTAssertEqual(target.roleBadgeText, "Merge target")
+        XCTAssertEqual(target.transferRole, .mergeTarget)
+
+        let source = CaptureTaskBlockPresentation(
+            block: CaptureTaskBlock(
+                relativeTarget: "inbox.md",
+                route: "inbox",
+                line: 5,
+                blockID: "task",
+                text: "Transfer",
+                statusSymbol: "-",
+                statusName: "Cancelled",
+                roles: ["merge_source"],
+                lines: baseLines
+            ),
+            dryRun: true
+        )
+        XCTAssertEqual(source.roleBadgeText, "Merged")
+        XCTAssertEqual(source.transferRole, .mergeSource)
+
+        let sourceWithRelationshipSuppression = CaptureTaskBlockPresentation(
+            block: CaptureTaskBlock(
+                relativeTarget: "inbox.md",
+                route: "inbox",
+                line: 5,
+                blockID: "task",
+                text: "Transfer",
+                statusSymbol: "-",
+                statusName: "Cancelled",
+                roles: ["merge_source"],
+                lines: [
+                    CaptureBlockLine(text: "- [-] #task Transfer ^task"),
+                    CaptureBlockLine(
+                        text: "\t- 🪢 **LINKS:** merged into [[db#^task]]",
+                        depth: 1,
+                        change: .added
+                    ),
+                ]
+            ),
+            dryRun: true,
+            suppressRelationshipLines: true
+        )
+        XCTAssertTrue(
+            sourceWithRelationshipSuppression.rows.contains { $0.content.contains("LINKS") }
+        )
+
+        let moved = CaptureTaskBlockPresentation(
+            block: CaptureTaskBlock(
+                relativeTarget: "db.md",
+                route: "db",
+                line: 9,
+                blockID: "task",
+                text: "Transfer",
+                statusSymbol: " ",
+                statusName: "Ready",
+                roles: ["moved"],
+                lines: baseLines,
+                movedFrom: CaptureTaskBlockMovedFrom(relativeTarget: "inbox.md", line: 5)
+            ),
+            dryRun: true
+        )
+        XCTAssertEqual(moved.roleBadgeText, "Moved")
+        XCTAssertEqual(moved.movedFromCaption, "from inbox.md:5")
+        XCTAssertEqual(moved.captionText, "Ready · db.md · line 9 · from inbox.md:5")
+        XCTAssertTrue(moved.accessibilitySummary.contains("from inbox.md:5"))
+    }
+
+    func testMergeSourceFoldsEveryRemovedRunAndShowAllExpandsThem() {
+        let block = CaptureTaskBlock(
+            relativeTarget: "inbox.md",
+            route: "inbox",
+            line: 5,
+            blockID: "source",
+            text: "Source",
+            statusSymbol: "-",
+            statusName: "Cancelled",
+            roles: ["merge_source"],
+            lines: [
+                CaptureBlockLine(
+                    text: "- [-] #task Source ^source",
+                    change: .changed,
+                    before: "- [ ] #task Source ^source"
+                ),
+                CaptureBlockLine(
+                    text: "\t- 🪢 **LINKS:** merged into [[db#^target]]",
+                    depth: 1,
+                    change: .added
+                ),
+                CaptureBlockLine(text: "\t- first note", depth: 1, change: .removed),
+                CaptureBlockLine(text: "\t- second note", depth: 1, change: .removed),
+                CaptureBlockLine(text: "\t- kept note", depth: 1),
+                CaptureBlockLine(text: "\t- final moved note", depth: 1, change: .removed),
+            ]
+        )
+        let presentation = CaptureTaskBlockPresentation(block: block, dryRun: true)
+        let items = presentation.items(expandedFolds: [])
+        XCTAssertEqual(items.count, 5)
+        guard
+            case .row(let headline) = items[0],
+            case .row(let links) = items[1],
+            case .fold(let firstFold) = items[2],
+            case .row(let kept) = items[3],
+            case .fold(let secondFold) = items[4]
+        else {
+            return XCTFail("Expected the headline and added links line visible around two folds")
+        }
+        XCTAssertEqual(headline.change, .changed)
+        XCTAssertEqual(links.change, .added)
+        XCTAssertEqual(firstFold.style, .movedNotes)
+        XCTAssertEqual(firstFold.count, 2)
+        XCTAssertEqual(secondFold.style, .movedNotes)
+        XCTAssertEqual(secondFold.count, 1)
+        XCTAssertEqual(kept.change, .unchanged)
+
+        let expanded = presentation.items(expandedFolds: [2, 5])
+        XCTAssertEqual(expanded.count, 6)
+        XCTAssertTrue(expanded.allSatisfy { if case .row = $0 { true } else { false } })
+    }
+
+    func testSectionPresentationUsesSectionCaptionHeadingAndCreatedBadge() {
+        let presentation = CaptureSectionBlockPresentation(
+            block: CaptureSectionBlock(
+                relativeTarget: "dev.md",
+                route: "dev",
+                line: 40,
+                heading: "Future Work",
+                created: true,
+                roles: ["merge_target"],
+                lines: [
+                    CaptureBlockLine(text: "## Future Work", change: .added),
+                    CaptureBlockLine(text: "- New task", depth: 1, change: .added),
+                ]
+            ),
+            dryRun: true
+        )
+
+        XCTAssertEqual(presentation.captionText, "§ Future Work · dev.md · line 40")
+        XCTAssertEqual(presentation.badgeText, "New")
+        XCTAssertTrue(presentation.rows[0].isHeadline)
+        XCTAssertEqual(presentation.rows[0].content, "## Future Work")
+        XCTAssertEqual(presentation.items(expandedFolds: []).count, 2)
+    }
+
     // MARK: - Rows
 
     func testRowsStripIndentationMarkHeadlineAndTokenize() throws {

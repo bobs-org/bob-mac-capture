@@ -41,7 +41,23 @@ struct TaskBlockView: View {
     }
 
     private var statusTint: Color {
-        CaptureEditorPalette.taskStatus(presentation.status).color
+        if let transferRole = presentation.transferRole {
+            switch transferRole {
+            case .mergeTarget: return .purple
+            case .mergeSource: return .secondary
+            case .moved: return .accentColor
+            }
+        }
+        return CaptureEditorPalette.taskStatus(presentation.status).color
+    }
+
+    private var roleTint: Color {
+        switch presentation.transferRole {
+        case .mergeTarget: .purple
+        case .mergeSource: .secondary
+        case .moved: .accentColor
+        case nil: .secondary
+        }
     }
 
     private var statusSymbolName: String {
@@ -92,6 +108,16 @@ struct TaskBlockView: View {
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+            if let role = presentation.roleBadgeText {
+                Text(role)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(roleTint)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(roleTint.opacity(0.14), in: Capsule())
+                    .accessibilityHidden(true)
+            }
             // A created parent carries the Pomodoro view's pink New/Created
             // capsule so the fresh task reads at a glance.
             if let badge = presentation.badgeText {

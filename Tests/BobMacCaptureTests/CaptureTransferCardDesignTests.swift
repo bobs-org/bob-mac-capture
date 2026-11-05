@@ -23,6 +23,7 @@ final class CaptureTransferCardDesignTests: XCTestCase {
             "capture-transfer-consequences-offers.json",
             "capture-transfer-drawer-merge.json",
             "capture-transfer-section-merge.json",
+            "capture-transfer-tombstone-merge.json",
             "capture-transfer-move.json",
             "capture-transfer-unchanged-merge.json",
         ]

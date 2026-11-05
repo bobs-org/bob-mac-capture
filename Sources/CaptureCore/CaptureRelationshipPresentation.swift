@@ -108,7 +108,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         for capture: CaptureCommandSuccess,
         blocks: [CaptureTaskBlock]
     ) -> [CaptureTaskBlock] {
-        guard Self.isTaskDependency(capture),
+        guard !blocks.contains(where: \.hasTransferRole),
+            Self.isTaskDependency(capture),
             let blockID = capture.blockID,
             let index = blocks.firstIndex(where: {
                 $0.relativeTarget == capture.relativeTarget && $0.blockID == blockID

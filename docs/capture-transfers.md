@@ -16,6 +16,16 @@ while a single transfer hosts the badge inside its card. Transfer cards stand in
 generic item header and item-level Pull-In summary. Inbox-route candidates remain above
 the card.
 
+After the item cards, landing cards show Bob's exact write previews in Bob's
+first-touch order. A merge target wears a purple **Merge target** capsule; each
+merged source wears a muted **Merged** capsule. Removed source lines fold into
+`⤵ N lines moved to the target`; the headline and added `LINKS` line stay open,
+and **Show all lines** or the row expands the removed bytes. Moved tasks wear an
+accent **Moved** capsule and identify their origin (`from inbox.md:5`). A merge
+into a section shows that section first as `§ Heading · note.md · line N`, with
+the heading emphasized and a pink **New**/**Created** capsule when Bob created
+it. These landing cards render before the batch's Pomodoro block cards.
+
 The footer status line names the action and resolved destination (`Would merge 2 tasks
 into “T” · bob.md › FUTURE WORK`, `Would move 2 tasks into db.md › Tasks`). Return keeps
 the **Merge** or **Move** action. Once committed, notifications use `Merged …` or

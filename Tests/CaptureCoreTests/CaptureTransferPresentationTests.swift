@@ -96,6 +96,50 @@ final class CaptureTransferPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Move")
     }
 
+    func testTransferLandingTaskRolesAndMoveOriginsDecode() throws {
+        let merge = try success("capture-transfer-merge.json")
+        XCTAssertEqual(
+            merge.taskBlocks.map(\.roles),
+            [["merge_target"], ["merge_source"], ["merge_source"]]
+        )
+
+        let move = try success("capture-transfer-move.json")
+        XCTAssertEqual(move.taskBlocks.map(\.roles), [["moved"], ["moved"]])
+        XCTAssertEqual(move.taskBlocks.first?.movedFrom?.relativeTarget, "inbox.md")
+        XCTAssertEqual(move.taskBlocks.first?.movedFrom?.line, 5)
+    }
+
+    func testSectionBlocksDecodeAndDropMalformedRows() throws {
+        let data = try Data(
+            contentsOf: fixtures.appendingPathComponent("capture-transfer-section-merge.json")
+        )
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var sections = try XCTUnwrap(object["section_blocks"] as? [Any])
+        sections.append(17)
+        object["section_blocks"] = sections
+        let capture = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        XCTAssertEqual(capture.sectionBlocks.count, 1)
+        let section = try XCTUnwrap(capture.sectionBlocks.first)
+        XCTAssertEqual(section.relativeTarget, "db.md")
+        XCTAssertEqual(section.heading, "Future Work")
+        XCTAssertTrue(section.created)
+        XCTAssertEqual(section.roles, ["merge_target"])
+        XCTAssertEqual(section.lines.first?.text, "## Future Work")
+
+        let insertions = CaptureLandingBlockOrdering.sectionInsertions(
+            sections: capture.sectionBlocks,
+            taskBlocks: capture.taskBlocks,
+            merges: capture.merges
+        )
+        XCTAssertEqual(insertions.count, capture.taskBlocks.count + 1)
+        XCTAssertEqual(insertions[0].map(\.heading), ["Future Work"])
+        XCTAssertTrue(insertions[1].isEmpty)
+    }
+
     func testDrawerAndSectionDestinationsCarryCreatedState() throws {
         let drawer = try XCTUnwrap(
             CaptureTransferPresentation(capture: success("capture-transfer-drawer-merge.json"))

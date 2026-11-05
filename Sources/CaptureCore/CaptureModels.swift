@@ -2277,6 +2277,28 @@ extension CapturePomodoroBlockChange: Codable {
 /// block kinds share the Pomodoro line shape without a Pomodoro name.
 public typealias CaptureBlockLine = CapturePomodoroBlockLine
 
+/// Source locator Bob returns for a task moved by a capture transfer.
+public struct CaptureTaskBlockMovedFrom: Codable, Equatable, Sendable {
+    public let relativeTarget: String
+    public let line: Int
+
+    public init(relativeTarget: String = "", line: Int = 0) {
+        self.relativeTarget = relativeTarget
+        self.line = line
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativeTarget = (try? container.decode(String.self, forKey: .relativeTarget)) ?? ""
+        line = (try? container.decode(Int.self, forKey: .line)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativeTarget = "relative_target"
+        case line
+    }
+}
+
 /// Batch-level `task_blocks` entry: a parent task a sub-bullet capture wrote
 /// under, in its final after-state, with every line of its block and a
 /// per-line cumulative diff against the note before the capture. `line` is
@@ -2297,9 +2319,16 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
     public let created: Bool
     public let roles: [String]
     public let lines: [CaptureBlockLine]
+    /// Bob's source locator for a transfer move. Older Bob omits it.
+    public let movedFrom: CaptureTaskBlockMovedFrom?
 
     /// Bob's additive task-block role for relation successor changes.
     public var hasRelationSuccessorRole: Bool { roles.contains("relation_successor") }
+
+    /// Transfer roles must keep Bob's first-touch order in the landing area.
+    public var hasTransferRole: Bool {
+        roles.contains("merge_target") || roles.contains("merge_source") || roles.contains("moved")
+    }
 
     public init(
         relativeTarget: String,
@@ -2311,7 +2340,8 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
         statusName: String = "",
         created: Bool = false,
         roles: [String] = [],
-        lines: [CaptureBlockLine] = []
+        lines: [CaptureBlockLine] = [],
+        movedFrom: CaptureTaskBlockMovedFrom? = nil
     ) {
         self.relativeTarget = relativeTarget
         self.route = route
@@ -2323,6 +2353,7 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
         self.created = created
         self.roles = roles
         self.lines = lines
+        self.movedFrom = movedFrom
     }
 
     public init(from decoder: Decoder) throws {
@@ -2341,6 +2372,11 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
                 [CaptureBlockLine].self,
                 forKey: .lines
             ) ?? []
+        movedFrom =
+            (try? container.decodeIfPresent(
+                CaptureTaskBlockMovedFrom.self,
+                forKey: .movedFrom
+            )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2351,6 +2387,58 @@ public struct CaptureTaskBlock: Codable, Equatable, Sendable {
         case text
         case statusSymbol = "status_symbol"
         case statusName = "status_name"
+        case created
+        case roles
+        case lines
+        case movedFrom = "moved_from"
+    }
+}
+
+/// Batch-level section target from a capture merge. Its lines are Bob's exact
+/// section after-image and diff, shared with task and Pomodoro block rows.
+public struct CaptureSectionBlock: Codable, Equatable, Sendable {
+    public let relativeTarget: String
+    public let route: String
+    public let line: Int
+    public let heading: String
+    public let created: Bool
+    public let roles: [String]
+    public let lines: [CaptureBlockLine]
+
+    public init(
+        relativeTarget: String = "",
+        route: String = "",
+        line: Int = 0,
+        heading: String = "",
+        created: Bool = false,
+        roles: [String] = [],
+        lines: [CaptureBlockLine] = []
+    ) {
+        self.relativeTarget = relativeTarget
+        self.route = route
+        self.line = line
+        self.heading = heading
+        self.created = created
+        self.roles = roles
+        self.lines = lines
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativeTarget = (try? container.decode(String.self, forKey: .relativeTarget)) ?? ""
+        route = (try? container.decode(String.self, forKey: .route)) ?? ""
+        line = (try? container.decode(Int.self, forKey: .line)) ?? 0
+        heading = (try? container.decode(String.self, forKey: .heading)) ?? ""
+        created = (try? container.decode(Bool.self, forKey: .created)) ?? false
+        roles = (try? container.decode([String].self, forKey: .roles)) ?? []
+        lines = (try? container.decode([CaptureBlockLine].self, forKey: .lines)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativeTarget = "relative_target"
+        case route
+        case line
+        case heading
         case created
         case roles
         case lines
@@ -4956,6 +5044,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // entirely, and a malformed value decodes as empty so it can never
     // fail the capture decode.
     public let taskBlocks: [CaptureTaskBlock]
+    /// Additive batch-level section targets from transfer merges. Older Bob
+    /// omits the key, and malformed rows are dropped independently.
+    public let sectionBlocks: [CaptureSectionBlock]
     // Additive `dropped_dependencies`: prerequisites removed from a
     // Blocked task's Depends-On line before a capture link gesture.
     // Older Bob omits the key; decode as empty.
@@ -5077,6 +5168,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         relationLabelHides: [CaptureRelationLabelHide] = [],
         pomodoroBlocks: [CapturePomodoroBlock] = [],
         taskBlocks: [CaptureTaskBlock] = [],
+        sectionBlocks: [CaptureSectionBlock] = [],
         droppedDependencies: [CaptureDroppedDependency] = [],
         linkGuard: CaptureLinkGuard? = nil,
         template: CaptureTemplateSummary? = nil,
@@ -5167,6 +5259,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.moveChoice = moveChoice
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
+        self.sectionBlocks = sectionBlocks
         self.droppedDependencies = droppedDependencies
         self.linkGuard = linkGuard
         self.captures = captures
@@ -5377,6 +5470,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
                 [CaptureTaskBlock].self,
                 forKey: .taskBlocks
             )) ?? []
+        sectionBlocks =
+            (try? container.decode(
+                CaptureLossyArray<CaptureSectionBlock>.self,
+                forKey: .sectionBlocks
+            ))?.values ?? []
         droppedDependencies =
             (try? container.decodeIfPresent(
                 [CaptureDroppedDependency].self,
@@ -5509,6 +5607,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case moveChoice = "move_choice"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
+        case sectionBlocks = "section_blocks"
         case droppedDependencies = "dropped_dependencies"
         case linkGuard = "link_guard"
         case captures

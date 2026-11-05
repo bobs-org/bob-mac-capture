@@ -75,6 +75,29 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         )
     }
 
+    func testOwnerFirstDoesNotReorderTransferRoleBlocks() throws {
+        let capture = try captureFixture("task-dependency-preview-existing-owner-blocks.json")
+        let owner = try XCTUnwrap(capture.taskBlocks.first)
+        let moved = CaptureTaskBlock(
+            relativeTarget: owner.relativeTarget,
+            route: owner.route,
+            line: owner.line + 4,
+            blockID: "moved",
+            text: "Moved task",
+            statusSymbol: " ",
+            statusName: "Ready",
+            roles: ["moved"],
+            lines: [CaptureBlockLine(text: "- [ ] #task Moved task ^moved")],
+            movedFrom: CaptureTaskBlockMovedFrom(relativeTarget: "inbox.md", line: 5)
+        )
+        let blocks = [moved, owner]
+
+        XCTAssertEqual(
+            CaptureRelationshipPresentation.ownerFirstTaskBlocks(for: capture, blocks: blocks),
+            blocks
+        )
+    }
+
     func testOwnerHeaderShowsStatusTransitionAndSuppressesRawRelationshipRows() throws {
         let capture = try captureFixture("task-dependency-preview-existing-owner.json")
         let presentation = CaptureRelationshipPresentation(capture: capture)

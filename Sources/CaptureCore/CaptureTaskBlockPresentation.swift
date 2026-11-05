@@ -11,7 +11,18 @@ import Foundation
 /// dry-run previews and committed captures alike; `dryRun` only changes
 /// the created badge.
 public struct CaptureTaskBlockPresentation: Equatable, Sendable {
-    /// One collapsed run of unchanged rows. `id` is the first hidden row
+    public enum TransferRole: Equatable, Sendable {
+        case mergeTarget
+        case mergeSource
+        case moved
+    }
+
+    public enum FoldStyle: Equatable, Sendable {
+        case unchanged
+        case movedNotes
+    }
+
+    /// One collapsed run of block rows. `id` is the first hidden row
     /// index, stable for the card's identity so expansion survives
     /// re-renders; `depth` is the run's shallowest depth, where the fold
     /// row renders with indent guides.
@@ -20,12 +31,20 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         public let count: Int
         public let depth: Int
         public let rows: [CaptureBlockDiffRow]
+        public let style: FoldStyle
 
-        public init(id: Int, count: Int, depth: Int, rows: [CaptureBlockDiffRow]) {
+        public init(
+            id: Int,
+            count: Int,
+            depth: Int,
+            rows: [CaptureBlockDiffRow],
+            style: FoldStyle = .unchanged
+        ) {
             self.id = id
             self.count = count
             self.depth = depth
             self.rows = rows
+            self.style = style
         }
     }
 
@@ -39,11 +58,18 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         public let relativeTarget: String
         public let line: Int
         public let blockID: String?
+        public let transferRole: TransferRole?
 
-        public init(relativeTarget: String, line: Int, blockID: String?) {
+        public init(
+            relativeTarget: String,
+            line: Int,
+            blockID: String?,
+            transferRole: TransferRole? = nil
+        ) {
             self.relativeTarget = relativeTarget
             self.line = line
             self.blockID = blockID
+            self.transferRole = transferRole
         }
     }
 
@@ -65,6 +91,9 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     /// a small pink capsule in the Pomodoro card's `createdBadgeText`
     /// style.
     public let badgeText: String?
+    public let roleBadgeText: String?
+    public let movedFromCaption: String?
+    public let transferRole: TransferRole?
     public let rows: [CaptureBlockDiffRow]
     public let identity: Identity
     public let accessibilitySummary: String
@@ -82,16 +111,42 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         } else {
             statusText = block.statusName
         }
-        captionText = "\(statusText) · \(block.relativeTarget) · line \(block.line)"
         badgeText = block.created ? (dryRun ? "New" : "Created") : nil
+        transferRole = Self.transferRole(for: block.roles)
+        roleBadgeText =
+            switch transferRole {
+            case .mergeTarget: "Merge target"
+            case .mergeSource: "Merged"
+            case .moved: "Moved"
+            case nil: nil
+            }
+        if let movedFrom = block.movedFrom,
+            !movedFrom.relativeTarget.isEmpty,
+            movedFrom.line > 0
+        {
+            movedFromCaption = "from \(movedFrom.relativeTarget):\(movedFrom.line)"
+        } else {
+            movedFromCaption = nil
+        }
+        if let movedFromCaption {
+            captionText =
+                "\(statusText) · \(block.relativeTarget) · line \(block.line) · \(movedFromCaption)"
+        } else {
+            captionText = "\(statusText) · \(block.relativeTarget) · line \(block.line)"
+        }
         identity = Identity(
             relativeTarget: block.relativeTarget,
             line: block.line,
-            blockID: block.blockID
+            blockID: block.blockID,
+            transferRole: transferRole
         )
-        let visibleLines = suppressRelationshipLines
-            ? block.lines.filter { !Self.isManagedRelationshipLine($0.text) }
-            : block.lines
+        let shouldSuppressRelationshipLines = suppressRelationshipLines && !block.hasTransferRole
+        let visibleLines: [CaptureBlockLine]
+        if shouldSuppressRelationshipLines {
+            visibleLines = block.lines.filter { !Self.isManagedRelationshipLine($0.text) }
+        } else {
+            visibleLines = block.lines
+        }
         rows = visibleLines.enumerated().map { index, line in
             let content = Self.stripped(line.text)
             let depth = min(max(line.depth, 0), CapturePomodoroBlockPresentation.maxDepth)
@@ -117,6 +172,12 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         }
 
         var summary = "\(block.text), \(statusText), \(block.relativeTarget) line \(block.line)"
+        if let roleBadgeText {
+            summary += ", \(roleBadgeText)"
+        }
+        if let movedFromCaption {
+            summary += ", \(movedFromCaption)"
+        }
         if let badgeText {
             summary += ", \(badgeText)"
         }
@@ -160,6 +221,19 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
     }
 
+    private static func transferRole(for roles: [String]) -> TransferRole? {
+        if roles.contains("merge_target") {
+            return .mergeTarget
+        }
+        if roles.contains("merge_source") {
+            return .mergeSource
+        }
+        if roles.contains("moved") {
+            return .moved
+        }
+        return nil
+    }
+
     private static func isManagedRelationshipLine(_ line: String) -> Bool {
         line.contains("**DEPENDS ON:**") || line.contains("**BLOCKS:**")
             || line.contains("**LINKS:**") || line.contains("**LINKS TO:**")
@@ -174,9 +248,24 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     /// `expandedFolds` inline their rows instead. Blocks at or below
     /// `foldThreshold` rows, and blocks with no changes, never fold.
     public func items(expandedFolds: Set<Int>) -> [Item] {
-        guard rows.count > Self.foldThreshold,
-            rows.contains(where: { $0.change != .unchanged })
-        else {
+        Self.items(
+            for: rows,
+            expandedFolds: expandedFolds,
+            foldRemovedRuns: transferRole == .mergeSource
+        )
+    }
+
+    /// Shared task and section folding. Merge-source tombstones fold each
+    /// contiguous removed run; other blocks fold only long quiet runs.
+    public static func items(
+        for rows: [CaptureBlockDiffRow],
+        expandedFolds: Set<Int>,
+        foldRemovedRuns: Bool = false
+    ) -> [Item] {
+        let hasRemovedRuns = foldRemovedRuns && rows.contains { $0.change == .removed }
+        let hasQuietChanges = rows.count > Self.foldThreshold
+            && rows.contains(where: { $0.change != .unchanged })
+        guard hasRemovedRuns || hasQuietChanges else {
             return rows.map(Item.row)
         }
         var visible: Set<Int> = [0]
@@ -213,7 +302,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                                 id: hidden[0],
                                 count: hidden.count,
                                 depth: foldRows.map(\.depth).min() ?? 0,
-                                rows: foldRows
+                                rows: foldRows,
+                                style: .unchanged
                             )
                         )
                     )
@@ -223,13 +313,39 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
             }
             hidden.removeAll(keepingCapacity: true)
         }
-        for index in rows.indices {
+        var index = 0
+        while index < rows.count {
+            if foldRemovedRuns, rows[index].change == .removed {
+                flushHidden()
+                let start = index
+                while index < rows.count, rows[index].change == .removed {
+                    index += 1
+                }
+                let removed = Array(rows[start..<index])
+                if expandedFolds.contains(start) {
+                    result.append(contentsOf: removed.map(Item.row))
+                } else {
+                    result.append(
+                        .fold(
+                            FoldRun(
+                                id: start,
+                                count: removed.count,
+                                depth: removed.map(\.depth).min() ?? 0,
+                                rows: removed,
+                                style: .movedNotes
+                            )
+                        )
+                    )
+                }
+                continue
+            }
             if visible.contains(index) {
                 flushHidden()
                 result.append(.row(rows[index]))
             } else {
                 hidden.append(index)
             }
+            index += 1
         }
         flushHidden()
         return result
@@ -283,5 +399,111 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
 
     static func stripped(_ value: String) -> String {
         CapturePomodoroBlockPresentation.stripped(value)
+    }
+}
+
+/// Pure presentation for a batch-level section target (`section_blocks`).
+/// It shares task-block diff folding and row rendering while keeping the
+/// heading and locator in the section-specific caption.
+public struct CaptureSectionBlockPresentation: Equatable, Sendable {
+    public struct Identity: Equatable, Sendable {
+        public let relativeTarget: String
+        public let line: Int
+        public let heading: String
+
+        public init(relativeTarget: String, line: Int, heading: String) {
+            self.relativeTarget = relativeTarget
+            self.line = line
+            self.heading = heading
+        }
+    }
+
+    public let captionText: String
+    public let badgeText: String?
+    public let rows: [CaptureBlockDiffRow]
+    public let identity: Identity
+    public let accessibilitySummary: String
+
+    public init(block: CaptureSectionBlock, dryRun: Bool) {
+        captionText = "§ \(block.heading) · \(block.relativeTarget) · line \(block.line)"
+        badgeText = block.created ? (dryRun ? "New" : "Created") : nil
+        identity = Identity(
+            relativeTarget: block.relativeTarget,
+            line: block.line,
+            heading: block.heading
+        )
+        rows = block.lines.enumerated().map { index, line in
+            let content = CaptureTaskBlockPresentation.stripped(line.text)
+            return CaptureBlockDiffRow(
+                content: content,
+                depth: min(max(line.depth, 0), CapturePomodoroBlockPresentation.maxDepth),
+                change: line.change,
+                beforeContent: line.before.map {
+                    CaptureTaskBlockPresentation.stripped($0)
+                },
+                isHeadline: index == 0,
+                tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: false)
+            )
+        }
+        var summary = "Section \(block.heading), \(block.relativeTarget) line \(block.line)"
+        if let badgeText {
+            summary += ", \(badgeText)"
+        }
+        let spokenRows = rows.map { row -> String in
+            switch row.change {
+            case .added:
+                return "added \(row.content)"
+            case .removed:
+                return "removed \(row.content)"
+            case .changed:
+                if let before = row.beforeContent, !before.isEmpty {
+                    return "changed from \(before) to \(row.content)"
+                }
+                return "changed \(row.content)"
+            case .unchanged:
+                return row.content
+            }
+        }
+        if !spokenRows.isEmpty {
+            summary += ": " + spokenRows.joined(separator: "; ")
+        }
+        accessibilitySummary = summary
+    }
+
+    public func items(expandedFolds: Set<Int>) -> [CaptureTaskBlockPresentation.Item] {
+        CaptureTaskBlockPresentation.items(for: rows, expandedFolds: expandedFolds)
+    }
+}
+
+/// Inserts each section target immediately before its first matching merge
+/// source while leaving Bob's task-block sequence untouched.
+public enum CaptureLandingBlockOrdering {
+    public static func sectionInsertions(
+        sections: [CaptureSectionBlock],
+        taskBlocks: [CaptureTaskBlock],
+        merges: [CaptureTransferMerge]
+    ) -> [[CaptureSectionBlock]] {
+        var insertions = Array(repeating: [CaptureSectionBlock](), count: taskBlocks.count + 1)
+        for section in sections {
+            let sourceKeys = merges.compactMap { merge -> (String, String)? in
+                guard merge.target.kind == "section",
+                    merge.target.path == section.relativeTarget,
+                    merge.target.section == section.heading,
+                    !merge.source.path.isEmpty,
+                    let blockID = merge.source.blockID
+                else {
+                    return nil
+                }
+                return (merge.source.path, blockID)
+            }
+            let firstSource = taskBlocks.firstIndex { block in
+                block.roles.contains("merge_source")
+                    && sourceKeys.contains {
+                        $0.0 == block.relativeTarget && $0.1 == block.blockID
+                    }
+            }
+            insertions[firstSource ?? 0].append(section)
+        }
+        return insertions
     }
 }

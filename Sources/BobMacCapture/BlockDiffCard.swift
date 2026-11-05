@@ -152,9 +152,8 @@ struct BlockDiffCard: View {
 
     @ViewBuilder
     private func foldRow(_ fold: CaptureTaskBlockPresentation.FoldRun) -> some View {
-        // A collapsed run of unchanged rows: one plain borderless button at
-        // the run's shallowest depth, with indent guides, that expands in
-        // place on click.
+        // A collapsed quiet run or merged-note tombstone run: one plain
+        // borderless button at the run's shallowest depth that expands in place.
         HStack(alignment: .top, spacing: 0) {
             Text("")
                 .frame(width: Self.gutterWidth, alignment: .center)
@@ -170,19 +169,28 @@ struct BlockDiffCard: View {
                 Button {
                     expand(fold.id)
                 } label: {
-                    Text("⋯ \(fold.count) unchanged lines")
+                    Text(foldLabel(fold))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(fold.style == .movedNotes ? Color.purple : .secondary)
                 }
                 .buttonStyle(.plain)
                 .pointingHandCursorOnHover()
             } else {
-                Text("⋯ \(fold.count) unchanged lines")
+                Text(foldLabel(fold))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(fold.style == .movedNotes ? Color.purple : .secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func foldLabel(_ fold: CaptureTaskBlockPresentation.FoldRun) -> String {
+        switch fold.style {
+        case .unchanged:
+            "⋯ \(fold.count) unchanged lines"
+        case .movedNotes:
+            "⤵ \(fold.count) lines moved to the target"
+        }
     }
 
     private func gutterGlyph(for change: CapturePomodoroBlockChange) -> some View {

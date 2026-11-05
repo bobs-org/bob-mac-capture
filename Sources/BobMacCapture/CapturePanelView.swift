@@ -3752,6 +3752,11 @@ struct PreviewPane: View {
             captures: captures,
             blocks: success.taskBlocks
         )
+        let sectionInsertions = CaptureLandingBlockOrdering.sectionInsertions(
+            sections: success.sectionBlocks,
+            taskBlocks: orderedTaskBlocks,
+            merges: success.merges
+        )
         let suppressRelationshipLines = captures.contains {
             !$0.dependencyUpdates.isEmpty || !$0.relationUpdates.isEmpty
         }
@@ -3878,20 +3883,33 @@ struct PreviewPane: View {
             }
         }
 
-        // Batch-level task blocks render once, after the item stack and
-        // before the Pomodoro blocks: each card shows the parent task's final
-        // state with Bob's cumulative diff. They dim together with the close
-        // card while a close-list selection dangles. An older Bob omits
-        // `task_blocks` and the pane renders exactly as before.
-        if !orderedTaskBlocks.isEmpty {
+        // Transfer landing cards keep Bob's task-block order. A section
+        // target sits immediately before the first matching source card.
+        if !orderedTaskBlocks.isEmpty || !success.sectionBlocks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(orderedTaskBlocks.enumerated()), id: \.offset) { _, block in
+                ForEach(Array(orderedTaskBlocks.enumerated()), id: \.offset) { index, block in
+                    ForEach(
+                        Array(sectionInsertions[index].enumerated()),
+                        id: \.offset
+                    ) { _, section in
+                        SectionBlockView(block: section, dryRun: success.dryRun) {
+                            model.requestFocus(.editor)
+                        }
+                    }
                     TaskBlockView(
                         block: block,
                         dryRun: success.dryRun,
                         suppressRelationshipLines: suppressRelationshipLines,
                         keepMovingRows: keepMovingRows
                     ) {
+                        model.requestFocus(.editor)
+                    }
+                }
+                ForEach(
+                    Array(sectionInsertions[orderedTaskBlocks.count].enumerated()),
+                    id: \.offset
+                ) { _, section in
+                    SectionBlockView(block: section, dryRun: success.dryRun) {
                         model.requestFocus(.editor)
                     }
                 }
