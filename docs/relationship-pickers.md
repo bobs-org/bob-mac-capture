@@ -96,6 +96,10 @@ the header **🪢 Choose a task that will link to “Owner”**. The filter keep
 its text and the typed `~` never enters it; repeats are ignored. Auto-open
 is never suppressed. Backspace on an empty `~~` filter flips back by
 removing one `~`; Backspace on empty-filter `~` removes the token.
+Typing `-` after a space or tab aliases `~` where Bob opens Links To. While
+that alias-opened picker still has an empty filter, Space restores `- `,
+another `-` restores `--`, and Escape restores `-`; other keys enter the
+filter normally. Undo after a restore returns to the post-key `~` draft.
 
 Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
 disabled reasons, and backend-formatted `~note:id` / `~~note:id`

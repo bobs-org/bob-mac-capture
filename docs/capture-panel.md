@@ -203,6 +203,12 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `@route:` or `@route^` with no ID yet, or a whole-item `^`), the keystroke
   behaves like ordinary typing, and its picker or completion opens as before.
   This gesture needs a bob build that implements `switch_block_id_separator`.
+  Typing `-` after a space or tab aliases `~` only where Bob reports the
+  Links To relation picker. While that picker has an empty filter, Space
+  restores `- `, another `-` restores `--`, and Escape restores `-`; the
+  caret follows the restored text and the picker closes. Undo restores the
+  post-key `~` draft; Undo immediately after the alias restores the literal
+  `-`. Older bob leaves `-` literal.
   Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
   `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
   project-note item (where the Move picker would open) and `- ^.` (which makes

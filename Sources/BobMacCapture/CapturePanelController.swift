@@ -1068,7 +1068,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot rewrite-lane separator gesture or sigil alias when
+    /// Records a one-shot rewrite-lane separator gesture or sigil alias
+    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, or relation `-`) when
     /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1115,7 +1116,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                 characters == ":" || characters == "^" || characters == "+"
                     || characters == "|" || characters == "," || characters == "."
-                    || characters == ";"
+                    || characters == ";" || characters == "-"
             else {
                 return
             }
@@ -1123,6 +1124,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let selection = textView.selectedRange()
         guard selection.length == 0 else {
             return
+        }
+        if characters == "-" {
+            let nsText = textView.string as NSString
+            guard selection.location > 0,
+                  selection.location <= nsText.length
+            else {
+                return
+            }
+            let previous = nsText.character(at: selection.location - 1)
+            guard previous == 0x20 || previous == 0x09 else {
+                return
+            }
         }
         model.noteSeparatorToggleIntent(
             typed: characters,
@@ -2041,6 +2054,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .typeLiteralForHashAlias:
             return false
+        case .restoreRelationDashLiteral:
+            return false
         case .typeKeyBeforeHashAliasReply:
             return false
         case .joinCalendarEvent:
@@ -2240,6 +2255,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let editorLeaderPending = takeEditorLeader()
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
+        let takenRelationDashArm = model.takeRelationDashLiteralArm()
         // The arm is judged against the live editor, not the SwiftUI
         // mirror: SwiftUI can report the caret one edit behind, and right
         // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
@@ -2264,6 +2280,25 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 return nil
             }
             return arm.key
+        }()
+        let relationDashLiteralArmed: Bool = {
+            guard let arm = takenRelationDashArm else {
+                return false
+            }
+            if let picker = model.picker {
+                return picker.source == .linksTo
+                    && picker.draftSnapshot == arm.draft
+                    && picker.replacementRange.start == arm.tildeUTF8
+                    && picker.filterText.isEmpty
+            }
+            guard let textView = Self.editableTextView(panel?.firstResponder),
+                  !textView.hasMarkedText(),
+                  textView.string == arm.draft,
+                  textView.selectedRange() == NSRange(location: arm.caretUTF16, length: 0)
+            else {
+                return false
+            }
+            return true
         }()
         let hashAliasReplyPendingKey: String? = {
             guard hashAliasLiteralKey == nil,
@@ -2346,6 +2381,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 backslashLiteralArmed: backslashLiteralArmed,
                 hashAliasLiteralKey: hashAliasLiteralKey,
                 hashAliasReplyPendingKey: hashAliasReplyPendingKey,
+                relationDashLiteralArmed: relationDashLiteralArmed,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2376,6 +2412,19 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
            hashAliasLiteralKey != nil
         {
             return model.replaceHashAliasWithLiteralKey(arm) ? nil : event
+        }
+        if command == .consumeKey,
+           let arm = takenRelationDashArm,
+           relationDashLiteralArmed,
+           event.isARepeat
+        {
+            model.restoreRelationDashLiteralArm(arm)
+        }
+        if case .restoreRelationDashLiteral(let key) = command,
+           let arm = takenRelationDashArm,
+           relationDashLiteralArmed
+        {
+            return model.restoreRelationDashLiteral(arm, key: key) ? nil : event
         }
         if command == .typeKeyBeforeHashAliasReply {
             // The probe stores the one-shot re-ask; AppKit types the second

@@ -331,7 +331,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | Rewrites eligible `@@`, separators, relation pipes, sigil aliases, and Parent Task comma continuations | Older Bob leaves unsupported aliases literal; existing rewrite fallbacks apply | Upgrade `bob` |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | Rewrites eligible `@@`, separators, relation pipes, sigil aliases including the `-` → `~` Links To alias, and Parent Task comma continuations | Older Bob leaves unsupported aliases literal; existing rewrite fallbacks apply | Upgrade `bob` |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |

@@ -43,6 +43,16 @@ struct CaptureHashAliasArm: Equatable {
     let hashUTF16Range: NSRange
 }
 
+/// One-shot arm after Bob rewrites a space-prefixed `-` to `~`: the next
+/// space, `-`, or Escape can restore the literal dash and close Links To.
+struct CaptureRelationDashArm: Equatable {
+    let draft: String
+    let tildeUTF8: Int
+    let caretUTF8: Int
+    let caretUTF16: Int
+    let tildeUTF16Range: NSRange
+}
+
 /// One-shot probe for a second alias key that lands before Bob answers the
 /// first: re-asks Bob about `firstDraft` and deletes the extra key only when
 /// Bob says the first key would have become `#`.
@@ -614,6 +624,8 @@ final class CapturePanelModel: ObservableObject {
     /// that `#` with a literal `\` and closes the menu. Cleared on consume
     /// or dismissal.
     var hashAliasLiteralArm: CaptureHashAliasArm?
+    /// One-shot restore for the `-` → `~` Links To alias.
+    var relationDashLiteralArm: CaptureRelationDashArm?
     static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
@@ -2388,14 +2400,15 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a rewrite-lane
-    /// separator gesture or sigil alias.
+    /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
+    /// `\\`, `/`, or the relation-picker `-` alias).
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
                 || typed == "," || typed == "." || typed == ";" || typed == "\\"
-                || typed == "/",
+                || typed == "/" || typed == "-",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -4657,6 +4670,7 @@ final class CapturePanelModel: ObservableObject {
 
     func clearHashAliasLiteralArm() {
         hashAliasLiteralArm = nil
+        relationDashLiteralArm = nil
     }
 
     /// Takes and clears the one-shot hash-alias arm.
@@ -4668,6 +4682,17 @@ final class CapturePanelModel: ObservableObject {
 
     func restoreHashAliasLiteralArm(_ arm: CaptureHashAliasArm) {
         hashAliasLiteralArm = arm
+    }
+
+    /// Takes and clears the one-shot relation-dash arm.
+    func takeRelationDashLiteralArm() -> CaptureRelationDashArm? {
+        let arm = relationDashLiteralArm
+        relationDashLiteralArm = nil
+        return arm
+    }
+
+    func restoreRelationDashLiteralArm(_ arm: CaptureRelationDashArm) {
+        relationDashLiteralArm = arm
     }
 
     /// True when the trimmed draft is exactly `/`, the Go To trigger.
@@ -6204,7 +6229,22 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let source = Self.pickerSource(for: direction)
-        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+        // The `-` alias replaces its sigil through the native editor before
+        // requesting completion. AppKit can deliver a caret-selection
+        // analysis for that splice, so let the still-matching one-shot arm
+        // open its empty Links To picker even when that analysis wins the
+        // race with the edit-triggered request.
+        let openedByRelationDashAlias =
+            direction == .linksTo
+            && relationDashLiteralArm.map {
+                $0.draft == draft
+                    && $0.tildeUTF8 == r.start
+                    && $0.caretUTF8 == cursor
+                    && cursor == r.end
+            } == true
+        guard trigger == .edit || openedByRelationDashAlias,
+            pickerAutoOpenSuppressedStart != r.start
+        else {
             var chip = CapturePickerChipState(
                 source: source,
                 draftSnapshot: draft,
@@ -14580,6 +14620,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         hashAliasLiteralArm = nil
+        relationDashLiteralArm = nil
         if plainDraft != probe.firstDraft {
             isApplyingProgrammaticDraft = true
             attributedDraft = AttributedString(probe.firstDraft)
@@ -14693,6 +14734,7 @@ final class CapturePanelModel: ObservableObject {
         guard applyNativeRewriteEdit?(nativeEdit) == true else {
             suppressedCompletionAcceptanceDraft = nil
             hashAliasLiteralArm = nil
+            relationDashLiteralArm = nil
             return
         }
         if plainDraft != response.text {
@@ -14704,39 +14746,55 @@ final class CapturePanelModel: ObservableObject {
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
         }
+        hashAliasLiteralArm = nil
+        relationDashLiteralArm = nil
         if response.rule == "expand_sigil_alias",
            response.edits.count == 1,
            let edit = response.edits.first,
-           edit.replacement == "#",
            edit.range.end == edit.range.start + 1,
            let inputRange = stringRange(
                in: response.input,
                start: edit.range.start,
                end: edit.range.end
            ),
-           (String(response.input[inputRange]) == "\\"
-               || String(response.input[inputRange]) == "/"),
            let cursor = response.cursor,
            let caretUTF16 = utf16Range(
                in: response.text,
                start: cursor,
                end: cursor
-           )?.location,
-           let hashUTF16Range = utf16Range(
-               in: response.text,
-               byteRange: edit.range
-           )
+           )?.location
         {
-            hashAliasLiteralArm = CaptureHashAliasArm(
-                key: String(response.input[inputRange]),
-                draft: response.text,
-                hashUTF8: edit.range.start,
-                caretUTF8: cursor,
-                caretUTF16: caretUTF16,
-                hashUTF16Range: hashUTF16Range
-            )
-        } else {
-            hashAliasLiteralArm = nil
+            let trigger = String(response.input[inputRange])
+            if edit.replacement == "#",
+               trigger == "\\" || trigger == "/",
+               let hashUTF16Range = utf16Range(
+                   in: response.text,
+                   byteRange: edit.range
+               )
+            {
+                hashAliasLiteralArm = CaptureHashAliasArm(
+                    key: trigger,
+                    draft: response.text,
+                    hashUTF8: edit.range.start,
+                    caretUTF8: cursor,
+                    caretUTF16: caretUTF16,
+                    hashUTF16Range: hashUTF16Range
+                )
+            } else if edit.replacement == "~",
+                      trigger == "-",
+                      let tildeUTF16Range = utf16Range(
+                          in: response.text,
+                          byteRange: edit.range
+                      )
+            {
+                relationDashLiteralArm = CaptureRelationDashArm(
+                    draft: response.text,
+                    tildeUTF8: edit.range.start,
+                    caretUTF8: cursor,
+                    caretUTF16: caretUTF16,
+                    tildeUTF16Range: tildeUTF16Range
+                )
+            }
         }
         scheduleAnalysis(
             cursorUTF8Offset: cursorUTF8Offset,
@@ -14799,6 +14857,81 @@ final class CapturePanelModel: ObservableObject {
             cursorUTF8Offset: newCaretUTF8,
             suppressEditorCallbacks: true
         )
+        dismissCompletion()
+        suppressedCompletionAcceptanceDraft = newDraft
+        scheduleAnalysis(
+            cursorUTF8Offset: newCaretUTF8,
+            requestCompletion: false,
+            trigger: .edit
+        )
+        return true
+    }
+
+    /// Restores a one-shot relation-dash alias through the native editor so
+    /// Undo returns to Bob's `~` rewrite. `key` is the next key's literal
+    /// suffix: space, `-`, or the empty string for Escape.
+    func restoreRelationDashLiteral(_ arm: CaptureRelationDashArm, key: String) -> Bool {
+        let inserted = "-" + key
+        guard !isSubmitting,
+              plainDraft == arm.draft,
+              arm.caretUTF8 == arm.tildeUTF8 + 1,
+              let tildeRange = stringRange(
+                  in: arm.draft,
+                  start: arm.tildeUTF8,
+                  end: arm.tildeUTF8 + 1
+              ),
+              String(arm.draft[tildeRange]) == "~"
+        else {
+            return false
+        }
+        if let openPicker = picker {
+            guard openPicker.source == .linksTo,
+                  openPicker.draftSnapshot == arm.draft,
+                  openPicker.replacementRange.start == arm.tildeUTF8,
+                  openPicker.filterText.isEmpty
+            else {
+                return false
+            }
+        } else if editorInputLocked {
+            return false
+        }
+
+        var newDraft = arm.draft
+        newDraft.replaceSubrange(tildeRange, with: inserted)
+        let newCaretUTF8 = arm.tildeUTF8 + inserted.utf8.count
+        guard let caretUTF16 = utf16Range(
+            in: newDraft,
+            start: newCaretUTF8,
+            end: newCaretUTF8
+        )?.location else {
+            return false
+        }
+        let edit = CaptureNativeRewriteEdit(
+            replacementRange: arm.tildeUTF16Range,
+            replacementText: inserted,
+            resultingSelection: NSRange(location: caretUTF16, length: 0),
+            expectedDraft: arm.draft,
+            resultingDraft: newDraft,
+            expectedSelection: NSRange(location: arm.caretUTF16, length: 0)
+        )
+        if picker != nil {
+            closePickerForAccept()
+        }
+        suppressedCompletionAcceptanceDraft = newDraft
+        guard applyNativeRewriteEdit?(edit) == true else {
+            suppressedCompletionAcceptanceDraft = nil
+            return false
+        }
+        if plainDraft != newDraft {
+            isApplyingProgrammaticDraft = true
+            attributedDraft = AttributedString(newDraft)
+            isApplyingProgrammaticDraft = false
+        }
+        restoreSelection(
+            cursorUTF8Offset: newCaretUTF8,
+            suppressEditorCallbacks: true
+        )
+        requestFocus(.editor)
         dismissCompletion()
         suppressedCompletionAcceptanceDraft = newDraft
         scheduleAnalysis(
@@ -15931,6 +16064,7 @@ final class CapturePanelModel: ObservableObject {
         pendingSeparatorToggleIntent = nil
         pendingHashAlias = nil
         hashAliasProbe = nil
+        relationDashLiteralArm = nil
     }
 
     private func cancelInFlightRewrite() {

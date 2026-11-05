@@ -113,6 +113,7 @@ enum CaptureKeyCommand: Equatable {
     case typeLiteralBackslash
     case typeKeyBeforeHashAliasReply
     case typeLiteralForHashAlias
+    case restoreRelationDashLiteral(String)
     case joinCalendarEvent
     case switchPanel
     case armEditorLeader
@@ -173,6 +174,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var backslashLiteralArmed = false
     var hashAliasLiteralKey: String? = nil
     var hashAliasReplyPendingKey: String? = nil
+    var relationDashLiteralArmed = false
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -348,6 +350,14 @@ struct CaptureKeyCommandRouter {
                 return .consumeKey
             }
             return pickerCommand(for: event, modifiers: modifiers, context: context)
+        }
+
+        if let command = relationDashRestoreCommand(
+            for: event,
+            modifiers: modifiers,
+            context: context
+        ) {
+            return command
         }
 
         if context.editorLeaderPending {
@@ -946,6 +956,13 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
+        if let command = relationDashRestoreCommand(
+            for: event,
+            modifiers: modifiers,
+            context: context
+        ) {
+            return command
+        }
         // Bare `/` Go To keeps `\` out of the draft and filter: a second
         // `\` right after the alias types a literal, otherwise consume.
         // Before the keyCode switch, whose explicit backslash case would
@@ -1150,6 +1167,36 @@ struct CaptureKeyCommandRouter {
         default:
             return nil
         }
+    }
+
+    private func relationDashRestoreCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        guard context.relationDashLiteralArmed,
+              modifiers.intersection([.command, .control, .option]).isEmpty,
+              !context.editorHasMarkedText
+        else {
+            return nil
+        }
+        let key: String?
+        if event.keyCode == KeyCode.escape {
+            key = ""
+        } else if event.characters == " " {
+            key = " "
+        } else if event.characters == "-" {
+            key = "-"
+        } else {
+            key = nil
+        }
+        guard let key else {
+            return nil
+        }
+        if context.keyIsRepeat || event.isARepeat {
+            return .consumeKey
+        }
+        return .restoreRelationDashLiteral(key)
     }
 
     private func stashPickerCommand(

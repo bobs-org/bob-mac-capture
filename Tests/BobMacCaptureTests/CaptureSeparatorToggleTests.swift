@@ -158,6 +158,41 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         }
     }
 
+    private func relationDashWasForwarded(
+        text: String,
+        modifiers: NSEvent.ModifierFlags = [],
+        selection: NSRange? = nil,
+        modalFieldActive: Bool = false
+    ) async throws -> Bool {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        model.plainDraft = text
+        let textView = makeTextView(text)
+        if let selection {
+            textView.setSelectedRange(selection)
+        }
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: keyEvent(characters: "-", modifiers: modifiers),
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: modalFieldActive
+        )
+        textView.insertText("-", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
+        let caretUTF8 = utf8Offset(
+            in: textView.string,
+            utf16Offset: textView.selectedRange().location
+        ) ?? textView.string.utf8.count
+        model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
+        try await Task.sleep(nanoseconds: 160_000_000)
+        guard let record = try? String(contentsOf: recordURL) else {
+            return false
+        }
+        return record.contains("argv=capture-rewrite")
+    }
+
     // MARK: - Intent
 
     func testIntentRecordsCollapsedColonAndCaret() {
@@ -304,6 +339,31 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model.plainDraft = "Do work @file:id^"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         XCTAssertNotEqual(model.statusText, "Changed @file:id to @file^id")
+    }
+
+    func testRelationDashIntentForwardsOnlyAfterWhitespaceInTheMainEditor() async throws {
+        let afterSpace = try await relationDashWasForwarded(text: "Fix it ")
+        let afterTab = try await relationDashWasForwarded(text: "Fix it\t")
+        let afterLetter = try await relationDashWasForwarded(text: "Fix itx")
+        let command = try await relationDashWasForwarded(text: "Fix it ", modifiers: .command)
+        let control = try await relationDashWasForwarded(text: "Fix it ", modifiers: .control)
+        let option = try await relationDashWasForwarded(text: "Fix it ", modifiers: .option)
+        let selection = try await relationDashWasForwarded(
+            text: "Fix it ",
+            selection: NSRange(location: 6, length: 1)
+        )
+        let modal = try await relationDashWasForwarded(
+            text: "Fix it ",
+            modalFieldActive: true
+        )
+        XCTAssertTrue(afterSpace)
+        XCTAssertTrue(afterTab)
+        XCTAssertFalse(afterLetter)
+        XCTAssertFalse(command)
+        XCTAssertFalse(control)
+        XCTAssertFalse(option)
+        XCTAssertFalse(selection)
+        XCTAssertFalse(modal)
     }
 
     // MARK: - Native apply
