@@ -88,9 +88,11 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   line it lands on in the close card; it is not a completion span kind.
   The editor also auto-inserts `,` between close task numbers: typing `1`–`9`
   right after a task number in a close list inserts the separator itself
-  (`x1` + `2` → `x1,2`). Backspace immediately after an auto-inserted
-  `,<digit>` removes both characters together (`x1,2` → `x1`); a manually
-  typed or pasted comma stays native. The in-memory agenda store runs
+  (`x1` + `2` → `x1,2`, or `x==1` + `2` → `x==1,2`). `x` and link close
+  lists use the running Pomodoro's numbered Task Link count; `x=` lists use
+  the largest lineup among today's open entries. Backspace immediately after
+  an auto-inserted `,<digit>` removes both characters together (`x1,2` →
+  `x1`); a manually typed or pasted comma stays native. The in-memory agenda store runs
   `bob capture-pomodoros --format json --tasks` on one shared lane: a
   prefetch at launch, filtered vault events (visible `.md` notes and the
   Tasks filter, never `.git/` or attachments), every panel show as
@@ -101,15 +103,18 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   snapshot whose date is not today is never shown. An older bob without
   `--tasks` hides the agenda and serves the count from plain
   `capture-pomodoros` until Recheck Bob or an executable change. The
-  close-comma count follows the store: it is nil when the snapshot is
-  not today's or the latest refresh failed. The assist runs only when the running
-  Pomodoro has fewer than 10 numbered Task Links; an older bob without the
-  field disables it. Replacing or clearing the Bob client invalidates
+  running count and `x=` bound follow the store: both clear when the snapshot is
+  not today's or the latest refresh failed. Each assist runs only when its lineup
+  has fewer than 10 numbered Task Links; an older bob without
+  `max_task_link_count` disables only the `x=` assist. The bound is conservative:
+  one open entry with 10 or more links disables `x=` assistance even when its
+  actual target has fewer. An earlier `x` close or stack member in the same draft
+  can also carry links into the target and raise its lineup past the bound. These
+  misses need a two-digit index and at least 10 links; lineups under 10 stay safe.
+  Replacing or clearing the Bob client invalidates
   in-flight counts and assist parses so a stale count never re-arms the
-  assist. The decision uses bob's `capture-parse` close-list spans,
-  so the app still never recognizes close syntax itself. Known limitation: a
-  batch that links several new tasks before its `x` can push a 9-link session
-  past 10.
+  assist. The decision uses bob's `capture-parse` close-list spans and item modes,
+  so the app still never recognizes close syntax itself.
   `global_route` reuses the destination color. `directive` spans use teal; each
   `template_placeholder` and `template_field` uses the same slot hue, selected by
   `field % 6` from orange, teal, pink, green, purple, and brown. Template diagnostics

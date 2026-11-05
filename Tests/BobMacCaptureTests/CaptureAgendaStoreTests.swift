@@ -100,6 +100,18 @@ final class CaptureAgendaStoreTests: XCTestCase {
         XCTAssertNotNil(store.lastRefreshedAt)
     }
 
+    func testRefreshPublishesMaxTaskLinkCountWithoutRunningSession() async throws {
+        let store = try makeStore(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-nothing-running-past-3.json",
+            ]
+        )
+        store.refresh(reason: .show)
+        await waitUntil { store.maxTaskLinkCount == 3 }
+        XCTAssertNil(store.currentTaskLinkCount)
+        XCTAssertEqual(store.snapshot?.maxTaskLinkCount, 3)
+    }
+
     func testUnchangedBytesPublishNothing() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -161,9 +173,13 @@ final class CaptureAgendaStoreTests: XCTestCase {
     }
 
     func testFailureKeepsSnapshotAndNilsCount() async throws {
-        let store = try makeStore()
+        let store = try makeStore(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-nothing-running-past-3.json",
+            ]
+        )
         store.refresh(reason: .show)
-        await waitUntil { store.currentTaskLinkCount == 3 }
+        await waitUntil { store.maxTaskLinkCount == 3 }
         store.processClient = try makeClient(
             environment: ["FAKE_BOB_AGENDA_FAIL": "1"]
         )
@@ -171,6 +187,7 @@ final class CaptureAgendaStoreTests: XCTestCase {
         await waitUntil { self.isStale(store.status) }
         XCTAssertEqual(store.snapshot?.date, "2026-08-28")
         XCTAssertNil(store.currentTaskLinkCount)
+        XCTAssertNil(store.maxTaskLinkCount)
     }
 
     func testUnchangedRefreshRestoresCountAfterFailure() async throws {
@@ -237,7 +254,60 @@ final class CaptureAgendaStoreTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         XCTAssertNil(store.snapshot)
         XCTAssertNil(store.currentTaskLinkCount)
+        XCTAssertNil(store.maxTaskLinkCount)
         XCTAssertEqual(store.status, .loading)
+    }
+
+    func testNonTodaySnapshotClearsPublishedMaxTaskLinkCount() async throws {
+        let fixtureURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/agenda-nothing-running-past-3.json")
+        var fixture = try String(contentsOf: sourceURL)
+        try fixture.write(to: fixtureURL, atomically: true, encoding: .utf8)
+        let store = try makeStore(
+            environment: ["FAKE_BOB_AGENDA_FIXTURE": fixtureURL.path]
+        )
+        store.refresh(reason: .show)
+        await waitUntil { store.maxTaskLinkCount == 3 }
+
+        fixture = fixture.replacingOccurrences(
+            of: "\"date\": \"2026-08-28\"",
+            with: "\"date\": \"2026-08-27\""
+        )
+        try fixture.write(to: fixtureURL, atomically: true, encoding: .utf8)
+        store.refresh(reason: .show)
+        await waitUntil {
+            store.snapshot == nil && store.maxTaskLinkCount == nil
+        }
+        XCTAssertNil(store.currentTaskLinkCount)
+    }
+
+    func testResetClearsAndRepublishesMaxTaskLinkCount() async throws {
+        let store = try makeStore(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-nothing-running-past-3.json",
+            ]
+        )
+        store.refresh(reason: .show)
+        await waitUntil { store.maxTaskLinkCount == 3 }
+        store.reset()
+        XCTAssertNil(store.maxTaskLinkCount)
+        await waitUntil { store.maxTaskLinkCount == 3 }
+    }
+
+    func testClientReplacementClearsMaxTaskLinkCount() async throws {
+        let store = try makeStore(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-nothing-running-past-3.json",
+            ]
+        )
+        store.refresh(reason: .show)
+        await waitUntil { store.maxTaskLinkCount == 3 }
+        store.processClient = try makeClient()
+        XCTAssertNil(store.maxTaskLinkCount)
     }
 
     // MARK: - Old bob fallback
@@ -255,6 +325,7 @@ final class CaptureAgendaStoreTests: XCTestCase {
         store.refresh(reason: .show)
         await waitUntil { store.currentTaskLinkCount == 3 }
         XCTAssertNil(store.snapshot)
+        XCTAssertNil(store.maxTaskLinkCount)
         XCTAssertEqual(store.status, .unsupported)
         store.refresh(reason: .show)
         await waitUntil(timeout: 10) {
@@ -367,6 +438,20 @@ final class CaptureAgendaStoreTests: XCTestCase {
         model.agendaStore = store
         store.refresh(reason: .show)
         await waitUntil { model.currentPomodoroTaskLinkCount == 3 }
+        XCTAssertTrue(model.closeTaskCommaArmed)
+    }
+
+    func testModelDerivesMaxTaskLinkCountFromStore() async throws {
+        let store = try makeStore(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-nothing-running-past-3.json",
+            ]
+        )
+        let model = CapturePanelModel()
+        model.agendaStore = store
+        store.refresh(reason: .show)
+        await waitUntil { model.maxTaskLinkCount == 3 }
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
         XCTAssertTrue(model.closeTaskCommaArmed)
     }
 }

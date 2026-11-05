@@ -11,6 +11,8 @@ final class CaptureAgendaModelsTests: XCTestCase {
         "agenda-multiple-timed.json",
         "agenda-no-daily-note.json",
         "agenda-nothing-running.json",
+        "agenda-nothing-running-past-3.json",
+        "agenda-past-12.json",
         "agenda-yesterday.json",
         "agenda-homes.json",
         "agenda-homes-legacy.json",
@@ -38,6 +40,14 @@ final class CaptureAgendaModelsTests: XCTestCase {
             let snapshot = try decodeFixture(name)
             XCTAssertTrue(snapshot.ok, name)
             XCTAssertEqual(snapshot.schemaVersion, 1, name)
+            switch name {
+            case "agenda-nothing-running-past-3.json":
+                XCTAssertEqual(snapshot.maxTaskLinkCount, 3, name)
+            case "agenda-past-12.json":
+                XCTAssertEqual(snapshot.maxTaskLinkCount, 12, name)
+            default:
+                XCTAssertNil(snapshot.maxTaskLinkCount, name)
+            }
         }
     }
 

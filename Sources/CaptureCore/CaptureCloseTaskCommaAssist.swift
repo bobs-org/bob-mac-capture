@@ -4,12 +4,38 @@ import Foundation
 /// runs when the snapshot draft still equals the visible text, so stale
 /// spans can never arm an edit.
 public struct CaptureParseSnapshot: Equatable, Sendable {
+    public struct Item: Equatable, Sendable {
+        public let start: Int
+        public let end: Int
+        public let mode: String
+
+        public init(start: Int, end: Int, mode: String) {
+            self.start = start
+            self.end = end
+            self.mode = mode
+        }
+    }
+
     public let draft: String
     public let spans: [CaptureSpan]
+    public let items: [Item]
 
-    public init(draft: String, spans: [CaptureSpan]) {
+    public init(draft: String, spans: [CaptureSpan], items: [Item] = []) {
         self.draft = draft
         self.spans = spans
+        self.items = items
+    }
+
+    public init(draft: String, parse: CaptureParseResponse) {
+        self.draft = draft
+        spans = parse.spans
+        if parse.items.isEmpty {
+            items = [Item(start: 0, end: draft.utf8.count, mode: parse.mode)]
+        } else {
+            items = parse.items.map { item in
+                Item(start: item.range.start, end: item.range.end, mode: item.mode)
+            }
+        }
     }
 }
 
@@ -34,7 +60,7 @@ public struct CaptureCloseTaskCommaEdit: Equatable, Sendable {
 
 /// Pure decision helper for the close-list auto-comma. It never
 /// recognizes close syntax itself: it only filters bob's `capture-parse`
-/// close-list spans, and Bob stays authoritative.
+/// close-list spans and item modes, and Bob stays authoritative.
 public enum CaptureCloseTaskCommaAssist {
     public static let listSpanKinds: Set<String> = [
         "pomodoro_close_in_progress",
@@ -43,9 +69,11 @@ public enum CaptureCloseTaskCommaAssist {
         "pomodoro_close_drop",
     ]
 
-    /// The assist runs only when the running Pomodoro has fewer than 10
-    /// numbered Task Links; with 10 or more a multi-digit index is
-    /// legitimate.
+    public static let pastItemMode = "pomodoro_past"
+
+    /// The relevant lineup must have fewer than 10 numbered Task Links;
+    /// with 10 or more, a multi-digit index is legitimate. `x` and link
+    /// lists use the running count; `x=` uses the largest open lineup.
     public static let singleDigitLineupLimit = 10
 
     public static func isArmed(taskLinkCount: Int?) -> Bool {
@@ -55,12 +83,18 @@ public enum CaptureCloseTaskCommaAssist {
         return taskLinkCount < singleDigitLineupLimit
     }
 
+    public static func isArmed(taskLinkCount: Int?, pastTaskLinkCount: Int?) -> Bool {
+        isArmed(taskLinkCount: taskLinkCount)
+            || isArmed(taskLinkCount: pastTaskLinkCount)
+    }
+
     public nonisolated static func edit(
         typed: String,
         text: String,
         selectedRange: NSRange,
         snapshot: CaptureParseSnapshot?,
-        taskLinkCount: Int?
+        taskLinkCount: Int?,
+        pastTaskLinkCount: Int? = nil
     ) -> CaptureCloseTaskCommaEdit? {
         guard typed.count == 1,
               let scalar = typed.unicodeScalars.first,
@@ -68,9 +102,6 @@ public enum CaptureCloseTaskCommaAssist {
               scalar.value >= 0x31,
               scalar.value <= 0x39
         else {
-            return nil
-        }
-        guard isArmed(taskLinkCount: taskLinkCount) else {
             return nil
         }
         let nsText = text as NSString
@@ -93,12 +124,27 @@ public enum CaptureCloseTaskCommaAssist {
         guard previous >= 0x31, previous <= 0x39 else {
             return nil
         }
-        let insideList = snapshot.spans.contains { span in
+        guard let listSpan = snapshot.spans.first(where: { span in
             listSpanKinds.contains(span.kind)
                 && span.start < caretUTF8
                 && caretUTF8 <= span.end
+        }) else {
+            return nil
         }
-        guard insideList else {
+        let owner = snapshot.items
+            .filter { item in
+                item.start <= listSpan.start && listSpan.end <= item.end
+            }
+            .min { left, right in
+                (left.end - left.start) < (right.end - right.start)
+            }
+        let armed: Bool
+        if owner?.mode == pastItemMode {
+            armed = isArmed(taskLinkCount: pastTaskLinkCount)
+        } else {
+            armed = isArmed(taskLinkCount: taskLinkCount)
+        }
+        guard armed else {
             return nil
         }
         let replacementRange = NSRange(

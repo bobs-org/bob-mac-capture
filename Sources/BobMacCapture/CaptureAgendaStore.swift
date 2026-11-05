@@ -30,8 +30,8 @@ public enum CaptureAgendaStoreStatus: Equatable, Sendable {
     case stale(String)
     /// The last refresh failed with nothing current to show.
     case failed(String)
-    /// bob predates `--tasks`: the agenda stays hidden and the
-    /// close-comma count comes from the plain `capture-pomodoros` lane.
+    /// bob predates `--tasks`: the agenda stays hidden and the running
+    /// count for `x`/link lists comes from the plain `capture-pomodoros` lane.
     case unsupported
 }
 
@@ -42,14 +42,16 @@ public enum CaptureAgendaStoreStatus: Equatable, Sendable {
 ///
 /// The close-comma assist reads `currentTaskLinkCount`, which follows the
 /// snapshot while bob supports `--tasks` and the plain lane while it does
-/// not. It is nil when the snapshot is not today's, or when the latest
-/// refresh failed, exactly as the old per-show spawn cleared it.
+/// not. The `x=` lineup bound follows the snapshot only, so an older bob
+/// leaves it nil. Both are cleared when today's snapshot is unavailable or
+/// the latest refresh failed.
 @MainActor
 public final class CaptureAgendaStore: ObservableObject {
     @Published public private(set) var snapshot: CaptureAgendaSnapshot?
     @Published public private(set) var status: CaptureAgendaStoreStatus = .idle
     @Published public private(set) var lastRefreshedAt: Date?
     @Published public private(set) var currentTaskLinkCount: Int?
+    @Published public private(set) var maxTaskLinkCount: Int?
 
     /// The client refreshes run against. Replacing it invalidates
     /// in-flight results and clears the count; callers then `reset()`
@@ -61,6 +63,7 @@ public final class CaptureAgendaStore: ObservableObject {
             }
             state.invalidateInFlight()
             currentTaskLinkCount = nil
+            maxTaskLinkCount = nil
         }
     }
 
@@ -176,6 +179,7 @@ public final class CaptureAgendaStore: ObservableObject {
         snapshot = nil
         lastGoodSnapshot = nil
         currentTaskLinkCount = nil
+        maxTaskLinkCount = nil
         status = .idle
         lastRefreshedAt = nil
         refresh(reason: .recheck)
@@ -256,6 +260,7 @@ public final class CaptureAgendaStore: ObservableObject {
             } else {
                 snapshot = nil
                 currentTaskLinkCount = nil
+                maxTaskLinkCount = nil
                 status = .loading
             }
         }
@@ -273,6 +278,10 @@ public final class CaptureAgendaStore: ObservableObject {
         if currentTaskLinkCount != count {
             currentTaskLinkCount = count
         }
+        let maxCount = fetched.maxTaskLinkCount
+        if maxTaskLinkCount != maxCount {
+            maxTaskLinkCount = maxCount
+        }
     }
 
     private func finishClientError(
@@ -283,7 +292,7 @@ public final class CaptureAgendaStore: ObservableObject {
         switch error {
         case .unsupportedOption:
             // An old bob without `--tasks`: hide the agenda, remember not
-            // to retry it, and keep the count on the plain lane only. The
+            // to retry it, and keep the running-list count on the plain lane only. The
             // generation stays open across the plain call, so one `end`
             // still covers the whole refresh unit. A late result from an
             // old executable after Recheck Bob or a reset presents a
@@ -293,6 +302,7 @@ public final class CaptureAgendaStore: ObservableObject {
             }
             state.capability = .unsupported
             snapshot = nil
+            maxTaskLinkCount = nil
             status = .unsupported
             refreshPlainCount(generation: generation, client: client)
         default:
@@ -311,6 +321,7 @@ public final class CaptureAgendaStore: ObservableObject {
         // A failed refresh keeps the last good agenda but clears the
         // count, exactly as the old failed spawn cleared it.
         currentTaskLinkCount = nil
+        maxTaskLinkCount = nil
         if hasCurrentSnapshot {
             status = .stale(message)
         } else {
@@ -322,7 +333,7 @@ public final class CaptureAgendaStore: ObservableObject {
         }
     }
 
-    /// Old-bob fallback: the plain call serves the close-comma count
+    /// Old-bob fallback: the plain call serves the `x` close-comma count
     /// only, and `--tasks` is not retried until `reset()`.
     private func refreshPlainCount(
         generation: UInt64,
@@ -351,6 +362,7 @@ public final class CaptureAgendaStore: ObservableObject {
         // discards us, so only a still-unsupported store takes the count.
         if state.capability == .unsupported {
             currentTaskLinkCount = count
+            maxTaskLinkCount = nil
         }
         if completion == .followUp {
             refresh(reason: .followUp)

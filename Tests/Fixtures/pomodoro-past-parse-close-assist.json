@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":12,"input":"x==1","body":"x==1","mode":"pomodoro_past","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_past"},{"start":2,"end":3,"kind":"pomodoro_close"},{"start":3,"end":4,"kind":"pomodoro_close_in_progress"}],"diagnostics":[]}

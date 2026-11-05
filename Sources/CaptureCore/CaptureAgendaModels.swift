@@ -122,6 +122,9 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     public let pomodoros: [CaptureAgendaPomodoro]
     public let warnings: [String]
     public let planBudget: CapturePlanBudget?
+    /// Largest numbered Task Link lineup among today's open entries. Nil
+    /// when an older bob omits `max_task_link_count`, so `x=` stays unassisted.
+    public let maxTaskLinkCount: Int?
     /// The additive calendar facts for the idle agenda's Calendar band
     /// (`capture-pomodoros --tasks` `events`). Nil on an older bob, so
     /// the band stays hidden.
@@ -135,7 +138,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         pomodoros: [CaptureAgendaPomodoro] = [],
         warnings: [String] = [],
         planBudget: CapturePlanBudget? = nil,
-        events: CaptureAgendaEvents? = nil
+        events: CaptureAgendaEvents? = nil,
+        maxTaskLinkCount: Int? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -145,6 +149,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         self.warnings = warnings
         self.planBudget = planBudget
         self.events = events
+        self.maxTaskLinkCount = maxTaskLinkCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,6 +171,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
             CaptureAgendaEvents.self,
             forKey: .events
         )
+        maxTaskLinkCount = try container.decodeIfPresent(Int.self, forKey: .maxTaskLinkCount)
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -184,6 +190,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case warnings
         case planBudget = "plan_budget"
         case events
+        case maxTaskLinkCount = "max_task_link_count"
     }
 }
 

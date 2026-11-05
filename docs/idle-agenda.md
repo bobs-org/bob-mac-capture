@@ -49,8 +49,9 @@ including the next panel show.
   one follow-up; byte-identical output publishes nothing. A snapshot whose date is
   not today is never shown ("Loading today…" until the refresh lands); a failed
   refresh keeps the last good agenda and marks the title row "Couldn't refresh". An
-  older `bob` without `--tasks` hides the agenda and serves only the close-comma
-  count until Recheck Bob or an executable change.
+  older `bob` without `--tasks` hides the agenda and serves the running count
+  for `x`/link close lists, but leaves `x=` unassisted, until Recheck Bob or an
+  executable change.
 - Calendar band. Between the Now groups and the Next/Later ones (right under the
   title rows when nothing runs), the band summarizes today's calendar from bob's
   additive `events` block; an older `bob` without it shows no band. The header names
@@ -102,7 +103,7 @@ including the next panel show.
   minute granularity while the panel is visible.
 - Setting and diagnostics. Settings › Agenda toggles "Show today's Pomodoros when the
   draft is empty" (on by default); while off, the store keeps refreshing for the
-  close-comma count but nothing is measured, planned, or shown. The same section
+  close-list bounds but nothing is measured, planned, or shown. The same section
   reports "Last refreshed 14:32", "Couldn't refresh: …", or the old-`bob` upgrade
   hint.
 - Accessibility. Each Pomodoro group is one container ("Running Pomodoro FIX, 14:10

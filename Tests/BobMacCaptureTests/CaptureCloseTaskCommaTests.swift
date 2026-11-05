@@ -390,6 +390,22 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         XCTAssertFalse(model.closeTaskCommaArmed)
     }
 
+    func testRefreshArmsPastAssistWithNoRunningPomodoro() async throws {
+        let model = try refreshModel(
+            agendaFixture: "agenda-nothing-running-past-3.json"
+        )
+        await waitUntil { model.maxTaskLinkCount == 3 }
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
+        XCTAssertTrue(model.closeTaskCommaArmed)
+    }
+
+    func testRefreshLeavesPastAssistDisarmedForTwelveLinks() async throws {
+        let model = try refreshModel(agendaFixture: "agenda-past-12.json")
+        await waitUntil { model.maxTaskLinkCount == 12 }
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
+        XCTAssertFalse(model.closeTaskCommaArmed)
+    }
+
     func testRefreshFailureLeavesAssistDisarmed() async throws {
         let model = try refreshModel(agendaFails: true)
         try? await Task.sleep(nanoseconds: 500_000_000)
@@ -416,13 +432,19 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     // MARK: - Key-driven assist parse
 
-    private func keyDrivenModel() throws -> CapturePanelModel {
+    private func keyDrivenModel(
+        parseFixture: String? = nil
+    ) throws -> CapturePanelModel {
         // A very long debounce keeps the debounced analysis parse from
         // running, so only the immediate assist parse can feed the edit.
         let model = CapturePanelModel(debounceNanoseconds: 9_000_000_000)
+        var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        if let parseFixture {
+            environment["FAKE_BOB_PARSE_FIXTURE"] = parseFixture
+        }
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            environment: environment
         )
         return model
     }
@@ -447,6 +469,29 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
             typed: "2",
             text: "x1",
             selectedRange: NSRange(location: 2, length: 0)
+        )
+        XCTAssertEqual(edit?.replacementText, ",2")
+    }
+
+    func testKeyDrivenPastAssistParseServesCommaEdit() async throws {
+        let model = try keyDrivenModel(
+            parseFixture: "pomodoro-past-parse-close-assist.json"
+        )
+        model.setMaxTaskLinkCountForTests(3)
+        model.plainDraft = "x==1"
+        model.requestCloseListAssistParse()
+        model.editorTextDidChange(cursorUTF8Offset: "x==1".utf8.count)
+        await waitUntil {
+            model.closeTaskCommaEdit(
+                typed: "2",
+                text: "x==1",
+                selectedRange: NSRange(location: 4, length: 0)
+            ) != nil
+        }
+        let edit = model.closeTaskCommaEdit(
+            typed: "2",
+            text: "x==1",
+            selectedRange: NSRange(location: 4, length: 0)
         )
         XCTAssertEqual(edit?.replacementText, ",2")
     }
@@ -564,6 +609,35 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         XCTAssertEqual(view.string, "x1")
         XCTAssertEqual(view.selectedRange(), NSRange(location: 2, length: 0))
         XCTAssertTrue(model.closeCommaProvenanceForTests().entries.isEmpty)
+    }
+
+    func testBackspaceRemovesPastAssistedPair() {
+        let model = CapturePanelModel()
+        let text = "x==1"
+        let snapshot = CaptureParseSnapshot(
+            draft: text,
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_past"),
+                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "pomodoro_close_in_progress"),
+            ],
+            items: [CaptureParseSnapshot.Item(
+                start: 0,
+                end: text.utf8.count,
+                mode: "pomodoro_past"
+            )]
+        )
+        model.setMaxTaskLinkCountForTests(3)
+        model.setCloseListParseSnapshotForTests(snapshot)
+        let view = NSTextView()
+        view.isEditable = true
+        view.string = text
+        view.setSelectedRange(NSRange(location: 4, length: 0))
+
+        XCTAssertTrue(insert("2", view: view, model: model))
+        XCTAssertEqual(view.string, "x==1,2")
+        XCTAssertTrue(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "x==1")
     }
 
     func testBackspaceRepeatedPairsDeleteInnermostFirst() {
@@ -829,6 +903,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         let model = CapturePanelModel(debounceNanoseconds: 9_000_000_000)
         model.setProcessClient(try delayedClient(delaySeconds: "1"))
         model.setCurrentPomodoroTaskLinkCountForTests(3)
+        model.setMaxTaskLinkCountForTests(3)
         // Same binding order as testKeyDrivenAssistParseServesCommaEdit:
         // assign the draft before requesting so the pending flag survives.
         model.plainDraft = "x1"
@@ -839,6 +914,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
         model.setProcessClient(replacement)
+        XCTAssertNil(model.maxTaskLinkCount)
         // The count now flows through the store: attach it and refresh
         // with the replacement client (default 3-link agenda fixture), so
         // the assist re-arms while the old parse is still in flight.

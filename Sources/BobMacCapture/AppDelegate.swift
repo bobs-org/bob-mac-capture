@@ -107,7 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.agendaStore = agendaStore
         model.agendaStore = agendaStore
         // The Agenda toggle applies live: the store keeps refreshing
-        // for the close-comma count while the model stops measuring,
+        // for the close-list bounds while the model stops measuring,
         // planning, and showing.
         model.agendaEnabled = settings.agendaEnabled
         settings.$agendaEnabled

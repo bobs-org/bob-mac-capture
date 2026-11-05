@@ -838,13 +838,15 @@ final class CapturePanelModel: ObservableObject {
 
     /// Numbered Task Link count of the running Pomodoro, derived from
     /// the agenda store's snapshot (or its plain-lane fallback on an old
-    /// bob). Nil while unknown, when no session runs, when the snapshot
-    /// is not today's, or when the latest refresh failed. The close-comma
-    /// assist turns off while nil.
+    /// bob). It gates `x` and link close lists.
     private(set) var currentPomodoroTaskLinkCount: Int?
 
-    /// The agenda store that owns this count. The model subscribes to its
-    /// count publisher; the store refreshes on launch, show, submit, and
+    /// Largest numbered Task Link lineup among today's open entries.
+    /// It gates `x=` close lists and stays nil when an older bob omits it.
+    private(set) var maxTaskLinkCount: Int?
+
+    /// The agenda store that owns these gates. The model subscribes to its
+    /// count and bound publishers; the store refreshes on launch, show, submit, and
     /// filtered vault events instead of the old per-show spawn.
     var agendaStore: CaptureAgendaStore? {
         didSet {
@@ -853,11 +855,12 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private var agendaCancellable: AnyCancellable?
+    private var agendaMaxTaskLinkCountCancellable: AnyCancellable?
 
     // MARK: - Idle agenda view state
 
     /// The Settings toggle, observed live from AppDelegate. While off,
-    /// the store keeps refreshing for the close-comma count, but
+    /// the store keeps refreshing for the close-list bounds, but
     /// nothing is measured, planned, or shown.
     @Published var agendaEnabled = true {
         didSet {
@@ -1275,11 +1278,12 @@ final class CapturePanelModel: ObservableObject {
         agendaPlanDidChange?()
     }
 
-    /// True while the close-comma assist may fire: the running Pomodoro
-    /// has a known count below the single-digit limit.
+    /// True while either close-list gate has a known lineup below the
+    /// single-digit limit.
     var closeTaskCommaArmed: Bool {
         CaptureCloseTaskCommaAssist.isArmed(
-            taskLinkCount: currentPomodoroTaskLinkCount
+            taskLinkCount: currentPomodoroTaskLinkCount,
+            pastTaskLinkCount: maxTaskLinkCount
         )
     }
 
@@ -1307,6 +1311,10 @@ final class CapturePanelModel: ObservableObject {
 
     func setCurrentPomodoroTaskLinkCountForTests(_ count: Int?) {
         currentPomodoroTaskLinkCount = count
+    }
+
+    func setMaxTaskLinkCountForTests(_ count: Int?) {
+        maxTaskLinkCount = count
     }
 
     func setCloseListParseSnapshotForTests(
@@ -2163,11 +2171,11 @@ final class CapturePanelModel: ObservableObject {
         cancelPastBoundaryRefresh()
     }
 
-    /// Follows the agenda store's count publisher. The store nils the
-    /// count on failure, a non-today snapshot, and client replacement,
-    /// so the model only forwards it.
+    /// Follows both close-list gates from the agenda store. The store
+    /// clears them on failure, a non-today snapshot, and client replacement.
     private func subscribeToAgendaStore() {
         agendaCancellable = nil
+        agendaMaxTaskLinkCountCancellable = nil
         agendaSnapshotCancellable = nil
         agendaDayChangeCancellable = nil
         guard let agendaStore else {
@@ -2178,6 +2186,13 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             self.currentPomodoroTaskLinkCount = count
+        }
+        agendaMaxTaskLinkCountCancellable = agendaStore.$maxTaskLinkCount.sink {
+            [weak self] count in
+            guard let self else {
+                return
+            }
+            self.maxTaskLinkCount = count
         }
         // The store's `@Published` properties emit in `willSet`, so
         // the sink plans from the emitted values, never the store:
@@ -2245,6 +2260,7 @@ final class CapturePanelModel: ObservableObject {
             // the count through the subscription above.
             closeAssistParseGeneration &+= 1
             currentPomodoroTaskLinkCount = nil
+            maxTaskLinkCount = nil
             closeListParseSnapshot = nil
             closeListAssistParsePending = false
             closeCommaProvenance.clear()
@@ -2285,7 +2301,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Forwards one typed digit to the pure close-comma helper with the
-    /// latest snapshot and count. Nil means type the digit natively.
+    /// latest parse snapshot and both list bounds. Nil means type the digit natively.
     func closeTaskCommaEdit(
         typed: String,
         text: String,
@@ -2296,7 +2312,8 @@ final class CapturePanelModel: ObservableObject {
             text: text,
             selectedRange: selectedRange,
             snapshot: closeListParseSnapshot,
-            taskLinkCount: currentPomodoroTaskLinkCount
+            taskLinkCount: currentPomodoroTaskLinkCount,
+            pastTaskLinkCount: maxTaskLinkCount
         )
     }
 
@@ -2568,7 +2585,7 @@ final class CapturePanelModel: ObservableObject {
                     }
                     self?.closeListParseSnapshot = CaptureParseSnapshot(
                         draft: draft,
-                        spans: parse.spans
+                        parse: parse
                     )
                 }
             } catch {
@@ -15910,7 +15927,7 @@ final class CapturePanelModel: ObservableObject {
         if plainDraft == draft {
             closeListParseSnapshot = CaptureParseSnapshot(
                 draft: draft,
-                spans: parse.spans
+                parse: parse
             )
         }
         updateClipboardPolling(parse: parse, draft: draft)

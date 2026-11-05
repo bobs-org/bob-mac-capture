@@ -279,7 +279,7 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows for Go To)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
-- `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds close-comma count on older builds
+- `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound on new builds and supplies the running count for older-bob fallback
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
 - `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row lacks an `added` date or git instant)
@@ -393,7 +393,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
 | `sub_bullet_depths`, route-only `global_destination`, `items` | Exact children; batch route declaration and per-item route overrides | Depth 1; per-item targets | Upgrade `bob` for global declarations |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
-| Close-comma assist field | Auto-inserted `,` | Assist off; digits type normally | Upgrade `bob` for assists |
+| `task_link_count`, `max_task_link_count` | Auto-inserted `,` in `x`/link lists and `x=` lists | Older bob can assist `x`/link lists from the plain count; `x=` stays unassisted | Upgrade `bob` for `x=` assist |
 | `relation_to` / `relation_from` completion | `~` / `~~` picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` for relations |
 | `relation_label` completion and `relation` metadata | Relation card suggestions with counts, typed row, token range, direction, and owner | Without the metadata, the app uses its legacy token scan; without the completion context, no card opens | Upgrade `bob` for relation labels and exact token ranges |
 | `relation_label` `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off` | Canonical keys, inverse phrases, `||` insertions, typed validation flags, Hidden pill, one-off mode | Local label folding, no inverses, `|` insertions only, no Hidden section or pill, no one-off mode | Upgrade `bob` for the relation vocabulary |
