@@ -58,6 +58,7 @@ struct CaptureNativeRewriteEdit: Equatable {
     let resultingSelection: NSRange
     let expectedDraft: String
     let resultingDraft: String
+    var expectedSelection: NSRange? = nil
 }
 
 /// One native `NSTextView` insert of a saved template block. Ranges are
@@ -1133,6 +1134,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard selection.length == 0 else {
             return false
         }
+        if let expectedSelection = edit.expectedSelection,
+           selection != expectedSelection
+        {
+            return false
+        }
         // End the typed key's coalesced typing run first, so the swap is
         // its own undo step: Undo restores the literal post-key draft and
         // Redo replays exactly this replacement.
@@ -1162,6 +1168,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             guard selection.length == 0 else {
                 return false
             }
+            if let expectedSelection = edit.expectedSelection,
+               selection != expectedSelection
+            {
+                return false
+            }
             cached.breakUndoCoalescing()
             cached.insertText(edit.replacementText, replacementRange: edit.replacementRange)
             cached.setSelectedRange(edit.resultingSelection)
@@ -1182,6 +1193,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         let selection = editor.selectedRange()
         guard selection.length == 0 else {
+            return false
+        }
+        if let expectedSelection = edit.expectedSelection,
+           selection != expectedSelection
+        {
             return false
         }
         editor.breakUndoCoalescing()
@@ -2009,7 +2025,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.replaceGotoSigilWithLiteralBackslash()
             return true
         case .typeLiteralBackslashForHashAlias:
-            return model.replaceHashAliasWithLiteralBackslash()
+            return false
+        case .typeBackslashBeforeHashAliasReply:
+            return false
         case .joinCalendarEvent:
             model.dismissCompletion()
             model.joinFocusCalendarEvent()
@@ -2207,14 +2225,37 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let editorLeaderPending = takeEditorLeader()
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
+        // The arm is judged against the live editor, not the SwiftUI
+        // mirror: SwiftUI can report the caret one edit behind, and right
+        // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
+        // The action takes the arm passed here and never re-reads the
+        // property just cleared.
         let hashAliasLiteralArmed: Bool = {
             guard let arm = takenHashArm,
-                  arm.draft == model.plainDraft,
-                  model.collapsedSelectionUTF8Offset() == arm.caretUTF8
+                  let textView = Self.editableTextView(panel?.firstResponder),
+                  !textView.hasMarkedText(),
+                  textView.string == arm.draft
             else {
                 return false
             }
-            return true
+            return textView.selectedRange() == NSRange(location: arm.caretUTF16, length: 0)
+        }()
+        let hashAliasReplyPending: Bool = {
+            guard !hashAliasLiteralArmed,
+                  let textView = Self.editableTextView(panel?.firstResponder),
+                  !textView.hasMarkedText()
+            else {
+                return false
+            }
+            let selection = textView.selectedRange()
+            guard selection.length == 0 else {
+                return false
+            }
+            return model.hashAliasReplyPending(
+                liveString: textView.string,
+                liveCaretUTF16: selection.location,
+                hasMarkedText: false
+            )
         }()
         guard let command = keyRouter.command(
             for: event,
@@ -2277,6 +2318,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 draftIsBareGotoSigil: model.draftIsBareGotoSigil,
                 backslashLiteralArmed: backslashLiteralArmed,
                 hashAliasLiteralArmed: hashAliasLiteralArmed,
+                hashAliasReplyPending: hashAliasReplyPending,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2304,7 +2346,57 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             model.restoreHashAliasLiteralArm(arm)
         }
+        if command == .typeLiteralBackslashForHashAlias,
+           let arm = takenHashArm,
+           hashAliasLiteralArmed
+        {
+            return model.replaceHashAliasWithLiteralBackslash(arm) ? nil : event
+        }
+        if command == .typeBackslashBeforeHashAliasReply {
+            // The probe stores the one-shot re-ask; AppKit types the second
+            // `\` natively. No separator intent is recorded for this key.
+            Self.noteBackslashProbeIfEligible(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+            return event
+        }
         return perform(command) ? nil : event
+    }
+
+    /// Records the one-shot fast double-tap probe for a second `\` typed
+    /// before Bob answers the first. Computes the post-key buffer from the
+    /// live editor at key-down time, so nothing depends on when SwiftUI
+    /// delivers the text change.
+    static func noteBackslashProbeIfEligible(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0,
+              selection.location >= 0
+        else {
+            return
+        }
+        let nsString = textView.string as NSString
+        guard selection.location <= nsString.length else {
+            return
+        }
+        let secondDraft = nsString.replacingCharacters(in: selection, with: "\\")
+        let secondUTF16 = selection.location + 1
+        guard let secondCaretUTF8 = utf8Offset(in: secondDraft, utf16Offset: secondUTF16)
+        else {
+            return
+        }
+        model.noteBackslashBeforeHashAliasReply(
+            secondDraft: secondDraft,
+            secondCaretUTF8: secondCaretUTF8
+        )
     }
 
     private func takeEditorLeader() -> Bool {

@@ -637,6 +637,102 @@ final class CaptureBackslashGotoTests: XCTestCase {
         )
     }
 
+    func testPendingBackslashBeforeReplyReasks() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(hashAliasReplyPending: true)
+            ),
+            .typeBackslashBeforeHashAliasReply
+        )
+    }
+
+    func testPendingRepeatStaysNative() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertNil(
+            router.command(
+                for: backslashEvent(isRepeat: true),
+                context: CaptureKeyRoutingContext(hashAliasReplyPending: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    keyIsRepeat: true,
+                    hashAliasReplyPending: true
+                )
+            )
+        )
+    }
+
+    func testArmedBeatsPending() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    hashAliasLiteralArmed: true,
+                    hashAliasReplyPending: true
+                )
+            ),
+            .typeLiteralBackslashForHashAlias
+        )
+    }
+
+    func testPendingWithMarkedTextIsNil() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertNil(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    hashAliasReplyPending: true,
+                    editorHasMarkedText: true
+                )
+            )
+        )
+    }
+
+    func testPendingCommandBackslashOpensToday() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(modifiers: .command),
+                context: CaptureKeyRoutingContext(hashAliasReplyPending: true)
+            ),
+            .openTodayPomodoro
+        )
+    }
+
+    func testPendingBlankDraftStillOpensGoto() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    draftIsBlank: true,
+                    hashAliasReplyPending: true
+                )
+            ),
+            .openGotoFromBackslash
+        )
+    }
+
+    func testPendingBareGotoRouteIsUnchanged() {
+        let router = CaptureKeyCommandRouter()
+        XCTAssertEqual(
+            router.command(
+                for: backslashEvent(),
+                context: CaptureKeyRoutingContext(
+                    draftIsBareGotoSigil: true,
+                    hashAliasReplyPending: true
+                )
+            ),
+            .consumeKey
+        )
+    }
+
     func testUnarmedNonBlankBackslashIsNil() {
         let router = CaptureKeyCommandRouter()
         XCTAssertNil(
@@ -647,20 +743,58 @@ final class CaptureBackslashGotoTests: XCTestCase {
     func testHashArmSetOnlyForHashAliasEdit() {
         let model = CapturePanelModel()
         XCTAssertNil(model.hashAliasLiteralArm)
-        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
+        model.hashAliasLiteralArm = CaptureHashAliasArm(
+            draft: "jot idea #",
+            hashUTF8: 9,
+            caretUTF8: 10,
+            caretUTF16: 10,
+            hashUTF16Range: NSRange(location: 9, length: 1)
+        )
         XCTAssertNotNil(model.takeHashAliasLiteralArm())
         XCTAssertNil(model.hashAliasLiteralArm)
-        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
+        model.hashAliasLiteralArm = CaptureHashAliasArm(
+            draft: "jot idea #",
+            hashUTF8: 9,
+            caretUTF8: 10,
+            caretUTF16: 10,
+            hashUTF16Range: NSRange(location: 9, length: 1)
+        )
         model.prepareForDismissal()
         XCTAssertNil(model.hashAliasLiteralArm)
     }
 
     func testStaleHashArmIsInert() {
         let model = CapturePanelModel()
-        model.plainDraft = "jot idea #"
-        model.hashAliasLiteralArm = (draft: "jot idea #", hashUTF8: 9, caretUTF8: 10)
-        model.plainDraft = "jot idea #b"
-        XCTAssertFalse(model.replaceHashAliasWithLiteralBackslash())
-        XCTAssertEqual(model.plainDraft, "jot idea #b")
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "jot idea #b"
+        textView.setSelectedRange(NSRange(location: 11, length: 0))
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applySeparatorToggleInEditableTextView(
+                edit,
+                firstResponder: textView
+            )
+        }
+        let arm = CaptureHashAliasArm(
+            draft: "jot idea #",
+            hashUTF8: 9,
+            caretUTF8: 10,
+            caretUTF16: 10,
+            hashUTF16Range: NSRange(location: 9, length: 1)
+        )
+        XCTAssertFalse(model.replaceHashAliasWithLiteralBackslash(arm))
+        XCTAssertEqual(textView.string, "jot idea #b")
+    }
+
+    func testHashAliasArmWithoutNativeBridgeIsInert() {
+        let model = CapturePanelModel()
+        let arm = CaptureHashAliasArm(
+            draft: "jot idea #",
+            hashUTF8: 9,
+            caretUTF8: 10,
+            caretUTF16: 10,
+            hashUTF16Range: NSRange(location: 9, length: 1)
+        )
+        XCTAssertFalse(model.replaceHashAliasWithLiteralBackslash(arm))
     }
 }

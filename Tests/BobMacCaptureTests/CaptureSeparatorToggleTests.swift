@@ -1485,7 +1485,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertTrue(record.contains("capture-complete --all-tasks --cursor 10 --format json -- jot idea #"))
 
         let completesBefore = record.components(separatedBy: "argv=capture-complete").count - 1
-        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash())
+        guard let arm = model.hashAliasLiteralArm else {
+            XCTFail("Expected a hash-alias arm after the alias rewrite")
+            return
+        }
+        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash(arm))
         XCTAssertEqual(model.plainDraft, "jot idea \\")
         XCTAssertEqual(textView.string, "jot idea \\")
         XCTAssertFalse(model.completionVisible)
@@ -1525,7 +1529,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#")
         XCTAssertEqual(model.completionResponse?.context, "drawer")
-        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash())
+        guard let arm = model.hashAliasLiteralArm else {
+            XCTFail("Expected a hash-alias arm after the alias rewrite")
+            return
+        }
+        XCTAssertTrue(model.replaceHashAliasWithLiteralBackslash(arm))
         XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar\\")
         XCTAssertFalse(model.completionVisible)
     }
@@ -1599,23 +1607,4 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         )
     }
 
-    func testDelayedHashAliasRaceKeepsDoubleBackslash() async throws {
-        let recordURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(
-            recordURL: recordURL,
-            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
-        )
-        let textView = makeTextView("jot idea ")
-        wireNativeApply(model, textView: textView)
-
-        typeSeparator("\\", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 100_000_000)
-        typeSeparator("\\", into: textView, model: model)
-        await waitUntil { model.plainDraft == "jot idea \\\\" }
-
-        XCTAssertEqual(model.plainDraft, "jot idea \\\\")
-        XCTAssertFalse(model.completionVisible)
-    }
 }

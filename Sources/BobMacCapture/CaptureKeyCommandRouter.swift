@@ -111,6 +111,7 @@ enum CaptureKeyCommand: Equatable {
     case openTodayPomodoro
     case openGotoFromBackslash
     case typeLiteralBackslash
+    case typeBackslashBeforeHashAliasReply
     case typeLiteralBackslashForHashAlias
     case joinCalendarEvent
     case switchPanel
@@ -171,6 +172,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var draftIsBareGotoSigil = false
     var backslashLiteralArmed = false
     var hashAliasLiteralArmed = false
+    var hashAliasReplyPending = false
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -402,6 +404,12 @@ struct CaptureKeyCommandRouter {
                     return .consumeKey
                 }
                 return .typeLiteralBackslashForHashAlias
+            }
+            if context.hashAliasReplyPending {
+                if isRepeat {
+                    return nil
+                }
+                return .typeBackslashBeforeHashAliasReply
             }
         }
 

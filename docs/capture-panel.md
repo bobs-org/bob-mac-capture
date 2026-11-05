@@ -206,8 +206,12 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   opens through the existing handlers. Undo restores the literal `.` or `;`; an
   older bob leaves either key literal.
   Typing `\` uses the same lane as an alias for `#` where `#` would open a menu,
-  never at a line start. A second `\` right away replaces that `#` with one
-  literal `\` and closes the menu; the one-shot arm clears on any other key.
+  never at a line start. A second `\` at any typing speed replaces that `#`
+  with one literal `\` and closes the menu; the one-shot arm is checked
+  against the editor's live text and caret and clears on any other key. If
+  the second `\` arrives before Bob answers, the app asks Bob about the
+  first `\` again and removes the extra `\` only when it would have become
+  `#`, and Undo then restores `\\`.
   Undo restores the literal `\`; an older bob leaves `\` literal and never arms
   the double-tap.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
