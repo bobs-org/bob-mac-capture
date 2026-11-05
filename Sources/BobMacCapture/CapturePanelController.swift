@@ -1067,8 +1067,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot `:`/`^`/`+`/`|` gesture or `.`/`;`/`\` sigil alias
-    /// when the focused main draft editor can insert that character natively.
+    /// Records a one-shot rewrite-lane separator gesture or sigil alias when
+    /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
     /// Modal fields, shortcuts, IME, and non-collapsed selections leave the
@@ -1098,7 +1098,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         } else {
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                 characters == ":" || characters == "^" || characters == "+"
-                    || characters == "|" || characters == "." || characters == ";"
+                    || characters == "|" || characters == "," || characters == "."
+                    || characters == ";"
             else {
                 return
             }
@@ -2262,7 +2263,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
                 pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
                 pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
-                pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,
+                    pickerSourceIsParentTask: model.pickerSourceIsParentTask,
+                    pickerParentContinuationAvailable: model.pickerParentContinuationAvailable,
+                    pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,
                 pickerDispatchInFlight: model.taskGotoDispatchInFlight,
                 pickerFilterIsEmpty: model.pickerFilterIsEmpty,
                 pickerChipVisible: model.pickerChipVisible,

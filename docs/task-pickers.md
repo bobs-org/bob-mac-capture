@@ -158,14 +158,22 @@ dimmed with that reason as the badge — accepting one only announces it. A
 lone whole-item `+` stays a valid +5m Pomodoro adjustment: the picker still
 opens, Escape leaves the draft unchanged, and submitting it extends as before.
 Bob lists `action_continuation_keys` (`0`–`9` and `+`) only for that dual-use
-item. With an empty filter, an unmodified digit or second `+` closes the picker,
-inserts that key once, and suppresses reopen so `+2` / `++3` match fast typing.
-Scoped and prose-terminal pickers never use that handoff. A quiet footer hint
-reads **Type a number or + to adjust; Esc to extend +5m**.
+item, along with `action_continuation_aliases: {",": "+"}`. With an empty
+filter, an unmodified digit, second `+`, or comma closes the picker, inserts
+the advertised key once, and suppresses reopen so `+2` / `++3` match fast
+typing. A Parent Task descriptor includes `continuation: " +"` only when
+accepting a row then typing comma would let Bob open another Parent Task
+picker. With a nonempty filter, comma accepts the selected row and inserts
+that continuation; Shift-Return does the same. A row without a continuation
+keeps comma as filter text and consumes Shift-Return. Older Bob omits the
+metadata, so both keys retain those fallback behaviors. Scoped and
+prose-terminal pickers never get the lone-plus alias.
+A quiet footer hint reads **Type a number or + to adjust; Esc to extend +5m**.
 
 Return/Tab selects the task; Command-Return selects then captures; Control-Return
 selects, captures, and opens the reported notes;
-Shift-Return is consumed and never appends `=`. Escape clears a nonempty filter,
+Shift-Return accepts and continues only when Bob supplies `continuation`; it is
+otherwise consumed and never appends `=`. Escape clears a nonempty filter,
 then cancels to the reopen chip (**Select a parent task** / **Append to a
 task**). Backspace on an empty filter uses Bob's `trigger_removal_range`: it
 deletes a vault `+query` token, or removes scoped `+query` while leaving

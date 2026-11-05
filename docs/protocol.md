@@ -318,7 +318,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
-- `block_id` object, `picker` descriptor, `parent_replacement`, `pomodoro_start_name` context
+- `block_id` object, `picker` descriptor, `parent_replacement`, Parent Task continuation metadata, `pomodoro_start_name` context
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
@@ -331,12 +331,12 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | `@@` absorbs eligible markers; `^` / `:` / `+` switch separators, including sub-bullets and sealed forms; `|` attaches to relation tokens; `.` / `;` alias `^` / `:` at picker positions; `\` aliases `#` at `#` menus | Older bob leaves `.` / `;` literal (move bullets included) and `\` literal (no double-tap arm) and unsupported `+` unchanged; spaces before `|` stay, so only `~note:id|` opens a relation card; other rewrites follow bob | Upgrade `bob` for `+`, relation labels, and sigil aliases |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | Rewrites eligible `@@`, separators, relation pipes, sigil aliases, and Parent Task comma continuations | Older Bob leaves unsupported aliases literal; existing rewrite fallbacks apply | Upgrade `bob` |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
-| `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |
+| `picker` descriptor, `parent_replacement`, Parent Task continuation metadata | Vault-wide `+` picks, ID-less splice, comma alias, and accept-and-continue | Inline list only; comma filters and Shift-Return stays consumed | Upgrade `bob` |
 | `pomodoro_name` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |
 | `creates_pomodoro` | Explicit Create row | Captures without the explicit row (decoded false) | Upgrade `bob` to see it |
 | `pomodoro_start` / `pomodoro_adjust` / `pomodoro_shift` | Session, adjust, and shift rows | Omitted rows; malformed suffixes surface `bob`'s diagnostic | Upgrade `bob` for `=` / `+N` / `++N` |

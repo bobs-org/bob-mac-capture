@@ -18,6 +18,13 @@ final class CaptureEditWriteTests: XCTestCase {
         )
     }
 
+    func testTypedParentTaskAliasPlusCountsAsWritten() {
+        XCTAssertEqual(
+            captureWrittenByteRange(from: "@cash", to: "@cash+"),
+            CaptureRange(start: 5, end: 6)
+        )
+    }
+
     func testBurstIncludingSeparator() {
         XCTAssertEqual(
             captureWrittenByteRange(from: "@file", to: "@file:rea"),

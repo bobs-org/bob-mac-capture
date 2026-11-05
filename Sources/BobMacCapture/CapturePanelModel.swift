@@ -18,7 +18,7 @@ struct CaptureRelationLabelRowEntry: Identifiable {
     let candidate: CaptureCompletionCandidate
 }
 
-/// One-shot expected buffer after native `:`/`^`/`+`/`|` insertion or a `.`/`;` alias.
+/// One-shot expected buffer after native separator insertion or a sigil alias.
 /// Cleared on consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
 /// an accepted toggle supersedes that analysis, while any other outcome completes
@@ -1602,17 +1602,29 @@ final class CapturePanelModel: ObservableObject {
         return []
     }
 
-    /// Bob's alias map for the move picker continuation keys (for example
-    /// `{".": "^"}` on a lone `- ^`). Empty for every other source, a
+    /// Bob's alias map for continuation keys: comma to plus on a lone `+`,
+    /// or period to caret on a lone `- ^`. Empty for other sources, a
     /// nonempty filter, or an older Bob that omits the field.
     var pickerOperatorContinuationAliases: [String: String] {
         guard pickerFilterIsEmpty else {
             return [:]
         }
+        if case .parentTask(let context) = picker?.source,
+            context.isLonePlusOperator
+        {
+            return context.actionContinuationAliases
+        }
         if case .projectTaskMove(let context) = picker?.source {
             return context.actionContinuationAliases
         }
         return [:]
+    }
+
+    var pickerParentContinuationAvailable: Bool {
+        guard case .parentTask(let context) = picker?.source else {
+            return false
+        }
+        return context.continuation != nil
     }
 
     var taskIDPromptCanSubmit: Bool {
@@ -2294,14 +2306,13 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a rewrite-lane
-    /// separator gesture (`:`, `^`, `+`, or `|`) or sigil alias (`.`, `;`,
-    /// or `\`).
+    /// separator gesture or sigil alias.
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
-                || typed == "." || typed == ";" || typed == "\\",
+                || typed == "," || typed == "." || typed == ";" || typed == "\\",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -2401,7 +2412,7 @@ final class CapturePanelModel: ObservableObject {
 
         noteAgendaFirstKeystroke()
 
-        if commitRouteCompletionOnPlus(draft: draft) {
+        if commitRouteCompletionOnAcceptKey(draft: draft) {
             pendingSeparatorToggleIntent = nil
             return
         }
@@ -2547,10 +2558,11 @@ final class CapturePanelModel: ObservableObject {
     }
 
     // Treats `+` as "accept the visible route completion" the same way Return does,
-    // so the user never has to accept the route before opening the task picker.
+    // and lets `,` accept a partial route before Bob rewrites it to `+`.
+    // This lets the user accept the route and open its task picker in one gesture.
     // Decides purely from the draft diff against `completionDraftSnapshot` — never
     // from the view-supplied caret, which SwiftUI can report one edit behind.
-    private func commitRouteCompletionOnPlus(draft: String) -> Bool {
+    private func commitRouteCompletionOnAcceptKey(draft: String) -> Bool {
         guard completionVisible, completionResponse?.context == "route",
               let completionResponse, let snapshot = completionDraftSnapshot
         else {
@@ -2574,8 +2586,14 @@ final class CapturePanelModel: ObservableObject {
         else {
             return false
         }
-        let expectedDraft = String(snapshot[prefixRange]) + "+" + String(snapshot[suffixRange])
-        guard draft == expectedDraft else {
+        let prefix = String(snapshot[prefixRange])
+        let suffix = String(snapshot[suffixRange])
+        let typedKey: String
+        if draft == prefix + "+" + suffix {
+            typedKey = "+"
+        } else if draft == prefix + "," + suffix {
+            typedKey = ","
+        } else {
             return false
         }
 
@@ -2587,6 +2605,11 @@ final class CapturePanelModel: ObservableObject {
         }
 
         if hasExactTypedMatch {
+            guard typedKey == "+" else {
+                // An exact route plus comma should go through Bob's rewrite
+                // lane, which authors the plus and owns its eligibility.
+                return false
+            }
             dismissCompletion()
             scheduleAnalysis(cursorUTF8Offset: r.end + 1, requestCompletion: true, trigger: .edit)
             return true
@@ -2600,7 +2623,7 @@ final class CapturePanelModel: ObservableObject {
 
         var text = draft
         text.replaceSubrange(routeRange, with: candidate.replacement)
-        let caret = r.start + candidate.replacement.utf8.count + 1
+        let caret = r.start + candidate.replacement.utf8.count + typedKey.utf8.count
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             return false
         }
@@ -2608,7 +2631,21 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion()
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
-        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        if typedKey == "," {
+            pendingSeparatorToggleIntent = nil
+            let completionGate = startCaptureRewrite(
+                draft: text,
+                cursorUTF8Offset: caret
+            )
+            scheduleAnalysis(
+                cursorUTF8Offset: caret,
+                requestCompletion: true,
+                trigger: .edit,
+                completionGate: completionGate
+            )
+        } else {
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        }
         return true
     }
 
@@ -7725,6 +7762,10 @@ final class CapturePanelModel: ObservableObject {
     /// "Already in this draft". The move picker also maps here: it inserts
     /// the ID plus Bob's continuation (for example `"\n- ^"`).
     func acceptPickerRowAndContinue(id: String) {
+        if case .parentTask = picker?.source {
+            acceptParentTaskRowAndContinue(id: id)
+            return
+        }
         if case .projectTaskMove = picker?.source {
             acceptProjectTaskMoveRowAndContinue(id: id)
             return
@@ -7768,6 +7809,64 @@ final class CapturePanelModel: ObservableObject {
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
         announceStatus("Inserted \(insertion) — pick the next task to complete")
+    }
+
+    /// Accept a Parent Task row and continue the target run when Bob supplied
+    /// a continuation. ID-less rows still open the ordinary Add block ID
+    /// prompt and do not continue.
+    private func acceptParentTaskRowAndContinue(id: String) {
+        guard let picker = picker,
+            case .parentTask(let context) = picker.source,
+            let continuation = context.continuation,
+            plainDraft == picker.draftSnapshot,
+            let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id) else {
+            return
+        }
+        if row.insertion == nil, let pending = row.pendingBlockID {
+            presentParentTaskIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: .none
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
+            announceStatus(row.badgeText ?? "That task cannot be used yet")
+            return
+        }
+        let continued = insertion + continuation
+        var text = plainDraft
+        text.replaceSubrange(range, with: continued)
+        let caret = picker.replacementRange.start + continued.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        let edit = Self.nativeEditForOrdinaryInsertion(
+            insertion: continued,
+            draft: plainDraft,
+            range: picker.replacementRange
+        )
+        let appliedNatively =
+            edit.map {
+                applyBlockIDSpliceNatively(edit: $0, caretUTF8: caret)
+            } ?? false
+        closePickerForAccept()
+        if !appliedNatively {
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        }
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        let marker =
+            insertion.hasPrefix("@")
+            ? insertion
+            : context.scopeToken + insertion
+        announceStatus("Inserted \(marker) — pick the next task")
     }
 
     /// First Escape clears a non-empty filter; otherwise the picker cancels.

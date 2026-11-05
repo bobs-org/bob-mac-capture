@@ -593,6 +593,57 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
         XCTAssertNil(presentation.row(id: "cash|8:handoff")?.insertion)
     }
 
+    func testBackendCommaContinuationMetadataDecodesFromBobFixtures() throws {
+        let vaultData = try Data(
+            contentsOf: fixtureURL("parent-task-complete-comma-vault.json")
+        )
+        let vaultReply = try JSONDecoder().decode(CaptureCompletionResponse.self, from: vaultData)
+        let vault = try XCTUnwrap(vaultReply.picker?.parentTaskContext)
+        XCTAssertEqual(vault.actionContinuationAliases, [",": "+"])
+        XCTAssertEqual(vault.continuation, " +")
+
+        let scopedData = try Data(
+            contentsOf: fixtureURL("parent-task-complete-comma-scoped.json")
+        )
+        let scopedReply = try JSONDecoder().decode(CaptureCompletionResponse.self, from: scopedData)
+        let scoped = try XCTUnwrap(scopedReply.picker?.parentTaskContext)
+        XCTAssertTrue(scoped.actionContinuationAliases.isEmpty)
+        XCTAssertEqual(scoped.continuation, " +")
+
+        let routedData = try Data(
+            contentsOf: fixtureURL("parent-task-complete-comma-routed.json")
+        )
+        let routedReply = try JSONDecoder().decode(CaptureCompletionResponse.self, from: routedData)
+        let routed = try XCTUnwrap(routedReply.picker?.parentTaskContext)
+        XCTAssertEqual(routed.scopeToken, "@cash+")
+        XCTAssertEqual(routed.markerRange, CaptureRange(start: 10, end: 16))
+        XCTAssertEqual(routed.continuation, " +")
+    }
+
+    func testBackendCommaRewriteFixturesCarryExpectedSingleEdit() throws {
+        let routeData = try Data(
+            contentsOf: fixtureURL("capture-rewrite-sigil-alias-parent-route.json")
+        )
+        let routeReply = try JSONDecoder().decode(CaptureRewriteResponse.self, from: routeData)
+        XCTAssertEqual(routeReply.input, "Call bank @cash,")
+        XCTAssertEqual(routeReply.text, "Call bank @cash+")
+        XCTAssertEqual(
+            routeReply.edits,
+            [CaptureRewriteEdit(range: CaptureRange(start: 15, end: 16), replacement: "+")]
+        )
+
+        let targetData = try Data(
+            contentsOf: fixtureURL("capture-rewrite-sigil-alias-parent-target.json")
+        )
+        let targetReply = try JSONDecoder().decode(CaptureRewriteResponse.self, from: targetData)
+        XCTAssertEqual(targetReply.input, "@cash+goog-exit,")
+        XCTAssertEqual(targetReply.text, "@cash+goog-exit +")
+        XCTAssertEqual(
+            targetReply.edits,
+            [CaptureRewriteEdit(range: CaptureRange(start: 15, end: 16), replacement: " +")]
+        )
+    }
+
     func testBackendEmptyVaultFixtureUsesCaptureNoteEmptyState() throws {
         let data = try Data(contentsOf: fixtureURL("parent-task-complete-empty.json"))
         let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)

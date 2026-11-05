@@ -157,6 +157,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
     var pickerSourceIsTaskGoto = false
+    var pickerSourceIsParentTask = false
+    var pickerParentContinuationAvailable = false
     var pickerSourceIsProjectTaskMove = false
     var pickerDispatchInFlight = false
     var pickerFilterIsEmpty = true
@@ -949,6 +951,11 @@ struct CaptureKeyCommandRouter {
                 if context.pickerSourceIsProjectTaskMove {
                     return .acceptPickerRowAndContinue
                 }
+                if context.pickerSourceIsParentTask,
+                    context.pickerParentContinuationAvailable
+                {
+                    return .acceptPickerRowAndContinue
+                }
                 if context.pickerSourceIsRelation {
                     return .openRelationLabelPrompt
                 }
@@ -1056,6 +1063,17 @@ struct CaptureKeyCommandRouter {
                 {
                     return .continuePickerOperator(mapped)
                 }
+            }
+            if !context.pickerFilterIsEmpty,
+                context.pickerHasSelection,
+                context.pickerSourceIsParentTask,
+                context.pickerParentContinuationAvailable,
+                modifiers.isEmpty,
+                event.characters == ",",
+                !context.keyIsRepeat,
+                !event.isARepeat
+            {
+                return .acceptPickerRowAndContinue
             }
             return nil
         }

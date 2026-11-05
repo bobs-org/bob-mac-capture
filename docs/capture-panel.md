@@ -167,6 +167,12 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
   as typed, otherwise the selected candidate's route is spliced in, and the task picker
   opens immediately without pressing Return first.
+  Typing `,` after a partial route also accepts the selected route, keeps the
+  comma, and asks Bob to rewrite it as the Parent Task `+` selector. An exact
+  typed route leaves comma to Bob's ordinary rewrite lane. When the rewritten
+  position is a complete target run, Bob inserts ` +` and the Parent Task
+  picker opens for the next target. Bob decides eligibility; other commas
+  stay literal. Undo restores the post-key text in one step.
   Typing a bare `@@` after an item-local `@route` or `@route+block-id` marker calls
   `bob capture-rewrite --cursor BYTE --format json -- <draft>` immediately on its own
   lane. When Bob rewrites the draft, the app applies the returned text and cursor only

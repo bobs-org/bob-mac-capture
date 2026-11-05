@@ -5923,6 +5923,131 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testCommaCommitsPartialRouteThenBobOpensParentTaskPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "cash", name: "cash", label: "cash.md", kind: "area",
+                    relativePath: "cash.md")
+            ]
+        )
+
+        model.plainDraft = "Call bank @ca"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "cash")
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = model.plainDraft
+        textView.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0))
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: ",",
+                charactersIgnoringModifiers: ",",
+                isARepeat: false,
+                keyCode: 43
+            )!,
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        textView.insertText(",", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        XCTAssertEqual(model.plainDraft, "Call bank @cash+")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
+        await waitUntil { model.completionResponse?.context == "task" }
+        XCTAssertEqual(model.completionResponse?.picker?.continuation, " +")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 16 --format json -- Call bank @cash,"))
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash+"))
+    }
+
+    func testCommaOnExactRouteUsesBobRewriteLane() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "cash", name: "cash", label: "cash.md", kind: "area",
+                    relativePath: "cash.md")
+            ]
+        )
+
+        model.plainDraft = "Call bank @cash"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = model.plainDraft
+        textView.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0))
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: ",",
+                charactersIgnoringModifiers: ",",
+                isARepeat: false,
+                keyCode: 43
+            )!,
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        textView.insertText(",", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        await waitUntil { model.completionResponse?.context == "task" }
+        XCTAssertEqual(model.plainDraft, "Call bank @cash+")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 16 --format json -- Call bank @cash,"))
+        XCTAssertFalse(
+            record.contains(
+                "capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash,"))
+    }
+
     func testPlusOnExactTypedRouteKeepsDraftAndOpensTaskPicker() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

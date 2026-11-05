@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@cash+goog-exit,","text":"@cash+goog-exit +","changed":true,"cursor":17,"rule":"expand_sigil_alias","edits":[{"range":{"start":15,"end":16},"replacement":" +"}],"summary":"Typed + for ,"}

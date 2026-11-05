@@ -8,9 +8,10 @@ public enum ParentTaskPickerScope: String, Equatable, Sendable {
 }
 
 /// Server-authored parent-task picker context: scoped `@route+` vs vault-wide
-/// `+`, the capsule token, highlight and Backspace ranges, and optional
-/// lone-plus operator-continuation keys. Swift never classifies capture
-/// syntax from these keys; it only routes them.
+/// `+`, the capsule token, highlight and Backspace ranges, optional
+/// lone-plus operator-continuation keys and aliases, and an optional
+/// accept-and-continue suffix. Swift never classifies capture syntax from
+/// these fields; it only routes them.
 public struct ParentTaskPickerContext: Equatable, Sendable {
     public let scope: ParentTaskPickerScope
     public let scopeToken: String
@@ -18,6 +19,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
     public let markerRange: CaptureRange
     public let triggerRemovalRange: CaptureRange
     public let actionContinuationKeys: [String]
+    public let actionContinuationAliases: [String: String]
+    public let continuation: String?
     public let relationship: CapturePickerRelationship?
 
     public init(
@@ -27,6 +30,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
         actionContinuationKeys: [String] = [],
+        actionContinuationAliases: [String: String] = [:],
+        continuation: String? = nil,
         relationship: CapturePickerRelationship? = nil
     ) {
         self.scope = scope
@@ -35,6 +40,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         self.markerRange = markerRange
         self.triggerRemovalRange = triggerRemovalRange
         self.actionContinuationKeys = actionContinuationKeys
+        self.actionContinuationAliases = actionContinuationAliases
+        self.continuation = continuation
         self.relationship = relationship
     }
 
@@ -66,6 +73,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
     public static func vault(
         markerRange: CaptureRange,
         actionContinuationKeys: [String] = [],
+        actionContinuationAliases: [String: String] = [:],
+        continuation: String? = nil,
         relationship: CapturePickerRelationship? = nil
     ) -> ParentTaskPickerContext {
         ParentTaskPickerContext(
@@ -75,6 +84,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
             markerRange: markerRange,
             triggerRemovalRange: markerRange,
             actionContinuationKeys: actionContinuationKeys,
+            actionContinuationAliases: actionContinuationAliases,
+            continuation: continuation,
             relationship: relationship
         )
     }
@@ -84,6 +95,7 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         noteTarget: String,
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
+        continuation: String? = nil,
         relationship: CapturePickerRelationship? = nil
     ) -> ParentTaskPickerContext {
         ParentTaskPickerContext(
@@ -92,6 +104,7 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
             noteTarget: noteTarget,
             markerRange: markerRange,
             triggerRemovalRange: triggerRemovalRange,
+            continuation: continuation,
             relationship: relationship
         )
     }

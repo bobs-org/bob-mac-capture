@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Call bank @cash,","text":"Call bank @cash+","changed":true,"cursor":16,"rule":"expand_sigil_alias","edits":[{"range":{"start":15,"end":16},"replacement":"+"}],"summary":"Typed + for ,"}

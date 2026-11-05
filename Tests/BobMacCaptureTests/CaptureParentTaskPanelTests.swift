@@ -52,20 +52,25 @@ final class CaptureParentTaskPanelTests: XCTestCase {
     }
 
     private func vaultContext(
-        continuationKeys: [String] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"]
+        continuationKeys: [String] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"],
+        continuationAliases: [String: String] = [:],
+        continuation: String? = nil
     ) -> ParentTaskPickerContext {
         .vault(
             markerRange: CaptureRange(start: 0, end: 1),
-            actionContinuationKeys: continuationKeys
+            actionContinuationKeys: continuationKeys,
+            actionContinuationAliases: continuationAliases,
+            continuation: continuation
         )
     }
 
-    private func scopedContext() -> ParentTaskPickerContext {
+    private func scopedContext(continuation: String? = nil) -> ParentTaskPickerContext {
         .note(
             route: "cash",
             noteTarget: "cash.md",
             markerRange: CaptureRange(start: 0, end: 6),
-            triggerRemovalRange: CaptureRange(start: 5, end: 6)
+            triggerRemovalRange: CaptureRange(start: 5, end: 6),
+            continuation: continuation
         )
     }
 
@@ -73,12 +78,18 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         filter: String = "",
         draft: String = "+",
         replacement: CaptureRange = CaptureRange(start: 0, end: 1),
-        continuationKeys: [String] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"]
+        continuationKeys: [String] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"],
+        continuationAliases: [String: String] = [:],
+        continuation: String? = nil
     ) -> CapturePanelModel {
         let model = CapturePanelModel()
         model.installParentTaskPickerForPreviews(
             candidates: [identifiedCandidate(), idlessCandidate()],
-            context: vaultContext(continuationKeys: continuationKeys),
+            context: vaultContext(
+                continuationKeys: continuationKeys,
+                continuationAliases: continuationAliases,
+                continuation: continuation
+            ),
             filter: filter,
             draft: draft,
             replacement: replacement
@@ -89,12 +100,13 @@ final class CaptureParentTaskPanelTests: XCTestCase {
     private func installScopedPicker(
         filter: String = "",
         draft: String = "@cash+",
-        replacement: CaptureRange = CaptureRange(start: 6, end: 6)
+        replacement: CaptureRange = CaptureRange(start: 6, end: 6),
+        continuation: String? = nil
     ) -> CapturePanelModel {
         let model = CapturePanelModel()
         model.installParentTaskPickerForPreviews(
             candidates: [scopedIdentifiedCandidate()],
-            context: scopedContext(),
+            context: scopedContext(continuation: continuation),
             filter: filter,
             draft: draft,
             replacement: replacement
@@ -118,6 +130,84 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "@cash+goog-exit")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 15)
         XCTAssertEqual(model.statusText, "Inserted goog-exit")
+    }
+
+    func testScopedCommaAcceptsAndContinuesTheTargetRun() {
+        let model = installScopedPicker(
+            filter: "goog",
+            draft: "@cash+goog",
+            replacement: CaptureRange(start: 6, end: 10),
+            continuation: " +"
+        )
+        model.acceptPickerRowAndContinue(id: "cash|4:googexit")
+        XCTAssertEqual(model.plainDraft, "@cash+goog-exit +")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted @cash+goog-exit — pick the next task")
+    }
+
+    func testVaultAndProseTerminalCommaAcceptAndContinueTheTargetRun() {
+        let vault = installVaultPicker(
+            draft: "+",
+            replacement: CaptureRange(start: 0, end: 1),
+            continuation: " +"
+        )
+        vault.acceptPickerRowAndContinue(id: "sase|6:41d049f2")
+        XCTAssertEqual(vault.plainDraft, "@sase+deep-fix +")
+        XCTAssertEqual(vault.statusText, "Inserted @sase+deep-fix — pick the next task")
+
+        let prose = installVaultPicker(
+            draft: "Buy milk +",
+            replacement: CaptureRange(start: 9, end: 10),
+            continuation: " +"
+        )
+        prose.acceptPickerRowAndContinue(id: "sase|6:41d049f2")
+        XCTAssertEqual(prose.plainDraft, "Buy milk @sase+deep-fix +")
+    }
+
+    func testCommaAcceptOnAnIDlessParentTaskOpensTheIDPromptWithoutContinuing() {
+        let model = installVaultPicker(
+            filter: "Call",
+            continuation: " +"
+        )
+        model.acceptPickerRowAndContinue(id: "mac_inbox|4:bf5e981c")
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(model.plainDraft, "+")
+    }
+
+    func testCommaAcceptContinuationUndoRestoresTheDraft() {
+        let model = installScopedPicker(
+            filter: "goog",
+            draft: "@cash+goog",
+            replacement: CaptureRange(start: 6, end: 10),
+            continuation: " +"
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.allowsUndo = true
+        textView.string = model.plainDraft
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        textView.setSelectedRange(
+            NSRange(location: (textView.string as NSString).length, length: 0)
+        )
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applySeparatorToggleInEditableTextView(
+                edit,
+                firstResponder: textView
+            )
+        }
+
+        model.acceptPickerRowAndContinue(id: "cash|4:googexit")
+        XCTAssertEqual(textView.string, "@cash+goog-exit +")
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "@cash+goog")
     }
 
     func testShiftReturnDoesNotStartPlusSelectedTask() {
@@ -272,15 +362,104 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         XCTAssertTrue(model.pickerVisible)
     }
 
-    func testRouterShiftReturnIsConsumedForParentTask() {
+    func testRouterShiftReturnIsConsumedForParentTaskWithoutContinuation() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(
             pickerVisible: true,
-            pickerSourceIsTaskLink: false
+            pickerSourceIsTaskLink: false,
+            pickerSourceIsParentTask: true
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
             .consumeKey
+        )
+    }
+
+    func testRouterShiftReturnAcceptsAndContinuesParentTaskWhenAdvertised() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsParentTask: true,
+            pickerParentContinuationAvailable: true
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            .acceptPickerRowAndContinue
+        )
+    }
+
+    func testRouterCommaAcceptsParentTaskOnlyWithNonemptyFilterAndSelection() {
+        let router = CaptureKeyCommandRouter()
+        let available = CaptureKeyRoutingContext(
+            pickerHasSelection: true,
+            pickerVisible: true,
+            pickerSourceIsParentTask: true,
+            pickerParentContinuationAvailable: true,
+            pickerFilterIsEmpty: false
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 43, modifiers: [], characters: ","),
+                context: available
+            ),
+            .acceptPickerRowAndContinue
+        )
+
+        for context in [
+            CaptureKeyRoutingContext(
+                pickerVisible: true,
+                pickerSourceIsParentTask: true,
+                pickerParentContinuationAvailable: true
+            ),
+            CaptureKeyRoutingContext(
+                pickerHasSelection: false,
+                pickerVisible: true,
+                pickerSourceIsParentTask: true,
+                pickerParentContinuationAvailable: true,
+                pickerFilterIsEmpty: false
+            ),
+            CaptureKeyRoutingContext(
+                pickerHasSelection: true,
+                pickerVisible: true,
+                pickerSourceIsParentTask: true,
+                pickerFilterIsEmpty: false
+            ),
+        ] {
+            XCTAssertNil(
+                router.command(
+                    for: keyEvent(keyCode: 43, modifiers: [], characters: ","),
+                    context: context
+                )
+            )
+        }
+    }
+
+    func testRouterCommaKeepsLonePlusAliasPrecedenceAndEmptyFiltersEditable() {
+        let router = CaptureKeyCommandRouter()
+        let lonePlus = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsParentTask: true,
+            pickerOperatorContinuationKeys: ["+"],
+            pickerOperatorContinuationAliases: [",": "+"]
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 43, modifiers: [], characters: ","),
+                context: lonePlus
+            ),
+            .continuePickerOperator("+")
+        )
+
+        let nonLone = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsParentTask: true,
+            pickerParentContinuationAvailable: true
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 43, modifiers: [], characters: ","),
+                context: nonLone
+            )
         )
     }
 

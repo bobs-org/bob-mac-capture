@@ -1854,8 +1854,20 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-pomodoro-block-id.json"
     elif [[ "${draft}" == ";" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-task-link.json"
+    elif [[ "${draft}" == "@cash," ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-parent-cash.json"
+    elif [[ "${draft}" == "Call bank @cash," ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-parent-route.json"
+    elif [[ "${draft}" == "@cash+goog-exit," ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-parent-target.json"
     elif [[ "${draft}" == "Buy milk." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-unchanged.json"
+    elif [[ "${draft}" == "Buy milk," ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
     elif [[ "${draft}" == $'@cash^goog-exit@\n- .' ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-move-caret.json"
     elif [[ "${draft}" == $'@cash:goog-exit@\n- ;' ]]; then
@@ -3201,6 +3213,10 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-prose.json"
     elif [[ "${draft}" == "@cash+" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-cash.json"
+    elif [[ "${draft}" == "Call bank @cash+" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-comma-routed.json"
+    elif [[ "${draft}" == "@cash+goog-exit +" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-comma-next-target.json"
     elif [[ "${draft}" == "@cash+goog-exit" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-exact.json"
     elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^' ]]; then

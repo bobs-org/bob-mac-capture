@@ -8581,7 +8581,7 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
     public let triggerRemovalRange: CaptureRange
     public let actionContinuationKeys: [String]
     /// Additive alias map for operator-continuation keys (for example
-    /// `{".": "^"}` on the lone `- ^` Move picker). Older Bob omits it.
+    /// `{".": "^"}` on `- ^` or `{",": "+"}` on a lone `+`). Older Bob omits it.
     public let actionContinuationAliases: [String: String]
     /// Additive owner-mode descriptor on `+` / `@route+` pickers inside a
     /// relationship draft. Older Bob omits it.
@@ -8589,8 +8589,9 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
     /// Additive move-picker destination (`cash_goog_exit.md`). Only the
     /// `project_task_move` descriptor sends it; older Bob omits it.
     public let destination: String?
-    /// Additive shift-return continuation (for example `"\n- ^"`). Only the
-    /// `project_task_move` descriptor sends it; older Bob omits it.
+    /// Additive accept-and-continue suffix (for example `"\n- ^"` or
+    /// `" +"`). Move and eligible Parent Task descriptors send it; older Bob
+    /// omits it.
     public let continuation: String?
 
     public init(
@@ -8682,6 +8683,8 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
             markerRange: markerRange,
             triggerRemovalRange: triggerRemovalRange,
             actionContinuationKeys: actionContinuationKeys,
+            actionContinuationAliases: actionContinuationAliases,
+            continuation: continuation,
             relationship: relationship
         )
     }

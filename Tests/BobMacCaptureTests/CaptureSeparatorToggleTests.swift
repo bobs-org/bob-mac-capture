@@ -1108,6 +1108,50 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "Do work @file:id^")
     }
 
+    func testTypedCommaInCloseTaskListStaysLiteralForCloseGrammar() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("x1")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(",", into: textView, model: model)
+
+        await waitUntil { model.isClosePending }
+        XCTAssertEqual(model.plainDraft, "x1,")
+        XCTAssertEqual(textView.string, "x1,")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 3 --format json -- x1,"))
+        XCTAssertTrue(record.contains("capture-parse --format json -- x1,"))
+    }
+
+    func testCommaAfterCompleteTargetRunOpensNextParentPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("@cash+goog-exit")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(",", into: textView, model: model)
+
+        await waitUntil { model.completionResponse?.context == "task_parent" }
+        XCTAssertEqual(model.plainDraft, "@cash+goog-exit +")
+        XCTAssertEqual(model.completionResponse?.picker?.continuation, " +")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-rewrite --cursor 16 --format json -- @cash+goog-exit,"
+            )
+        )
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 17 --format json -- @cash+goog-exit +"
+            )
+        )
+    }
+
     func testAcceptedRelationAndTypedPipeGluesAndOpensLabelCard() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
