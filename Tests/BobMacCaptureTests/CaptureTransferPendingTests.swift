@@ -118,6 +118,155 @@ final class CaptureTransferPendingTests: XCTestCase {
         XCTAssertTrue(try recordedCaptureDryRun(record))
     }
 
+    func testTransferVerbFlipAnnouncesOnceAcrossPending() async throws {
+        let record = temporaryURL()
+        let model = makeSequenceModel(
+            record: record,
+            parseFixture: "capture-parse-transfer-merge.json",
+            firstFixture: "capture-transfer-move.json",
+            nextFixture: "capture-transfer-pending-block-id.json",
+            thirdFixture: "capture-transfer-drawer-merge.json"
+        )
+
+        model.plainDraft = "@inbox+bench > @db"
+        model.preview()
+        try await waitUntil { model.previewResults.first?.kind == "task_move" }
+        XCTAssertEqual(model.transferVerbAnnouncementTick, 0)
+        XCTAssertNil(model.transferVerbAnnouncement)
+
+        model.plainDraft = "@inbox+bench > @db+"
+        model.preview()
+        try await waitUntil { model.transferPendingPresentation != nil }
+        XCTAssertEqual(model.transferVerbAnnouncementTick, 0)
+
+        model.plainDraft = "@inbox+bench > @db+upgrade"
+        model.preview()
+        try await waitUntil {
+            model.previewResults.first?.kind == "task_merge"
+                && model.transferVerbAnnouncementTick == 1
+        }
+        XCTAssertEqual(
+            model.transferVerbAnnouncement, "Now merging into “Upgrade Postgres to 17”")
+
+        model.preview()
+        try await waitUntil { (try? self.dryRunCount(record)) == 4 }
+        XCTAssertEqual(model.transferVerbAnnouncementTick, 1)
+    }
+
+    func testMoveToSectionMergeAnnouncesUnquotedDestination() async throws {
+        let record = temporaryURL()
+        let model = makeSequenceModel(
+            record: record,
+            parseFixture: "capture-parse-transfer-merge.json",
+            firstFixture: "capture-transfer-move.json",
+            nextFixture: "capture-transfer-section-merge.json"
+        )
+
+        model.plainDraft = "@inbox+bench > @db"
+        model.preview()
+        try await waitUntil { model.previewResults.first?.kind == "task_move" }
+        XCTAssertEqual(model.transferVerbAnnouncementTick, 0)
+
+        model.plainDraft = "@inbox+bench > @db#Future Work"
+        model.preview()
+        try await waitUntil { model.transferVerbAnnouncementTick == 1 }
+        XCTAssertEqual(
+            model.transferVerbAnnouncement, "Now merging into db.md § Future Work")
+    }
+
+    func testPendingFooterClearsOnValidMergePreview() async throws {
+        let record = temporaryURL()
+        let model = makeSequenceModel(
+            record: record,
+            parseFixture: "capture-parse-transfer-merge.json",
+            firstFixture: "capture-transfer-pending-block-id.json",
+            nextFixture: "capture-transfer-merge.json"
+        )
+
+        model.plainDraft = "@inbox+bench > @db+"
+        model.preview()
+        try await waitUntil { model.transferPendingPresentation != nil }
+        XCTAssertTrue(
+            model.statusText.contains("finish the destination"), model.statusText)
+
+        model.plainDraft = "@inbox+bench > @db+upgrade"
+        model.preview()
+        try await waitUntil { model.previewResults.first?.kind == "task_merge" }
+        XCTAssertEqual(
+            model.statusText,
+            "Would merge 2 tasks into “Always add capture time to ref marker note!” · work.md"
+        )
+    }
+
+    func testRefusalFooterReadsReadyAfterEditingAwayToNonTransfer() async throws {
+        let record = temporaryURL()
+        let environment = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+            "BOB_DIR": "/tmp/transfer-pending-test-\(UUID().uuidString)",
+            "FAKE_BOB_RECORD_PATH": record.path,
+            // No parse fixture: the edited-away draft below must parse
+            // clean (no diagnostics, needs, or spans), which fake-bob's
+            // default echo parse provides. A transfer fixture's spans
+            // would not validate against the new draft and would overwrite
+            // the footer with a malformed-span notice.
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": try fixtureText(
+                "capture-transfer-refusal-open-subtasks.json"),
+            "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "1",
+            // Delays every dry run (including the live preview the edit
+            // below triggers) so the footer can be asserted after the fast
+            // parse applies and before the slow preview response lands.
+            "FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "2",
+        ]
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: environment
+            ),
+            debounceNanoseconds: 0
+        )
+
+        model.plainDraft = "@inbox+bench > @db+upgrade"
+        model.preview()
+        try await waitUntil { model.transferRefusalPresentation != nil }
+        XCTAssertEqual(model.statusText, "Can't merge")
+
+        model.plainDraft = "Buy milk"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+        // The footer assertion below must land after this parse applies
+        // and before the delayed live preview responds.
+        try await waitUntil { model.latestParse?.input == "Buy milk" }
+        XCTAssertEqual(model.statusText, "")
+    }
+
+    private func makeSequenceModel(
+        record: URL,
+        parseFixture: String,
+        firstFixture: String,
+        nextFixture: String,
+        thirdFixture: String? = nil
+    ) -> CapturePanelModel {
+        var environment = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+            "BOB_DIR": "/tmp/transfer-pending-test-\(UUID().uuidString)",
+            "FAKE_BOB_RECORD_PATH": record.path,
+            "FAKE_BOB_PARSE_FIXTURE": parseFixture,
+            "FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE": firstFixture,
+            "FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE": nextFixture,
+        ]
+        if let thirdFixture {
+            environment["FAKE_BOB_CAPTURE_DRY_RUN_THIRD_FIXTURE"] = thirdFixture
+        }
+        return CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: environment
+            ),
+            debounceNanoseconds: 0
+        )
+    }
+
     private func makeModel(
         record: URL,
         parseFixture: String,
@@ -188,9 +337,13 @@ final class CaptureTransferPendingTests: XCTestCase {
     }
 
     private func recordedCaptureDryRun(_ url: URL) throws -> Bool {
-        try recordText(url).components(separatedBy: .newlines).contains { line in
+        try dryRunCount(url) > 0
+    }
+
+    private func dryRunCount(_ url: URL) throws -> Int {
+        try recordText(url).components(separatedBy: .newlines).filter { line in
             line.hasPrefix("argv=capture ") && line.contains("--dry-run")
-        }
+        }.count
     }
 
     private func waitUntil(

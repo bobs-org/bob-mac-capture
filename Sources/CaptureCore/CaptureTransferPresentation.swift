@@ -326,12 +326,14 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
         public let targetStatusName: String?
         public let locator: String
         public let detailText: String?
+        public let detailIsRename: Bool
         public let fallback: Bool
     }
 
     public struct DestinationRow: Equatable, Sendable {
         public let kind: String
         public let title: TaskDisplayText
+        public let hasTitle: Bool
         public let status: CapturePickerTaskStatus?
         public let statusName: String?
         public let relativePath: String
@@ -390,6 +392,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
                     targetStatusName: move.statusName,
                     locator: Self.locator(path: move.sourcePath, line: move.sourceLine),
                     detailText: Self.moveDetail(move),
+                    detailIsRename: Self.isMoveRename(move),
                     fallback: false
                 )
             }
@@ -400,6 +403,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
             destination = DestinationRow(
                 kind: "note",
                 title: TaskDisplayText(parsing: path),
+                hasTitle: false,
                 status: nil,
                 statusName: nil,
                 relativePath: first.destinationPath,
@@ -429,6 +433,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
                         detailText: merge.movedNotes == 0
                             ? "title only"
                             : "\(merge.movedNotes) note\(merge.movedNotes == 1 ? "" : "s") move\(merge.movedNotes == 1 ? "s" : "" )",
+                        detailIsRename: false,
                         fallback: false
                     )
                 }
@@ -442,15 +447,17 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
                     targetStatusName: nil,
                     locator: Self.locator(path: merge.source.path, line: merge.source.line),
                     detailText: nil,
+                    detailIsRename: false,
                     fallback: true
                 )
             }
             let target = merges[0].target
-            let targetTitle = target.title.flatMap { $0.isEmpty ? nil : $0 }
-                ?? Self.displayPath(target.path)
+            let bobTitle = target.title.flatMap { $0.isEmpty ? nil : $0 }
+            let targetTitle = bobTitle ?? Self.displayPath(target.path)
             destination = DestinationRow(
                 kind: target.kind ?? "task",
                 title: TaskDisplayText(parsing: targetTitle),
+                hasTitle: bobTitle != nil,
                 status: target.statusSymbol == nil && target.statusName == nil
                     ? nil
                     : CapturePickerTaskStatus(symbol: target.statusSymbol, name: target.statusName),
@@ -491,7 +498,8 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
         }
 
         if state == .alreadyMerged {
-            alreadyMergedText = "Already merged into “\(destination.title.text)”"
+            let announced = Self.announcementDestinationText(destination: destination)
+            alreadyMergedText = "Already merged into \(announced)"
         } else {
             alreadyMergedText = nil
         }
@@ -506,14 +514,22 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
             summary.append("Nothing to write")
         } else {
             summary.append(contentsOf: spokenSources)
-            var destinationSpeech = "into \(destination.title.text)"
+            var destinationSpeech: String
+            if destination.hasTitle {
+                destinationSpeech = "into \(destination.title.text)"
+            } else {
+                let untitled = Self.untitledDestinationPhrase(destination: destination)
+                destinationSpeech = "into \(untitled)"
+            }
             if let statusName = destination.statusName, !statusName.isEmpty {
                 destinationSpeech += ", \(statusName)"
             }
             if !destination.locator.isEmpty {
                 destinationSpeech += ", \(destination.locator)"
             }
-            if let container = destination.containerLabel, !container.isEmpty {
+            if destination.hasTitle,
+                let container = destination.containerLabel, !container.isEmpty
+            {
                 destinationSpeech += ", \(container)"
             }
             if destination.isNew { destinationSpeech += ", new" }
@@ -529,7 +545,9 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
 
     private static func notificationLine(_ row: SourceRow) -> String {
         var parts = [row.title.text]
-        if let source = row.statusName, let target = row.targetStatusName {
+        if let source = row.statusName, let target = row.targetStatusName,
+            !isSameStatus(row)
+        {
             parts.append("\(source) → \(target)")
         }
         if let detail = row.detailText { parts.append(detail) }
@@ -538,12 +556,50 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
 
     private static func accessibilityLine(_ row: SourceRow) -> String {
         var parts = [row.title.text]
-        if let source = row.statusName, let target = row.targetStatusName {
+        if let source = row.statusName, let target = row.targetStatusName,
+            !isSameStatus(row)
+        {
             parts.append("\(source) to \(target)")
         }
         if !row.locator.isEmpty { parts.append(row.locator) }
         if let detail = row.detailText { parts.append(detail) }
         return parts.joined(separator: ", ")
+    }
+
+    /// True when a move renamed its block ID: both IDs present and different.
+    /// Merges and fallbacks never set the flag; the words carry the rename
+    /// so color is never the only signal.
+    private static func isMoveRename(_ move: CaptureTransferMove) -> Bool {
+        guard let oldID = move.oldBlockID, let newID = move.newBlockID else {
+            return false
+        }
+        return oldID != newID
+    }
+
+    /// True when source and target status names and symbols are equal, so a
+    /// move row shows no transition chip or `X → X` fragment. The leading
+    /// status glyph already carries the status.
+    private static func isSameStatus(_ row: SourceRow) -> Bool {
+        row.status == row.targetStatus && row.statusName == row.targetStatusName
+    }
+
+    /// Unquoted destination phrase for merge targets Bob did not title: the
+    /// display path plus the container label, e.g. `db.md § Future Work`.
+    private static func untitledDestinationPhrase(destination: DestinationRow) -> String {
+        let base = displayPath(destination.relativePath)
+        if let container = destination.containerLabel, !container.isEmpty {
+            return "\(base) \(container)"
+        }
+        return base
+    }
+
+    /// Destination wording for announcements and the already-merged line:
+    /// the quoted title when Bob supplied one, else the unquoted phrase.
+    public static func announcementDestinationText(destination: DestinationRow) -> String {
+        guard destination.hasTitle else {
+            return untitledDestinationPhrase(destination: destination)
+        }
+        return "“\(destination.title.text)”"
     }
 
     private static func moveDetail(_ move: CaptureTransferMove) -> String? {
@@ -558,6 +614,9 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
         verb: Verb,
         destination: DestinationRow
     ) -> String {
+        if verb == .merge, !destination.hasTitle {
+            return untitledDestinationPhrase(destination: destination)
+        }
         let title = destination.title.text
         let base = verb == .merge ? "“\(title)” · \(displayPath(destination.relativePath))" : title
         if let container = destination.containerLabel, !container.isEmpty {
@@ -570,7 +629,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
         verb: Verb,
         destination: DestinationRow
     ) -> String {
-        if verb == .merge { return "“\(destination.title.text)”" }
+        if verb == .merge { return announcementDestinationText(destination: destination) }
         return destination.title.text
     }
 

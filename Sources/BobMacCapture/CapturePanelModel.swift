@@ -561,6 +561,17 @@ final class CapturePanelModel: ObservableObject {
     @Published var statusAnnouncementTick = 0
     @Published var transferVerbAnnouncementTick = 0
     @Published var transferVerbAnnouncement: String?
+    /// Remembers the last previewed transfer verb across the preview caches
+    /// that `clearPreviewOutputs()` resets, so a move → merge flip for the
+    /// same draft announces once. Set whenever a preview assigns a
+    /// single-transfer result; untouched through transfer pending and
+    /// refusal states; nil once the draft stops being a transfer.
+    private var lastPreviewTransferVerb: CaptureTransferPresentation.Verb?
+    /// The footer text `showTransferFailure` last wrote (pending title,
+    /// older-bob diagnostic, or refusal title). A later successful preview
+    /// or non-transfer parse resets the footer to Ready only while it still
+    /// shows this text, never clobbering unrelated notices.
+    private var transferOwnedStatusText: String?
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
     @Published var isTemplateShelfPresented = false
@@ -2143,18 +2154,19 @@ final class CapturePanelModel: ObservableObject {
         globalDestination: CaptureGlobalDestination?,
         previewDraft: String
     ) {
-        let previousTransfer = previewResults
-            .compactMap { CaptureTransferPresentation(capture: $0) }
-            .first
-        let nextTransfer = captures
-            .compactMap { CaptureTransferPresentation(capture: $0) }
-            .first
-        if let previousTransfer, let nextTransfer,
-           previousTransfer.verb != nextTransfer.verb
-        {
-            transferVerbAnnouncement =
-                "Now \(nextTransfer.verb.gerund) into “\(nextTransfer.destination.title.text)”"
-            transferVerbAnnouncementTick += 1
+        let nextTransfer: CaptureTransferPresentation? =
+            captures.count == 1 ? CaptureTransferPresentation(capture: captures[0]) : nil
+        if let nextTransfer {
+            if let remembered = lastPreviewTransferVerb, remembered != nextTransfer.verb {
+                let destination = CaptureTransferPresentation.announcementDestinationText(
+                    destination: nextTransfer.destination
+                )
+                transferVerbAnnouncement = "Now \(nextTransfer.verb.gerund) into \(destination)"
+                transferVerbAnnouncementTick += 1
+            }
+            lastPreviewTransferVerb = nextTransfer.verb
+        } else {
+            lastPreviewTransferVerb = nil
         }
         emptyNotePullPresentation = nil
         transferPendingPresentation = nil
@@ -2165,6 +2177,19 @@ final class CapturePanelModel: ObservableObject {
         previewOpenPlan = CaptureOpenPlan(openNotes: openNotes, captures: captures)
         previewOutputsDraft = previewDraft
         schedulePastBoundaryRefresh()
+    }
+
+    /// Drops the remembered transfer footer after a later preview or parse
+    /// overwrote it, or resets the footer to Ready while it still shows the
+    /// remembered text. Unrelated notices are never clobbered.
+    private func consumeTransferOwnedStatus() {
+        guard let owned = transferOwnedStatusText else {
+            return
+        }
+        transferOwnedStatusText = nil
+        if statusText == owned {
+            statusText = ""
+        }
     }
 
     private func clearPreviewOutputs() {
@@ -4658,6 +4683,8 @@ final class CapturePanelModel: ObservableObject {
     private func resetAnalysisState() {
         invalidateAnalysis()
         stopClipboardPolling()
+        lastPreviewTransferVerb = nil
+        transferOwnedStatusText = nil
         cancelSimilarTasks(clear: true)
         editAnalysisBaseline = plainDraft
         invalidateRewrite()
@@ -13505,6 +13532,8 @@ final class CapturePanelModel: ObservableObject {
             lastSuccessGlobalDestination = success.globalDestination
             previewPullInSnapshot = nil
             clearPreviewOutputs()
+            lastPreviewTransferVerb = nil
+            transferOwnedStatusText = nil
             errorMessage = nil
             errorCode = nil
             setPlainDraft("")
@@ -13810,6 +13839,7 @@ final class CapturePanelModel: ObservableObject {
                     globalDestination: success.globalDestination
                 )
             }
+            consumeTransferOwnedStatus()
         case .failure(let failure):
             if showTransferFailure(failure, parseMode: latestParse?.mode) {
                 return
@@ -14073,11 +14103,13 @@ final class CapturePanelModel: ObservableObject {
                 transferPendingPresentation = presentation
                 previewState = .failed(failure.error)
                 statusText = presentation.title
+                transferOwnedStatusText = presentation.title
             } else {
                 // Prior Bob versions have the diagnostic, but not the additive
                 // pending payload. Keep the preview itself quiet in that case.
                 previewState = .idle
                 statusText = failure.error
+                transferOwnedStatusText = failure.error
             }
             return true
         }
@@ -14099,6 +14131,7 @@ final class CapturePanelModel: ObservableObject {
         errorMessage = nil
         errorCode = nil
         statusText = presentation.verb.title
+        transferOwnedStatusText = presentation.verb.title
         return true
     }
 
@@ -14876,6 +14909,10 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = start.statusText
                         } else if let ref = Self.soleRefPresentation(for: captures) {
                             self?.statusText = ref.statusText
+                        } else if captures.count == 1,
+                                  let transfer = CaptureTransferPresentation(capture: captures[0])
+                        {
+                            self?.statusText = transfer.statusLineText
                         } else if self?.statusText == "Preview failed" {
                             // A successful live preview that sets no
                             // kind-specific status clears a stale failure
@@ -14883,6 +14920,7 @@ final class CapturePanelModel: ObservableObject {
                             // such as rewrite notices, is left untouched.
                             self?.statusText = ""
                         }
+                        self?.consumeTransferOwnedStatus()
                         if let separator = pendingSeparator {
                             // The card previews the trimmed draft: mark it
                             // pending, dim it in the view, and disable the
@@ -16008,6 +16046,8 @@ final class CapturePanelModel: ObservableObject {
             statusText = diagnostic.message
         } else if statusText == "Ready" || statusText.isEmpty || statusText == "Target cache stale" {
             statusText = "Ready"
+        } else {
+            consumeTransferOwnedStatus()
         }
     }
 

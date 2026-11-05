@@ -128,7 +128,7 @@ struct CaptureTransferCardView: View {
             if let detailText = row.detailText {
                 Text(detailText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(row.detailIsRename ? .orange : .secondary)
                     .padding(.leading, 20)
             }
         }
@@ -235,7 +235,8 @@ struct CaptureTransferCardView: View {
         toName target: String?
     ) -> some View {
         if let source, !source.isEmpty, let target, !target.isEmpty,
-           let sourceStatus, let targetStatus
+           let sourceStatus, let targetStatus,
+           !(source == target && sourceStatus == targetStatus)
         {
             HStack(spacing: 3) {
                 statusChip(source, status: sourceStatus)

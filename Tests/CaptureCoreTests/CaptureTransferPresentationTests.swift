@@ -166,6 +166,108 @@ final class CaptureTransferPresentationTests: XCTestCase {
         XCTAssertTrue(section.destination.isNew)
     }
 
+    func testSectionMergeCopyNamesPathAndSectionWithoutQuotingFileName() throws {
+        let section = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-section-merge.json"))
+        )
+        XCTAssertFalse(section.destination.hasTitle)
+        XCTAssertEqual(
+            section.statusLineText,
+            "Would merge 1 task into db.md § Future Work"
+        )
+        XCTAssertEqual(
+            section.notificationTitle,
+            "Would merge 1 task into db.md § Future Work"
+        )
+        XCTAssertTrue(
+            section.previewAccessibilitySummary.contains("into db.md § Future Work"),
+            section.previewAccessibilitySummary
+        )
+        XCTAssertFalse(
+            section.previewAccessibilitySummary.contains("“db.md”"),
+            section.previewAccessibilitySummary
+        )
+        XCTAssertFalse(section.statusLineText.contains("“db.md”"), section.statusLineText)
+    }
+
+    func testTitledMergeCopyIsUnchanged() throws {
+        let drawer = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-drawer-merge.json"))
+        )
+        XCTAssertTrue(drawer.destination.hasTitle)
+        XCTAssertEqual(
+            drawer.statusLineText,
+            "Would merge 1 task into “Upgrade Postgres to 17” · db.md › FUTURE WORK"
+        )
+        XCTAssertEqual(
+            drawer.notificationTitle,
+            "Would merge 1 task into “Upgrade Postgres to 17”"
+        )
+
+        let task = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-merge.json"))
+        )
+        XCTAssertTrue(task.destination.hasTitle)
+        XCTAssertEqual(
+            task.statusLineText,
+            "Would merge 2 tasks into “Always add capture time to ref marker note!” · work.md"
+        )
+    }
+
+    func testMoveRenameDetailFlagFollowsBlockIDs() throws {
+        let move = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-move.json"))
+        )
+        XCTAssertEqual(move.sourceRows.count, 2)
+        XCTAssertFalse(move.sourceRows[0].detailIsRename)
+        XCTAssertFalse(move.sourceRows[1].detailIsRename)
+        XCTAssertEqual(move.sourceRows[0].detailText, "^bench")
+
+        let data = try Data(
+            contentsOf: fixtures.appendingPathComponent("capture-transfer-move.json")
+        )
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var moves = try XCTUnwrap(object["moves"] as? [[String: Any]])
+        moves[0]["new_block_id"] = "bench-2"
+        object["moves"] = moves
+        let renamed = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        let renamedPresentation = try XCTUnwrap(CaptureTransferPresentation(capture: renamed))
+        XCTAssertTrue(renamedPresentation.sourceRows[0].detailIsRename)
+        XCTAssertEqual(renamedPresentation.sourceRows[0].detailText, "^bench → ^bench-2")
+        XCTAssertFalse(renamedPresentation.sourceRows[1].detailIsRename)
+    }
+
+    func testMoveRowsOmitSameStatusTransitionText() throws {
+        let move = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-move.json"))
+        )
+        XCTAssertFalse(
+            move.notificationBody.contains("Ready → Ready"), move.notificationBody)
+        XCTAssertFalse(
+            move.notificationBody.contains("Ready to Ready"), move.notificationBody)
+        XCTAssertTrue(
+            move.notificationBody.contains("Benchmark logical replication"),
+            move.notificationBody)
+        XCTAssertFalse(
+            move.previewAccessibilitySummary.contains("Ready to Ready"),
+            move.previewAccessibilitySummary)
+        XCTAssertFalse(
+            move.previewAccessibilitySummary.contains("Ready → Ready"),
+            move.previewAccessibilitySummary)
+
+        let merge = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-merge.json"))
+        )
+        XCTAssertTrue(
+            merge.notificationBody.contains("Next → Cancelled"), merge.notificationBody)
+        XCTAssertTrue(
+            merge.previewAccessibilitySummary.contains("Next to Cancelled"),
+            merge.previewAccessibilitySummary)
+    }
+
     func testUnchangedMergeUsesMutedAlreadyMergedState() throws {
         let presentation = try XCTUnwrap(
             CaptureTransferPresentation(capture: success("capture-transfer-unchanged-merge.json"))

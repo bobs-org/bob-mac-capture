@@ -35,7 +35,8 @@ struct CaptureTransferPendingCardView: View {
                 .strokeBorder(Color.secondary.opacity(0.16), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Transfer destination pending")
+        .accessibilityLabel(presentation.title)
+        .accessibilityHint(presentation.accessibilitySummary)
         .transaction { $0.animation = nil }
     }
 
