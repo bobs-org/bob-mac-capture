@@ -10,13 +10,14 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         keyCode: UInt16,
         characters: String,
         modifiers: NSEvent.ModifierFlags = [],
+        timestamp: TimeInterval = 0,
         isRepeat: Bool = false
     ) -> NSEvent {
         NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
             modifierFlags: modifiers,
-            timestamp: 0,
+            timestamp: timestamp,
             windowNumber: 0,
             context: nil,
             characters: characters,
@@ -28,13 +29,16 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
 
     private func equalsEvent(
         modifiers: NSEvent.ModifierFlags = [],
+        timestamp: TimeInterval = 0,
         isRepeat: Bool = false
     ) -> NSEvent {
-        keyEvent(keyCode: 24, characters: "=", modifiers: modifiers, isRepeat: isRepeat)
-    }
-
-    private func dashEvent() -> NSEvent {
-        keyEvent(keyCode: 27, characters: "-")
+        keyEvent(
+            keyCode: 24,
+            characters: "=",
+            modifiers: modifiers,
+            timestamp: timestamp,
+            isRepeat: isRepeat
+        )
     }
 
     private func backspaceEvent() -> NSEvent {
@@ -154,6 +158,19 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         )
     }
 
+    private func relationParse(_ draft: String) -> CaptureParseResponse {
+        let end = draft.utf8.count
+        return CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: draft,
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: end - 3, end: end, kind: "relation_block_id")]
+        )
+    }
+
     func testEqualsFlipsOpenLinksToPickerAndBack() async throws {
         let recordURL = makeRecordURL()
         let (model, controller, _, panel) = makeHostedEditor(text: "New task ~")
@@ -189,21 +206,21 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         XCTAssertTrue(model.pickerVisible)
     }
 
-    func testArmedDashEqualsFlipsInsteadOfRestoring() async throws {
+    func testArmedEqualsOpenerSecondEqualsFlipsInsteadOfRestoring() async throws {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
         defer { panel.orderOut(nil) }
         model.processClient = try processClient(recordURL: recordURL)
-        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNotNil(typeKey(equalsEvent(), into: textView, model: model, controller: controller))
         await waitUntil {
             textView.string == "Fix it ~" && model.picker?.source == .linksTo
                 && model.picker?.filterText.isEmpty == true
         }
-        XCTAssertNotNil(model.relationDashLiteralArm)
+        XCTAssertNotNil(model.relationEqualsOpenerArm)
 
         XCTAssertNil(controller.routeKeyDown(equalsEvent()))
         XCTAssertEqual(model.plainDraft, "Fix it ~~")
-        XCTAssertNil(model.relationDashLiteralArm)
+        XCTAssertNil(model.relationEqualsOpenerArm)
         await waitUntil { model.picker?.source == .linkedFrom }
         XCTAssertTrue(model.pickerVisible)
 
@@ -227,7 +244,104 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 11 --format json -- New task ~="))
     }
 
-    func testDashEqualsBackToBackDropsStaleDashReply() async throws {
+    func testDoubleEqualsAliasFlipsBackToLinksToThroughBob() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "New task ~~")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(equalsEvent(), into: textView, model: model, controller: controller))
+        await waitUntil {
+            textView.string == "New task ~" && model.picker?.source == .linksTo
+        }
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertTrue(try String(contentsOf: recordURL).contains(
+            "argv=capture-rewrite --cursor 12 --format json -- New task ~~="
+        ))
+    }
+
+    func testPostTokenEqualsAndTildeUseBobToggleWithoutOpeningPicker() async throws {
+        let cases: [(String, String, String, String)] = [
+            ("Fix it ~foo:bar", "=", "Fix it ~~foo:bar", "Flipped to Linked From"),
+            ("Fix it ~~foo:bar", "=", "Fix it ~foo:bar", "Flipped to Links To"),
+            ("Fix it ~foo:bar", "~", "Fix it ~~foo:bar", "Flipped to Linked From"),
+            ("Fix it ~~foo:bar", "~", "Fix it ~foo:bar", "Flipped to Links To"),
+        ]
+
+        for (draft, trigger, expected, summary) in cases {
+            let recordURL = makeRecordURL()
+            let (model, controller, textView, panel) = makeHostedEditor(text: draft)
+            defer { panel.orderOut(nil) }
+            model.processClient = try processClient(recordURL: recordURL)
+            model.latestParse = relationParse(draft)
+
+            let event = trigger == "="
+                ? equalsEvent(timestamp: 2.0)
+                : keyEvent(keyCode: 50, characters: "~", modifiers: .shift, timestamp: 2.0)
+            XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
+            await waitUntil { textView.string == expected && model.statusText == summary }
+            XCTAssertEqual(model.plainDraft, expected)
+            XCTAssertFalse(model.pickerVisible)
+            XCTAssertNil(model.picker)
+            XCTAssertTrue(try String(contentsOf: recordURL).contains(
+                "argv=capture-rewrite"
+            ))
+
+            textView.undoManager?.undo()
+            XCTAssertEqual(textView.string, draft + trigger)
+        }
+    }
+
+    func testLabeledRelationTildeFlipsAndEqualsStaysLiteral() async throws {
+        let draft = "Fix it ~foo:bar|see"
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "Fix it",
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 16, end: 19, kind: "relation_label")]
+        )
+        XCTAssertTrue(CapturePanelController.relationTokenEndsAtCaret(
+            text: draft,
+            caretUTF8: draft.utf8.count,
+            parse: parse
+        ))
+
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: draft)
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+        model.latestParse = parse
+
+        let event = keyEvent(keyCode: 50, characters: "~", modifiers: .shift, timestamp: 3.0)
+        XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "Fix it ~~foo:bar|see" }
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(try String(contentsOf: recordURL).contains(
+            "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see~"
+        ))
+
+        let literalRecord = makeRecordURL()
+        let (literalModel, literalController, literalView, literalPanel) = makeHostedEditor(text: draft)
+        defer { literalPanel.orderOut(nil) }
+        literalModel.processClient = try processClient(recordURL: literalRecord)
+        literalModel.latestParse = parse
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 4.0),
+            into: literalView,
+            model: literalModel,
+            controller: literalController
+        ))
+        await waitUntil { literalView.string == draft + "=" }
+        XCTAssertFalse(literalModel.pickerVisible)
+        XCTAssertTrue(try String(contentsOf: literalRecord).contains(
+            "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see="
+        ))
+    }
+
+    func testTypingBeforeEqualsOpenerReplyDropsStaleReply() async throws {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
         defer { panel.orderOut(nil) }
@@ -236,15 +350,14 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
             extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
         )
 
-        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
         XCTAssertNotNil(typeKey(equalsEvent(), into: textView, model: model, controller: controller))
-        await waitUntil {
-            textView.string == "Fix it ~~" && model.picker?.source == .linkedFrom
-        }
-        XCTAssertEqual(model.plainDraft, "Fix it ~~")
+        XCTAssertNotNil(typeKey(keyEvent(keyCode: 0, characters: "x"), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "Fix it =x" }
+        try await Task.sleep(nanoseconds: 450_000_000)
+        XCTAssertEqual(model.plainDraft, "Fix it =x")
+        XCTAssertFalse(model.pickerVisible)
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 8 --format json -- Fix it -"))
-        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 9 --format json -- Fix it -="))
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 8 --format json -- Fix it ="))
     }
 
     func testUndoAfterEqualsRewriteRestoresTypedSigils() async throws {

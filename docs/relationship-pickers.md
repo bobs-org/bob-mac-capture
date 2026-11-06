@@ -97,13 +97,18 @@ keeps its text and the typed `~` never enters it; repeats are ignored.
 Typing `=` anywhere in the filter flips exactly like `~`, keeping the filter.
 Auto-open is never suppressed. Backspace on an empty `~~` filter flips back
 by removing one `~`; Backspace on empty-filter `~` removes the token.
-Typing `=` right after the `~`, or right after the `-` alias, flips to
-Linked From before the picker appears: `Fix it ~=` and `Fix it -=` both open
-Linked From (`Fix it ~~`). After the `-` alias, `=` flips instead of
-restoring. Typing `-` after a space or tab aliases `~` where Bob opens Links
-To. While that alias-opened picker still has an empty filter, Space restores
-`- `, another `-` restores `--`, and Escape restores `-`; other keys enter
-the filter normally. Undo after a restore returns to the post-key `~` draft.
+Typing `=` after a space or tab aliases `~` only where Bob opens Links To.
+While that alias-opened picker still has an empty filter, Space restores `= `
+and Escape restores `=`; other keys enter the filter normally. Undo after a
+restore returns to the post-key `~` draft. A `-` after a space stays literal;
+the separate past-segment form `x=2-` still becomes `x=2~`.
+
+Typing `=` right after bare `~` or `~~` flips direction before the picker
+appears: `Fix it ~=` opens Linked From, while `Fix it ~~=` opens Links To
+(`Fix it ~`). At the end of a complete relation token, a glued `~` or `=` flips
+the token in place without opening a picker. After `|label`, `~` flips and `=`
+stays label text. Bob's current parse spans gate which editor keys are sent for
+these rewrites.
 
 Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
 disabled reasons, and backend-formatted `~note:id` / `~~note:id`

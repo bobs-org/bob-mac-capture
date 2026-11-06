@@ -1,1 +1,0 @@
-{"ok":true,"schema_version":1,"input":"Fix it -=","text":"Fix it ~~","changed":true,"cursor":9,"rule":"expand_sigil_alias","edits":[{"range":{"start":7,"end":9},"replacement":"~~"}],"summary":"Typed ~~ for -="}

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Fix it ~foo:bar=","text":"Fix it ~~foo:bar","changed":true,"cursor":16,"rule":"toggle_relation_direction","edits":[{"range":{"start":8,"end":8},"replacement":"~"},{"range":{"start":15,"end":16},"replacement":""}],"summary":"Flipped to Linked From"}

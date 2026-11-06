@@ -203,17 +203,16 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `@route:` or `@route^` with no ID yet, or a whole-item `^`), the keystroke
   behaves like ordinary typing, and its picker or completion opens as before.
   This gesture needs a bob build that implements `switch_block_id_separator`.
-  Typing `-` after a space or tab aliases `~` only where Bob reports the
+  Typing `=` after a space or tab aliases `~` only where Bob reports the
   Links To relation picker. While that picker has an empty filter, Space
-  restores `- `, another `-` restores `--`, and Escape restores `-`; the
-  caret follows the restored text and the picker closes. Undo restores the
-  post-key `~` draft; Undo immediately after the alias restores the literal
-  `-`. Older bob leaves `-` literal.
-  Typing `=` right after a bare `~` that opens Links To, or right after a `-`
-  that would alias `~`, uses the same lane to make `~~` (Linked From) and open
-  Linked From. Everywhere else `=` stays literal, including after `~~` and
-  inside a wikilink. Undo right after the swap restores the typed `~=` or
-  `-=`; an older bob leaves `=` literal.
+  restores `= ` and Escape restores `=`; the caret follows the restored text
+  and the picker closes. Undo restores the post-key `~` draft; Undo immediately
+  after the alias restores the literal `=`. Older bob leaves `=` literal.
+  A `-` after a space stays literal; Bob still rewrites the past-segment alias
+  such as `x=2-` to `x=2~`. Typing `=` right after bare `~` or `~~` uses the
+  same lane to flip direction and open the corresponding picker. A glued `~`
+  or `=` after a complete relation token flips direction in place without
+  opening a picker; after a label, only `~` flips because `=` is label text.
   Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
   `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
   project-note item (where the Move picker would open) and `- ^.` (which makes

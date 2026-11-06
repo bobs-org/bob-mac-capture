@@ -195,26 +195,29 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
     private func relationEqualsWasForwarded(
         text: String,
+        characters: String = "=",
         modifiers: NSEvent.ModifierFlags = [],
         selection: NSRange? = nil,
-        modalFieldActive: Bool = false
+        modalFieldActive: Bool = false,
+        parse: CaptureParseResponse? = nil
     ) async throws -> Bool {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(recordURL: recordURL)
         model.plainDraft = text
+        model.latestParse = parse
         let textView = makeTextView(text)
         if let selection {
             textView.setSelectedRange(selection)
         }
         CapturePanelController.noteSeparatorToggleIntentIfEligible(
-            event: keyEvent(characters: "=", modifiers: modifiers),
+            event: keyEvent(characters: characters, modifiers: modifiers),
             firstResponder: textView,
             model: model,
             modalFieldActive: modalFieldActive
         )
-        textView.insertText("=", replacementRange: textView.selectedRange())
+        textView.insertText(characters, replacementRange: textView.selectedRange())
         model.plainDraft = textView.string
         let caretUTF8 = utf8Offset(
             in: textView.string,
@@ -403,11 +406,35 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertFalse(modal)
     }
 
-    func testRelationEqualsIntentForwardsOnlyAfterTildeOrDash() async throws {
+    func testRelationEqualsIntentForwardsAtOpenerPositionsAndRelationEnds() async throws {
+        let relation = "New task ~foo:bar"
+        let relationParse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: relation,
+            body: relation,
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 14, end: 17, kind: "relation_block_id")]
+        )
+        let label = "New task ~foo:bar|see"
+        let labelParse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: label,
+            body: label,
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 18, end: 21, kind: "relation_label")]
+        )
         let afterTilde = try await relationEqualsWasForwarded(text: "New task ~")
+        let afterSpace = try await relationEqualsWasForwarded(text: "New task ")
+        let afterTab = try await relationEqualsWasForwarded(text: "New task\t")
+        let afterRelation = try await relationEqualsWasForwarded(text: relation, parse: relationParse)
+        let afterLabel = try await relationEqualsWasForwarded(text: label, parse: labelParse)
         let afterDash = try await relationEqualsWasForwarded(text: "Fix it -")
         let afterLetter = try await relationEqualsWasForwarded(text: "New task x")
-        let afterSpace = try await relationEqualsWasForwarded(text: "New task ")
+        let lineStart = try await relationEqualsWasForwarded(text: "")
         let command = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .command)
         let control = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .control)
         let option = try await relationEqualsWasForwarded(text: "New task ~", modifiers: .option)
@@ -420,14 +447,90 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             modalFieldActive: true
         )
         XCTAssertTrue(afterTilde)
-        XCTAssertTrue(afterDash)
+        XCTAssertTrue(afterSpace)
+        XCTAssertTrue(afterTab)
+        XCTAssertTrue(afterRelation)
+        XCTAssertTrue(afterLabel)
+        XCTAssertFalse(afterDash)
         XCTAssertFalse(afterLetter)
-        XCTAssertFalse(afterSpace)
+        XCTAssertFalse(lineStart)
         XCTAssertFalse(command)
         XCTAssertFalse(control)
         XCTAssertFalse(option)
         XCTAssertFalse(selection)
         XCTAssertFalse(modal)
+    }
+
+    func testRelationTildeOnlyForwardsAtBobReportedRelationEnd() async throws {
+        let text = "New task ~foo:bar"
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: text,
+            body: text,
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 14, end: 17, kind: "relation_block_id")]
+        )
+        let afterRelation = try await relationEqualsWasForwarded(
+            text: text,
+            characters: "~",
+            parse: parse
+        )
+        let afterSpace = try await relationEqualsWasForwarded(
+            text: "New task ",
+            characters: "~"
+        )
+        let staleParse = try await relationEqualsWasForwarded(
+            text: text,
+            characters: "~",
+            parse: CaptureParseResponse(
+                ok: true,
+                schemaVersion: 1,
+                input: "stale draft",
+                body: "stale draft",
+                mode: "task",
+                relationGrammar: 1,
+                spans: [CaptureSpan(start: 0, end: 4, kind: "relation_block_id")]
+            )
+        )
+        XCTAssertTrue(afterRelation)
+        XCTAssertFalse(afterSpace)
+        XCTAssertFalse(staleParse)
+    }
+
+    func testQuotedRelationLabelTokenEndIncludesClosingQuote() {
+        let text = "Fix it ~foo:bar|\"see\""
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: text,
+            body: "Fix it",
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 17, end: 20, kind: "relation_label")]
+        )
+        XCTAssertTrue(CapturePanelController.relationTokenEndsAtCaret(
+            text: text,
+            caretUTF8: text.utf8.count,
+            parse: parse
+        ))
+
+        let open = "Fix it ~foo:bar|\"see"
+        let openParse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: open,
+            body: "Fix it",
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 17, end: 20, kind: "relation_label")]
+        )
+        XCTAssertFalse(CapturePanelController.relationTokenEndsAtCaret(
+            text: open,
+            caretUTF8: open.utf8.count,
+            parse: openParse
+        ))
     }
 
     // MARK: - Native apply

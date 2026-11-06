@@ -754,7 +754,7 @@ final class CaptureDependencyPanelTests: XCTestCase {
         armed.pickerSourceIsRelation = true
         armed.pickerVisible = true
         armed.pickerFilterIsEmpty = true
-        armed.relationDashLiteralArmed = true
+        armed.relationEqualsOpenerArmed = true
         XCTAssertEqual(
             router.command(
                 for: keyEvent(keyCode: 24, characters: "="),

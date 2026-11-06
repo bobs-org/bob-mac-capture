@@ -119,7 +119,7 @@ enum CaptureKeyCommand: Equatable {
     case typeLiteralBackslash
     case typeKeyBeforeHashAliasReply
     case typeLiteralForHashAlias
-    case restoreRelationDashLiteral(String)
+    case restoreRelationEqualsOpener(String)
     case joinCalendarEvent
     case switchPanel
     case armEditorLeader
@@ -182,7 +182,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var backslashLiteralArmed = false
     var hashAliasLiteralKey: String? = nil
     var hashAliasReplyPendingKey: String? = nil
-    var relationDashLiteralArmed = false
+    var relationEqualsOpenerArmed = false
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -363,7 +363,7 @@ struct CaptureKeyCommandRouter {
             return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
-        if let command = relationDashRestoreCommand(
+        if let command = relationEqualsOpenerRestoreCommand(
             for: event,
             modifiers: modifiers,
             context: context
@@ -1012,7 +1012,7 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
-        if let command = relationDashRestoreCommand(
+        if let command = relationEqualsOpenerRestoreCommand(
             for: event,
             modifiers: modifiers,
             context: context
@@ -1225,15 +1225,23 @@ struct CaptureKeyCommandRouter {
         }
     }
 
-    private func relationDashRestoreCommand(
+    private func relationEqualsOpenerRestoreCommand(
         for event: NSEvent,
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
-        guard context.relationDashLiteralArmed,
+        guard context.relationEqualsOpenerArmed,
               modifiers.intersection([.command, .control, .option]).isEmpty,
               !context.editorHasMarkedText
         else {
+            return nil
+        }
+        // An armed empty Links To filter restores on Space/Escape; a
+        // non-empty filter keeps typing into the filter. Before the picker
+        // appears (race window) the arm alone restores.
+        if context.pickerVisible,
+           !(context.pickerSourceIsRelation && context.pickerFilterIsEmpty)
+        {
             return nil
         }
         let key: String?
@@ -1241,8 +1249,6 @@ struct CaptureKeyCommandRouter {
             key = ""
         } else if event.characters == " " {
             key = " "
-        } else if event.characters == "-" {
-            key = "-"
         } else {
             key = nil
         }
@@ -1252,7 +1258,7 @@ struct CaptureKeyCommandRouter {
         if context.keyIsRepeat || event.isARepeat {
             return .consumeKey
         }
-        return .restoreRelationDashLiteral(key)
+        return .restoreRelationEqualsOpener(key)
     }
 
     private func stashPickerCommand(

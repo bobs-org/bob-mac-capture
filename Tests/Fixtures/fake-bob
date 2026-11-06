@@ -1864,13 +1864,13 @@ JSON
         exit 0
       fi
     fi
-    if [[ ("${draft}" == "New task ~=" || "${draft}" == "Fix it -=") && "${FAKE_BOB_REWRITE_RELATION_FLIP_UNCHANGED:-}" == "1" ]]; then
+    if [[ "${draft}" == "New task ~=" && "${FAKE_BOB_REWRITE_RELATION_FLIP_UNCHANGED:-}" == "1" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
-    elif [[ "${draft}" == "Fix it -" && "${FAKE_BOB_REWRITE_RELATION_DASH_UNCHANGED:-}" == "1" ]]; then
+    elif [[ ("${draft}" == "Fix it =" && "${FAKE_BOB_REWRITE_RELATION_EQUALS_UNCHANGED:-}" == "1") || "${draft}" == "Fix it -" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       printf ',"text":'
@@ -1881,12 +1881,22 @@ JSON
         sleep "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS}"
       fi
       cat "${fixtures_dir}/pomodoro-past-rewrite-segment-dash.json"
-    elif [[ "${draft}" == "Fix it -" ]]; then
+    elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation-flip.json"
-    elif [[ "${draft}" == "Fix it -=" ]]; then
-      cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation-dash-flip.json"
+    elif [[ "${draft}" == "Fix it ~foo:bar=" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-to-from.json"
+    elif [[ "${draft}" == "Fix it ~~foo:bar=" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-from-to.json"
+    elif [[ "${draft}" == "Fix it ~foo:bar~" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-to-from-tilde.json"
+    elif [[ "${draft}" == "Fix it ~~foo:bar~" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-from-to-tilde.json"
+    elif [[ "${draft}" == "Fix it ~foo:bar|see~" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-labeled.json"
+    elif [[ "${draft}" == "New task ~~=" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation-double-equals.json"
     elif [[ "${draft}" == 'jot idea \' ]]; then
       cat "${fixtures_dir}/capture-rewrite-hash-alias-task-type.json"
     elif [[ "${draft}" == 'jot idea @foo\' ]]; then
@@ -2139,8 +2149,8 @@ JSON
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
       exit 0
     fi
-    if [[ "${draft}" == "Fix it ~" && -n "${FAKE_BOB_RELATION_DASH_COMPLETE_DELAY_SECONDS:-}" ]]; then
-      sleep "${FAKE_BOB_RELATION_DASH_COMPLETE_DELAY_SECONDS}"
+    if [[ "${draft}" == "Fix it ~" && -n "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS}"
     fi
     delay_request="false"
     if [[ ("${draft}" == "/" || "${draft}" == "/dee") && "${all_tasks}" == "true" ]]; then

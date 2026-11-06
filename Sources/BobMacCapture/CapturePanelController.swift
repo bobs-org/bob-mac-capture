@@ -1068,8 +1068,46 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Returns true only when Bob's current parse marks a complete relation
+    /// token as ending at this caret. The spans are a send filter; the Mac
+    /// never recognizes or edits relation syntax itself.
+    static func relationTokenEndsAtCaret(
+        text: String,
+        caretUTF8: Int,
+        parse: CaptureParseResponse?
+    ) -> Bool {
+        guard let parse,
+              parse.input == text,
+              caretUTF8 >= 0,
+              caretUTF8 <= text.utf8.count
+        else {
+            return false
+        }
+        let bytes = Array(text.utf8)
+        return parse.spans.contains { span in
+            guard span.start >= 0, span.end >= span.start, span.end <= bytes.count else {
+                return false
+            }
+            if span.kind == "relation_block_id" {
+                return span.end == caretUTF8
+            }
+            guard span.kind == "relation_label" else {
+                return false
+            }
+            // Bob's label span excludes surrounding quotes. A quoted label
+            // ends one byte after that span; an open quote is not complete.
+            if span.start > 0, bytes[span.start - 1] == 0x22 {
+                return span.end < bytes.count
+                    && bytes[span.end] == 0x22
+                    && span.end + 1 == caretUTF8
+            }
+            return span.end == caretUTF8
+        }
+    }
+
     /// Records a one-shot rewrite-lane separator gesture or sigil alias
-    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, segment/relation `-`, or relation `=`) when
+    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, segment `-`, relation `=`,
+    /// or a glued relation `~`) when
     /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1117,6 +1155,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 characters == ":" || characters == "^" || characters == "+"
                     || characters == "|" || characters == "," || characters == "."
                     || characters == ";" || characters == "-" || characters == "="
+                    || characters == "~"
             else {
                 return
             }
@@ -1125,22 +1164,36 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard selection.length == 0 else {
             return
         }
+        guard let caretUTF8 = utf8Offset(
+            in: textView.string,
+            utf16Offset: selection.location
+        ) else {
+            return
+        }
+        let relationTokenEndsHere = relationTokenEndsAtCaret(
+            text: textView.string,
+            caretUTF8: caretUTF8,
+            parse: model.latestParse
+        )
         if characters == "=" {
             let nsText = textView.string as NSString
-            guard selection.location > 0,
-                  selection.location <= nsText.length
-            else {
+            let previous: unichar? = selection.location > 0 && selection.location <= nsText.length
+                ? nsText.character(at: selection.location - 1)
+                : nil
+            let followsAliasPosition = previous == 0x20 || previous == 0x09 || previous == 0x7E
+            guard followsAliasPosition || relationTokenEndsHere else {
                 return
             }
-            let previous = nsText.character(at: selection.location - 1)
-            guard previous == 0x7E || previous == 0x2D else {
-                return
-            }
+        } else if characters == "~", !relationTokenEndsHere {
+            return
         }
         model.noteSeparatorToggleIntent(
             typed: characters,
             text: textView.string,
-            selectedRange: selection
+            selectedRange: selection,
+            timestamp: event.timestamp,
+            expectsRelationDirectionToggle: (characters == "=" || characters == "~")
+                && relationTokenEndsHere
         )
     }
 
@@ -2054,7 +2107,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .typeLiteralForHashAlias:
             return false
-        case .restoreRelationDashLiteral:
+        case .restoreRelationEqualsOpener:
             return false
         case .typeKeyBeforeHashAliasReply:
             return false
@@ -2275,7 +2328,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let editorLeaderPending = takeEditorLeader()
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
-        let takenRelationDashArm = model.takeRelationDashLiteralArm()
+        let takenRelationEqualsArm = model.takeRelationEqualsOpenerArm()
         model.clearRelationFlipAliasOpen()
         // The arm is judged against the live editor, not the SwiftUI
         // mirror: SwiftUI can report the caret one edit behind, and right
@@ -2302,8 +2355,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             }
             return arm.key
         }()
-        let relationDashLiteralArmed: Bool = {
-            guard let arm = takenRelationDashArm else {
+        let relationEqualsOpenerArmed: Bool = {
+            guard let arm = takenRelationEqualsArm else {
                 return false
             }
             if let picker = model.picker {
@@ -2411,7 +2464,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 backslashLiteralArmed: backslashLiteralArmed,
                 hashAliasLiteralKey: hashAliasLiteralKey,
                 hashAliasReplyPendingKey: hashAliasReplyPendingKey,
-                relationDashLiteralArmed: relationDashLiteralArmed,
+                relationEqualsOpenerArmed: relationEqualsOpenerArmed,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2449,17 +2502,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return model.replaceHashAliasWithLiteralKey(arm) ? nil : event
         }
         if command == .consumeKey,
-           let arm = takenRelationDashArm,
-           relationDashLiteralArmed,
+           let arm = takenRelationEqualsArm,
+           relationEqualsOpenerArmed,
            event.isARepeat
         {
-            model.restoreRelationDashLiteralArm(arm)
+            model.restoreRelationEqualsOpenerArm(arm)
         }
-        if case .restoreRelationDashLiteral(let key) = command,
-           let arm = takenRelationDashArm,
-           relationDashLiteralArmed
+        if case .restoreRelationEqualsOpener(let key) = command,
+           let arm = takenRelationEqualsArm,
+           relationEqualsOpenerArmed
         {
-            return model.restoreRelationDashLiteral(arm, key: key) ? nil : event
+            return model.restoreRelationEqualsOpener(arm, key: key) ? nil : event
         }
         if command == .flipRelationLabelDirection {
             model.flipRelationLabelDirection(
