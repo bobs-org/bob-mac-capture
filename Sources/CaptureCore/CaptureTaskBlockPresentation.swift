@@ -20,6 +20,20 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     public enum FoldStyle: Equatable, Sendable {
         case unchanged
         case movedNotes
+        case mergeOrigin
+    }
+
+    /// Bob-authored merge metadata keyed only by Bob's exact `path#^block_id`
+    /// origin. The title and moved-note count are display data; neither is
+    /// used to infer row membership.
+    public struct MergeOriginSummary: Equatable, Sendable {
+        public let title: String
+        public let movedNotes: Int
+
+        public init(title: String, movedNotes: Int) {
+            self.title = title
+            self.movedNotes = movedNotes
+        }
     }
 
     /// One collapsed run of block rows. `id` is the first hidden row
@@ -32,19 +46,63 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         public let depth: Int
         public let rows: [CaptureBlockDiffRow]
         public let style: FoldStyle
+        public let mergeOriginTitle: String?
+        public let movedNotes: Int?
+
+        public var labelText: String {
+            switch style {
+            case .unchanged:
+                return "⋯ \(count) unchanged lines"
+            case .movedNotes:
+                return "⤵ \(count) lines moved to the target"
+            case .mergeOrigin:
+                let title = mergeOriginTitle ?? "Task"
+                let movedNotes = self.movedNotes ?? 0
+                let noteText: String
+                if movedNotes == 0 {
+                    noteText = "title only"
+                } else {
+                    noteText = "\(movedNotes) note\(movedNotes == 1 ? "" : "s")"
+                }
+                return "⤵ \(title) · \(noteText) ▸"
+            }
+        }
+
+        public var accessibilityLabel: String {
+            switch style {
+            case .unchanged:
+                return "Show \(count) unchanged lines"
+            case .movedNotes:
+                return "Show \(count) moved lines"
+            case .mergeOrigin:
+                let title = mergeOriginTitle ?? "Task"
+                let count = movedNotes ?? 0
+                let noteText: String
+                if count == 0 {
+                    noteText = "title only"
+                } else {
+                    noteText = "\(count) note\(count == 1 ? "" : "s")"
+                }
+                return "Show merged rows from \(title), \(noteText)"
+            }
+        }
 
         public init(
             id: Int,
             count: Int,
             depth: Int,
             rows: [CaptureBlockDiffRow],
-            style: FoldStyle = .unchanged
+            style: FoldStyle = .unchanged,
+            mergeOriginTitle: String? = nil,
+            movedNotes: Int? = nil
         ) {
             self.id = id
             self.count = count
             self.depth = depth
             self.rows = rows
             self.style = style
+            self.mergeOriginTitle = mergeOriginTitle
+            self.movedNotes = movedNotes
         }
     }
 
@@ -97,12 +155,14 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     public let rows: [CaptureBlockDiffRow]
     public let identity: Identity
     public let accessibilitySummary: String
+    private let mergeOrigins: [String: MergeOriginSummary]
 
     public init(
         block: CaptureTaskBlock,
         dryRun: Bool,
         suppressRelationshipLines: Bool = false,
-        keepMovingRows: [TaskCompleteUnblocked] = []
+        keepMovingRows: [TaskCompleteUnblocked] = [],
+        merges: [CaptureTransferMerge] = []
     ) {
         let symbol = block.statusSymbol.isEmpty ? nil : block.statusSymbol
         status = CapturePickerTaskStatus(symbol: symbol, name: block.statusName)
@@ -140,6 +200,7 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
             blockID: block.blockID,
             transferRole: transferRole
         )
+        mergeOrigins = Self.mergeOriginSummaries(for: merges)
         let shouldSuppressRelationshipLines = suppressRelationshipLines && !block.hasTransferRole
         let visibleLines: [CaptureBlockLine]
         if shouldSuppressRelationshipLines {
@@ -167,7 +228,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                 keepMovingProjectName: Self.keepMovingProjectName(
                     in: line,
                     rows: keepMovingRows
-                )
+                ),
+                origin: line.origin
             )
         }
 
@@ -251,8 +313,50 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         Self.items(
             for: rows,
             expandedFolds: expandedFolds,
-            foldRemovedRuns: transferRole == .mergeSource
+            foldRemovedRuns: transferRole == .mergeSource,
+            mergeOrigins: mergeOrigins,
+            foldMergeOrigins: transferRole == .mergeTarget
         )
+    }
+
+    /// A created merge-target task block is the authoritative copy of its
+    /// final task text. Its capture item keeps the ordinary header, while
+    /// this block renders the task text and authored children once.
+    public static func isCreatedMergeTarget(
+        _ capture: CaptureCommandSuccess,
+        blocks: [CaptureTaskBlock]
+    ) -> Bool {
+        guard let blockID = capture.blockID, !blockID.isEmpty else {
+            return false
+        }
+        return blocks.contains { block in
+            block.created
+                && block.roles.contains("merge_target")
+                && block.relativeTarget == capture.relativeTarget
+                && block.blockID == blockID
+        }
+    }
+
+    private static func mergeOriginSummaries(
+        for merges: [CaptureTransferMerge]
+    ) -> [String: MergeOriginSummary] {
+        var summaries: [String: MergeOriginSummary] = [:]
+        for merge in merges {
+            guard !merge.source.path.isEmpty,
+                let blockID = merge.source.blockID,
+                !blockID.isEmpty
+            else {
+                continue
+            }
+            let title =
+                merge.source.title.flatMap { $0.isEmpty ? nil : $0 }
+                ?? (merge.message.isEmpty ? "Task" : merge.message)
+            summaries["\(merge.source.path)#^\(blockID)"] = MergeOriginSummary(
+                title: TaskDisplayText(parsing: title).text,
+                movedNotes: merge.movedNotes
+            )
+        }
+        return summaries
     }
 
     /// Shared task and section folding. Merge-source tombstones fold each
@@ -260,12 +364,20 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     public static func items(
         for rows: [CaptureBlockDiffRow],
         expandedFolds: Set<Int>,
-        foldRemovedRuns: Bool = false
+        foldRemovedRuns: Bool = false,
+        mergeOrigins: [String: MergeOriginSummary] = [:],
+        foldMergeOrigins: Bool = false
     ) -> [Item] {
         let hasRemovedRuns = foldRemovedRuns && rows.contains { $0.change == .removed }
-        let hasQuietChanges = rows.count > Self.foldThreshold
+        let hasMergeOriginRuns =
+            foldMergeOrigins
+            && rows.contains { row in
+                row.origin.flatMap { mergeOrigins[$0] } != nil
+            }
+        let hasQuietChanges =
+            rows.count > Self.foldThreshold
             && rows.contains(where: { $0.change != .unchanged })
-        guard hasRemovedRuns || hasQuietChanges else {
+        guard hasRemovedRuns || hasMergeOriginRuns || hasQuietChanges else {
             return rows.map(Item.row)
         }
         var visible: Set<Int> = [0]
@@ -315,6 +427,35 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         }
         var index = 0
         while index < rows.count {
+            if foldMergeOrigins,
+                let origin = rows[index].origin,
+                let summary = mergeOrigins[origin]
+            {
+                flushHidden()
+                let start = index
+                while index < rows.count, rows[index].origin == origin {
+                    index += 1
+                }
+                let moved = Array(rows[start..<index])
+                if expandedFolds.contains(start) {
+                    result.append(contentsOf: moved.map(Item.row))
+                } else {
+                    result.append(
+                        .fold(
+                            FoldRun(
+                                id: start,
+                                count: moved.count,
+                                depth: moved.map(\.depth).min() ?? 0,
+                                rows: moved,
+                                style: .mergeOrigin,
+                                mergeOriginTitle: summary.title,
+                                movedNotes: summary.movedNotes
+                            )
+                        )
+                    )
+                }
+                continue
+            }
             if foldRemovedRuns, rows[index].change == .removed {
                 flushHidden()
                 let start = index

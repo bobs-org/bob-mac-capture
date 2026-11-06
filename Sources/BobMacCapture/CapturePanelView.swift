@@ -3926,7 +3926,8 @@ struct PreviewPane: View {
                         block: block,
                         dryRun: success.dryRun,
                         suppressRelationshipLines: suppressRelationshipLines,
-                        keepMovingRows: keepMovingRows
+                        keepMovingRows: keepMovingRows,
+                        merges: success.merges
                     ) {
                         model.requestFocus(.editor)
                     }
@@ -6106,6 +6107,10 @@ struct PreviewPane: View {
         // both the verbatim stack and the trailing `relativeTarget` line;
         // the task card below shows where it landed.
         let taskCovered = CaptureTaskBlockPresentation.covers(success, blocks: taskBlocks)
+        let createdMergeTarget = CaptureTaskBlockPresentation.isCreatedMergeTarget(
+            success,
+            blocks: taskBlocks
+        )
         let subBullet = CaptureSubBulletPresentation(capture: success)
         let compactSubBullet = taskCovered && subBullet != nil
         let taskDependencyCovered = relationship.ownerHeader != nil && taskCovered
@@ -6132,7 +6137,7 @@ struct PreviewPane: View {
                 total: total,
                 isLocalOverride: isLocalOverride
             ))
-        } else if covered {
+        } else if covered || createdMergeTarget {
             standardHeader(
                 success,
                 index: index,
@@ -6393,7 +6398,7 @@ struct PreviewPane: View {
         // already cover are omitted: the block view below shows them.
         // Covered sub-bullet items omit the stack too: the task card shows
         // where the bullet landed.
-        if !covered, !compactSubBullet, !taskDependencyCovered {
+        if !covered, !createdMergeTarget, !compactSubBullet, !taskDependencyCovered {
             let blockLines = success.previewBlockLines
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in

@@ -340,7 +340,7 @@ private struct SimilarTasksBandRowView: View {
                 return .prerequisite
             case .blockedTask:
                 return .blockedByThis
-            case .parent, .unknown:
+            case .parent, .mergeIn, .unknown:
                 break
             }
         }

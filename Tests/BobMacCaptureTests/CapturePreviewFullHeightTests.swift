@@ -206,6 +206,41 @@ final class CapturePreviewFullHeightTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testMergeOriginDisclosureFitsNarrowCardsAndExpands() throws {
+        let success = try taskBlockFixture("capture-merge-in-complete-two.json")
+        let block = try XCTUnwrap(success.taskBlocks.first { $0.roles.contains("merge_target") })
+        let presentation = CaptureTaskBlockPresentation(
+            block: block,
+            dryRun: success.dryRun,
+            merges: success.merges
+        )
+        let folded = presentation.items(expandedFolds: [])
+        let fold = try XCTUnwrap(
+            folded.compactMap { item -> CaptureTaskBlockPresentation.FoldRun? in
+                guard case .fold(let fold) = item, fold.style == .mergeOrigin else { return nil }
+                return fold
+            }.first)
+        XCTAssertEqual(fold.accessibilityLabel, "Show merged rows from Alpha task, 1 note")
+
+        let expanded = presentation.items(expandedFolds: [fold.id])
+        for width in [620, 420] as [CGFloat] {
+            let foldedHeight = hostedCardHeight(
+                items: folded,
+                width: width,
+                onExpandFold: { _ in }
+            )
+            let expandedHeight = hostedCardHeight(items: expanded, width: width)
+            XCTAssertGreaterThan(foldedHeight, 0, "collapsed disclosure at width \(width)")
+            XCTAssertGreaterThan(
+                expandedHeight,
+                foldedHeight,
+                "expanded source rows should wrap and remain visible at width \(width)"
+            )
+        }
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testPreviewPaneHoldsHeightWhileReloading() throws {
         let close = try closeSuccessFixture("pomodoro-close-worked.json")
         let model = CapturePanelModel()
@@ -317,10 +352,19 @@ final class CapturePreviewFullHeightTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
-    private func hostedCardHeight(items: [CaptureTaskBlockPresentation.Item], width: CGFloat) -> CGFloat {
+    private func hostedCardHeight(
+        items: [CaptureTaskBlockPresentation.Item],
+        width: CGFloat,
+        onExpandFold: ((Int) -> Void)? = nil
+    ) -> CGFloat {
         let hostingView = NSHostingView(
-            rootView: BlockDiffCard(railTint: .orange, items: items, headlineEmphasis: true, onExpandFold: nil)
-                .frame(width: width)
+            rootView: BlockDiffCard(
+                railTint: .orange,
+                items: items,
+                headlineEmphasis: true,
+                onExpandFold: onExpandFold
+            )
+            .frame(width: width)
         )
         hostingView.layoutSubtreeIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))

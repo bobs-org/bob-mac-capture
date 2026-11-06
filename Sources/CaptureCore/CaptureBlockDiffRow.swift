@@ -26,6 +26,10 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
     /// Leaf-project label for the keep-moving badge tooltip, when the
     /// matching offer row was available to the caller.
     public let keepMovingProjectName: String?
+    /// Bob's exact merge-source identity for rows moved under a merge target.
+    /// Older Bob omits it; presentation folds only when a matching merge
+    /// descriptor is also available.
+    public let origin: String?
 
     public init(
         content: String,
@@ -37,7 +41,8 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         isUnblocked: Bool = false,
         isKeepMoving: Bool = false,
         isRelationSuccessor: Bool = false,
-        keepMovingProjectName: String? = nil
+        keepMovingProjectName: String? = nil,
+        origin: String? = nil
     ) {
         self.content = content
         self.depth = depth
@@ -49,5 +54,6 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         self.isKeepMoving = isKeepMoving
         self.isRelationSuccessor = isRelationSuccessor
         self.keepMovingProjectName = keepMovingProjectName
+        self.origin = origin
     }
 }

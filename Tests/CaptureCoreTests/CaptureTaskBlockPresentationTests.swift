@@ -35,7 +35,8 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
         let success = try blockFixture(fixture)
         return CaptureTaskBlockPresentation(
             block: success.taskBlocks[blockIndex],
-            dryRun: dryRun
+            dryRun: dryRun,
+            merges: success.merges
         )
     }
 
@@ -275,6 +276,133 @@ final class CaptureTaskBlockPresentationTests: XCTestCase {
         let expanded = presentation.items(expandedFolds: [2, 5])
         XCTAssertEqual(expanded.count, 6)
         XCTAssertTrue(expanded.allSatisfy { if case .row = $0 { true } else { false } })
+    }
+
+    func testMergeTargetsFoldContiguousOriginsByIdentityForBothArrows() throws {
+        for fixture in [
+            "capture-merge-in-complete-two.json",
+            "capture-merge-in-transfer-origin.json",
+        ] {
+            let success = try blockFixture(fixture)
+            let target = try XCTUnwrap(
+                success.taskBlocks.first { $0.roles.contains("merge_target") }
+            )
+            let presentation = CaptureTaskBlockPresentation(
+                block: target,
+                dryRun: true,
+                merges: success.merges
+            )
+            let collapsed = presentation.items(expandedFolds: [])
+            let folds = collapsed.compactMap { item -> CaptureTaskBlockPresentation.FoldRun? in
+                guard case .fold(let fold) = item, fold.style == .mergeOrigin else {
+                    return nil
+                }
+                return fold
+            }
+
+            XCTAssertEqual(folds.count, success.merges.count, fixture)
+            for (fold, merge) in zip(folds, success.merges) {
+                XCTAssertEqual(fold.mergeOriginTitle, merge.source.title)
+                XCTAssertEqual(fold.movedNotes, merge.movedNotes)
+                XCTAssertEqual(fold.count, merge.movedNotes + 1)
+                let noteText =
+                    merge.movedNotes == 0
+                    ? "title only"
+                    : "\(merge.movedNotes) note\(merge.movedNotes == 1 ? "" : "s")"
+                XCTAssertEqual(
+                    fold.labelText,
+                    "⤵ \(merge.source.title ?? "Task") · \(noteText) ▸"
+                )
+                XCTAssertEqual(
+                    fold.accessibilityLabel,
+                    "Show merged rows from \(merge.source.title ?? "Task"), \(noteText)"
+                )
+            }
+
+            let expanded = presentation.items(expandedFolds: Set(folds.map(\.id)))
+            XCTAssertEqual(expanded.count, presentation.rows.count, fixture)
+            XCTAssertEqual(
+                expanded.compactMap { item -> String? in
+                    guard case .row(let row) = item else { return nil }
+                    return row.content
+                },
+                presentation.rows.map(\.content),
+                fixture
+            )
+        }
+    }
+
+    func testMergeOriginFoldingPreservesAuthoredAndUnmatchedRows() throws {
+        let origin = "inbox.md#^source"
+        let block = CaptureTaskBlock(
+            relativeTarget: "db.md",
+            route: "db",
+            line: 1,
+            blockID: "target",
+            text: "Target",
+            roles: ["merge_target"],
+            lines: [
+                CaptureBlockLine(text: "- Target"),
+                CaptureBlockLine(text: "\t- Authored before", depth: 1),
+                CaptureBlockLine(text: "\t- Source", depth: 1, origin: origin),
+                CaptureBlockLine(text: "\t\t- Moved note", depth: 2, origin: origin),
+                CaptureBlockLine(text: "\t- Authored after", depth: 1),
+                CaptureBlockLine(
+                    text: "\t- Unknown origin",
+                    depth: 1,
+                    origin: "other.md#^unknown"
+                ),
+            ]
+        )
+        let merge = CaptureTransferMerge(
+            source: CaptureTransferTaskDescriptor(
+                path: "inbox.md",
+                blockID: "source",
+                title: "Source"
+            ),
+            movedNotes: 1
+        )
+        let presentation = CaptureTaskBlockPresentation(
+            block: block,
+            dryRun: true,
+            merges: [merge]
+        )
+        let items = presentation.items(expandedFolds: [])
+        let rowContent = items.compactMap { item -> String? in
+            guard case .row(let row) = item else { return nil }
+            return row.content
+        }
+
+        XCTAssertEqual(
+            rowContent,
+            ["- Target", "- Authored before", "- Authored after", "- Unknown origin"]
+        )
+        let fold = try XCTUnwrap(
+            items.compactMap { item -> CaptureTaskBlockPresentation.FoldRun? in
+                guard case .fold(let fold) = item else { return nil }
+                return fold
+            }.first
+        )
+        XCTAssertEqual(fold.style, .mergeOrigin)
+        XCTAssertEqual(fold.mergeOriginTitle, "Source")
+        XCTAssertEqual(fold.movedNotes, 1)
+        XCTAssertEqual(fold.rows.map(\.content), ["- Source", "- Moved note"])
+    }
+
+    func testCreatedMergeTargetOwnsTheVerbatimTaskPreviewOnce() throws {
+        let success = try blockFixture("capture-merge-in-complete-one.json")
+        XCTAssertTrue(
+            CaptureTaskBlockPresentation.isCreatedMergeTarget(
+                success,
+                blocks: success.taskBlocks
+            )
+        )
+        XCTAssertFalse(
+            CaptureTaskBlockPresentation.isCreatedMergeTarget(
+                success,
+                blocks: Array(success.taskBlocks.dropFirst())
+            )
+        )
     }
 
     func testSectionPresentationUsesSectionCaptionHeadingAndCreatedBadge() {

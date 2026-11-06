@@ -169,27 +169,27 @@ struct BlockDiffCard: View {
                 Button {
                     expand(fold.id)
                 } label: {
-                    Text(foldLabel(fold))
+                    Text(fold.labelText)
                         .font(.caption)
-                        .foregroundStyle(fold.style == .movedNotes ? Color.purple : .secondary)
+                        .foregroundStyle(foldTint(for: fold))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(fold.accessibilityLabel)
+                .accessibilityHint("Expands the original rows in place")
                 .pointingHandCursorOnHover()
             } else {
-                Text(foldLabel(fold))
+                Text(fold.labelText)
                     .font(.caption)
-                    .foregroundStyle(fold.style == .movedNotes ? Color.purple : .secondary)
+                    .foregroundStyle(foldTint(for: fold))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func foldLabel(_ fold: CaptureTaskBlockPresentation.FoldRun) -> String {
+    private func foldTint(for fold: CaptureTaskBlockPresentation.FoldRun) -> Color {
         switch fold.style {
-        case .unchanged:
-            "⋯ \(fold.count) unchanged lines"
-        case .movedNotes:
-            "⤵ \(fold.count) lines moved to the target"
+        case .movedNotes, .mergeOrigin: .purple
+        case .unchanged: .secondary
         }
     }
 
