@@ -5105,6 +5105,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive batch-level successor-choice capability and grouped offers.
     /// Older Bob binaries omit this field.
     public let pullIn: CapturePullIn?
+    /// Additive receipts for offer rows resolved during this capture.
+    /// Older Bob binaries omit the field; malformed rows are ignored.
+    public let offerCloses: [CaptureOfferClose]
     /// Additive batch-level inbox-route capability, candidates, and
     /// destinations. Older Bob binaries omit this field; a malformed value
     /// decodes as nil so it can never fail the capture decode.
@@ -5238,6 +5241,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         ref: CaptureRef? = nil,
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
+        offerCloses: [CaptureOfferClose] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
         captures: [CaptureCommandSuccess] = [],
@@ -5333,6 +5337,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.ref = ref
         self.planBudget = planBudget
         self.pullIn = pullIn
+        self.offerCloses = offerCloses
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
         self.pomodoroBlocks = pomodoroBlocks
@@ -5534,6 +5539,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             forKey: .planBudget
         )
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
+        offerCloses =
+            (try? container.decodeIfPresent([CaptureOfferClose].self, forKey: .offerCloses)) ?? []
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
         moveChoice =
@@ -5681,6 +5688,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case ref
         case planBudget = "plan_budget"
         case pullIn = "pull_in"
+        case offerCloses = "offer_closes"
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"
         case pomodoroBlocks = "pomodoro_blocks"
@@ -6936,6 +6944,219 @@ public struct TaskCompleteOfferDestination: Codable, Equatable, Sendable {
 
 /// Bob-issued opaque identity for one successor candidate. Never parse or
 /// reconstruct `key`; it may contain separators or digest suffixes.
+public struct TaskCompleteOfferClose: Codable, Equatable, Sendable {
+    public let complete: Bool
+    public let cancel: Bool
+    public let why: String?
+    public let completeConsequence: String?
+    public let cancelConsequence: String?
+    public let scopeNote: String?
+    public let unblocks: Int
+
+    public init(
+        complete: Bool = false,
+        cancel: Bool = false,
+        why: String? = nil,
+        completeConsequence: String? = nil,
+        cancelConsequence: String? = nil,
+        scopeNote: String? = nil,
+        unblocks: Int = 0
+    ) {
+        self.complete = complete
+        self.cancel = cancel
+        self.why = why
+        self.completeConsequence = completeConsequence
+        self.cancelConsequence = cancelConsequence
+        self.scopeNote = scopeNote
+        self.unblocks = unblocks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        complete = (try? container.decodeIfPresent(Bool.self, forKey: .complete)) ?? false
+        cancel = (try? container.decodeIfPresent(Bool.self, forKey: .cancel)) ?? false
+        why = try? container.decodeIfPresent(String.self, forKey: .why)
+        completeConsequence =
+            try? container.decodeIfPresent(String.self, forKey: .completeConsequence)
+        cancelConsequence = try? container.decodeIfPresent(String.self, forKey: .cancelConsequence)
+        scopeNote = try? container.decodeIfPresent(String.self, forKey: .scopeNote)
+        unblocks = (try? container.decodeIfPresent(Int.self, forKey: .unblocks)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case complete
+        case cancel
+        case why
+        case completeConsequence = "complete_consequence"
+        case cancelConsequence = "cancel_consequence"
+        case scopeNote = "scope_note"
+        case unblocks
+    }
+}
+
+/// One dependent Bob recovered while applying an offer verdict.
+public struct CaptureOfferCloseRecovered: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let text: String
+    public let previousStatusName: String
+    public let statusName: String
+    public let unblockedStamped: Bool
+
+    public init(
+        notePath: String = "",
+        blockID: String = "",
+        text: String = "",
+        previousStatusName: String = "",
+        statusName: String = "",
+        unblockedStamped: Bool = false
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.text = text
+        self.previousStatusName = previousStatusName
+        self.statusName = statusName
+        self.unblockedStamped = unblockedStamped
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        previousStatusName =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        unblockedStamped =
+            (try? container.decodeIfPresent(Bool.self, forKey: .unblockedStamped)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case text
+        case previousStatusName = "previous_status_name"
+        case statusName = "status_name"
+        case unblockedStamped = "unblocked_stamped"
+    }
+}
+
+/// Bob's exact receipt for one offer row resolved as Done or Cancel.
+public struct CaptureOfferClose: Codable, Equatable, Sendable {
+    public let n: Int
+    public let key: String
+    public let outcome: String
+    public let reason: String?
+    public let notePath: String
+    public let line: Int
+    public let blockID: String
+    public let text: String
+    public let previousStatus: String
+    public let previousStatusName: String
+    public let cancelLog: String?
+    public let recovered: [CaptureOfferCloseRecovered]
+    public let message: String
+
+    public init(
+        n: Int = 0,
+        key: String = "",
+        outcome: String = "",
+        reason: String? = nil,
+        notePath: String = "",
+        line: Int = 0,
+        blockID: String = "",
+        text: String = "",
+        previousStatus: String = "",
+        previousStatusName: String = "",
+        cancelLog: String? = nil,
+        recovered: [CaptureOfferCloseRecovered] = [],
+        message: String = ""
+    ) {
+        self.n = n
+        self.key = key
+        self.outcome = outcome
+        self.reason = reason
+        self.notePath = notePath
+        self.line = line
+        self.blockID = blockID
+        self.text = text
+        self.previousStatus = previousStatus
+        self.previousStatusName = previousStatusName
+        self.cancelLog = cancelLog
+        self.recovered = recovered
+        self.message = message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        outcome = (try? container.decodeIfPresent(String.self, forKey: .outcome)) ?? ""
+        reason = try? container.decodeIfPresent(String.self, forKey: .reason)
+        notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        previousStatus =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatus)) ?? ""
+        previousStatusName =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+        cancelLog = try? container.decodeIfPresent(String.self, forKey: .cancelLog)
+        recovered =
+            (try? container.decodeIfPresent(
+                [CaptureOfferCloseRecovered].self,
+                forKey: .recovered
+            )) ?? []
+        message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case n
+        case key
+        case outcome
+        case reason
+        case notePath = "note_path"
+        case line
+        case blockID = "block_id"
+        case text
+        case previousStatus = "previous_status"
+        case previousStatusName = "previous_status_name"
+        case cancelLog = "cancel_log"
+        case recovered
+        case message
+    }
+}
+
+/// The refused row returned with `offer_close_refused`.
+public struct CaptureOfferCloseRefused: Codable, Equatable, Sendable {
+    public let key: String
+    public let n: Int
+    public let outcome: String?
+    public let why: String?
+
+    public init(key: String = "", n: Int = 0, outcome: String? = nil, why: String? = nil) {
+        self.key = key
+        self.n = n
+        self.outcome = outcome
+        self.why = why
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+        outcome = try? container.decodeIfPresent(String.self, forKey: .outcome)
+        why = try? container.decodeIfPresent(String.self, forKey: .why)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case n
+        case outcome
+        case why
+    }
+}
+
 public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     public let key: String
     public let n: Int
@@ -6956,6 +7177,10 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
     /// Source task that was merged when this hand-off was offered.
     /// Absent on other offers and from older Bob binaries.
     public let mergedFrom: String?
+    /// Bob's row-specific eligibility and consequence copy. Missing on older Bob.
+    public let close: TaskCompleteOfferClose?
+    /// `done` or `cancelled` when this commit resolves the row instead of pulling it in.
+    public let verdict: String?
 
     public init(
         key: String = "",
@@ -6968,7 +7193,9 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         blockIDNeeded: Bool = false,
         movedFrom: String? = nil,
         note: String? = nil,
-        mergedFrom: String? = nil
+        mergedFrom: String? = nil,
+        close: TaskCompleteOfferClose? = nil,
+        verdict: String? = nil
     ) {
         self.key = key
         self.n = n
@@ -6981,6 +7208,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         self.movedFrom = movedFrom
         self.note = note
         self.mergedFrom = mergedFrom
+        self.close = close
+        self.verdict = verdict
     }
 
     public init(from decoder: Decoder) throws {
@@ -7000,6 +7229,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         movedFrom = try? container.decodeIfPresent(String.self, forKey: .movedFrom)
         note = try? container.decodeIfPresent(String.self, forKey: .note)
         mergedFrom = try? container.decodeIfPresent(String.self, forKey: .mergedFrom)
+        close = try? container.decodeIfPresent(TaskCompleteOfferClose.self, forKey: .close)
+        verdict = try? container.decodeIfPresent(String.self, forKey: .verdict)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7014,6 +7245,8 @@ public struct TaskCompleteOffer: Codable, Equatable, Sendable {
         case movedFrom = "moved_from"
         case note
         case mergedFrom = "merged_from"
+        case close
+        case verdict
     }
 }
 
@@ -7121,6 +7354,32 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
     }
 }
 
+/// Additive capability and result counts for capture offer verdicts.
+public struct CapturePullInClose: Codable, Equatable, Sendable {
+    public let supported: Bool
+    public let doneCount: Int
+    public let cancelledCount: Int
+
+    public init(supported: Bool = false, doneCount: Int = 0, cancelledCount: Int = 0) {
+        self.supported = supported
+        self.doneCount = doneCount
+        self.cancelledCount = cancelledCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = (try? container.decodeIfPresent(Bool.self, forKey: .supported)) ?? false
+        doneCount = (try? container.decodeIfPresent(Int.self, forKey: .doneCount)) ?? 0
+        cancelledCount = (try? container.decodeIfPresent(Int.self, forKey: .cancelledCount)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case supported
+        case doneCount = "done_count"
+        case cancelledCount = "cancelled_count"
+    }
+}
+
 public struct CapturePullIn: Codable, Equatable, Sendable {
     public let supported: Bool
     public let offerCount: Int
@@ -7128,6 +7387,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
     public let pickedCount: Int
     public let groups: [CapturePullInGroup]
     public let copy: CapturePullInCopy?
+    /// Missing on older Bob; this nested capability gates offer-verdict argv.
+    public let close: CapturePullInClose?
 
     public init(
         supported: Bool = false,
@@ -7135,7 +7396,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         choice: String? = nil,
         pickedCount: Int = 0,
         groups: [CapturePullInGroup] = [],
-        copy: CapturePullInCopy? = nil
+        copy: CapturePullInCopy? = nil,
+        close: CapturePullInClose? = nil
     ) {
         self.supported = supported
         self.offerCount = offerCount
@@ -7143,6 +7405,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         self.pickedCount = pickedCount
         self.groups = groups
         self.copy = copy
+        self.close = close
     }
 
     public init(from decoder: Decoder) throws {
@@ -7153,6 +7416,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         pickedCount = (try? container.decodeIfPresent(Int.self, forKey: .pickedCount)) ?? 0
         groups = (try? container.decodeIfPresent([CapturePullInGroup].self, forKey: .groups)) ?? []
         copy = try? container.decodeIfPresent(CapturePullInCopy.self, forKey: .copy)
+        close = try? container.decodeIfPresent(CapturePullInClose.self, forKey: .close)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7162,6 +7426,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         case pickedCount = "picked_count"
         case groups
         case copy
+        case close
     }
 }
 
@@ -7563,6 +7828,19 @@ public struct CaptureCommandFailure: Codable, Equatable {
     /// `destination`, `message`). Older Bob omits it; malformed decodes as
     /// nil.
     public let refused: CaptureInboxRouteRefused?
+    /// Refused offer-close row, when this failure's code is
+    /// `offer_close_refused`.
+    public var offerCloseRefused: CaptureOfferCloseRefused? {
+        guard code == "offer_close_refused", let refused else {
+            return nil
+        }
+        return CaptureOfferCloseRefused(
+            key: refused.key,
+            n: refused.n,
+            outcome: refused.outcome,
+            why: refused.why
+        )
+    }
 
     public init(
         ok: Bool = false,
@@ -11254,12 +11532,25 @@ public struct CaptureInboxRouteRefused: Codable, Equatable, Sendable {
     public let n: Int
     public let destination: String
     public let message: String
+    /// Offer-close refusal variant carried in the same top-level `refused`
+    /// slot; nil for inbox-route refusals and older Bob.
+    public let outcome: String?
+    public let why: String?
 
-    public init(key: String = "", n: Int = 0, destination: String = "", message: String = "") {
+    public init(
+        key: String = "",
+        n: Int = 0,
+        destination: String = "",
+        message: String = "",
+        outcome: String? = nil,
+        why: String? = nil
+    ) {
         self.key = key
         self.n = n
         self.destination = destination
         self.message = message
+        self.outcome = outcome
+        self.why = why
     }
 
     public init(from decoder: Decoder) throws {
@@ -11268,6 +11559,8 @@ public struct CaptureInboxRouteRefused: Codable, Equatable, Sendable {
         n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
         destination = (try? container.decodeIfPresent(String.self, forKey: .destination)) ?? ""
         message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+        outcome = try? container.decodeIfPresent(String.self, forKey: .outcome)
+        why = try? container.decodeIfPresent(String.self, forKey: .why)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -11275,5 +11568,7 @@ public struct CaptureInboxRouteRefused: Codable, Equatable, Sendable {
         case n
         case destination
         case message
+        case outcome
+        case why
     }
 }

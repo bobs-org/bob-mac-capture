@@ -4212,6 +4212,22 @@ JSON
         break
       fi
     done
+    if [[ " $* " == *" --complete-offer "* || " $* " == *" --cancel-offer "* ]]; then
+      case "${FAKE_BOB_OFFER_CLOSE_REFUSAL:-}" in
+        stale)
+          cat "${fixtures_dir}/capture-offer-close-stale.json"
+          exit 2
+          ;;
+        refused)
+          cat "${fixtures_dir}/capture-offer-close-refused.json"
+          exit 1
+          ;;
+        conflict)
+          cat "${fixtures_dir}/capture-offer-close-conflict.json"
+          exit 2
+          ;;
+      esac
+    fi
     if [[ "${FAKE_BOB_MOVE_CHOICE:-}" == "1" ]]; then
       python3 - "$fixtures_dir" "$dry_run" "$@" <<'MOVE_PY'
 import json, os, pathlib, sys

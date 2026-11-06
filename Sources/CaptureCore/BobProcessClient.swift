@@ -756,9 +756,11 @@ public final class BobProcessClient: @unchecked Sendable {
         moveInSelection: String? = nil,
         moveInCapabilityAdvertised: Bool = false,
         pullInSelection: CapturePullInSelection? = nil,
+        offerVerdicts: CapturePullInOfferVerdicts? = nil,
         requirePullInChoice: Bool = false,
         refuseOverride: Bool = false,
         pullInCapabilityAdvertised: Bool = false,
+        offerCloseCapabilityAdvertised: Bool = false,
         inboxRouteAnswers: [CaptureInboxRouteSubmission]? = nil,
         requireInboxRouteChoice: Bool = false,
         inboxRouteCapabilityAdvertised: Bool = false,
@@ -770,6 +772,10 @@ public final class BobProcessClient: @unchecked Sendable {
         }
         if pullInSelection != nil, !pullInCapabilityAdvertised {
             throw BobClientError.unsupportedOption("--pull-in")
+        }
+        if let offerVerdicts, !offerVerdicts.isEmpty, !offerCloseCapabilityAdvertised {
+            let option = offerVerdicts.completeKeys.isEmpty ? "--cancel-offer" : "--complete-offer"
+            throw BobClientError.unsupportedOption(option)
         }
         let rememberedInboxCapability: Bool = stateQueue.sync {
             inboxRouteCapabilityIdentities.contains(identityToken)
@@ -804,6 +810,24 @@ public final class BobProcessClient: @unchecked Sendable {
                 arguments += ["--pull-in", keys.joined(separator: ",")]
             case .none:
                 arguments += ["--pull-in", "none"]
+            }
+        }
+        if let offerVerdicts {
+            let allKeys = offerVerdicts.completeKeys + offerVerdicts.cancelOffers.map(\.key)
+            guard allKeys.allSatisfy({ !$0.isEmpty }),
+                Set(allKeys).count == allKeys.count
+            else {
+                throw BobClientError.unsupportedOption(
+                    "offer verdicts require unique opaque offer keys")
+            }
+            if !offerVerdicts.completeKeys.isEmpty {
+                arguments += [
+                    "--complete-offer", offerVerdicts.completeKeys.joined(separator: ","),
+                ]
+            }
+            for offer in offerVerdicts.cancelOffers {
+                let value = offer.reason.isEmpty ? offer.key : "\(offer.key)=\(offer.reason)"
+                arguments += ["--cancel-offer", value]
             }
         }
         if let inboxRouteAnswers {

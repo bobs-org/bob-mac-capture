@@ -34,6 +34,73 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)
     }
 
+    func testOfferVerdictsRequireAdvertisedCloseCapability() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+        let verdicts = CapturePullInOfferVerdicts(completeKeys: ["opaque:key"])
+        do {
+            _ = try await client.capture(
+                "draft",
+                offerVerdicts: verdicts,
+                pullInCapabilityAdvertised: true
+            )
+            XCTFail("Expected the nested close capability guard")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--complete-offer")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: record.path))
+
+        _ = try await client.capture(
+            "draft",
+            readClipboard: false,
+            pullInSelection: CapturePullInSelection.none,
+            offerVerdicts: CapturePullInOfferVerdicts(
+                completeKeys: ["opaque:done", "opaque:finish"],
+                cancelOffers: [
+                    CapturePullInCancelOffer(key: "opaque:cancel", reason: "Rerouted"),
+                    CapturePullInCancelOffer(key: "opaque:blank"),
+                ]
+            ),
+            pullInCapabilityAdvertised: true,
+            offerCloseCapabilityAdvertised: true
+        )
+
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --no-clip --pull-in none --complete-offer opaque:done,opaque:finish --cancel-offer opaque:cancel=Rerouted --cancel-offer opaque:blank -- draft"
+            )
+        )
+    }
+
+    func testBlankCancelReasonOmitsEqualsAndDuplicateVerdictKeysAreRejected() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+        _ = try await client.capture(
+            "draft",
+            offerVerdicts: CapturePullInOfferVerdicts(
+                cancelOffers: [CapturePullInCancelOffer(key: "opaque:key")]
+            ),
+            offerCloseCapabilityAdvertised: true
+        )
+        XCTAssertTrue(try recordText(record).contains("--cancel-offer opaque:key -- draft"))
+
+        do {
+            _ = try await client.capture(
+                "draft",
+                offerVerdicts: CapturePullInOfferVerdicts(
+                    completeKeys: ["same"],
+                    cancelOffers: [CapturePullInCancelOffer(key: "same")]
+                ),
+                offerCloseCapabilityAdvertised: true
+            )
+            XCTFail("Expected duplicate keys to be rejected")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "offer verdicts require unique opaque offer keys")
+        }
+        XCTAssertEqual(try recordText(record).components(separatedBy: "argv=capture").count - 1, 1)
+    }
+
     func testMoveAnswerPrecedesPullInAndRequiresCapability() async throws {
         let record = temporaryRecordURL()
         let client = try makeClient(record: record)
