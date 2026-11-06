@@ -3488,7 +3488,14 @@ private struct CompletionRow: View {
     private static let secondaryMaxLength = 46
 
     private var tint: Color {
-        CaptureEditorPalette.color(for: content.category)
+        if content.pastSegmentKind == "pomodoro",
+           let swatch = content.themeSwatches.first
+        {
+            return swatch.known
+                ? PomodoroHomeColor.color(for: swatch.hue, scheme: colorScheme)
+                : Color(nsColor: .tertiaryLabelColor)
+        }
+        return CaptureEditorPalette.color(for: content.category)
     }
 
     var body: some View {
@@ -3588,6 +3595,7 @@ private struct CompletionRow: View {
 
     private func isOutlinedBadge(_ badge: String) -> Bool {
         badge == "Add ID" || badge == "Name it"
+            || (content.pastSegmentKind == "gap" && badge == "gap")
     }
 
     private func isWarningBadge(_ badge: String) -> Bool {
@@ -5058,6 +5066,22 @@ struct PreviewPane: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .textSelection(.enabled)
+                    }
+                    if let segmentLine = member.segmentLine {
+                        Text(segmentLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .accessibilityLabel(
+                                member.segmentAccessibilityLabel ?? "Placement: \(segmentLine)"
+                            )
+                    }
+                    if let cutNote = member.cutNote {
+                        Text(cutNote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .accessibilityLabel(member.cutAccessibilityLabel ?? cutNote)
                     }
                     if let close = member.closePresentation {
                         let showsBadges = close.taskRows.contains { $0.index != nil }

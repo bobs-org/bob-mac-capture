@@ -127,6 +127,10 @@ enum CaptureEditorPalette {
             return Color(nsColor: .tertiaryLabelColor)
         case .pomodoroStart:
             return .pink
+        case .pomodoroPastSegment:
+            // Timeline placement is a Pomodoro-family span, distinct from
+            // the gray task-drop suffix that also uses `~`.
+            return .teal
         case .pomodoroPastRepair:
             // Amber repair warning for `x=!`: distinct from the close-selection
             // `!` green and the session pink, with light/dark coverage from

@@ -547,7 +547,7 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
         let mixed = CaptureParseSnapshot(draft: mixedParse.input, parse: mixedParse)
         XCTAssertEqual(mixed.items.map(\.mode), ["pomodoro_close", "pomodoro_past"])
         XCTAssertEqual(mixed.items.map(\.start), [0, 2])
-        XCTAssertEqual(mixed.items.map(\.end), [1, 11])
+        XCTAssertEqual(mixed.items.map(\.end), [1, 10])
 
         let singleParse = try JSONDecoder().decode(
             CaptureParseResponse.self,

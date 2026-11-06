@@ -43,6 +43,10 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
         public let windowText: String
         public let durationMinutes: Int
         public let rangeText: String
+        public let segmentLine: String?
+        public let segmentAccessibilityLabel: String?
+        public let cutNote: String?
+        public let cutAccessibilityLabel: String?
         public let closePresentation: CapturePomodoroClosePresentation?
 
         public var taskRows: [CapturePomodoroClosePresentation.TaskRow] {
@@ -50,7 +54,14 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
         }
 
         public var accessibilityLabel: String {
-            "\(displayName), \(windowText), \(durationMinutes) minutes"
+            var parts = ["\(displayName), \(windowText), \(durationMinutes) minutes"]
+            if let segmentAccessibilityLabel {
+                parts.append(segmentAccessibilityLabel)
+            }
+            if let cutAccessibilityLabel {
+                parts.append(cutAccessibilityLabel)
+            }
+            return parts.joined(separator: ", ")
         }
     }
 
@@ -173,6 +184,8 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
                 summary: past.close,
                 capture: capture
             )
+            let segmentLine = Self.segmentLine(for: past.segment)
+            let cutNote = Self.cutNote(for: past)
             return Member(
                 capture: capture,
                 past: past,
@@ -180,6 +193,10 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
                 windowText: windowText,
                 durationMinutes: minutes,
                 rangeText: rangeText,
+                segmentLine: segmentLine,
+                segmentAccessibilityLabel: segmentLine.map { "Placement: \($0)." },
+                cutNote: cutNote,
+                cutAccessibilityLabel: cutNote.map { "\($0)." },
                 closePresentation: closePresentation
             )
         }
@@ -200,6 +217,11 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
                         windowText: "",
                         durationMinutes: past.blocks * 5,
                         rangeText: "",
+                        segmentLine: Self.segmentLine(for: past.segment),
+                        segmentAccessibilityLabel: Self.segmentLine(for: past.segment)
+                            .map { "Placement: \($0)." },
+                        cutNote: Self.cutNote(for: past),
+                        cutAccessibilityLabel: Self.cutNote(for: past).map { "\($0)." },
                         closePresentation: nil
                     )
                 } : members,
@@ -226,6 +248,41 @@ public struct CapturePomodoroPastPresentation: Equatable, Sendable {
             }
         }
         return parts.joined(separator: " ── ")
+    }
+
+    private static func segmentLine(for segment: PomodoroPastSegment?) -> String? {
+        guard let segment else {
+            return nil
+        }
+        let name = segment.name.flatMap { $0.isEmpty ? nil : $0 } ?? "Pomodoro"
+        switch segment.kind {
+        case "tail":
+            return "since \(name)"
+        case "head":
+            return "before \(name)"
+        case "pomodoro", "gap":
+            let edge = segment.edge == "end" ? "the end" : "the start"
+            let segmentName = segment.kind == "gap" ? "gap" : name
+            let suffix = segment.index.map { "~\($0) " } ?? ""
+            let range = [segment.start, segment.end]
+                .filter { !$0.isEmpty }
+                .joined(separator: "–")
+            let rangeText = range.isEmpty ? "" : " \(range)"
+            return "at \(edge) of \(suffix)\(segmentName)\(rangeText)"
+        default:
+            return nil
+        }
+    }
+
+    private static func cutNote(for past: PomodoroPastSummary) -> String? {
+        guard let cut = past.window.cut else {
+            return nil
+        }
+        let requested = past.window.requestedMinutes ?? past.blocks * 5
+        guard requested > past.window.minutes else {
+            return nil
+        }
+        return "\(past.window.minutes)m · \(requested)m cut at \(cut)"
     }
 
     private static func dedupedTrims(for members: [Member]) -> [TrimRow] {

@@ -28,6 +28,12 @@ public enum CaptureCompletionMenu: Sendable {
         {
             return suggested
         }
+        if completion.context == "pomodoro_past_segment" {
+            // The timeline picker is ordered by Bob's current day catalog;
+            // keep its first row as the default when no more specific
+            // selection was supplied.
+            return completion.candidates.isEmpty ? nil : 0
+        }
         return completion.candidates.isEmpty ? nil : 0
     }
 

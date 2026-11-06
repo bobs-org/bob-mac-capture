@@ -951,6 +951,44 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
     }
 
+    func testCaptureAddsExpectedPastWindowsOnlyWhenProvided() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"test refusal","code":"test"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        let guarded = try await client.capture(
+            "x=2~1!",
+            dryRun: false,
+            readClipboard: false,
+            expectPastWindows: "0830-0840,0840-0855"
+        )
+        guard case .failure = guarded else {
+            return XCTFail("Expected the fake Bob refusal")
+        }
+        let unguarded = try await client.capture("x=2~1!", dryRun: false, readClipboard: false)
+        guard case .failure = unguarded else {
+            return XCTFail("Expected the fake Bob refusal")
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture --format json --no-clip --expect-past-windows 0830-0840,0840-0855 -- x=2~1!"
+            )
+        )
+        XCTAssertTrue(record.contains("argv=capture --format json --no-clip -- x=2~1!"))
+        XCTAssertEqual(record.components(separatedBy: "--expect-past-windows").count - 1, 1)
+    }
+
     func testWildcardCloseDraftPassesUnchangedToPreviewAndSubmit() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -982,6 +1020,7 @@ final class BobProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x*"))
         XCTAssertTrue(record.contains("argv=capture --format json --no-clip -- x*"))
+        XCTAssertFalse(record.contains("--expect-past-windows"))
         XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 2)
     }
 

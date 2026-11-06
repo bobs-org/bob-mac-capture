@@ -38,6 +38,55 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
+    func testPastSegmentRowsKeepBobsSuffixAndResolvedTimelineDetails() {
+        let pomodoro = CaptureCompletionCandidate(
+            replacement: "~1",
+            label: "BUILD",
+            kind: "pomodoro",
+            name: "BUILD",
+            start: "0830",
+            end: "0900",
+            minutes: 30,
+            needsRepair: true
+        )
+
+        let pomodoroContent = completionRowContent(
+            for: pomodoro,
+            context: "pomodoro_past_segment",
+            query: "1"
+        )
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "pomodoro_past_segment"),
+            .pomodoroPastSegment
+        )
+        XCTAssertEqual(pomodoroContent.category, .pomodoroStart)
+        XCTAssertEqual(pomodoroContent.primaryText, "~1")
+        XCTAssertEqual(pomodoroContent.primaryMatchRange, 1..<2)
+        XCTAssertEqual(pomodoroContent.secondaryText, "BUILD · 0830–0900 · 30m")
+        XCTAssertEqual(pomodoroContent.badges, ["needs !"])
+        XCTAssertEqual(pomodoroContent.pastSegmentKind, "pomodoro")
+        XCTAssertEqual(pomodoroContent.accessibilityHint, "Inserts Bob's segment suffix ~1.")
+
+        let gap = CaptureCompletionCandidate(
+            replacement: "~2+",
+            label: "gap",
+            kind: "gap",
+            start: "0800",
+            end: "0830",
+            minutes: 30
+        )
+        let gapContent = completionRowContent(
+            for: gap,
+            context: "pomodoro_past_segment",
+            query: "2+"
+        )
+        XCTAssertEqual(gapContent.category, .pomodoroPastSegment)
+        XCTAssertEqual(gapContent.primaryText, "~2+")
+        XCTAssertEqual(gapContent.secondaryText, "gap · 0800–0830 · 30m")
+        XCTAssertEqual(gapContent.badges, ["gap"])
+        XCTAssertEqual(gapContent.pastSegmentKind, "gap")
+    }
+
     func testDirectiveRowShowsTokenNameSummaryDetailAndDisabledReason() {
         let candidate = CaptureCompletionCandidate(
             replacement: "",

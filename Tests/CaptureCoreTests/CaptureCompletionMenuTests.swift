@@ -39,6 +39,19 @@ final class CaptureCompletionMenuTests: XCTestCase {
         )
     }
 
+    func testPastSegmentPickerKeepsBobsTimelineOrder() {
+        let completion = response(
+            context: "pomodoro_past_segment", initialSelection: nil, suggestedIndex: nil)
+        XCTAssertEqual(
+            CaptureCompletionMenu.initialSelectedIndex(for: completion, queryIsEmpty: true),
+            0
+        )
+        XCTAssertEqual(
+            CaptureCompletionMenu.initialSelectedIndex(for: completion, queryIsEmpty: false),
+            0
+        )
+    }
+
     func testNoneWinsOverAPomodoroSuggestion() {
         let completion = response(
             context: "pomodoro_name", initialSelection: "none", suggestedIndex: 1)

@@ -1856,6 +1856,11 @@ JSON
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "x=2-" ]]; then
+      if [[ -n "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS:-}" ]]; then
+        sleep "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS}"
+      fi
+      cat "${fixtures_dir}/pomodoro-past-rewrite-segment-dash.json"
     elif [[ "${draft}" == "Fix it -" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then

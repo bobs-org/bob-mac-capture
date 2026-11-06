@@ -998,21 +998,77 @@ public struct PomodoroPastTarget: Codable, Equatable, Sendable {
 public struct PomodoroPastStack: Codable, Equatable, Sendable {
     public let index: Int
     public let size: Int
+    /// Placement direction for grammar-14 segment suffixes. Older Bob omits it.
+    public let pin: String?
 
-    public init(index: Int = 0, size: Int = 0) {
+    public init(index: Int = 0, size: Int = 0, pin: String? = nil) {
         self.index = index
         self.size = size
+        self.pin = pin
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
         size = try container.decodeIfPresent(Int.self, forKey: .size) ?? 0
+        pin = try container.decodeIfPresent(String.self, forKey: .pin)
     }
 
     private enum CodingKeys: String, CodingKey {
         case index
         case size
+        case pin
+    }
+}
+
+/// Bob's resolved segment for a grammar-14 past-Pomodoro placement. Older
+/// Bob omits this object; missing fields inside an additive object remain nil.
+public struct PomodoroPastSegment: Codable, Equatable, Sendable {
+    public let kind: String
+    public let index: Int?
+    public let edge: String
+    public let start: String
+    public let end: String
+    public let name: String?
+    public let line: Int?
+
+    public init(
+        kind: String = "",
+        index: Int? = nil,
+        edge: String = "",
+        start: String = "",
+        end: String = "",
+        name: String? = nil,
+        line: Int? = nil
+    ) {
+        self.kind = kind
+        self.index = index
+        self.edge = edge
+        self.start = start
+        self.end = end
+        self.name = name
+        self.line = line
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
+        edge = try container.decodeIfPresent(String.self, forKey: .edge) ?? ""
+        start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
+        end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        line = try container.decodeIfPresent(Int.self, forKey: .line)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case index
+        case edge
+        case start
+        case end
+        case name
+        case line
     }
 }
 
@@ -1022,11 +1078,21 @@ public struct PomodoroPastWindow: Codable, Equatable, Sendable {
     public let start: String
     public let end: String
     public let minutes: Int
+    public let requestedMinutes: Int?
+    public let cut: String?
 
-    public init(start: String = "", end: String = "", minutes: Int = 0) {
+    public init(
+        start: String = "",
+        end: String = "",
+        minutes: Int = 0,
+        requestedMinutes: Int? = nil,
+        cut: String? = nil
+    ) {
         self.start = start
         self.end = end
         self.minutes = minutes
+        self.requestedMinutes = requestedMinutes
+        self.cut = cut
     }
 
     public init(from decoder: Decoder) throws {
@@ -1034,12 +1100,16 @@ public struct PomodoroPastWindow: Codable, Equatable, Sendable {
         start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
         end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
         minutes = try container.decodeIfPresent(Int.self, forKey: .minutes) ?? 0
+        requestedMinutes = try container.decodeIfPresent(Int.self, forKey: .requestedMinutes)
+        cut = try container.decodeIfPresent(String.self, forKey: .cut)
     }
 
     private enum CodingKeys: String, CodingKey {
         case start
         case end
         case minutes
+        case requestedMinutes = "requested_minutes"
+        case cut
     }
 }
 
@@ -1055,6 +1125,7 @@ public struct PomodoroPastSummary: Codable, Equatable, Sendable {
     public let blocks: Int
     public let repair: Bool
     public let stack: PomodoroPastStack
+    public let segment: PomodoroPastSegment?
     public let anchor: String
     public let window: PomodoroPastWindow
     public let closedAt: String
@@ -1069,6 +1140,7 @@ public struct PomodoroPastSummary: Codable, Equatable, Sendable {
         blocks: Int = 5,
         repair: Bool = false,
         stack: PomodoroPastStack = PomodoroPastStack(),
+        segment: PomodoroPastSegment? = nil,
         anchor: String = "",
         window: PomodoroPastWindow = PomodoroPastWindow(),
         closedAt: String = "",
@@ -1082,6 +1154,7 @@ public struct PomodoroPastSummary: Codable, Equatable, Sendable {
         self.blocks = blocks
         self.repair = repair
         self.stack = stack
+        self.segment = segment
         self.anchor = anchor
         self.window = window
         self.closedAt = closedAt
@@ -1106,6 +1179,10 @@ public struct PomodoroPastSummary: Codable, Equatable, Sendable {
                 PomodoroPastStack.self,
                 forKey: .stack
             )) ?? PomodoroPastStack()
+        segment = (try? container.decodeIfPresent(
+            PomodoroPastSegment.self,
+            forKey: .segment
+        )) ?? nil
         anchor = try container.decodeIfPresent(String.self, forKey: .anchor) ?? ""
         window =
             (try? container.decodeIfPresent(
@@ -1128,6 +1205,7 @@ public struct PomodoroPastSummary: Codable, Equatable, Sendable {
         case blocks
         case repair
         case stack
+        case segment
         case anchor
         case window
         case closedAt = "closed_at"
@@ -9673,6 +9751,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let line: Int?
     public let state: String?
     public let timeRange: String?
+    /// Resolved `pomodoro_past_segment` picker row bounds and duration. Older
+    /// Bob and every other completion context omit these values.
+    public let start: String?
+    public let end: String?
+    public let minutes: Int?
+    public let needsRepair: Bool
     public let placeholder: Bool
     public let isCurrent: Bool
     public let matchCount: Int?
@@ -9860,6 +9944,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         line: Int? = nil,
         state: String? = nil,
         timeRange: String? = nil,
+        start: String? = nil,
+        end: String? = nil,
+        minutes: Int? = nil,
+        needsRepair: Bool = false,
         placeholder: Bool = false,
         isCurrent: Bool = false,
         matchCount: Int? = nil,
@@ -9945,6 +10033,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.line = line
         self.state = state
         self.timeRange = timeRange
+        self.start = start
+        self.end = end
+        self.minutes = minutes
+        self.needsRepair = needsRepair
         self.placeholder = placeholder
         self.isCurrent = isCurrent
         self.matchCount = matchCount
@@ -10033,6 +10125,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         line = try container.decodeIfPresent(Int.self, forKey: .line)
         state = try container.decodeIfPresent(String.self, forKey: .state)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        start = try container.decodeIfPresent(String.self, forKey: .start)
+        end = try container.decodeIfPresent(String.self, forKey: .end)
+        minutes = try container.decodeIfPresent(Int.self, forKey: .minutes)
+        needsRepair = try container.decodeIfPresent(Bool.self, forKey: .needsRepair) ?? false
         placeholder = try container.decodeIfPresent(Bool.self, forKey: .placeholder) ?? false
         isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
@@ -10125,6 +10221,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case line
         case state
         case timeRange = "time_range"
+        case start
+        case end
+        case minutes
+        case needsRepair = "needs_repair"
         case placeholder
         case isCurrent = "is_current"
         case matchCount = "match_count"

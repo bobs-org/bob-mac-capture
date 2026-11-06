@@ -35,6 +35,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case taskType
     case taskTypeMarker
     case pomodoroStart
+    case pomodoroPastSegment
     case pomodoroPastRepair
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -171,6 +172,9 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // The `x=` past token and its `@D` count share the session-operator
         // highlight; the repair `!` takes its own warning category below.
         return .pomodoroStart
+    case "pomodoro_past_segment":
+        // Distinct from the gray `~N` task-drop marker after the second `=`.
+        return .pomodoroPastSegment
     case "pomodoro_past_repair":
         // The repair `!` on `x=` warns distinctly from the close-selection
         // `!` (which stays `.pomodoroCloseComplete`).
@@ -272,6 +276,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case pomodoroName
     case pomodoroStartName
     case pomodoroPastName
+    case pomodoroPastSegment
     case pomodoroSplitBase
     case pomodoroSplitType
     case pomodoroMergeSource
@@ -306,6 +311,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "pomodoro_name": self = .pomodoroName
         case "pomodoro_start_name": self = .pomodoroStartName
         case "pomodoro_past_name": self = .pomodoroPastName
+        case "pomodoro_past_segment": self = .pomodoroPastSegment
         case "pomodoro_split_base": self = .pomodoroSplitBase
         case "pomodoro_split_type": self = .pomodoroSplitType
         case "pomodoro_merge_src": self = .pomodoroMergeSource
@@ -361,6 +367,8 @@ public struct CompletionRowContent: Equatable, Sendable {
     public let accessibilityHint: String
     /// Third line for Bob-authored directive `detail`. Nil on every other row.
     public let detailText: String?
+    /// Bob's timeline segment kind, used for picker badge styling.
+    public let pastSegmentKind: String?
     /// Dimmed rows whose acceptance is a no-op (Bob's `disabled_reason` or
     /// a refused typed task type).
     public let isDisabled: Bool
@@ -379,6 +387,7 @@ public struct CompletionRowContent: Equatable, Sendable {
         accessibilityLabel: String,
         accessibilityHint: String,
         detailText: String? = nil,
+        pastSegmentKind: String? = nil,
         isDisabled: Bool = false
     ) {
         self.category = category
@@ -394,6 +403,7 @@ public struct CompletionRowContent: Equatable, Sendable {
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
         self.detailText = detailText
+        self.pastSegmentKind = pastSegmentKind
         self.isDisabled = isDisabled
     }
 }
@@ -516,6 +526,7 @@ public func completionRowContent(
     var badges: [String] = []
     let accessibilityHint: String
     var detailText: String?
+    var pastSegmentKind: String?
 
     switch context {
     case .route:
@@ -728,6 +739,31 @@ public func completionRowContent(
             }
             accessibilityHint = "Starts this Pomodoro now."
         }
+
+    case .pomodoroPastSegment:
+        pastSegmentKind = candidate.kind
+        category = candidate.kind == "pomodoro" ? .pomodoroStart : .pomodoroPastSegment
+        symbolName = candidate.kind == "pomodoro" ? "timer" : "clock"
+        contextLabel = ""
+        primaryText = candidate.replacement
+        let label = candidate.name
+            ?? (candidate.kind == "gap" ? "gap" : candidate.kind)
+            ?? candidate.label
+            ?? "segment"
+        let range = [candidate.start, candidate.end]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "–")
+        var details = [label]
+        if !range.isEmpty {
+            details.append(range)
+        }
+        if let minutes = candidate.minutes {
+            details.append("\(minutes)m")
+        }
+        secondaryText = details.joined(separator: " · ")
+        badges = [candidate.needsRepair ? "needs !" : (candidate.kind ?? "segment")]
+        accessibilityHint = "Inserts Bob's segment suffix \(candidate.replacement)."
 
     case .activeTask:
         // In Progress tasks are already being worked; Next tasks are queued but
@@ -1070,7 +1106,7 @@ public func completionRowContent(
         || context == .pomodoroSplitBase || context == .pomodoroSplitType
         || context == .pomodoroMergeSource || context == .pomodoroMergeDestination
         || context == .taskType
-    let themeSwatches = themeContext
+    let themeSwatches = themeContext || context == .pomodoroPastSegment
         ? candidate.themes.map { CaptureThemeSwatch($0) }
         : []
     if themeContext {
@@ -1178,6 +1214,7 @@ public func completionRowContent(
             ? "Type hidden from Recent. Press Control+D to undo."
             : accessibilityHint,
         detailText: detailText,
+        pastSegmentKind: pastSegmentKind,
         isDisabled: CaptureCompletionMenu.isDisabled(candidate)
     )
 }

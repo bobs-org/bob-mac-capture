@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"x=2-","text":"x=2~","changed":true,"cursor":4,"rule":"expand_sigil_alias","edits":[{"range":{"start":3,"end":4},"replacement":"~"}],"summary":"Typed ~ for -"}

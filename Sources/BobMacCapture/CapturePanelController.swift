@@ -1069,7 +1069,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     /// Records a one-shot rewrite-lane separator gesture or sigil alias
-    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, relation `-`, or relation `=`) when
+    /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, segment/relation `-`, or relation `=`) when
     /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1124,18 +1124,6 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let selection = textView.selectedRange()
         guard selection.length == 0 else {
             return
-        }
-        if characters == "-" {
-            let nsText = textView.string as NSString
-            guard selection.location > 0,
-                  selection.location <= nsText.length
-            else {
-                return
-            }
-            let previous = nsText.character(at: selection.location - 1)
-            guard previous == 0x20 || previous == 0x09 else {
-                return
-            }
         }
         if characters == "=" {
             let nsText = textView.string as NSString

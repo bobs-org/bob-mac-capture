@@ -41,6 +41,10 @@ final class CaptureRelationDashAliasTests: XCTestCase {
         keyEvent(keyCode: 53, characters: "")
     }
 
+    private func returnEvent() -> NSEvent {
+        keyEvent(keyCode: 36, characters: "\r")
+    }
+
     private func makeHostedEditor(
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
@@ -230,6 +234,104 @@ final class CaptureRelationDashAliasTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertNil(model.relationDashLiteralArm)
+    }
+
+    func testPastSegmentDashAliasIsUngatedAndUndoRestoresTheDash() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.15"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "x=2~" }
+        XCTAssertEqual(model.plainDraft, "x=2~")
+        XCTAssertTrue(try String(contentsOf: recordURL).contains(
+            "argv=capture-rewrite --cursor 4 --format json -- x=2-"
+        ))
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "x=2-")
+    }
+
+    func testFastReturnWaitsForPastSegmentDashRewriteBeforeSubmit() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.15"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+        await waitUntil {
+            !model.isSubmitting
+                && ((try? String(contentsOf: recordURL))?.contains("argv=capture --format json") == true)
+        }
+        XCTAssertEqual(textView.string, "x=2~")
+        let record = try String(contentsOf: recordURL)
+        let writes = record.split(separator: "\n")
+            .map(String.init)
+            .filter { $0.hasPrefix("argv=capture --format json") && !$0.contains("--dry-run") }
+        guard writes.count == 1, let write = writes.first else {
+            XCTFail("Expected one capture write after the segment rewrite:\n\(record)")
+            return
+        }
+        XCTAssertTrue(write.hasSuffix("-- x=2~"), record)
+        XCTAssertFalse(write.hasSuffix("-- x=2-"), record)
+    }
+
+    func testRapidSecondDashCannotReceiveTheFirstRewriteReply() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.25"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "x=2--")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(textView.string, "x=2--")
+        XCTAssertEqual(model.plainDraft, "x=2--")
+    }
+
+    func testFastDashCountAndEndEdgeStayCurrentWhenReturnArrives() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.25"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNotNil(typeKey(
+            keyEvent(keyCode: 0, characters: "1"),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertNotNil(typeKey(
+            keyEvent(keyCode: 0, characters: "+"),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(textView.string, "x=2-1+")
+        XCTAssertEqual(model.plainDraft, "x=2-1+")
+        let record = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertFalse(record.split(separator: "\n").contains {
+            $0.hasPrefix("argv=capture --format json") && !$0.contains("--dry-run")
+        }, record)
     }
 
     func testRouterRestoresOnlyTheArmedEmptyLinksToFilterKeys() {

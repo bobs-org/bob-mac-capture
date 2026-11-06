@@ -762,7 +762,8 @@ public final class BobProcessClient: @unchecked Sendable {
         inboxRouteAnswers: [CaptureInboxRouteSubmission]? = nil,
         requireInboxRouteChoice: Bool = false,
         inboxRouteCapabilityAdvertised: Bool = false,
-        templateOrigin: String? = nil
+        templateOrigin: String? = nil,
+        expectPastWindows: String? = nil
     ) async throws -> CaptureCommandResponse {
         if moveInSelection != nil, !moveInCapabilityAdvertised {
             throw BobClientError.unsupportedOption("--move-in")
@@ -783,6 +784,9 @@ public final class BobProcessClient: @unchecked Sendable {
         }
         if !readClipboard {
             arguments.append("--no-clip")
+        }
+        if let expectPastWindows, !expectPastWindows.isEmpty {
+            arguments += ["--expect-past-windows", expectPastWindows]
         }
         if let moveInSelection {
             guard !moveInSelection.isEmpty else {

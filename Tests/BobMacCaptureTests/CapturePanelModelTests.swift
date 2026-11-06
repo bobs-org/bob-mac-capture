@@ -2756,6 +2756,54 @@ final class CapturePanelModelTests: XCTestCase {
         }
     }
 
+    func testPastSegmentSubmitGuardsPreviewWindowsAndRefreshesOnRefusal() async throws {
+        let draft = "x=2~1!"
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_PARSE_FIXTURE": "pomodoro-past-parse-segment.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_FIRST_FIXTURE": "pomodoro-past-preview-segment-repair.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_NEXT_FIXTURE": "pomodoro-past-preview-segment-repair.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "0.3",
+                "FAKE_BOB_CAPTURE_WRITE_STDOUT": "{\"ok\":false,\"error\":\"your timeline changed since the preview: x=2~1! now means 0830-0840\",\"code\":\"pomodoro_past_windows_changed\"}",
+                "FAKE_BOB_CAPTURE_WRITE_EXIT": "1",
+            ]
+        )
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+
+        await waitUntil {
+            model.previewOutputsDraft == draft && !model.isPreviewing
+                && model.previewResult?.pomodoroPast?.segment?.index == 1
+        }
+        model.submit(openAfterCapture: false)
+
+        await waitUntil { model.errorCode == "pomodoro_past_windows_changed" }
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(
+            model.errorMessage,
+            "your timeline changed since the preview: x=2~1! now means 0830-0840"
+        )
+        XCTAssertEqual(model.previewState, .loading)
+
+        await waitUntil {
+            model.previewOutputsDraft == draft && !model.isPreviewing
+                && model.previewResult?.pomodoroPast?.segment?.index == 1
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("--expect-past-windows 0830-0840"), record)
+        XCTAssertTrue(record.contains("-- \(draft)"), record)
+        let dryRuns = record.components(separatedBy: "argv=capture --dry-run").count - 1
+        XCTAssertEqual(dryRuns, 2, record)
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
     func testInvalidBareXSelectionBlocksSubmissionAndClearsStaleCard() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

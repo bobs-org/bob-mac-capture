@@ -44,6 +44,20 @@ bob_midnight() {
     "$bob_bin" "${@:2}"
 }
 
+bob_segments() {
+  env -i \
+    PATH="$PATH" \
+    XDG_CONFIG_HOME="$scratch_root/config" \
+    XDG_STATE_HOME="$scratch_root/state" \
+    XDG_CACHE_HOME="$scratch_root/cache" \
+    BOB_CONFIG_FILE="$scratch_root/config.yml" \
+    BOB_DIR="$1" \
+    BOB_DAY_FILE="$1/2026/20261104.md" \
+    BOB_NOW="2026-11-04 09:13:00" \
+    TZ="UTC0" \
+    "$bob_bin" "${@:2}"
+}
+
 persist() {
   python3 - "$1" "$scratch_root" "$stable_root" "$fixtures/$2" <<'PY'
 import pathlib
@@ -86,25 +100,40 @@ EOF
   printf '## Pomodoros\n- [ ] () \xe2\x80\x94 BUILD\n\t- [[bob#^t1]]\n\t- [[bob#^t2]]\n' > "$vault/2026/20261104.md"
 }
 
+vault_segments() {
+  local vault="$1"
+  mkdir -p "$vault/2026"
+  cat > "$vault/bob.md" <<'EOF'
+## Tasks
+EOF
+  cat > "$vault/2026/20261104.md" <<'EOF'
+## Pomodoros
+- [x] (**0730-0800** [t:: 30m]) — PLAN
+- [x] (**0830-0900** [t:: 30m]) — BUILD
+- [ ] () — CHORE
+- [ ] () — READ
+EOF
+}
+
 # Single past parse.
 vault_basic "$scratch_root/vault-basic"
 bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build' \
   > "$scratch_root/parse-single.json"
 
 # Two-member stack parse.
-bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build@2 x=fix@3' \
+bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build2 x=fix3' \
   > "$scratch_root/parse-stack.json"
 
 # Repair spans parse.
-bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build@2!' \
+bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build2!' \
   > "$scratch_root/parse-repair.json"
 
 # Multiple stacks separated by another item.
-bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build@2' 'Buy milk' 'x=fix@3' \
+bob "$scratch_root/vault-basic" capture-parse --format json -- 'x=build2' 'Buy milk' 'x=fix3' \
   > "$scratch_root/parse-separated.json"
 
 # Chain mixing an ordinary close with past recording.
-bob "$scratch_root/vault-basic" capture-parse --format json -- 'x' 'x=build@2' \
+bob "$scratch_root/vault-basic" capture-parse --format json -- 'x' 'x=build2' \
   > "$scratch_root/parse-close-mix.json"
 
 # Single preview.
@@ -112,17 +141,17 @@ bob "$scratch_root/vault-basic" capture --dry-run --format json -- 'x=build' \
   > "$scratch_root/preview-single.json"
 
 # Two-member preview.
-bob "$scratch_root/vault-basic" capture --dry-run --format json -- 'x=build@2 x=fix@3' \
+bob "$scratch_root/vault-basic" capture --dry-run --format json -- 'x=build2 x=fix3' \
   > "$scratch_root/preview-stack.json"
 
 # Approved BUILD+FIX repair against PLAN.
 vault_plan "$scratch_root/vault-plan" "PLAN"
-bob "$scratch_root/vault-plan" capture --dry-run --format json -- 'x=build@2! x=fix@3!' \
+bob "$scratch_root/vault-plan" capture --dry-run --format json -- 'x=build2! x=fix3!' \
   > "$scratch_root/preview-repair.json"
 
 # Calendar trim against MEET.
 vault_plan "$scratch_root/vault-meet" "MEET"
-bob "$scratch_root/vault-meet" capture --dry-run --format json -- 'x=build@2! x=fix@3!' \
+bob "$scratch_root/vault-meet" capture --dry-run --format json -- 'x=build2! x=fix3!' \
   > "$scratch_root/preview-calendar.json"
 
 # Task effects and continuation.
@@ -136,7 +165,7 @@ bob "$scratch_root/vault-links" capture --dry-run --format json -- 'x==1 wired t
 
 # Refusal without repair (nonzero status expected).
 set +e
-bob "$scratch_root/vault-plan" capture --dry-run --format json -- 'x=build@2 x=fix@3' \
+bob "$scratch_root/vault-plan" capture --dry-run --format json -- 'x=build2 x=fix3' \
   > "$scratch_root/preview-refusal.json" 2> "$scratch_root/preview-refusal.stderr"
 refusal_status=$?
 set -e
@@ -149,11 +178,35 @@ fi
 bob "$scratch_root/vault-basic" capture-complete --format json --cursor 4 -- 'x=bu' \
   > "$scratch_root/complete-name.json"
 
+# Grammar-14 segment parse, preview, tail cut, picker, rewrite, and stale guard.
+vault_segments "$scratch_root/vault-segments"
+bob_segments "$scratch_root/vault-segments" capture-parse --format json -- 'x=2~1!' \
+  > "$scratch_root/parse-segment.json"
+bob_segments "$scratch_root/vault-segments" capture --dry-run --format json -- 'x=2~1!' \
+  > "$scratch_root/preview-segment-repair.json"
+bob_segments "$scratch_root/vault-segments" capture --dry-run --format json -- 'x=read4~' \
+  > "$scratch_root/preview-segment-cut.json"
+bob_segments "$scratch_root/vault-segments" capture-complete --format json --cursor 3 -- 'x=~' \
+  > "$scratch_root/complete-segment.json"
+bob_segments "$scratch_root/vault-segments" capture-rewrite --format json --cursor 4 -- 'x=2-' \
+  > "$scratch_root/rewrite-segment-dash.json"
+
+set +e
+bob_segments "$scratch_root/vault-segments" capture --format json \
+  --expect-past-windows 0900-0910 -- 'x=2~1!' \
+  > "$scratch_root/preview-windows-changed.json" 2> "$scratch_root/preview-windows-changed.stderr"
+windows_changed_status=$?
+set -e
+if [[ $windows_changed_status -eq 0 ]]; then
+  echo "expected stale past-window guard to refuse" >&2
+  exit 1
+fi
+
 # Midnight ordering probe (best effort; failures keep the script green only
 # when Bob refuses, which the test covers synthetically).
 set +e
 vault_basic "$scratch_root/vault-midnight"
-bob_midnight "$scratch_root/vault-midnight" capture --dry-run --format json -- 'x=build@1 x=fix@1' \
+bob_midnight "$scratch_root/vault-midnight" capture --dry-run --format json -- 'x=build1 x=fix1' \
   > "$scratch_root/preview-midnight.json" 2> /dev/null
 midnight_status=$?
 set -e
@@ -237,6 +290,40 @@ complete = load("complete-name.json")
 assert complete["context"] == "pomodoro_past_name", complete
 assert complete["replacement"] == {"start": 2, "end": 4}, complete
 
+segment_parse = load("parse-segment.json")
+assert segment_parse["grammar"] == 14, segment_parse
+assert segment_parse["mode"] == "pomodoro_past", segment_parse
+assert any(span["kind"] == "pomodoro_past_segment" for span in segment_parse["spans"]), segment_parse
+assert segment_parse["pomodoro_past"]["stack"]["pin"] == "start", segment_parse
+
+segment_preview = load("preview-segment-repair.json")
+segment_past = segment_preview["pomodoro_past"]
+assert segment_past["segment"]["kind"] == "pomodoro", segment_preview
+assert segment_past["segment"]["index"] == 1, segment_preview
+assert segment_past["window"]["start"] == "0830", segment_preview
+assert segment_past["window"]["end"] == "0840", segment_preview
+segment_trims = segment_past["trims"]
+assert len(segment_trims) == 1 and segment_trims[0]["name"] == "BUILD", segment_preview
+
+cut_preview = load("preview-segment-cut.json")
+cut_window = cut_preview["pomodoro_past"]["window"]
+assert cut_window["requested_minutes"] == 20, cut_preview
+assert cut_window["start"] == "0900" and cut_window["end"] == "0915", cut_preview
+assert cut_window["minutes"] == 15 and cut_window["cut"] == "now", cut_preview
+
+segment_complete = load("complete-segment.json")
+assert segment_complete["context"] == "pomodoro_past_segment", segment_complete
+assert segment_complete["replacement"] == {"start": 2, "end": 3}, segment_complete
+assert any(candidate["replacement"] == "~1" for candidate in segment_complete["candidates"]), segment_complete
+
+segment_rewrite = load("rewrite-segment-dash.json")
+assert segment_rewrite["changed"] is True and segment_rewrite["text"] == "x=2~", segment_rewrite
+
+windows_changed = load("preview-windows-changed.json")
+assert windows_changed["ok"] is False, windows_changed
+assert windows_changed["code"] == "pomodoro_past_windows_changed", windows_changed
+assert "now means 0830-0840" in windows_changed["error"], windows_changed
+
 refusal = pathlib.Path(root / "preview-refusal.json").read_text()
 assert "add !" in refusal, refusal
 PY
@@ -254,6 +341,12 @@ persist "$scratch_root/preview-task-effects.json" pomodoro-past-preview-task-eff
 persist "$scratch_root/preview-worklog.json" pomodoro-past-preview-worklog.json
 persist "$scratch_root/preview-refusal.json" pomodoro-past-preview-refusal.json
 persist "$scratch_root/complete-name.json" pomodoro-past-complete-name.json
+persist "$scratch_root/parse-segment.json" pomodoro-past-parse-segment.json
+persist "$scratch_root/preview-segment-repair.json" pomodoro-past-preview-segment-repair.json
+persist "$scratch_root/preview-segment-cut.json" pomodoro-past-preview-segment-cut.json
+persist "$scratch_root/complete-segment.json" pomodoro-past-complete-segment.json
+persist "$scratch_root/rewrite-segment-dash.json" pomodoro-past-rewrite-segment-dash.json
+persist "$scratch_root/preview-windows-changed.json" pomodoro-past-preview-windows-changed.json
 if [[ -f "$scratch_root/preview-midnight.json" ]]; then
   persist "$scratch_root/preview-midnight.json" pomodoro-past-preview-midnight.json
 fi

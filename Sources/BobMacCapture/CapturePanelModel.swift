@@ -24,6 +24,7 @@ struct CaptureRelationLabelRowEntry: Identifiable {
 /// an accepted toggle supersedes that analysis, while any other outcome completes
 /// like an ordinary keystroke.
 private struct SeparatorToggleIntent: Equatable {
+    let typed: String
     let expectedDraft: String
     let expectedCursorUTF8: Int
 }
@@ -739,6 +740,9 @@ final class CapturePanelModel: ObservableObject {
     var pastSleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     private var similarTasksTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
+    private var pendingRewriteSubmitTask: Task<Void, Never>?
+    private var deferredRewriteInputDraft: String?
+    private var completedDeferredRewriteDraft: String?
     private var stashCancellable: AnyCancellable?
     private var templateShelfCancellable: AnyCancellable?
     private var rememberedSelectedTemplateID: String?
@@ -2412,7 +2416,7 @@ final class CapturePanelModel: ObservableObject {
 
     /// Records the expected post-key draft and caret for a rewrite-lane
     /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
-    /// `\\`, `/`, the relation-picker `-` alias, or the relation `=` alias).
+    /// `\\`, `/`, the Pomodoro-segment or relation-picker `-` alias, or the relation `=` alias).
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
@@ -2439,6 +2443,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         pendingSeparatorToggleIntent = SeparatorToggleIntent(
+            typed: typed,
             expectedDraft: expectedDraft,
             expectedCursorUTF8: expectedCursorUTF8
         )
@@ -2556,6 +2561,8 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
         }
 
+        cancelPendingRewriteSubmit()
+
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
             resetAnalysisState()
@@ -2593,7 +2600,9 @@ final class CapturePanelModel: ObservableObject {
         ) {
             completionGate = startCaptureRewrite(
                 draft: draft,
-                cursorUTF8Offset: intent.expectedCursorUTF8
+                cursorUTF8Offset: intent.expectedCursorUTF8,
+                deferSubmitForPastSegmentDash: intent.typed == "-"
+                    && intent.expectedDraft.contains("x=")
             )
             analysisCursor = intent.expectedCursorUTF8
         } else if let insertionOffset,
@@ -2845,6 +2854,46 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    /// A fast Return after a rewrite-trigger key waits for Bob's answer first.
+    /// If Bob replaces the typed dash with `~`, submission then waits for the
+    /// analysis and preview of that rewritten draft. Editing or moving the
+    /// caret cancels this continuation through the rewrite generation.
+    private func waitForRewriteBeforeSubmit(
+        _ rewriteTask: Task<Void, Never>,
+        inputDraft: String,
+        openAfterCapture: Bool
+    ) {
+        guard let processClient else {
+            return
+        }
+        cancelPendingRewriteSubmit()
+        let generation = rewriteGeneration
+        pendingRewriteSubmitTask = Task { [weak self, rewriteTask, processClient] in
+            await rewriteTask.value
+            guard !Task.isCancelled,
+                  let self,
+                  self.rewriteGeneration == generation,
+                  self.processClient === processClient,
+                  self.hasDraft,
+                  self.plainDraft != inputDraft,
+                  self.completedDeferredRewriteDraft == self.plainDraft
+            else {
+                return
+            }
+            self.pendingRewriteSubmitTask = nil
+            self.completedDeferredRewriteDraft = nil
+            self.continueSubmitAfterDeferredRewrite(openAfterCapture: openAfterCapture)
+        }
+    }
+
+    private func continueSubmitAfterDeferredRewrite(openAfterCapture: Bool) {
+        if analysisTask != nil {
+            submitAfterCurrentAnalysis(openAfterCapture: openAfterCapture)
+        } else {
+            submit(openAfterCapture: openAfterCapture)
+        }
+    }
+
     private func resumeExplicitSubmit(
         _ intent: PendingExplicitSubmitIntent,
         processClient: BobProcessClient
@@ -2886,7 +2935,23 @@ final class CapturePanelModel: ObservableObject {
         cancelPendingExplicitSubmit()
         cancelPastBoundaryRefresh()
         clearOpenHintReveal()
-        guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
+        guard !inlinePromptVisible, !isSubmitting, hasDraft else {
+            return
+        }
+        if let rewriteTask, let deferredRewriteInputDraft {
+            waitForRewriteBeforeSubmit(
+                rewriteTask,
+                inputDraft: deferredRewriteInputDraft,
+                openAfterCapture: openAfterCapture
+            )
+            return
+        }
+        if completedDeferredRewriteDraft == plainDraft {
+            completedDeferredRewriteDraft = nil
+            continueSubmitAfterDeferredRewrite(openAfterCapture: openAfterCapture)
+            return
+        }
+        guard !isPreviewing else {
             return
         }
         // A pending card previews the trimmed draft, never the real one: a
@@ -3068,6 +3133,7 @@ final class CapturePanelModel: ObservableObject {
             )
         activeInboxRouteSubmitContext = submitContext
         invalidateRewrite()
+        let expectPastWindows = expectedPastWindows(for: draft, processClient: processClient)
         let requestID = UUID()
         let processClientIdentity = processClient.identityToken
         activeRequestID = requestID
@@ -3092,7 +3158,8 @@ final class CapturePanelModel: ObservableObject {
                         inboxRouteAnswers: inboxRouteAnswers,
                         requireInboxRouteChoice: true,
                         inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
-                        templateOrigin: currentDraftHasTemplate ? templateOrigin : nil
+                        templateOrigin: currentDraftHasTemplate ? templateOrigin : nil,
+                        expectPastWindows: expectPastWindows
                     )
                 }
                 await MainActor.run {
@@ -3111,6 +3178,42 @@ final class CapturePanelModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Build Bob's stale-preview token only when the latest parse and preview
+    /// both describe this exact draft from the same executable. Older Bob
+    /// treats unknown flags as capture text, so grammar 14 is a positive
+    /// capability proof, not a best-effort hint.
+    private func expectedPastWindows(
+        for draft: String,
+        processClient: BobProcessClient
+    ) -> String? {
+        guard (latestParse?.grammar ?? 0) >= 14,
+              lastAppliedParseDraft == draft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              previewOutputsDraft == draft,
+              currentPullInPreview(for: draft, processClient: processClient) != nil
+        else {
+            return nil
+        }
+        let past = previewResults.filter { $0.kind == "pomodoro_past" }
+        guard !past.isEmpty else {
+            return nil
+        }
+        let windows = past.compactMap { capture -> String? in
+            guard let window = capture.pomodoroPast?.window,
+                  !window.start.isEmpty,
+                  !window.end.isEmpty
+            else {
+                return nil
+            }
+            return "\(window.start)-\(window.end)"
+        }
+        guard windows.count == past.count else {
+            return nil
+        }
+        return windows.joined(separator: ",")
     }
 
     private func openMoveChoice(
@@ -13667,6 +13770,23 @@ final class CapturePanelModel: ObservableObject {
             if showEmptyNotePull(failure) {
                 return
             }
+            if failure.code == "pomodoro_past_windows_changed" {
+                guard plainDraft == draft,
+                      processClient?.identityToken == processClientIdentity
+                else {
+                    return
+                }
+                scheduleAnalysis(
+                    cursorUTF8Offset: nil,
+                    requestCompletion: false,
+                    trigger: .selection
+                )
+                errorMessage = failure.error
+                errorCode = failure.code
+                statusText = failure.error
+                announceStatus(failure.error)
+                return
+            }
             if failure.code == "pomodoro_override_refused" {
                 errorMessage = nil
                 errorCode = nil
@@ -14471,7 +14591,8 @@ final class CapturePanelModel: ObservableObject {
     @discardableResult
     private func startCaptureRewrite(
         draft: String,
-        cursorUTF8Offset: Int
+        cursorUTF8Offset: Int,
+        deferSubmitForPastSegmentDash: Bool = false
     ) -> Task<Void, Never>? {
         guard let processClient else {
             return nil
@@ -14479,6 +14600,8 @@ final class CapturePanelModel: ObservableObject {
 
         rewriteGeneration &+= 1
         let generation = rewriteGeneration
+        deferredRewriteInputDraft = deferSubmitForPastSegmentDash ? draft : nil
+        completedDeferredRewriteDraft = nil
         rewriteExpectedCursorUTF8 = cursorUTF8Offset
         rewriteSawMatchingSelection = collapsedSelectionUTF8Offset() == cursorUTF8Offset
         rewriteTask?.cancel()
@@ -14497,6 +14620,15 @@ final class CapturePanelModel: ObservableObject {
                         generation: generation,
                         processClient: processClient
                     )
+                    if self?.rewriteGeneration == generation {
+                        self?.rewriteTask = nil
+                        if self?.deferredRewriteInputDraft == draft {
+                            self?.deferredRewriteInputDraft = nil
+                            if self?.plainDraft == response.text, response.changed {
+                                self?.completedDeferredRewriteDraft = response.text
+                            }
+                        }
+                    }
                 }
             } catch is CancellationError {
             } catch {
@@ -14506,6 +14638,8 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.rewriteGeneration == generation else {
                         return
                     }
+                    self?.rewriteTask = nil
+                    self?.deferredRewriteInputDraft = nil
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
                     self?.pendingHashAlias = nil
@@ -14530,6 +14664,8 @@ final class CapturePanelModel: ObservableObject {
 
         rewriteGeneration &+= 1
         let generation = rewriteGeneration
+        deferredRewriteInputDraft = nil
+        completedDeferredRewriteDraft = nil
         rewriteExpectedCursorUTF8 = probe.secondCaretUTF8
         rewriteSawMatchingSelection = collapsedSelectionUTF8Offset() == probe.secondCaretUTF8
         rewriteTask?.cancel()
@@ -14550,6 +14686,9 @@ final class CapturePanelModel: ObservableObject {
                         generation: generation,
                         processClient: processClient
                     )
+                    if self?.rewriteGeneration == generation {
+                        self?.rewriteTask = nil
+                    }
                 }
             } catch is CancellationError {
             } catch {
@@ -14559,6 +14698,8 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.rewriteGeneration == generation else {
                         return
                     }
+                    self?.rewriteTask = nil
+                    self?.deferredRewriteInputDraft = nil
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
                     self?.pendingHashAlias = nil
@@ -16122,11 +16263,19 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func cancelInFlightRewrite() {
+        cancelPendingRewriteSubmit()
         rewriteTask?.cancel()
         rewriteTask = nil
+        deferredRewriteInputDraft = nil
+        completedDeferredRewriteDraft = nil
         rewriteGeneration &+= 1
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
+    }
+
+    private func cancelPendingRewriteSubmit() {
+        pendingRewriteSubmitTask?.cancel()
+        pendingRewriteSubmitTask = nil
     }
 
     /// Whether the observed caret fits a fast double-tap probe delivery:
@@ -16476,6 +16625,7 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_task_query",
             "pomodoro_close_drop",
             "pomodoro_close_park",
+            "pomodoro_past_segment",
             "pomodoro_start_drop",
             "task_type",
             "task_type_marker",

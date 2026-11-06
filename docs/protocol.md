@@ -227,6 +227,10 @@ Grammar 12 adds past-work `x=` recording: `pomodoro_past` mode, spans, and
   summaries with windows, trims, and `pomodoro_past_trim` warnings, decoded
   tolerantly with no synthesized top-level close and an unchanged gate.
 
+Grammar 14 segment suffixes precede `!` / `=`: `~` tail, `~N` / `~N+`
+segment start/end, `~~` head. Bob returns spans, candidates, resolved segment/pin,
+and cuts. Segment-ending `-` rewrites to `~`; stale-window guards refresh previews.
+
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
 
@@ -324,6 +328,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings, `bob relations rename` preview/write with counts, `label_range` / `hidden` on `relations[]`
+- Past fields: segment/pin, windows/cut, candidate bounds/repair, stale refusal
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
 
 ## Compatibility
@@ -331,8 +336,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | Rewrites eligible `@@`, separators, relation pipes, sigil aliases including the `-` → `~` Links To alias and the `=` → `~~` Linked From alias, and Parent Task comma continuations | Older Bob leaves unsupported aliases literal; existing rewrite fallbacks apply | Upgrade `bob` |
-| `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Manila chip behind the sealed project-note marker (brown name and seal; green `:` and `@` on the offer form) | An older bob sends no modifier, so there is no chip; an older app shows the seal yellow and the separator neutral, with no wash | Upgrade `bob` for the chip; upgrade the app to paint it |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias` | Rewrites eligible `@@`, separators, relation pipes, `-` → `~` Links To, segment `-` → `~`, `=` → `~~` Linked From, and Parent Task commas | Older Bob leaves unsupported aliases literal; existing fallbacks apply | Upgrade `bob` |
+| `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Chip behind the sealed marker (brown name/seal; green `:`/`@` on offers) | Older Bob omits the modifier; an older app shows a yellow seal and neutral separator, without wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
@@ -352,11 +357,11 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
 | `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | No task-type menu or refusal details | Upgrade `bob` for `#` completion |
 | `grammar` ≥ 5 on `capture-parse` | Capture with whole-item `=/` split and `=*` merge syntax, along with earlier capture grammar | Capture disabled; "Update bob to use Pomodoro split and merge syntax"; the draft stays | Upgrade `bob` for split and merge |
-| `grammar` 12 / `pomodoro_past` | Past `x=` stacks with windows and trims | No past card | Upgrade `bob` for past recording |
-| `pomodoro_split` / `pomodoro_merge` spans, modes, and summaries | Split and merge previews show Bob's before/after names, created or absorbed entries, and final destination | Older Bob omits the preview objects and these tokens do not parse | Upgrade `bob` for split and merge |
+| `grammar` 12 / 14, `pomodoro_past` / `pomodoro_past_segment`, `--expect-past-windows` / `pomodoro_past_windows_changed` | Past stacks/windows/trims; segment picker/card; stale preview refresh | Older Bob omits past cards and the stale guard | Upgrade `bob` for past segments |
+| `pomodoro_split` / `pomodoro_merge` spans, modes, and summaries | Split/merge previews show before/after names, created/absorbed entries, and destination | Older Bob omits previews; these tokens do not parse | Upgrade `bob` for split and merge |
 | `source_role`, `absorbed[].role`, and `explicit` on `pomodoro_merge` | Implied-pick **Current** / **Next** capsules and the `Same as` caption | Older bob omits them and the card renders as before | Upgrade `bob` for implied-merge captions |
 | `pomodoro_split_type` / `pomodoro_merge_dest` needs and completion contexts | Bob's candidates drive the type and destination pickers | No picker rows; the incomplete draft stays visible | Upgrade `bob` for split and merge pickers |
-| `drawer` completion context, `target`, candidate `group` / `detail` / `entry_count` / `note_count` / `last_seen` / `creates` / `refused` / `consequence` | Drawer menu: On this task and Recent groups, a New drawer row, Bob's `detail` counts, dimmed refused rows (Return is a no-op), and Bob's `consequence` as the footer for the selected row | Older bob omits the context (grammar 5 is required to capture at all); fields Bob omits render nothing, so a Bob without `consequence` shows the key hint and one without `detail` shows no counts | Upgrade `bob` for the full menu |
+| `drawer` completion context, `target`, candidate `group` / `detail` / `entry_count` / `note_count` / `last_seen` / `creates` / `refused` / `consequence` | On this task and Recent groups, New drawer, Bob's counts, dimmed refused rows (Return no-op), and selected-row consequence footer | Older Bob omits the context (grammar 5 is required); missing `detail` hides counts, and missing `consequence` leaves the key hint | Upgrade `bob` for the full menu |
 | `drawer` object on a sub-bullet capture item (`title`, `key`, `created`) | `new drawer` capsule beside the item header and the drawer title in summaries | Older Bob responses omit drawer-specific header details and the capsule | Upgrade `bob` for the capsule |
 | `directive` completion context, `initial_selection: none` | `%` menu with Bob's token, name, summary, and detail; Return captures as typed; Tab takes the first row | Older bob omits the context, so `%` stays ordinary text; omitted `initial_selection` keeps first-row selection | Upgrade `bob` for `%` menus |
 | `block_id.owner_line`, `block_id.splice` on `project_task_block_id` | An accepted ID lands on the owning task's line even from a nested line, the caret returns to where typing was, and the card names the owner | The ID inserts at the `replacement` range on the typing line, as it did before | Upgrade `bob` for nested-line prompts |

@@ -93,7 +93,49 @@ final class CapturePomodoroPastPresentationTests: XCTestCase {
         XCTAssertNil(success.pomodoroClose)
         let past = try XCTUnwrap(success.pomodoroPast)
         XCTAssertEqual(past.window.minutes, 25)
+        XCTAssertNil(past.segment)
+        XCTAssertNil(past.stack.pin)
+        XCTAssertNil(past.window.requestedMinutes)
+        XCTAssertNil(past.window.cut)
         XCTAssertTrue(past.trims.isEmpty)
+    }
+
+    func testSegmentPlacementAndCutDetailsAppearOnPastCard() throws {
+        let placed = try decodeSuccess("pomodoro-past-preview-segment-repair.json")
+        let placedPast = try XCTUnwrap(placed.pomodoroPast)
+        XCTAssertEqual(placedPast.stack.pin, "start")
+        XCTAssertEqual(placedPast.segment?.kind, "pomodoro")
+        XCTAssertEqual(placedPast.segment?.index, 1)
+        XCTAssertEqual(placedPast.segment?.edge, "start")
+        XCTAssertEqual(placedPast.segment?.start, "0830")
+        XCTAssertEqual(placedPast.segment?.end, "0900")
+        XCTAssertEqual(placedPast.segment?.name, "BUILD")
+        let placedMember = try XCTUnwrap(
+            CapturePomodoroPastPresentation(capture: placed)?.groups.first?.members.first
+        )
+        XCTAssertEqual(
+            placedMember.segmentLine,
+            "at the start of ~1 BUILD 0830–0900"
+        )
+        XCTAssertTrue(
+            try XCTUnwrap(placedMember.segmentAccessibilityLabel)
+                .contains("Placement: at the start")
+        )
+        XCTAssertEqual(placedMember.past.trims.first?.name, "BUILD")
+
+        let cut = try decodeSuccess("pomodoro-past-preview-segment-cut.json")
+        let cutPast = try XCTUnwrap(cut.pomodoroPast)
+        XCTAssertEqual(cutPast.window.requestedMinutes, 20)
+        XCTAssertEqual(cutPast.window.minutes, 15)
+        XCTAssertEqual(cutPast.window.cut, "now")
+        let cutMember = try XCTUnwrap(
+            CapturePomodoroPastPresentation(capture: cut)?.groups.first?.members.first
+        )
+        XCTAssertEqual(cutMember.cutNote, "15m · 20m cut at now")
+        XCTAssertTrue(
+            try XCTUnwrap(cutMember.cutAccessibilityLabel).contains("cut at now")
+        )
+        XCTAssertTrue(cutMember.accessibilityLabel.contains("cut at now"))
     }
 
     func testOlderPayloadWithoutPastStillDecodes() throws {
@@ -318,6 +360,25 @@ final class CapturePomodoroPastPresentationTests: XCTestCase {
         // names the session without touching `@D`, repair `!`, or `=X`.
         let candidate = try XCTUnwrap(response.candidates.first)
         XCTAssertEqual(candidate.replacement, "build")
+    }
+
+    func testSegmentCompletionDecodesBobAuthoredRowFields() throws {
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: fixtureData("pomodoro-past-complete-segment.json")
+        )
+        XCTAssertEqual(response.context, "pomodoro_past_segment")
+        XCTAssertEqual(response.replacement.start, 2)
+        XCTAssertEqual(response.replacement.end, 3)
+        let pomodoro = try XCTUnwrap(
+            response.candidates.first(where: { $0.replacement == "~1" })
+        )
+        XCTAssertEqual(pomodoro.kind, "pomodoro")
+        XCTAssertEqual(pomodoro.label, "~1 BUILD 0830-0900")
+        XCTAssertEqual(pomodoro.start, "0830")
+        XCTAssertEqual(pomodoro.end, "0900")
+        XCTAssertEqual(pomodoro.minutes, 30)
+        XCTAssertTrue(pomodoro.needsRepair)
     }
 
     func testRefusalDecodesAsFailure() throws {
