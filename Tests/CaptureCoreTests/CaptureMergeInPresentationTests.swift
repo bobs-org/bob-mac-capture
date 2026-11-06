@@ -71,6 +71,67 @@ final class CaptureMergeInPresentationTests: XCTestCase {
         XCTAssertEqual(five.sourceRows.count, 5)
     }
 
+    func testSettledAnnouncementUsesIdentityAndPluralSourceDetails() throws {
+        let two = try XCTUnwrap(
+            CaptureMergeInPresentation(capture: success("capture-merge-in-complete-two.json"))
+        )
+        XCTAssertEqual(
+            two.settledAnnouncement,
+            "New task New outcome, mac_inbox.md, new, Ready. "
+                + "Merging in 2 tasks: Alpha task, Ready to Cancelled, 1 note; "
+                + "Beta task, Ready to Cancelled, 2 notes"
+        )
+
+        let one = try XCTUnwrap(
+            CaptureMergeInPresentation(capture: success("capture-merge-in-complete-one.json"))
+        )
+        XCTAssertEqual(
+            one.settledAnnouncement,
+            "New task New outcome, mac_inbox.md, new, Ready. "
+                + "Merging in 1 task: Bare source, Ready to Cancelled, title only"
+        )
+        XCTAssertFalse(two.settledAnnouncement.contains("⤵"))
+        XCTAssertFalse(two.previewAccessibilitySummary.contains("⤵"))
+        XCTAssertTrue(
+            two.previewAccessibilitySummary.hasPrefix(
+                "New task New outcome, mac_inbox.md, new, Ready. Merging in 2 tasks: "
+            )
+        )
+    }
+
+    func testSettledAnnouncementHandlesTitleOnlyAndFallbackRows() throws {
+        let titleOnly = try XCTUnwrap(
+            CaptureMergeInPresentation(
+                capture: success("capture-merge-in-complete-title-only.json")
+            )
+        )
+        XCTAssertEqual(
+            titleOnly.settledAnnouncement,
+            "New task Second outcome, mac_inbox.md, new, Ready. "
+                + "Merging in 1 task: Other source, Ready to Cancelled, title only"
+        )
+
+        let base = try success("capture-merge-in-complete-two.json")
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(base)) as? [String: Any]
+        )
+        var merges = try XCTUnwrap(object["merges"] as? [[String: Any]])
+        merges[0].removeValue(forKey: "status_name")
+        merges[0]["message"] = "Legacy source"
+        object["merges"] = merges
+        let fallback = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        let presentation = try XCTUnwrap(CaptureMergeInPresentation(capture: fallback))
+        XCTAssertTrue(presentation.sourceRows[0].fallback)
+        XCTAssertEqual(
+            presentation.settledAnnouncement,
+            "New task New outcome, mac_inbox.md, new, Ready. "
+                + "Merging in 2 tasks: Legacy source; Beta task, Ready to Cancelled, 2 notes"
+        )
+    }
+
     func testStableIdentityKeepsDuplicateTitlesDistinct() throws {
         let presentation = try XCTUnwrap(
             CaptureMergeInPresentation(
@@ -143,6 +204,32 @@ final class CaptureMergeInPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.sourceRows.count, 1)
         XCTAssertEqual(presentation.sourceRows[0].title?.text, "Alpha task")
         XCTAssertTrue(presentation.accessibilitySummary.contains("type + to pick"))
+    }
+
+    func testPendingAccessibilityNamesOptionalTargetWithoutSpeakingGlyph() throws {
+        let pending = try XCTUnwrap(
+            failure("capture-merge-in-pending-second.json").mergeInPending
+        )
+        let withTarget = try XCTUnwrap(
+            CaptureMergeInPendingPresentation(
+                pending: pending,
+                targetTitle: TaskDisplayText(parsing: "New outcome")
+            )
+        )
+        XCTAssertTrue(
+            withTarget.accessibilitySummary.hasPrefix(
+                "New task New outcome. Merge tasks into this one — type + to pick"
+            )
+        )
+        XCTAssertFalse(withTarget.accessibilitySummary.contains("⤵"))
+
+        let withoutTarget = try XCTUnwrap(CaptureMergeInPendingPresentation(pending: pending))
+        XCTAssertTrue(
+            withoutTarget.accessibilitySummary.hasPrefix(
+                "Merge tasks into this one — type + to pick"
+            )
+        )
+        XCTAssertFalse(withoutTarget.accessibilitySummary.contains("⤵"))
     }
 
     func testPendingSourceErrorStaysVisible() throws {

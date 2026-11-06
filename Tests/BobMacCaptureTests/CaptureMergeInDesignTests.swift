@@ -62,7 +62,13 @@ final class CaptureMergeInDesignTests: XCTestCase {
             let failure: CaptureCommandFailure = try fixture(
                 "capture-merge-in-pending-\(name).json")
             let pending = try XCTUnwrap(failure.mergeInPending)
-            let presentation = try XCTUnwrap(CaptureMergeInPendingPresentation(pending: pending))
+            let presentation = try XCTUnwrap(
+                CaptureMergeInPendingPresentation(
+                    pending: pending,
+                    targetTitle: TaskDisplayText(parsing: "New outcome")
+                )
+            )
+            XCTAssertEqual(presentation.targetTitle?.text, "New outcome")
             XCTAssertFalse(presentation.canSubmit)
             try render(
                 CaptureMergeInPendingCardView(presentation: presentation),

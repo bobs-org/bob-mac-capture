@@ -63,6 +63,18 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(merged.body.contains("Unknown"), merged.body)
     }
 
+    func testMergeInNotificationUsesSettledSourceDetails() throws {
+        let success = try closeSuccessFixture("capture-merge-in-complete-two.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertEqual(content.title, "Created “New outcome” · merged 2 tasks")
+        XCTAssertEqual(
+            content.body,
+            "Alpha task · Ready → Cancelled · 1 note\n"
+                + "Beta task · Ready → Cancelled · 2 notes"
+        )
+    }
+
     func testTransferNotificationIncludesBobAuthoredConsequences() throws {
         let merge = try committedTransferFixture("capture-transfer-consequences-offers.json")
         let content = NotificationService.successContent(captures: [merge])

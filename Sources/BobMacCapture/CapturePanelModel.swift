@@ -1944,6 +1944,28 @@ final class CapturePanelModel: ObservableObject {
         return state.pending
     }
 
+    /// The target header from Bob's parse for the pending item's one-based
+    /// index. Never infer it by scanning the draft text.
+    var currentMergeInPendingTargetTitle: String? {
+        guard let pending = currentMergeInPending,
+            let latestParse
+        else {
+            return nil
+        }
+        let body: String
+        if latestParse.items.isEmpty {
+            body = latestParse.body
+        } else {
+            let index = pending.item - 1
+            guard latestParse.items.indices.contains(index) else {
+                return nil
+            }
+            body = latestParse.items[index].body
+        }
+        let title = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? nil : title
+    }
+
     /// A Bob parse explicitly says this capture item still needs a source
     /// after `<`; Return and every primary action stay disabled in that state.
     var mergeInNeedsSource: Bool {
@@ -2173,6 +2195,7 @@ final class CapturePanelModel: ObservableObject {
             && !pickerVisible
             && !isClosePending
             && !mergeInNeedsSource
+            && mergeInRefusalPresentation == nil
             && captureGrammarAllowsSubmit
     }
 
@@ -2275,9 +2298,14 @@ final class CapturePanelModel: ObservableObject {
         let nextMergeIn: CaptureMergeInPresentation? =
             captures.count == 1 ? CaptureMergeInPresentation(capture: captures[0]) : nil
         if let nextMergeIn {
-            let key = "\(nextMergeIn.count)#\(nextMergeIn.destination.title.text)#\(nextMergeIn.relativeTarget)"
+            let keyParts =
+                [nextMergeIn.relativeTarget]
+                + nextMergeIn.sourceRows.flatMap {
+                    [$0.stableID, $0.targetStatusName ?? ""]
+                }
+            let key = keyParts.map { "\($0.utf8.count):\($0)" }.joined()
             if lastPreviewMergeInKey != key {
-                mergeInAnnouncement = "Now \(nextMergeIn.headerText.lowercased()) into “\(nextMergeIn.destination.title.text)”"
+                mergeInAnnouncement = nextMergeIn.settledAnnouncement
                 mergeInAnnouncementTick += 1
             }
             lastPreviewMergeInKey = key
@@ -3074,6 +3102,10 @@ final class CapturePanelModel: ObservableObject {
         }
         if mergeInNeedsSource {
             statusText = CapturePickerNeed.mergeInSource.statusText
+            return
+        }
+        if let refusal = mergeInRefusalPresentation {
+            statusText = refusal.message.text
             return
         }
         if rewriteTask != nil, let deferredRewriteInputDraft {

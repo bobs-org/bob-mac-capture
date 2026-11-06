@@ -193,8 +193,14 @@ struct CaptureMergeInPendingCardView: View {
                 .frame(width: 3)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 7) {
+                if let targetTitle = presentation.targetTitle {
+                    Text(targetTitle.text)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
                 Text(CaptureMergeInPendingPresentation.prompt)
-                    .font(.callout.weight(.semibold))
+                    .font(.callout)
                 ForEach(Array(presentation.sourceRows.enumerated()), id: \.offset) { _, row in
                     if let message = row.errorMessage {
                         Text(message.text)

@@ -184,18 +184,49 @@ public struct CaptureMergeInPresentation: Equatable, Sendable {
         sourceRows.map(Self.notificationLine).joined(separator: "\n")
     }
 
+    /// VoiceOver copy for a settled merge-in. The panel announces this only
+    /// when Bob's resolved source set changes; the card keeps its visual glyph.
+    public var settledAnnouncement: String {
+        let sources = sourceRows.map(Self.spokenSourceLine).joined(separator: "; ")
+        return [
+            Self.destinationIdentity(destination, relativeTarget: relativeTarget),
+            "Merging in \(count) \(noun): \(sources)",
+        ].joined(separator: ". ")
+    }
+
     public var previewAccessibilitySummary: String {
-        var summary = [headerText, "New task \(destination.title.text)"]
-        if destination.isNew { summary.append("new") }
-        if let statusName = destination.statusName, !statusName.isEmpty {
-            summary.append(statusName)
-        }
-        summary.append(contentsOf: sourceRows.map(Self.accessibilityLine))
+        let sources = sourceRows.map(Self.accessibilityLine).joined(separator: "; ")
+        var summary = [
+            Self.destinationIdentity(destination, relativeTarget: relativeTarget),
+            "Merging in \(count) \(noun): \(sources)",
+        ]
         summary.append(contentsOf: consequences.map(\.text))
         if !offers.isEmpty {
             summary.append("Pull-In offers: \(offers.map(\.text).joined(separator: ", "))")
         }
         return summary.joined(separator: ". ")
+    }
+
+    private static func destinationIdentity(
+        _ destination: DestinationRow,
+        relativeTarget: String
+    ) -> String {
+        var parts = ["New task \(destination.title.text)", displayPath(relativeTarget)]
+        if destination.isNew { parts.append("new") }
+        if let statusName = destination.statusName, !statusName.isEmpty {
+            parts.append(statusName)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func spokenSourceLine(_ row: SourceRow) -> String {
+        guard !row.fallback else { return row.title.text }
+        var parts = [row.title.text]
+        if let source = row.statusName, let target = row.targetStatusName, source != target {
+            parts.append("\(source) to \(target)")
+        }
+        if let detail = row.detailText { parts.append(detail) }
+        return parts.joined(separator: ", ")
     }
 
     private static func notificationLine(_ row: SourceRow) -> String {
@@ -210,10 +241,9 @@ public struct CaptureMergeInPresentation: Equatable, Sendable {
     }
 
     private static func accessibilityLine(_ row: SourceRow) -> String {
+        guard !row.fallback else { return row.title.text }
         var parts = [row.title.text]
-        if let source = row.statusName, let target = row.targetStatusName,
-            !isSameStatus(row)
-        {
+        if let source = row.statusName, let target = row.targetStatusName, source != target {
             parts.append("\(source) to \(target)")
         }
         if !row.locator.isEmpty { parts.append(row.locator) }
@@ -266,10 +296,12 @@ public struct CaptureMergeInPendingPresentation: Equatable, Sendable {
     public static let prompt = "⤵ Merge tasks into this one — type + to pick"
 
     public let sourceRows: [SourceRow]
+    public let targetTitle: TaskDisplayText?
     public let accessibilitySummary: String
 
-    public init?(pending: CaptureMergeInPending) {
+    public init?(pending: CaptureMergeInPending, targetTitle: TaskDisplayText? = nil) {
         guard pending.need == "merge_in_source" else { return nil }
+        self.targetTitle = targetTitle
         sourceRows = pending.sources.map { source in
             let title = source.title.map { TaskDisplayText(parsing: $0) }
             let locator: String
@@ -289,13 +321,19 @@ public struct CaptureMergeInPendingPresentation: Equatable, Sendable {
             )
         }
         let count = sourceRows.count
+        let spokenPrompt = Self.prompt
+            .replacingOccurrences(of: "⤵", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        let targetPrefix = targetTitle.map { "New task \($0.text). " } ?? ""
         if count == 0 {
-            accessibilitySummary = Self.prompt
+            accessibilitySummary = targetPrefix + spokenPrompt
         } else {
-            accessibilitySummary = ([Self.prompt] + sourceRows.map {
-                [$0.title?.text, $0.locator, $0.errorMessage?.text ?? $0.mergeableMessage]
+            let rows = sourceRows.map { row in
+                [row.title?.text, row.locator, row.errorMessage?.text ?? row.mergeableMessage]
                     .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
-            }).joined(separator: ". ")
+            }
+            let spokenRows = ([spokenPrompt] + rows).joined(separator: ". ")
+            accessibilitySummary = targetPrefix + spokenRows
         }
     }
 

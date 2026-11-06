@@ -288,18 +288,18 @@ A whole-item `=`/`=<X>` start instead shows its own card
 
 ### Merge-in band
 
-**⤵ Merging in N tasks** lists source titles, note/line, status transitions,
-and note counts (**title only** for zero).
-**Show all N** expands beyond three sources; warnings/consequences stay visible.
-Pull-In offers start unselected.
+**⤵ Merging in N tasks** lists titles, locations, status, and note counts
+(**title only** for zero). **Show all N** expands longer lists; warnings stay
+visible; Pull-In starts unselected.
 
-Pending retains sources/errors with
-**⤵ Merge tasks into this one — type + to pick**. Refusals offer **Use >**,
-**Move before <**, or **Add spaces**; Return never rewrites.
+Pending names the new task above its prompt; sources/errors follow.
+VoiceOver announces the new task, then source transitions and note counts, once
+per settled source change. Refusals offer **Use >**, **Move before <**, or **Add spaces**.
+Refusals block Return until rewrite or edit.
 
-Single-item action: **Capture & merge N tasks** (singular for one); bulk:
-**Capture**. The target block appears once; both arrows fold moved notes under
-expandable source titles. Grammar below 15 shows **Update bob to merge tasks with <**.
+Single-item **Capture & merge N tasks** (singular), bulk **Capture**. Targets
+appear once; both arrows fold notes under expandable titles. Below grammar 15:
+**Update bob to merge tasks with <**.
 
 ### Past card
 

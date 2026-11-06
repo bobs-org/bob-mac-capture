@@ -3677,9 +3677,14 @@ struct PreviewPane: View {
         VStack(alignment: .leading, spacing: 6) {
             switch model.previewState {
             case .idle:
-                if let pending = model.currentMergeInPending.flatMap(
-                    CaptureMergeInPendingPresentation.init(pending:)
-                ) {
+                if let pending = model.currentMergeInPending.flatMap({ pending in
+                    CaptureMergeInPendingPresentation(
+                        pending: pending,
+                        targetTitle: model.currentMergeInPendingTargetTitle.map {
+                            TaskDisplayText(parsing: $0)
+                        }
+                    )
+                }) {
                     CaptureMergeInPendingCardView(presentation: pending)
                 } else {
                     Text("Preview")
