@@ -394,6 +394,11 @@ final class CaptureBackslashGotoTests: XCTestCase {
             )
         )
         textView.unmarkText()
+        // `unmarkText()` accepts the composed `\` into the text view. Clear it
+        // so the draft is blank again and only the submitting and locked flags
+        // below can make the helper decline.
+        textView.string = ""
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
 
         model.isSubmitting = true
         XCTAssertFalse(
@@ -413,6 +418,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         )
         model.setEditorInputLockedForTests(false)
         XCTAssertEqual(textView.string, "")
+        XCTAssertFalse(model.backslashLiteralArmed)
     }
 
     // MARK: - Model
