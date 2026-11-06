@@ -2314,6 +2314,9 @@ private struct RelationLabelPromptCard: View {
                         Text("🪢 Relation")
                             .font(.headline)
                         Spacer(minLength: 8)
+                        keycap("~ flips")
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("Tilde flips direction")
                         if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
                             Button {
                                 model.toggleRelationLabelHiddenSection()
@@ -2488,7 +2491,8 @@ private struct RelationLabelPromptCard: View {
                                         )
                                     }
                                     .buttonStyle(.plain)
-                                    .disabled(prompt.isSaving)
+                                    .disabled(prompt.isSaving || !prompt.catalogLoaded)
+                                    .opacity(prompt.catalogLoaded ? 1 : 0.45)
                                     .id(key)
                                     .accessibilityLabel(
                                         relationRowAccessibilityLabel(
@@ -2533,7 +2537,8 @@ private struct RelationLabelPromptCard: View {
                                             )
                                         }
                                         .buttonStyle(.plain)
-                                        .disabled(prompt.isSaving)
+                                        .disabled(prompt.isSaving || !prompt.catalogLoaded)
+                                        .opacity(prompt.catalogLoaded ? 1 : 0.45)
                                         .id(key)
                                         .accessibilityLabel(
                                             relationRowAccessibilityLabel(

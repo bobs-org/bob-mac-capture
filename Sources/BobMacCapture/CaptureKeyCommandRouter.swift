@@ -112,6 +112,7 @@ enum CaptureKeyCommand: Equatable {
     case cycleTaskLinkSuggestionBackward
     case continuePickerOperator(String)
     case flipRelationDirection
+    case flipRelationLabelDirection
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
     case openGotoFromBackslash
@@ -149,6 +150,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var relationLabelPromptFieldIsEmpty = true
     var relationLabelPromptOneOff = false
     var relationLabelRenameActive = false
+    var relationLabelFieldHasMarkedText = false
     var pickerSourceIsRelation = false
     var moveChoiceVisible = false
     var moveChoiceFilterFocused = false
@@ -326,7 +328,9 @@ struct CaptureKeyCommandRouter {
                 modifiers: modifiers,
                 fieldIsEmpty: context.relationLabelPromptFieldIsEmpty,
                 oneOff: context.relationLabelPromptOneOff,
-                renameActive: context.relationLabelRenameActive
+                renameActive: context.relationLabelRenameActive,
+                fieldHasMarkedText: context.relationLabelFieldHasMarkedText,
+                keyIsRepeat: context.keyIsRepeat
             )
         }
 
@@ -920,7 +924,9 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         fieldIsEmpty: Bool,
         oneOff: Bool,
-        renameActive: Bool
+        renameActive: Bool,
+        fieldHasMarkedText: Bool,
+        keyIsRepeat: Bool
     ) -> CaptureKeyCommand? {
         // Ctrl+R renames the selected row (or the typed existing label)
         // everywhere. In rename mode it is a no-op; Escape leaves first.
@@ -930,13 +936,26 @@ struct CaptureKeyCommandRouter {
         if renameActive {
             // The rename field owns printable keys through the AppKit
             // field; Tab, arrows, and Ctrl+N/P stay inside the card
-            // instead of touching choose rows.
+            // instead of touching choose rows. `~` / `=` stay text (A10).
             return isolatedPromptCommand(
                 for: event,
                 modifiers: modifiers,
                 submit: .submitRelationLabelPrompt,
                 cancel: .cancelRelationLabelPrompt
             )
+        }
+        // Choose-mode `~` / `=` flip direction before isolated prompt
+        // keys. Shift is allowed so `~` still matches; Command, Option,
+        // and Control leave the key to the field. Marked text (IME) and
+        // auto-repeat never flip.
+        if event.characters == "~" || event.characters == "=",
+           modifiers.intersection([.command, .option, .control]).isEmpty,
+           !fieldHasMarkedText
+        {
+            if keyIsRepeat || event.isARepeat {
+                return .consumeKey
+            }
+            return .flipRelationLabelDirection
         }
         if event.keyCode == KeyCode.tab {
             if modifiers.isEmpty {

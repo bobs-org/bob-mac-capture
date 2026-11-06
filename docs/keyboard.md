@@ -176,9 +176,8 @@ The footer names the default so Return stays meaningful.
 
 ## Relation card keys
 
-The relation card keeps the search text separate from its highlighted label. Filtering
-is local after Bob returns the catalog, so moving through labels never starts another
-completion request.
+The relation card keeps search text separate from the highlighted label.
+Filtering is local after Bob returns the catalog.
 
 | Key | Action |
 | --- | --- |
@@ -192,9 +191,11 @@ completion request.
 | Backspace on an empty field | Turn one-off off |
 | Ctrl-H | Show or hide the Hidden section; the query and selection are kept |
 | Ctrl-R | Rename the selected label (or the typed label when it names an existing one) everywhere |
+| `~` / `=` | Flip direction in choose mode; re-ask Bob; keep query and selection. Repeat is consumed |
+| Fast `==` | Undo the `=` flip and type `=` (350 ms) |
 | Click a row | Accept it; the eye icon on a hovered or selected row hides or unhides it |
 | Click ◌ N hidden | Toggle the Hidden section |
-| Escape / Ctrl-[ | Leave rename mode first; otherwise return to the relation picker, or to the editor when the card opened from `|` |
+| Escape / Ctrl-[ | Leave rename first; else restore the picker and its draft after Shift-Return (flipped if the card flipped), or keep the token from `\|` |
 
 With one-off on, Return inserts the `||` form: capturing hides the label from
 suggestions everywhere. On a visible label the card warns in amber

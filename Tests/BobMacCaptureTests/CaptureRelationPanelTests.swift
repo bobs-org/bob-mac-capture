@@ -159,23 +159,21 @@ final class CaptureRelationPanelTests: XCTestCase {
 
     func testRelationCardEscapeReturnsToPickerWhenStaged() {
         let model = CapturePanelModel()
-        let picker = CapturePickerState(
-            source: .linksTo,
-            draftSnapshot: "New task ~",
-            replacementRange: CaptureRange(start: 9, end: 10),
-            restoreCursor: 10,
-            candidates: [],
-            warnings: [],
-            filterText: "",
-            selectedRowID: nil,
-            visibleRowBudget: 5,
-            snapshotIsPartial: false
+        model.installRelationLabelPromptForPreviews(
+            returnPicker: stagedRelationReturnPicker()
         )
-        model.installRelationLabelPromptForPreviews(returnPicker: picker)
         XCTAssertTrue(model.relationLabelPromptVisible)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
         model.cancelRelationLabelPrompt()
         XCTAssertFalse(model.relationLabelPromptVisible)
-        XCTAssertNotNil(model.picker)
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        XCTAssertEqual(model.picker?.filterText, "foot")
+        XCTAssertNotNil(model.pickerPresentation)
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        XCTAssertTrue(model.pickerVisible)
     }
 
     func testRelationCardEscapeWithoutPickerReturnsToEditor() {
@@ -567,6 +565,77 @@ final class CaptureRelationPanelTests: XCTestCase {
             }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+
+    private func relationPickerCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+    }
+
+    private func stagedRelationReturnPicker(
+        source: CapturePickerSource = .linksTo,
+        draft: String = "New task ~",
+        replacement: CaptureRange = CaptureRange(start: 9, end: 10),
+        filterText: String = "foot"
+    ) -> CapturePickerState {
+        CapturePickerState(
+            source: source,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
+            candidates: [relationPickerCandidate()],
+            warnings: [],
+            filterText: filterText,
+            selectedRowID: nil,
+            visibleRowBudget: 5,
+            snapshotIsPartial: false,
+            dependencyOwner: DependencyOwner(kind: "new_task", text: "New task")
+        )
+    }
+
+    private func relationCardKeyEvent(
+        characters: String,
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags = [],
+        isRepeat: Bool = false,
+        timestamp: TimeInterval = 0
+    ) -> NSEvent {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: timestamp,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: isRepeat,
+            keyCode: keyCode
+        )!
+    }
+
+    private func chooseRelationCardContext(
+        renameActive: Bool = false,
+        fieldHasMarkedText: Bool = false,
+        keyIsRepeat: Bool = false
+    ) -> CaptureKeyRoutingContext {
+        CaptureKeyRoutingContext(
+            relationLabelPromptVisible: true,
+            relationLabelRenameActive: renameActive,
+            relationLabelFieldHasMarkedText: fieldHasMarkedText,
+            keyIsRepeat: keyIsRepeat
+        )
     }
 
     /// Harness scenario: typed `old`, changed to `new`, Return before the new
@@ -1974,6 +2043,404 @@ final class CaptureRelationPanelTests: XCTestCase {
         }
         model.previewResults = [mixed]
         XCTAssertEqual(model.primaryActionTitle, "Capture & close 2 tasks")
+    }
+
+    // MARK: - Relation-label direction flip (bob-cli-hz.1)
+
+    func testRelationCardEscapeAcceptsPickerRowAfterRestore() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            returnPicker: stagedRelationReturnPicker(filterText: "target")
+        )
+        model.cancelRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertNotNil(model.pickerPresentation)
+        XCTAssertEqual(model.picker?.filterText, "target")
+        model.acceptPickerRow(id: "tasks.md|1:aaaa1111", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target ")
+        XCTAssertNil(model.picker)
+    }
+
+    func testRelationCardTildeFlipsPipeFlowBothDirections() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "see",
+            suggestions: [suggestionCandidate(label: "see", count: 1)]
+        )
+        model.selectRelationLabelSuggestion(key: "see")
+        model.relationLabelPrompt?.oneOff = true
+        model.relationLabelPrompt?.showHidden = true
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 9, end: 23))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 23, end: 23))
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "see")
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "see")
+        XCTAssertEqual(model.relationLabelPrompt?.oneOff, true)
+        XCTAssertEqual(model.relationLabelPrompt?.showHidden, true)
+        XCTAssertNil(model.relationLabelPrompt?.relationCancel)
+        XCTAssertNil(model.relationLabelPrompt?.suggestionAuthoredLabel)
+        XCTAssertEqual(model.relationLabelSentence, "“Target” — see → “New task”")
+        XCTAssertEqual(model.statusText, "Linked From")
+        XCTAssertNil(model.equalsGestureArm)
+
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 9, end: 22))
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "see")
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "see")
+        XCTAssertEqual(model.statusText, "Links To")
+        XCTAssertEqual(model.relationLabelSentence, "“New task” — see → “Target”")
+    }
+
+    func testRelationCardEqualsFlipsLinkedFromPipeFlow() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            draft: "New task ~~tasks:target",
+            tokenRange: CaptureRange(start: 9, end: 23),
+            direction: .linkedFrom
+        )
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.0)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 9, end: 22))
+        XCTAssertEqual(model.equalsGestureArm?.surface, .relationLabelCard)
+        XCTAssertEqual(model.equalsGestureArm?.firstTimestamp, 1.0)
+        XCTAssertEqual(model.statusText, "Links To")
+    }
+
+    func testRelationCardFlipUpdatesShiftReturnPicker() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            returnPicker: stagedRelationReturnPicker()
+        )
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.returnPicker?.source, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.returnPicker?.draftSnapshot, "New task ~~")
+        XCTAssertEqual(
+            model.relationLabelPrompt?.returnPicker?.replacementRange,
+            CaptureRange(start: 9, end: 11)
+        )
+        XCTAssertEqual(model.relationLabelPrompt?.returnPicker?.restoreCursor, 11)
+        XCTAssertEqual(model.relationLabelPrompt?.returnPicker?.filterText, "foot")
+
+        model.cancelRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        XCTAssertEqual(model.picker?.source, .linkedFrom)
+        XCTAssertEqual(model.picker?.filterText, "foot")
+        XCTAssertNotNil(model.pickerPresentation)
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertTrue(model.pickerVisible)
+    }
+
+    func testRelationCardEscapeKeepsFlippedTokenInPipeFlow() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews()
+        model.flipRelationLabelDirection(key: "~")
+        model.cancelRelationLabelPrompt()
+        XCTAssertFalse(model.relationLabelPromptVisible)
+        XCTAssertNil(model.picker)
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+    }
+
+    func testRelationCardLateOldDirectionCatalogIsDropped() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertNil(model.relationLabelPrompt?.suggestionAuthoredLabel)
+        XCTAssertFalse(
+            model.applyRelationLabelCatalog(
+                relationLabelResponse(
+                    query: "",
+                    candidates: [suggestionCandidate(label: "stale", count: 9)]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target"
+            )
+        )
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        XCTAssertFalse(
+            model.relationLabelPrompt?.catalog.contains { $0.label == "stale" } ?? true
+        )
+    }
+
+    func testRelationCardReturnDuringRefetchWaitsForNewCatalog() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.relationLabelPrompt?.catalogLoaded = false
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, true)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertTrue(
+            model.applyRelationLabelCatalog(
+                relationLabelResponse(
+                    query: "",
+                    candidates: [suggestionCandidate(label: "implements", count: 2)]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target"
+            )
+        )
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|implements")
+    }
+
+    func testRelationCardTabDoesNothingUntilCatalogLoads() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        model.relationLabelPrompt?.catalogLoaded = false
+        model.acceptRelationLabelSuggestion()
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+    }
+
+    func testRelationCardFlipRefetchesCatalog() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("relation-flip-\(UUID().uuidString).log")
+        _ = FileManager.default.createFile(atPath: recordURL.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+
+        let model = CapturePanelModel(
+            processClient: try relationLabelClient(chooser: true, recordPath: recordURL.path)
+        )
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.relationLabelPrompt?.catalogLoaded, false)
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        let recorded = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertGreaterThanOrEqual(
+            recorded.components(separatedBy: "argv=capture-complete").count - 1,
+            2
+        )
+    }
+
+    func testRelationCardReturnDuringLiveRefetchCommitsNewCatalog() async throws {
+        let model = CapturePanelModel(
+            processClient: try relationLabelClient(delaySeconds: "0.3", chooser: true)
+        )
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.relationLabelPrompt?.catalogLoaded, false)
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, true)
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        await waitUntil(timeout: 8) { model.relationLabelPrompt == nil }
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target|implements")
+    }
+
+    func testRelationCardRenameAndSavingGuardsConsumeFlip() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews()
+        model.relationLabelPrompt?.isSaving = true
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertNil(model.equalsGestureArm)
+
+        model.relationLabelPrompt?.isSaving = false
+        model.relationLabelPrompt?.rename = CaptureRelationRenameState(
+            oldKey: "implements",
+            oldName: "implements",
+            newName: "implements",
+            preview: nil,
+            previewNewName: nil,
+            previewMerge: false,
+            refusalCode: nil,
+            refusalMessage: nil,
+            mergeArmed: false,
+            pendingApply: false,
+            isApplying: false,
+            selectAllOnFocus: false
+        )
+        model.flipRelationLabelDirection(key: "=")
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testRelationCardFlipNoopsWhenDraftDiverged() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews()
+        model.plainDraft = "New task ~tasks:target extra"
+        model.flipRelationLabelDirection(key: "~")
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target extra")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.draftSnapshot, "New task ~tasks:target")
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testRelationCardFastEqualsUndoesFlipAndTypesLiteral() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(authoredLabel: "see")
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.0)
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertNotNil(model.equalsGestureArm)
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.350)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "see=")
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testRelationCardSlowEqualsFlipsTwice() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews()
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.0)
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.351)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "")
+        XCTAssertEqual(model.equalsGestureArm?.firstTimestamp, 1.351)
+    }
+
+    func testRelationCardZeroTimestampNeverArmsFastEquals() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews()
+        model.flipRelationLabelDirection(key: "=", timestamp: 0)
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:target")
+        model.flipRelationLabelDirection(key: "=", timestamp: 0.1)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "")
+    }
+
+    func testRelationCardNavigationClearsEqualsArm() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [
+                suggestionCandidate(label: "inspired by", count: 3),
+                suggestionCandidate(label: "implements", count: 2),
+            ]
+        )
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.0)
+        XCTAssertNotNil(model.equalsGestureArm)
+        model.cycleRelationLabelSuggestionForward()
+        XCTAssertNil(model.equalsGestureArm)
+        model.flipRelationLabelDirection(key: "=", timestamp: 1.1)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "")
+    }
+
+    func testRelationCardTeachesFlipFromInverseHintAndNewTask() {
+        let hinted = CapturePanelModel()
+        hinted.installRelationLabelPromptForPreviews(
+            relationSuccessor: CaptureCompletionRelationSuccessor(
+                hint: "use ~~ with the inverse label"
+            )
+        )
+        XCTAssertTrue(hinted.relationLabelTeachesFlip)
+        XCTAssertTrue(hinted.relationLabelFooterItems.contains { $0.keycap == "~" })
+
+        let quiet = CapturePanelModel()
+        quiet.installRelationLabelPromptForPreviews(
+            suggestions: [suggestionCandidate(label: "implements", count: 2)]
+        )
+        XCTAssertFalse(quiet.relationLabelTeachesFlip)
+        XCTAssertFalse(quiet.relationLabelFooterItems.contains { $0.keycap == "~" })
+
+        let newTask = CapturePanelModel()
+        newTask.installRelationLabelPromptForPreviews(
+            suggestions: [
+                CaptureCompletionCandidate(
+                    replacement: "|cancels",
+                    label: "cancels",
+                    disabledReason: "Can't cancel a new task",
+                    count: 1,
+                    key: "cancels",
+                    hideReplacement: "||cancels"
+                )
+            ],
+            relationCancel: CaptureCompletionRelationCancel(verdict: "new_task")
+        )
+        newTask.selectRelationLabelSuggestion(key: "cancels")
+        XCTAssertTrue(newTask.relationLabelTeachesFlip)
+        XCTAssertTrue(newTask.relationLabelFooterItems.contains { $0.keycap == "~" })
+    }
+
+    func testRelationCardRouterFlipsInChooseModeOnly() {
+        let router = CaptureKeyCommandRouter()
+        let choose = chooseRelationCardContext()
+        XCTAssertEqual(
+            router.command(
+                for: relationCardKeyEvent(characters: "~", keyCode: 50, modifiers: .shift),
+                context: choose
+            ),
+            .flipRelationLabelDirection
+        )
+        XCTAssertEqual(
+            router.command(
+                for: relationCardKeyEvent(characters: "=", keyCode: 24),
+                context: choose
+            ),
+            .flipRelationLabelDirection
+        )
+        XCTAssertEqual(
+            router.command(
+                for: relationCardKeyEvent(characters: "=", keyCode: 24, isRepeat: true),
+                context: chooseRelationCardContext(keyIsRepeat: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(
+                for: relationCardKeyEvent(characters: "~", keyCode: 50, modifiers: .shift),
+                context: chooseRelationCardContext(fieldHasMarkedText: true)
+            )
+        )
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, .control] {
+            XCTAssertNil(
+                router.command(
+                    for: relationCardKeyEvent(
+                        characters: "=",
+                        keyCode: 24,
+                        modifiers: modifiers
+                    ),
+                    context: choose
+                )
+            )
+        }
+        let rename = chooseRelationCardContext(renameActive: true)
+        XCTAssertNil(
+            router.command(
+                for: relationCardKeyEvent(characters: "~", keyCode: 50, modifiers: .shift),
+                context: rename
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: relationCardKeyEvent(characters: "=", keyCode: 24),
+                context: rename
+            )
+        )
     }
 }
 

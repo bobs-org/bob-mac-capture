@@ -2229,6 +2229,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .flipRelationDirection:
             model.flipRelationDirection()
             return true
+        case .flipRelationLabelDirection:
+            return true
         case .insertCloseTaskNumber(let digit):
             return Self.insertCloseTaskNumberInEditableTextView(
                 digit,
@@ -2361,6 +2363,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 relationLabelPromptFieldIsEmpty: model.relationLabelFieldText.isEmpty,
                 relationLabelPromptOneOff: model.relationLabelPrompt?.oneOff ?? false,
                 relationLabelRenameActive: model.relationLabelRenameIsActive,
+                relationLabelFieldHasMarkedText:
+                    model.relationLabelPromptVisible
+                    && ((panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false),
                     pickerSourceIsRelation: model.pickerSourceIsRelation,
                     moveChoiceVisible: model.moveChoiceVisible,
                     moveChoiceFilterFocused: model.moveChoiceVisible
@@ -2455,6 +2460,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
            relationDashLiteralArmed
         {
             return model.restoreRelationDashLiteral(arm, key: key) ? nil : event
+        }
+        if command == .flipRelationLabelDirection {
+            model.flipRelationLabelDirection(
+                key: event.characters ?? "",
+                timestamp: event.timestamp,
+                isRepeat: event.isARepeat
+            )
+            return nil
         }
         if command == .typeKeyBeforeHashAliasReply {
             // The probe stores the one-shot re-ask; AppKit types the second

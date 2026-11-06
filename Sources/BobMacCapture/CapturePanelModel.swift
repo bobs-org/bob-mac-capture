@@ -74,6 +74,17 @@ struct HashAliasProbe: Equatable {
     let secondCaretUTF8: Int
 }
 
+/// One-shot arm after an `=` flip so a fast second `=` types a literal `=`.
+/// Later phases fold the editor and picker onto this record.
+struct CaptureEqualsGestureArm: Equatable {
+    enum Surface: Equatable {
+        case relationLabelCard
+    }
+
+    var surface: Surface
+    var firstTimestamp: TimeInterval
+}
+
 /// What follows a successful Add block ID assignment.
 enum CaptureTaskLinkFollowUp: Equatable, Sendable {
     case none
@@ -282,12 +293,12 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// fix-up rebases this when the apply rewrites matching relations.
     var draftSnapshot: String
     /// UTF-8 byte range of the `~note:id` token (excluding any `|label`).
-    let tokenRange: CaptureRange
+    var tokenRange: CaptureRange
     /// UTF-8 byte range replaced when committing the `|label` suffix. The
     /// rename draft fix-up rebases this along with the draft text.
     var labelRange: CaptureRange
     /// Relation direction for the live sentence.
-    let direction: DependencyPickerDirection
+    var direction: DependencyPickerDirection
     /// Draft task text (source side for `~`, target side for `~~`).
     let ownerText: String
     /// Picked task text.
@@ -296,7 +307,7 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// when the rewritten draft is shorter than the restore offset.
     var restoreCursor: Int
     /// Picker snapshot to return to on Escape (nil for the `|` flow).
-    let returnPicker: CapturePickerState?
+    var returnPicker: CapturePickerState?
     /// Current field text (without `|`, quotes, or escapes).
     var authoredLabel: String
     /// Latest Bob response for the authored label, used only to validate and
@@ -675,6 +686,9 @@ final class CapturePanelModel: ObservableObject {
     var relationDashLiteralArm: CaptureRelationDashArm?
     /// One-shot allowance for the `=` → `~~` Linked From alias.
     var relationFlipAliasOpen: CaptureRelationFlipAliasOpen?
+    /// One-shot arm after a card `=` flip. A fast second `=` undoes the
+    /// flip and types one `=` into the label field.
+    var equalsGestureArm: CaptureEqualsGestureArm?
     static let editorLeaderStatusHint = "⌃G · U toggle line case · esc cancel"
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
     /// observes a screen; the editor height budget then falls back to
@@ -11041,6 +11055,7 @@ final class CapturePanelModel: ObservableObject {
         guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
+        clearEqualsGestureArm()
         // A typed `|` never enters the field: it turns one-off on, so
         // `~note:id |label` typed straight through still works.
         if label.contains("|") {
@@ -11064,6 +11079,7 @@ final class CapturePanelModel: ObservableObject {
     /// Ctrl+D with no selection toggles one-off for the typed label.
     /// Ctrl+D is always consumed; key auto-repeat is ignored by the router.
     func toggleRelationLabelOneOff() {
+        clearEqualsGestureArm()
         guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
@@ -11086,6 +11102,7 @@ final class CapturePanelModel: ObservableObject {
     /// failure restores the row with bob's message, and a pending write
     /// survives dismissal. With no selection, Ctrl+D toggles one-off.
     func toggleRelationLabelVisibility() {
+        clearEqualsGestureArm()
         guard let prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
@@ -11169,6 +11186,7 @@ final class CapturePanelModel: ObservableObject {
     /// Ctrl+H shows or hides the Hidden section. The query and the
     /// selection are kept. An older bob gets the update hint.
     func toggleRelationLabelHiddenSection() {
+        clearEqualsGestureArm()
         guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
@@ -11278,6 +11296,7 @@ final class CapturePanelModel: ObservableObject {
     /// choose mode. The preview doubles as the capability probe: an older
     /// bob gets the update hint instead of a preview.
     func openRelationLabelRename() {
+        clearEqualsGestureArm()
         guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
@@ -11871,10 +11890,12 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func cycleRelationLabelSuggestionForward() {
+        clearEqualsGestureArm()
         moveRelationLabelSelection(by: 1)
     }
 
     func cycleRelationLabelSuggestionBackward() {
+        clearEqualsGestureArm()
         moveRelationLabelSelection(by: -1)
     }
 
@@ -11913,6 +11934,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func selectRelationLabelSuggestion(key: String) {
+        clearEqualsGestureArm()
         guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil,
               relationLabelNavigableRows.contains(where: { relationLabelKey($0) == key })
         else {
@@ -11926,7 +11948,10 @@ final class CapturePanelModel: ObservableObject {
     /// Tab accepts the highlighted row, or the first local match when the
     /// field has no selection. It never changes the query or calls Bob.
     func acceptRelationLabelSuggestion() {
+        clearEqualsGestureArm()
         guard !relationLabelPromptIsSaving, relationLabelPrompt?.rename == nil else { return }
+        // Stale catalog rows after a direction flip must never commit.
+        guard relationLabelPrompt?.catalogLoaded == true else { return }
         guard let candidate = relationLabelSelectedCandidate ?? relationLabelPromptRows.first else {
             guard var prompt = relationLabelPrompt else { return }
             prompt.errorMessage = relationLabelPromptHint ?? "No matching labels · type a relation name"
@@ -11937,6 +11962,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func insertRelationLabelSuggestion(id: String) {
+        clearEqualsGestureArm()
         guard relationLabelPrompt?.rename == nil,
               let candidate = relationLabelNavigableRows.first(where: {
             $0.replacement == id || $0.label == id || $0.key == id
@@ -12039,6 +12065,9 @@ final class CapturePanelModel: ObservableObject {
             if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
                 items.append(("⌃H", prompt.showHidden ? "hide list" : "hidden"))
             }
+            if relationLabelTeachesFlip {
+                items.append(("~", "flips"))
+            }
             items.append(("esc", "back"))
             return items
         }
@@ -12069,6 +12098,9 @@ final class CapturePanelModel: ObservableObject {
                     ("⌃D", "visible"),
                     ("esc", "back"),
                 ]
+            }
+            if relationLabelTeachesFlip {
+                return [("↩", "inserts plain link"), ("~", "flips"), ("esc", "back")]
             }
             return [("↩", "inserts plain link"), ("esc", "back")]
         }
@@ -12104,8 +12136,45 @@ final class CapturePanelModel: ObservableObject {
         if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
             items.append(("⌃H", prompt.showHidden ? "hide list" : "hidden"))
         }
+        if relationLabelTeachesFlip {
+            items.append(("~", "flips"))
+        }
         items.append(("esc", "back"))
-        return Array(items.prefix(5))
+        return Array(items.prefix(relationLabelTeachesFlip ? 6 : 5))
+    }
+
+    /// Footer/header teaching: a selected row disabled for `new_task`, or
+    /// Bob sent an inverse hint. Decided from structured fields, never copy.
+    var relationLabelTeachesFlip: Bool {
+        guard let prompt = relationLabelPrompt, prompt.rename == nil else {
+            return false
+        }
+        if relationLabelHasInverseHint {
+            return true
+        }
+        guard let selected = relationLabelSelectedCandidate,
+              selected.disabledReason?.isEmpty == false
+        else {
+            return false
+        }
+        return prompt.relationCancel?.verdict == "new_task"
+            || prompt.relationComplete?.verdict == "new_task"
+    }
+
+    private var relationLabelHasInverseHint: Bool {
+        guard let prompt = relationLabelPrompt else {
+            return false
+        }
+        if let hint = prompt.relationSuccessor?.hint, !hint.isEmpty {
+            return true
+        }
+        if let hint = prompt.relationCancel?.hint, !hint.isEmpty {
+            return true
+        }
+        if let hint = prompt.relationComplete?.hint, !hint.isEmpty {
+            return true
+        }
+        return false
     }
 
     private var relationLabelPromptIsSaving: Bool {
@@ -12122,7 +12191,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func insertRelationLabelSuggestion(candidate: CaptureCompletionCandidate) {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else { return }
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil,
+              prompt.catalogLoaded
+        else { return }
         if let reason = candidate.disabledReason, !reason.isEmpty {
             prompt.errorMessage = reason
             relationLabelPrompt = prompt
@@ -12139,15 +12210,73 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submitRelationLabelPrompt() {
+        clearEqualsGestureArm()
         if relationLabelPrompt?.rename != nil {
             submitRelationLabelRename()
             return
         }
+        guard let prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
         if let selected = relationLabelSelectedCandidate {
+            // A flip invalidates catalog verdicts. Return on a highlighted
+            // row waits for the new catalog so it never commits a stale
+            // replacement. Empty Return and a typed label do not read the
+            // catalog: they drop the pipe or wait on the typed-row probe.
+            if !prompt.catalogLoaded {
+                var waiting = prompt
+                waiting.pendingSubmit = true
+                relationLabelPrompt = waiting
+                return
+            }
             insertRelationLabelSuggestion(candidate: selected)
             return
         }
         submitAuthoredRelationLabel()
+    }
+
+    /// Choose-mode `~` / `=` flip. A fast second `=` undoes the flip and
+    /// types one `=` into the label field. Guards consume the key with no
+    /// effect; the flip writes no preference and runs no effect.
+    func flipRelationLabelDirection(
+        key: String,
+        timestamp: TimeInterval = 0,
+        isRepeat: Bool = false
+    ) {
+        guard let prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
+            equalsGestureArm = nil
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            equalsGestureArm = nil
+            return
+        }
+        if key == "=",
+           let arm = equalsGestureArm,
+           arm.surface == .relationLabelCard,
+           CaptureEqualsGesture.isFastSecond(
+               first: arm.firstTimestamp,
+               second: timestamp,
+               isRepeat: isRepeat
+           )
+        {
+            equalsGestureArm = nil
+            let query = prompt.authoredLabel
+            if applyRelationLabelDirectionFlip() {
+                updateRelationLabelPromptLabel(query + "=")
+            }
+            return
+        }
+        if key != "=" {
+            equalsGestureArm = nil
+        }
+        let flipped = applyRelationLabelDirectionFlip()
+        if key == "=", flipped {
+            equalsGestureArm = CaptureEqualsGestureArm(
+                surface: .relationLabelCard,
+                firstTimestamp: timestamp
+            )
+        }
     }
 
     func cancelRelationLabelPrompt() {
@@ -12160,15 +12289,46 @@ final class CapturePanelModel: ObservableObject {
         guard let prompt = relationLabelPrompt, !prompt.isSaving else {
             return
         }
+        equalsGestureArm = nil
         let returnPicker = prompt.returnPicker
         let restoreCursor = prompt.restoreCursor
         clearRelationLabelPrompt()
         if let returnPicker {
+            restoreDraftUndoably(
+                returnPicker.draftSnapshot,
+                cursor: returnPicker.restoreCursor
+            )
+            let direction: DependencyPickerDirection =
+                returnPicker.source == .linkedFrom ? .linkedFrom : .linksTo
+            let index: CapturePickerIndex =
+                direction == .linkedFrom
+                ? .linkedFrom(
+                    DependencyPickerIndex(
+                        candidates: returnPicker.candidates,
+                        direction: .linkedFrom
+                    )
+                )
+                : .linksTo(
+                    DependencyPickerIndex(
+                        candidates: returnPicker.candidates,
+                        direction: .linksTo
+                    )
+                )
+            let presentation = index.presentation(filter: returnPicker.filterText)
+            pickerIndex = index
+            pickerPresentation = presentation
             picker = returnPicker
-            pickerPresentation = pickerIndex?.presentation(filter: returnPicker.filterText)
+            pickerMarkerHighlight = Self.pickerMarkerHighlightRange(
+                source: returnPicker.source,
+                replacementRange: returnPicker.replacementRange,
+                markerRange: nil
+            )
+            applyPickerMarkerHighlight()
+            dismissCompletion()
+            pickerChip = nil
             editorInputLocked = true
             requestFocus(.pickerFilter)
-            statusText = "Pick a task to link"
+            statusText = CapturePickerNeed.relationTarget.statusText
         } else {
             if stringRange(in: plainDraft, start: restoreCursor, end: restoreCursor) != nil {
                 setPlainDraft(plainDraft, cursorUTF8Offset: restoreCursor, suppressSelectionCallbacks: true)
@@ -12176,6 +12336,191 @@ final class CapturePanelModel: ObservableObject {
             statusText = "Ready"
             requestFocus(.editor)
         }
+    }
+
+    private func clearEqualsGestureArm() {
+        equalsGestureArm = nil
+    }
+
+    @discardableResult
+    private func applyRelationLabelDirectionFlip() -> Bool {
+        guard var prompt = relationLabelPrompt else {
+            return false
+        }
+        let token = prompt.tokenRange
+        guard let flipped = toggleRelationTilde(
+            in: prompt.draftSnapshot,
+            tokenStart: token.start,
+            tokenEnd: token.end
+        ) else {
+            return false
+        }
+        let editPoint = token.start + 1
+        prompt.draftSnapshot = flipped.text
+        prompt.tokenRange = CaptureRange(start: token.start, end: token.end + flipped.delta)
+        prompt.labelRange = CaptureRange(
+            start: prompt.labelRange.start + flipped.delta,
+            end: prompt.labelRange.end + flipped.delta
+        )
+        if prompt.restoreCursor >= editPoint {
+            prompt.restoreCursor += flipped.delta
+        }
+        prompt.direction = flipped.linkedFrom ? .linkedFrom : .linksTo
+        if var returnPicker = prompt.returnPicker {
+            let range = returnPicker.replacementRange
+            if let pickerFlip = toggleRelationTilde(
+                in: returnPicker.draftSnapshot,
+                tokenStart: range.start,
+                tokenEnd: range.end
+            ) {
+                let pickerEdit = range.start + 1
+                returnPicker.draftSnapshot = pickerFlip.text
+                returnPicker.replacementRange = CaptureRange(
+                    start: range.start,
+                    end: range.end + pickerFlip.delta
+                )
+                if returnPicker.restoreCursor >= pickerEdit {
+                    returnPicker.restoreCursor += pickerFlip.delta
+                }
+                returnPicker.source = pickerFlip.linkedFrom ? .linkedFrom : .linksTo
+                prompt.returnPicker = returnPicker
+            }
+        }
+        prompt.relationCancel = nil
+        prompt.relationComplete = nil
+        prompt.relationSuccessor = nil
+        prompt.suggestions = []
+        prompt.suggestionAuthoredLabel = nil
+        prompt.errorMessage = nil
+        prompt.pendingSubmit = false
+        prompt.catalogLoaded = processClient != nil ? false : true
+        relationLabelCatalogGeneration &+= 1
+        relationLabelSuggestionGeneration &+= 1
+        relationLabelCatalogInFlight = nil
+        relationLabelInFlight = nil
+        relationLabelPrompt = prompt
+        applyFocusPreservingRelationFlip(
+            at: editPoint,
+            inserting: flipped.delta > 0,
+            resultingDraft: flipped.text,
+            cursor: prompt.restoreCursor
+        )
+        announceStatus(prompt.direction == .linkedFrom ? "Linked From" : "Links To")
+        requestFocus(.relationLabelPromptField)
+        if processClient != nil {
+            fetchRelationLabelCatalog()
+            if !prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                fetchRelationLabelSuggestions()
+            }
+        }
+        return true
+    }
+
+    private func toggleRelationTilde(
+        in text: String,
+        tokenStart: Int,
+        tokenEnd: Int
+    ) -> (text: String, delta: Int, linkedFrom: Bool)? {
+        let bytes = Array(text.utf8)
+        guard tokenStart < bytes.count, bytes[tokenStart] == 126 else {
+            return nil
+        }
+        let editPoint = tokenStart + 1
+        let isLinkedFrom =
+            editPoint < tokenEnd && editPoint < bytes.count && bytes[editPoint] == 126
+        if !isLinkedFrom {
+            guard let insertRange = stringRange(in: text, start: editPoint, end: editPoint) else {
+                return nil
+            }
+            var next = text
+            next.replaceSubrange(insertRange, with: "~")
+            return (next, 1, true)
+        }
+        guard editPoint <= tokenEnd,
+              let deleteRange = stringRange(in: text, start: editPoint, end: editPoint + 1)
+        else {
+            return nil
+        }
+        var next = text
+        next.removeSubrange(deleteRange)
+        return (next, -1, false)
+    }
+
+    private func applyFocusPreservingRelationFlip(
+        at editPoint: Int,
+        inserting: Bool,
+        resultingDraft: String,
+        cursor: Int
+    ) {
+        let end = inserting ? editPoint : editPoint + 1
+        guard let replacementRange = utf16Range(in: plainDraft, start: editPoint, end: end),
+              let cursorUTF16 = utf16Range(in: resultingDraft, start: cursor, end: cursor)?.location
+        else {
+            setPlainDraft(
+                resultingDraft,
+                cursorUTF8Offset: cursor,
+                suppressSelectionCallbacks: true
+            )
+            return
+        }
+        let edit = CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: inserting ? "~" : "",
+            resultingSelection: NSRange(location: cursorUTF16, length: 0),
+            expectedDraft: plainDraft,
+            resultingDraft: resultingDraft
+        )
+        suppressedCompletionAcceptanceDraft = resultingDraft
+        if applyNativeRewriteEdit?(edit) == true {
+            if plainDraft != resultingDraft {
+                isApplyingProgrammaticDraft = true
+                attributedDraft = AttributedString(resultingDraft)
+                isApplyingProgrammaticDraft = false
+            }
+            restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
+            return
+        }
+        setPlainDraft(
+            resultingDraft,
+            cursorUTF8Offset: cursor,
+            suppressSelectionCallbacks: true
+        )
+    }
+
+    private func restoreDraftUndoably(_ text: String, cursor: Int) {
+        guard text != plainDraft else {
+            if stringRange(in: plainDraft, start: cursor, end: cursor) != nil {
+                setPlainDraft(plainDraft, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
+            }
+            return
+        }
+        guard let replacementRange = utf16Range(
+            in: plainDraft,
+            start: 0,
+            end: plainDraft.utf8.count
+        ),
+            let cursorUTF16 = utf16Range(in: text, start: cursor, end: cursor)?.location
+        else {
+            setPlainDraft(text, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
+            return
+        }
+        let edit = CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: text,
+            resultingSelection: NSRange(location: cursorUTF16, length: 0),
+            expectedDraft: plainDraft,
+            resultingDraft: text
+        )
+        if applyNativeRewriteEdit?(edit) == true {
+            if plainDraft != text {
+                isApplyingProgrammaticDraft = true
+                attributedDraft = AttributedString(text)
+                isApplyingProgrammaticDraft = false
+            }
+            restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
+            return
+        }
+        setPlainDraft(text, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
     }
 
     private func submitAuthoredRelationLabel() {
@@ -12315,6 +12660,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func clearRelationLabelPrompt() {
         relationLabelPrompt = nil
+        equalsGestureArm = nil
         relationLabelSuggestionGeneration &+= 1
         relationLabelCatalogGeneration &+= 1
         relationLabelRenameGeneration &+= 1
@@ -12448,6 +12794,12 @@ final class CapturePanelModel: ObservableObject {
         relationLabelPrompt = current
         if current.hiddenCount > 0 {
             fetchRelationLabelHiddenRows()
+        }
+        if current.pendingSubmit {
+            let trimmed = current.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.selectedKey != nil || trimmed.isEmpty {
+                submitRelationLabelPrompt()
+            }
         }
         return true
     }

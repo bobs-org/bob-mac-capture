@@ -118,11 +118,18 @@ Shift-Return inserts the token and opens the relation card. Typing `|` after a
 relation token also opens the card; Bob removes any spaces or tabs before the
 pipe through the rewrite lane, and Undo restores the typed ` |`. The card keeps
 its query field separate from the highlighted label and filters the catalog
-fetched when it opens. Ctrl-N/P and Down/Up move the highlight, wrapping through
-the field. Tab inserts the selected label, or the top match when nothing is
-selected. Return inserts the selected label, or uses Bob's fresh typed-label
-replacement; with an empty field it removes the pipe and leaves the bare relation
-token. Shift-Tab is consumed. Escape returns to the unchanged draft. Command-Return
+fetched when it opens. In choose mode, `~` or `=` flips Links To ↔ Linked From:
+the card edits the token, keeps the query and selection, and re-asks Bob so
+Return never commits the other direction. A fast second `=` (350 ms) undoes
+that flip and types one `=` into the label. Rename mode keeps `~` and `=` as
+text. Ctrl-N/P and Down/Up move the highlight, wrapping through the field. Tab
+inserts the selected label, or the top match when nothing is selected. Return
+inserts the selected label, or uses Bob's fresh typed-label replacement; with
+an empty field it removes the pipe and leaves the bare relation token.
+Shift-Tab is consumed. Escape from a Shift-Return card restores the picker's
+draft and rebuilds the picker, in the new direction after a flip. Escape from
+the `|` flow keeps the (possibly flipped) token and restores the caret.
+Command-Return
 inserts then captures when the owner is complete;
 Control-Return also opens the reported notes. The `~` / `~~` sigil uses a mint
 knot accent, distinct from the grey Pomodoro-drop `~`. Relation labels render
@@ -163,10 +170,12 @@ Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
 Control-Return Insert, Capture & Open when the owner is complete.
 
 Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return
-accept selected or typed label, Ctrl-D hide what Return would insert (or toggle
-one-off), typed `|` one-off on, Ctrl-H Hidden section, Ctrl-R rename the label
-everywhere with a live dry-run preview and merge confirm, Escape back (leaving
-rename mode first). The card
+accept selected or typed label, `~` or `=` flip direction (re-asks Bob, keeps
+query and selection), fast `==` types a literal `=`, Ctrl-D hide what Return
+would insert (or toggle one-off), typed `|` one-off on, Ctrl-H Hidden section,
+Ctrl-R rename the label everywhere with a live dry-run preview and merge
+confirm, Escape back (leaving rename mode first; Shift-Return cards restore
+the picker, including after a flip). The card
 opens in one-off mode on a `||` token. Hidden labels live in the Hidden section
 and stay insertable; a hide or unhide keeps its row as a ghost with ⌃D undo
 until the query changes, and a failed write restores the row with Bob's message.
