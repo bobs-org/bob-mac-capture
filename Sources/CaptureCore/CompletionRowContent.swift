@@ -96,6 +96,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .route
     case "transfer_arrow":
         return .interactivePlaceholder
+    case "merge_in_arrow":
+        return .section
+    case "merge_in_source":
+        return .route
     case "relation_note":
         return .route
     case "relation_block_id":

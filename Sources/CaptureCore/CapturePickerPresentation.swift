@@ -390,6 +390,9 @@ public enum CapturePickerSource: Equatable, Sendable {
             }
             return "Browse \(context.noteTarget) tasks"
         case .parentTask(let context):
+            if context.mergeInTargetTitle != nil {
+                return "Choose a task to merge in"
+            }
             if context.isOwnerMode {
                 return CaptureRelationshipCopy.relateStatusText
             }
@@ -882,6 +885,7 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case taskLink
     case taskGoto
     case taskParent
+    case mergeInSource
     case dependency
     case blockedTask
     case relationTarget
@@ -913,6 +917,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick a task to open — press Tab to browse"
         case .taskParent:
             return "Choose a task to append to — press Tab to browse"
+        case .mergeInSource:
+            return "Pick tasks to merge in — press Tab to browse"
         case .dependency:
             return "Pick a prerequisite — press Tab to browse"
         case .blockedTask:

@@ -176,6 +176,10 @@ struct CapturePickerCard: View {
                 dependencyHeader
             } else if case .projectTaskMove(let context) = source {
                 moveHeader(context: context)
+            } else if case .parentTask(let context) = source,
+                      let title = context.pickerTitle
+            {
+                parentTaskHeader(title: title)
             } else if case .parentTask(let context) = source, context.isOwnerMode,
                       let relationship = context.relationship
             {
@@ -342,6 +346,26 @@ struct CapturePickerCard: View {
         HStack(spacing: 6) {
             Image(systemName: "link")
                 .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
+    }
+
+    /// Merge-in source picker header, keyed by the parsed task that will
+    /// receive Bob's merge operation.
+    @ViewBuilder
+    private func parentTaskHeader(title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.down.to.line")
+                .foregroundStyle(CaptureEditorPalette.color(for: .section))
                 .accessibilityHidden(true)
             Text(title)
                 .font(.callout.weight(.semibold))

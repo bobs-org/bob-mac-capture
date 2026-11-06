@@ -4,6 +4,11 @@ import XCTest
 @testable import CaptureCore
 
 final class CompletionRowContentTests: XCTestCase {
+    func testMergeInSpansUseArrowAndRouteColorFamilies() {
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_arrow"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_source"), .route)
+    }
+
     func testRouteContextPrefersRouteAsPrimaryAndSurfacesLabelKindStatusAsSecondaryBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "today",

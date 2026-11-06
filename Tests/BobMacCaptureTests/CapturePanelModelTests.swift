@@ -7892,6 +7892,122 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testMergeInPendingPreviewStaysCalmAndIsBoundToItsDraftRevision() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let pendingJSON = #"{"ok":false,"error":"pick tasks to merge in after <","code":"incomplete_merge_in","merge_in_pending":{"item":1,"need":"merge_in_source","sources":[{"block_id":"aaa","line":5,"marker":"@inbox+aaa","mergeable":true,"path":"inbox.md","status_name":"Ready","status_symbol":" ","title":"Alpha task"}]}}"#
+        let draft = "New outcome < +"
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_PARSE_FIXTURE": "capture-merge-in-parse-pending-plus.json",
+                "FAKE_BOB_CAPTURE_COMPLETE_FIXTURE": "capture-merge-in-complete-slot.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": pendingJSON,
+                "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "1",
+            ]
+        )
+        model.plainDraft = draft
+
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            model.currentMergeInPending != nil
+                && model.picker?.source.parentTaskContext?.mergeInTargetTitle == "New outcome"
+        }
+
+        XCTAssertEqual(model.currentMergeInPending?.sources.first?.title, "Alpha task")
+        XCTAssertEqual(model.picker?.source.parentTaskContext?.continuation, " +")
+        XCTAssertTrue(model.mergeInNeedsSource)
+        XCTAssertFalse(model.primaryActionEnabled)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.statusText, CapturePickerNeed.mergeInSource.statusText)
+
+        model.submit(openAfterCapture: false)
+        XCTAssertFalse(model.isSubmitting)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run"))
+        XCTAssertFalse(record.components(separatedBy: "\n").contains {
+            $0.hasPrefix("argv=capture ") && !$0.contains("--dry-run")
+        })
+
+        model.plainDraft = "Different draft"
+        XCTAssertNil(model.currentMergeInPending)
+        XCTAssertFalse(model.mergeInNeedsSource)
+    }
+
+    func testDiagnosticRewriteIsExplicitUnicodeSafeAndRejectsStaleAction() async throws {
+        let original = "Tâche <@inbox+aaa"
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_PARSE_FIXTURE": "capture-merge-in-parse-rewrite-spacing-unicode.json",
+            ]
+        )
+        model.plainDraft = original
+        model.editorTextDidChange(cursorUTF8Offset: original.utf8.count)
+        await waitUntil {
+            model.latestParse?.input == original
+                && model.parseDiagnostics.first?.rewrite?.label == "Add spaces"
+        }
+
+        XCTAssertEqual(model.plainDraft, original, "diagnostic rewrites must wait for an explicit action")
+        let rewrite = try XCTUnwrap(model.parseDiagnostics.first?.rewrite)
+        var edits: [CaptureNativeRewriteEdit] = []
+        model.applyNativeRewriteEdit = { edit in
+            edits.append(edit)
+            return true
+        }
+        XCTAssertTrue(model.applyDiagnosticRewrite(rewrite))
+        XCTAssertEqual(model.plainDraft, "Tâche < @inbox+aaa")
+        XCTAssertEqual(edits.count, 1)
+        XCTAssertEqual(edits[0].resultingDraft, model.plainDraft)
+
+        model.plainDraft += "!"
+        XCTAssertFalse(model.applyDiagnosticRewrite(rewrite))
+        XCTAssertEqual(edits.count, 1)
+    }
+
+    func testMergeInIDlessPickCanCancelThenSpliceBobsParentReplacement() async throws {
+        let draft = "New outcome < +"
+        let pendingJSON = #"{"ok":false,"error":"pick tasks to merge in after <","code":"incomplete_merge_in","merge_in_pending":{"item":1,"need":"merge_in_source","sources":[]}}"#
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_PARSE_FIXTURE": "capture-merge-in-parse-pending-plus.json",
+                "FAKE_BOB_CAPTURE_COMPLETE_FIXTURE": "capture-merge-in-slot-idless.json",
+                "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": pendingJSON,
+                "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "1",
+                "FAKE_BOB_TASK_ID_FIXTURE": "parent-task-task-id-success.json",
+            ]
+        )
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            model.picker?.source.parentTaskContext?.mergeInTargetTitle == "New outcome"
+                && model.pickerPresentation?.row(id: "mac_inbox|4:bf5e981c") != nil
+        }
+
+        model.acceptPickerRow(id: "mac_inbox|4:bf5e981c", submitAfterInsert: false)
+        XCTAssertNotNil(model.taskIDPrompt)
+        model.cancelTaskIDPrompt()
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.picker?.source.parentTaskContext?.mergeInTargetTitle, "New outcome")
+
+        model.acceptPickerRow(id: "mac_inbox|4:bf5e981c", submitAfterInsert: false)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "call-bank")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.plainDraft == "New outcome < @mac_inbox+call-bank" }
+    }
+
     private func waitUntil(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,

@@ -465,6 +465,15 @@ private struct PendingExplicitSubmitIntent: Equatable {
     let openAfterCapture: Bool
 }
 
+/// Bob's read-only pending merge result, scoped to the exact parse/preview
+/// revision that produced it. The next draft or executable cannot inherit it.
+struct CaptureMergeInPendingRevision: Equatable {
+    let pending: CaptureMergeInPending
+    let draft: String
+    let generation: UInt64
+    let processClientIdentity: String
+}
+
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
@@ -538,6 +547,8 @@ final class CapturePanelModel: ObservableObject {
     @Published var transferPendingPresentation: CaptureTransferPendingPresentation?
     /// Designed refusal content for a failed live transfer preview.
     @Published var transferRefusalPresentation: CaptureTransferRefusalPresentation?
+    /// Revision-bound Bob context while a `<` source is being completed.
+    @Published private(set) var mergeInPendingRevision: CaptureMergeInPendingRevision?
     /// The exact draft string the current preview outputs were computed
     /// for. The move ghost titles render only while this still equals the
     /// current draft; any keystroke hides them until the next preview lands.
@@ -1897,6 +1908,39 @@ final class CapturePanelModel: ObservableObject {
         return CaptureGrammarGate.isCompatible(lastAppliedParseGrammar)
     }
 
+    /// The pending merge-in payload only belongs to the exact parse and Bob
+    /// executable that resolved it. A new edit, analysis, or client hides it
+    /// before its replacement request settles.
+    var currentMergeInPending: CaptureMergeInPending? {
+        guard let state = mergeInPendingRevision,
+              let latestParse,
+              state.draft == plainDraft,
+              state.generation == analysisGeneration,
+              state.processClientIdentity == processClient?.identityToken,
+              Self.pickerNeed(in: latestParse) == .mergeInSource,
+              lastAppliedParseDraft == state.draft,
+              lastAppliedParseGeneration == state.generation,
+              lastAppliedParseClientIdentity == state.processClientIdentity
+        else {
+            return nil
+        }
+        return state.pending
+    }
+
+    /// A Bob parse explicitly says this capture item still needs a source
+    /// after `<`; Return and every primary action stay disabled in that state.
+    var mergeInNeedsSource: Bool {
+        guard let latestParse,
+              latestParse.input == plainDraft,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient?.identityToken
+        else {
+            return false
+        }
+        return Self.pickerNeed(in: latestParse) == .mergeInSource
+    }
+
     /// The live preview's toggle presentation, when the current draft is exactly one
     /// `task_toggle` item. `nil` for an empty draft, a non-toggle draft, or a batch of
     /// more than one item, where "Set Next"/"Set Open" would misname the primary action.
@@ -2099,6 +2143,7 @@ final class CapturePanelModel: ObservableObject {
             && !inlinePromptVisible
             && !pickerVisible
             && !isClosePending
+            && !mergeInNeedsSource
             && captureGrammarAllowsSubmit
     }
 
@@ -2939,6 +2984,10 @@ final class CapturePanelModel: ObservableObject {
         cancelPastBoundaryRefresh()
         clearOpenHintReveal()
         guard !inlinePromptVisible, !isSubmitting, hasDraft else {
+            return
+        }
+        if mergeInNeedsSource {
+            statusText = CapturePickerNeed.mergeInSource.statusText
             return
         }
         if let rewriteTask, let deferredRewriteInputDraft {
@@ -5749,6 +5798,7 @@ final class CapturePanelModel: ObservableObject {
     /// other context keeps the inline list and clears the chip.
     private func handleCompletionResponse(
         _ completion: CaptureCompletionResponse,
+        parse: CaptureParseResponse,
         draft: String,
         cursor: Int,
         trigger: CompletionTrigger,
@@ -5798,8 +5848,13 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if completion.context == "task_parent" {
+            let mergeInTargetTitle = Self.mergeInTargetTitle(
+                in: parse,
+                replacement: completion.replacement
+            )
             await handleParentTaskCompletion(
                 completion,
+                mergeInTargetTitle: mergeInTargetTitle,
                 draft: draft,
                 cursor: cursor,
                 generation: generation,
@@ -5813,8 +5868,13 @@ final class CapturePanelModel: ObservableObject {
            picker.isParentTask,
            picker.parentTaskContext != nil
         {
+            let mergeInTargetTitle = Self.mergeInTargetTitle(
+                in: parse,
+                replacement: completion.replacement
+            )
             await handleParentTaskCompletion(
                 completion,
+                mergeInTargetTitle: mergeInTargetTitle,
                 draft: draft,
                 cursor: cursor,
                 generation: generation,
@@ -6401,6 +6461,7 @@ final class CapturePanelModel: ObservableObject {
     /// r.start`). Bob's `query` seeds the filter when present.
     private func handleParentTaskCompletion(
         _ completion: CaptureCompletionResponse,
+        mergeInTargetTitle: String?,
         draft: String,
         cursor: Int,
         generation: UInt64,
@@ -6408,10 +6469,13 @@ final class CapturePanelModel: ObservableObject {
         trigger: CompletionTrigger
     ) async {
         dismissCompletion()
-        guard let context = completion.picker?.parentTaskContext else {
+        guard let baseContext = completion.picker?.parentTaskContext else {
             clearPickerInterruption(trigger: trigger)
             return
         }
+        let context = mergeInTargetTitle.map {
+            baseContext.asMergeInSource(targetTitle: $0)
+        } ?? baseContext
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -7458,8 +7522,12 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func applyOwnerModeParentStatus(source: CapturePickerSource) {
-        if case .parentTask(let context) = source, context.isOwnerMode {
-            statusText = CaptureRelationshipCopy.relateStatusText
+        if case .parentTask(let context) = source {
+            if context.mergeInTargetTitle != nil {
+                statusText = CapturePickerNeed.mergeInSource.statusText
+            } else if context.isOwnerMode {
+                statusText = CaptureRelationshipCopy.relateStatusText
+            }
         }
     }
 
@@ -9379,6 +9447,9 @@ final class CapturePanelModel: ObservableObject {
         if needs("task_goto") {
             return .taskGoto
         }
+        if needs("merge_in_source") {
+            return .mergeInSource
+        }
         if needs("task_parent") {
             return .taskParent
         }
@@ -9483,6 +9554,36 @@ final class CapturePanelModel: ObservableObject {
         default:
             statusText = need.statusText
         }
+    }
+
+    /// Bob's parsed merge-in clause identifies which task-parent completion
+    /// replacement is a source slot. Return that task's parsed body for the
+    /// picker header; Swift does not scan the draft for `<` or task syntax.
+    static func mergeInTargetTitle(
+        in parse: CaptureParseResponse,
+        replacement: CaptureRange
+    ) -> String? {
+        let scopes: [(range: CaptureRange?, body: String, mergeIn: CaptureMergeIn?)]
+        if parse.items.isEmpty {
+            scopes = [(nil, parse.body, parse.mergeIn)]
+        } else {
+            scopes = parse.items.map { ($0.range, $0.body, $0.mergeIn) }
+        }
+        guard let scope = scopes.first(where: { scope in
+            guard let mergeIn = scope.mergeIn,
+                  replacement.start >= mergeIn.arrow.end
+            else {
+                return false
+            }
+            if let range = scope.range {
+                return range.start <= replacement.start && replacement.start <= range.end
+            }
+            return true
+        }) else {
+            return nil
+        }
+        let title = scope.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? nil : title
     }
 
     private func rememberRelationshipDisplayName(replacement: String, text: String) {
@@ -9933,9 +10034,13 @@ final class CapturePanelModel: ObservableObject {
             pickerChip = nil
             editorInputLocked = true
             if case .parentTask(let context) = returnPicker.source {
-                statusText = context.isOwnerMode
-                    ? CaptureRelationshipCopy.relateStatusText
-                    : CapturePickerNeed.taskParent.statusText
+                if context.mergeInTargetTitle != nil {
+                    statusText = CapturePickerNeed.mergeInSource.statusText
+                } else {
+                    statusText = context.isOwnerMode
+                        ? CaptureRelationshipCopy.relateStatusText
+                        : CapturePickerNeed.taskParent.statusText
+                }
             } else if returnPicker.source == .dependency {
                 statusText = CapturePickerNeed.dependency.statusText
             } else if returnPicker.source == .blockedTask {
@@ -14868,6 +14973,7 @@ final class CapturePanelModel: ObservableObject {
         let generation = analysisGeneration
         let debounceNanoseconds = self.debounceNanoseconds
         analysisTask?.cancel()
+        mergeInPendingRevision = nil
         previewState = .loading
         previewPullInSnapshot = nil
         // A changed draft can still have the prior response in these caches while
@@ -14917,7 +15023,7 @@ final class CapturePanelModel: ObservableObject {
                 }
 
                 var previewTask: Task<Void, Never>?
-                if pickerNeeded == nil {
+                if pickerNeeded == nil || pickerNeeded == .mergeInSource {
                     // A live clipboard read needs this same draft's accepted
                     // parse: a `%c` directive span on a compatible grammar. A
                     // bare `%`, escaped or literal `%c`, an older draft's
@@ -14979,6 +15085,7 @@ final class CapturePanelModel: ObservableObject {
                             }
                             await self?.handleCompletionResponse(
                                 completion,
+                                parse: parse,
                                 draft: draft,
                                 cursor: cursorUTF8Offset,
                                 trigger: trigger,
@@ -15634,6 +15741,7 @@ final class CapturePanelModel: ObservableObject {
                     }
                     switch preview {
                     case .success(let success):
+                        self?.mergeInPendingRevision = nil
                         let captures = success.normalizedCaptures
                         self?.previewPullInSnapshot = self?.makePullInPreviewSnapshot(
                             success: success,
@@ -15716,6 +15824,26 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = "A Pomodoro is running — review the override, then press Return again"
                         }
                     case .failure(let failure):
+                        if failure.code == "incomplete_merge_in",
+                           let pending = failure.mergeInPending,
+                           pending.need == "merge_in_source",
+                           let parse = self?.latestParse,
+                           Self.pickerNeed(in: parse) == .mergeInSource
+                        {
+                            self?.mergeInPendingRevision = CaptureMergeInPendingRevision(
+                                pending: pending,
+                                draft: draft,
+                                generation: generation,
+                                processClientIdentity: processClientIdentity
+                            )
+                            self?.previewState = .idle
+                            self?.clearPreviewOutputs()
+                            self?.previewPullInSnapshot = nil
+                            self?.errorMessage = nil
+                            self?.errorCode = nil
+                            self?.statusText = CapturePickerNeed.mergeInSource.statusText
+                            return
+                        }
                         if self?.showTransferFailure(
                             failure,
                             parseMode: self?.latestParse?.mode
@@ -15768,7 +15896,8 @@ final class CapturePanelModel: ObservableObject {
               lastAppliedParseGeneration == analysisGeneration,
               lastAppliedParseClientIdentity == processClient.identityToken,
               let parse = latestParse,
-              Self.pickerNeed(in: parse) == nil
+              (Self.pickerNeed(in: parse) == nil
+                  || Self.pickerNeed(in: parse) == .mergeInSource)
         else {
             return false
         }
@@ -16824,6 +16953,53 @@ final class CapturePanelModel: ObservableObject {
         } else {
             consumeTransferOwnedStatus()
         }
+    }
+
+    /// Applies one Bob-authored diagnostic rewrite as a single explicit,
+    /// undoable editor edit. The diagnostic must still belong to the current
+    /// parse revision and its byte range must remain valid in that draft.
+    @discardableResult
+    func applyDiagnosticRewrite(_ rewrite: CaptureDiagnosticRewrite) -> Bool {
+        guard !isSubmitting,
+              !inlinePromptVisible,
+              let processClient,
+              let parse = latestParse,
+              parse.input == plainDraft,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              parse.diagnostics.contains(where: { $0.rewrite == rewrite }),
+              let edit = Self.nativeEditForOrdinaryInsertion(
+                  insertion: rewrite.replacement,
+                  draft: plainDraft,
+                  range: CaptureRange(start: rewrite.start, end: rewrite.end)
+              )
+        else {
+            return false
+        }
+        let cursor = rewrite.start + rewrite.replacement.utf8.count
+        guard stringRange(in: edit.resultingDraft, start: cursor, end: cursor) != nil else {
+            return false
+        }
+        if picker != nil {
+            closePickerForAccept()
+        }
+        if applyNativeRewriteEdit != nil {
+            guard applyBlockIDSpliceNatively(edit: edit, caretUTF8: cursor) else {
+                return false
+            }
+        } else {
+            setPlainDraft(
+                edit.resultingDraft,
+                cursorUTF8Offset: cursor,
+                suppressSelectionCallbacks: true
+            )
+        }
+        mergeInPendingRevision = nil
+        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+        announceStatus("Applied \(rewrite.label)")
+        requestFocus(.editor)
+        return true
     }
 
     private func applyHighlighting(

@@ -2115,6 +2115,10 @@ JSON
         closed_tasks="true"
       fi
     done
+    if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE:-}" ]]; then
+      cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
+      exit 0
+    fi
     if [[ "${draft}" == "Fix it ~" && -n "${FAKE_BOB_RELATION_DASH_COMPLETE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_RELATION_DASH_COMPLETE_DELAY_SECONDS}"
     fi
@@ -3927,6 +3931,10 @@ JSON
           ;;
       esac
     done
+    if [[ -n "${FAKE_BOB_TASK_ID_FIXTURE:-}" ]]; then
+      cat "${fixtures_dir}/${FAKE_BOB_TASK_ID_FIXTURE}"
+      exit 0
+    fi
     if [[ "${note_path}" == "bob.md" && "${task_ref}" == "20:59a5d28a" && "${block_id}" == "grocery-run" ]]; then
       # Worked-example dependency assignment (real `bob capture-task-id
       # --note-path` output on a fresh vault copy).

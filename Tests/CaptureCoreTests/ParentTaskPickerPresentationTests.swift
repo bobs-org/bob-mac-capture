@@ -6,6 +6,32 @@ import XCTest
 /// rows keep the colon groups; scoped empty-query rows keep document order.
 /// Replacements use `@route+id`; ID-less rows stay keyed by `route|ref`.
 final class ParentTaskPickerPresentationTests: XCTestCase {
+    func testMergeInRoleCarriesTargetTitleContinuationAndBobDetail() {
+        let context = ParentTaskPickerContext.vault(
+            markerRange: CaptureRange(start: 14, end: 15),
+            continuation: " +"
+        ).asMergeInSource(targetTitle: "New outcome")
+        let candidate = CaptureCompletionCandidate(
+            replacement: "@inbox+aaa",
+            detail: "⤵ merge in · 1 note",
+            route: "inbox",
+            taskRef: "5:aaa",
+            blockID: "aaa",
+            statusSymbol: " ",
+            statusName: "Ready",
+            text: "Alpha task"
+        )
+
+        let presentation = ParentTaskPickerIndex(
+            candidates: [candidate],
+            context: context
+        ).presentation(filter: "")
+
+        XCTAssertEqual(context.pickerTitle, "⤵ Merge into “New outcome”")
+        XCTAssertEqual(context.continuation, " +")
+        XCTAssertEqual(presentation.sections.first?.rows.first?.detail.summary, "⤵ merge in · 1 note")
+    }
+
     private func vaultCandidatesJSON() -> String {
         """
         [

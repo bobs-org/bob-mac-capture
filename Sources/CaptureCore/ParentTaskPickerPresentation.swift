@@ -7,12 +7,21 @@ public enum ParentTaskPickerScope: String, Equatable, Sendable {
     case vault
 }
 
+/// Why the parent-task completion is open. Bob continues to return the
+/// shared `task_parent` wire context; capture-parse's merge-in metadata gives
+/// the client the distinct presentation role without re-parsing the draft.
+public enum ParentTaskPickerRole: Equatable, Sendable {
+    case append
+    case mergeIn(targetTitle: String)
+}
+
 /// Server-authored parent-task picker context: scoped `@route+` vs vault-wide
 /// `+`, the capsule token, highlight and Backspace ranges, optional
 /// lone-plus operator-continuation keys and aliases, and an optional
 /// accept-and-continue suffix. Swift never classifies capture syntax from
 /// these fields; it only routes them.
 public struct ParentTaskPickerContext: Equatable, Sendable {
+    public let role: ParentTaskPickerRole
     public let scope: ParentTaskPickerScope
     public let scopeToken: String
     public let noteTarget: String?
@@ -32,8 +41,10 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         actionContinuationKeys: [String] = [],
         actionContinuationAliases: [String: String] = [:],
         continuation: String? = nil,
-        relationship: CapturePickerRelationship? = nil
+        relationship: CapturePickerRelationship? = nil,
+        role: ParentTaskPickerRole = .append
     ) {
+        self.role = role
         self.scope = scope
         self.scopeToken = scopeToken
         self.noteTarget = noteTarget
@@ -47,6 +58,36 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
 
     public var isVault: Bool {
         scope == .vault
+    }
+
+    public var mergeInTargetTitle: String? {
+        guard case .mergeIn(let targetTitle) = role else {
+            return nil
+        }
+        return targetTitle
+    }
+
+    /// Picker header rendered for merge-in source selection.
+    public var pickerTitle: String? {
+        guard let mergeInTargetTitle else {
+            return nil
+        }
+        return "⤵ Merge into “\(mergeInTargetTitle)”"
+    }
+
+    public func asMergeInSource(targetTitle: String) -> ParentTaskPickerContext {
+        ParentTaskPickerContext(
+            scope: scope,
+            scopeToken: scopeToken,
+            noteTarget: noteTarget,
+            markerRange: markerRange,
+            triggerRemovalRange: triggerRemovalRange,
+            actionContinuationKeys: actionContinuationKeys,
+            actionContinuationAliases: actionContinuationAliases,
+            continuation: continuation,
+            relationship: relationship,
+            role: .mergeIn(targetTitle: targetTitle)
+        )
     }
 
     /// Dual-use lone `+` only: Bob listed keys that continue a Pomodoro
@@ -547,6 +588,9 @@ public struct ParentTaskPickerIndex: Sendable {
     private func summary(for entry: ParentTaskPickerIndexEntry) -> String {
         if let reason = entry.candidate.disabledReason, !reason.isEmpty {
             return reason
+        }
+        if let detail = entry.candidate.detail, !detail.isEmpty {
+            return detail
         }
         return pomodoroSummary(for: entry)
     }
