@@ -1019,6 +1019,128 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(atCap.projectedTodayBadge?.tone, .magenta)
     }
 
+    func testVerdictLabelsExclusiveOutcomesAndNoFallback() {
+        var state = verdictChoiceState()
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1")
+        state.toggleOfferDone("k1")
+        XCTAssertEqual(state.verdicts["k1"], .done)
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1 · Close 1")
+        XCTAssertEqual(state.skipCommitLabel, "Skip pull-ins · Close 1")
+        XCTAssertEqual(state.footerSummaryText, "pull in 1 · ✓ 1 done")
+        // Explicit marks win; once a verdict exists Return has no fallback.
+        state.markedKeys = []
+        XCTAssertTrue(state.effectiveSelectionKeys.isEmpty)
+        XCTAssertTrue(state.canCommit)
+        // Same verdict chord clears to Leave and stays on the row.
+        let highlight = state.highlightedKey
+        state.toggleOfferDone("k1")
+        XCTAssertNil(state.verdicts["k1"])
+        XCTAssertEqual(state.highlightedKey, "k1", "Clearing stays on the row")
+        _ = highlight
+        // Space replaces Done with Pull In.
+        state.toggleOfferDone("k2")
+        state.toggleOffer("k2")
+        XCTAssertNil(state.verdicts["k2"])
+        XCTAssertTrue(state.markedKeys.contains("k2"))
+    }
+
+    func testVisibleOrderAdvancementAndHiddenChoices() {
+        var state = verdictChoiceState()
+        // Card grouped order differs from Bob n-order; staging advances
+        // visibly and clamps at the end.
+        let visible = state.visibleSelectableKeys
+        XCTAssertNotEqual(visible, state.selectableKeys)
+        state.highlightedKey = visible.first
+        // Clear the helper's pull-in mark so staging is verdict-only.
+        state.markedKeys = []
+        state.toggleOfferDone(visible.first!)
+        XCTAssertEqual(state.highlightedKey, visible.dropFirst().first)
+        // Filters retain hidden choices; hidden highlight never fallbacks.
+        state.updateFilter("No Such Task xyz")
+        XCTAssertTrue(state.visibleSelectableKeys.isEmpty)
+        XCTAssertTrue(state.effectiveSelectionKeys.isEmpty)
+        XCTAssertEqual(state.footerSummaryText, "✓ 1 done")
+        XCTAssertTrue(state.canCommit)
+        state.updateFilter("")
+        // Verdicts suppress the highlight fallback even when visible.
+        XCTAssertTrue(state.effectiveSelectionKeys.isEmpty)
+        XCTAssertTrue(state.canCommit)
+    }
+
+    func testBulkMarkPreservesVerdictsAndBudgetCountsPullInsOnly() {
+        var state = verdictChoiceState(
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)))
+        state.toggleOfferDone("k1")
+        state.markAll()
+        XCTAssertEqual(state.verdicts["k1"], .done)
+        XCTAssertFalse(state.markedKeys.contains("k1"))
+        XCTAssertEqual(state.projectedLinkCount, 4 + state.effectivePickCount)
+        XCTAssertEqual(state.footerSummaryText.contains("✓ 1 done"), true)
+    }
+
+    func testCapabilityGateAndIneligibleRefusal() {
+        var old = choiceState(offers: offers(count: 2))
+        XCTAssertFalse(old.closeSupported)
+        old.toggleOfferDone("opaque#1^suffix")
+        XCTAssertTrue(old.verdicts.isEmpty)
+        var state = verdictChoiceState()
+        XCTAssertTrue(state.closeSupported)
+        // Ineligible row keeps no verdict; router/model surfaces Bob's why.
+        state.toggleOfferDone("muted")
+        XCTAssertNil(state.verdicts["muted"])
+    }
+
+    private func verdictChoiceState(
+        planBudget: CapturePlanBudget? = nil
+    ) -> CapturePullInChoiceState {
+        let close = TaskCompleteOfferClose(
+            complete: true,
+            cancel: true,
+            completeConsequence: "✓ Completes “T” · Ready → Done",
+            cancelConsequence: "⊘ Cancels “T” · Ready → Cancelled",
+            scopeNote: nil,
+            unblocks: 1)
+        func offer(_ key: String, _ n: Int, _ group: String) -> TaskCompleteUnblocked {
+            TaskCompleteUnblocked(
+                notePath: "s.md",
+                blockID: key,
+                text: "Task \(n)",
+                offer: TaskCompleteOffer(
+                    key: key, n: n, group: group,
+                    destination: TaskCompleteOfferDestination(dayFile: "20261106.md"),
+                    close: close))
+        }
+        // Bob n-order (k1, k2) differs from grouped visible order (k2, k1).
+        let offers = [offer("k1", 1, "project"), offer("k2", 2, "hand_off")]
+        let rows = offers.map {
+            CapturePullInChoiceRow(
+                offerRow: $0, blockedRow: nil,
+                group: $0.offer?.group ?? "", project: nil)
+        }
+        var state = CapturePullInChoiceState(
+            draftSnapshot: "draft",
+            processClientIdentity: "client",
+            openAfterCapture: false,
+            priorityRollSeed: "seed",
+            generation: 1,
+            requestID: nil,
+            pullIn: CapturePullIn(
+                supported: true, offerCount: 2,
+                groups: [
+                    CapturePullInGroup(group: "hand_off"),
+                    CapturePullInGroup(group: "project"),
+                ],
+                close: CapturePullInClose(supported: true)),
+            planBudget: planBudget,
+            rows: rows,
+            highlightedKey: "k1")
+        // One pull-in mark so primary labels cover mixed state.
+        state.toggleOffer("k2")
+        return state
+    }
+
     func testFilterMatchRangeIsCaseInsensitiveAndNilWhenEmpty() {
         var state = choiceState(offers: offers(count: 1))
         XCTAssertNil(state.filterMatchRange(in: "Task 1"))
@@ -1034,15 +1156,23 @@ final class CapturePullInChoiceTests: XCTestCase {
 
     func testFooterContractPinsHintsAndAccessibilityText() {
         let items = CapturePullInChoiceFooter.hintItems
-        XCTAssertEqual(items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "esc", "⌃↩"])
-        XCTAssertEqual(items.map { $0.action }, ["Move", "Mark", "All", "Back", "Pull In & Open"])
+        XCTAssertEqual(
+            items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "⌃X", "⌃⇧X", "esc", "⌃↩"])
+        XCTAssertEqual(
+            items.map { $0.action },
+            ["Move", "Mark", "All", "Done", "Cancel", "Back", "Pull In & Open"])
         XCTAssertEqual(
             CapturePullInChoiceFooter.hintItems(openAfterCapture: true).map { $0.keys },
-            ["⌃N ⌃P", "space", "⌘A", "esc"]
+            ["⌃N ⌃P", "space", "⌘A", "⌃X", "⌃⇧X", "esc"]
         )
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.hintItems(openAfterCapture: false, closeSupported: false)
+                .map { $0.keys },
+            ["⌃N ⌃P", "space", "⌘A", "esc", "⌃↩"])
         let label = CapturePullInChoiceFooter.accessibilityText
         for phrase in [
-            "Control-N", "Space", "Command-A", "Return", "Shift-Return", "Control-Return", "Escape",
+            "Control-N", "Space", "Command-A", "Control-X", "Control-Shift-X", "Return",
+            "Shift-Return", "Control-Return", "Escape",
         ] {
             XCTAssertTrue(label.contains(phrase), "Footer label mentions \(phrase)")
         }

@@ -414,18 +414,58 @@ struct CapturePullInChoiceCard: View {
                 }
                 ForEach(choice.visibleRows(in: section)) { row in
                     if let key = row.offerKey {
-                        Button {
-                            model.togglePullInOffer(key)
-                        } label: {
-                            CapturePullInOfferRow(
-                                choice: choice,
-                                row: row,
-                                isHighlighted: choice.highlightedKey == key,
-                                isMarked: choice.markedKeys.contains(key)
-                            )
+                        VStack(alignment: .leading, spacing: 2) {
+                            Button {
+                                model.togglePullInOffer(key)
+                            } label: {
+                                CapturePullInOfferRow(
+                                    choice: choice,
+                                    row: row,
+                                    isHighlighted: choice.highlightedKey == key,
+                                    isMarked: choice.markedKeys.contains(key)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .id(key)
+                            .contextMenu {
+                                if choice.closeSupported,
+                                    choice.outcomes.isEligible(.done, for: key)
+                                {
+                                    Button("Mark Done") {
+                                        model.stagePullInDoneForRow(key)
+                                    }
+                                    Button("Mark Cancelled…") {
+                                        model.beginPullInCancelForRow(key)
+                                    }
+                                }
+                                Button("Pull In") {
+                                    model.togglePullInOffer(key)
+                                }
+                                if choice.verdicts[key] != nil {
+                                    Button("Leave") {
+                                        model.clearPullInVerdictForRow(key)
+                                    }
+                                }
+                            }
+                            .accessibilityAction(named: "Mark Done") {
+                                model.stagePullInDoneForRow(key)
+                            }
+                            .accessibilityAction(named: "Mark Cancelled…") {
+                                model.beginPullInCancelForRow(key)
+                            }
+                            .accessibilityAction(named: "Pull In") {
+                                model.togglePullInOffer(key)
+                            }
+                            .accessibilityAction(named: "Leave") {
+                                model.clearPullInVerdictForRow(key)
+                            }
+                            if choice.activeReasonKey == key {
+                                CapturePullInReasonField(
+                                    model: model,
+                                    choice: choice,
+                                    rowKey: key)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .id(key)
                     } else {
                         CapturePullInMutedRow(row: row)
                     }
@@ -661,7 +701,9 @@ struct CapturePullInDestinationCapsule: View {
     }
 }
 
-/// One 44pt two-line offer row, after the Refs rows.
+/// One 44pt two-line offer row, after the Refs rows. Verdict rows reuse
+/// relation complete/cancel symbols and palette; colour is never the only
+/// signal because the glyph and words always carry the verdict.
 @available(macOS 26.0, *)
 struct CapturePullInOfferRow: View {
     let choice: CapturePullInChoiceState
@@ -669,7 +711,27 @@ struct CapturePullInOfferRow: View {
     var isHighlighted = false
     var isMarked = false
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
+
+    private var offerKey: String? {
+        row.offerKey
+    }
+
+    private var verdict: CapturePullInOfferVerdict? {
+        offerKey.flatMap { choice.verdicts[$0] }
+    }
+
+    private var isDone: Bool {
+        verdict == .done
+    }
+
+    private var isCancelled: Bool {
+        if case .cancel = verdict {
+            return true
+        }
+        return false
+    }
 
     private var isEffective: Bool {
         guard let key = row.offerKey else {
@@ -680,28 +742,30 @@ struct CapturePullInOfferRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            CapturePullInCheckbox(isMarked: isMarked)
+            verdictMarkSlot
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(titleRichText)
                         .font(.body)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(verdict == nil ? .primary : .secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .layoutPriority(1)
                     Spacer(minLength: 6)
-                    if let destination = row.destinationText {
-                        CapturePullInDestinationCapsule(
-                            text: destination,
-                            isEffective: isEffective
-                        )
-                    }
+                    trailingCapsule
                 }
                 metaLine
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let cancelDetail = cancelDetailText {
+                    Text(cancelDetail.text)
+                        .font(.caption)
+                        .foregroundStyle(cancelDetail.faint ? .tertiary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -714,6 +778,70 @@ struct CapturePullInOfferRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isHighlighted ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private var verdictMarkSlot: some View {
+        if isDone {
+            Image(systemName: RelationSourceEffect.complete.symbolName)
+                .foregroundStyle(CaptureEditorPalette.color(for: .relationCompleteLabel))
+                .frame(width: 22, height: 22)
+                .transition(.opacity)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isDone)
+                .accessibilityHidden(true)
+        } else if isCancelled {
+            Image(systemName: RelationSourceEffect.cancel.symbolName)
+                .foregroundStyle(CaptureEditorPalette.color(for: .relationCancelLabel))
+                .frame(width: 22, height: 22)
+                .transition(.opacity)
+                .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCancelled)
+                .accessibilityHidden(true)
+        } else {
+            CapturePullInCheckbox(isMarked: isMarked)
+        }
+    }
+
+    @ViewBuilder
+    private var trailingCapsule: some View {
+        if isDone {
+            Text("✓ Done")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: Capsule())
+                .foregroundStyle(CaptureEditorPalette.color(for: .relationCompleteLabel))
+                .transition(.opacity)
+                .animation(
+                    reduceMotion ? nil : .snappy(duration: 0.15), value: isDone)
+        } else if isCancelled {
+            Text("⊘ Cancel")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(.quaternary, in: Capsule())
+                .foregroundStyle(CaptureEditorPalette.color(for: .relationCancelLabel))
+                .transition(.opacity)
+                .animation(
+                    reduceMotion ? nil : .snappy(duration: 0.15), value: isCancelled)
+        } else if let destination = row.destinationText {
+            CapturePullInDestinationCapsule(
+                text: destination,
+                isEffective: isEffective
+            )
+        }
+    }
+
+    private var cancelDetailText: (text: String, faint: Bool)? {
+        guard let key = offerKey, case .cancel(let reason) = verdict else {
+            return nil
+        }
+        let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return ("no reason", true)
+        }
+        return ("“\(trimmed)”", false)
     }
 
     private var titleRichText: AttributedString {
@@ -757,6 +885,14 @@ struct CapturePullInOfferRow: View {
         {
             parts.append(("from \(SuccessorRows.truncate(cause.text))", nil))
         }
+        if verdict == nil, let key = offerKey {
+            let unblocks = choice.outcomes.unblocksCount(for: key)
+            if unblocks > 0 {
+                parts.append((
+                    unblocks == 1 ? "unblocks 1" : "unblocks \(unblocks)",
+                    nil))
+            }
+        }
         return parts
     }
 
@@ -782,13 +918,68 @@ struct CapturePullInOfferRow: View {
     private var accessibilityLabel: String {
         var label = row.accessibilityLabel
         if let key = row.offerKey {
-            if choice.markedKeys.contains(key) {
+            if case .done = verdict {
+                label += ", will be completed"
+            } else if case .cancel(let reason) = verdict {
+                let trimmed = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    label += ", will be cancelled, no reason"
+                } else {
+                    label += ", will be cancelled: \(trimmed)"
+                }
+            } else if choice.markedKeys.contains(key) {
                 label += ", marked"
             } else if choice.isEffectivelySelected(key) {
                 label += ", will be pulled in"
             }
+            if let why = choice.refusalReason(for: key),
+                !choice.isCloseEligible(key)
+            {
+                label += ", \(why)"
+            }
         }
         return label
+    }
+}
+
+/// Inline Cancel reason field. It lives outside the row's toggle Button
+/// hit target so text interaction never toggles Pull In.
+@available(macOS 26.0, *)
+struct CapturePullInReasonField: View {
+    @ObservedObject var model: CapturePanelModel
+    let choice: CapturePullInChoiceState
+    let rowKey: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("⊘ Why cancel?")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField(
+                "Why cancel? (optional)",
+                text: Binding(
+                    get: { choice.activeReasonText },
+                    set: { model.updatePullInReasonText($0) }))
+            .textFieldStyle(.plain)
+            .font(.body)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+            .onSubmit {
+                model.confirmPullInReason()
+            }
+            .accessibilityIdentifier(pullInReasonFieldAccessibilityIdentifier)
+            .accessibilityLabel("Why cancel? optional reason")
+            Text("↵ · Esc back")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+        .padding(.leading, 30)
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: choice.activeReasonKey)
     }
 }
 
@@ -861,10 +1052,12 @@ struct CapturePullInActionButtonStyle: ButtonStyle {
 
 /// Footer shown while the choice card is open. It replaces
 /// `CapturePanelFooter` so the panel's buttons do not sit dead under the
-/// card: the left holds keycap hints, the right holds Skip / Pull In.
+/// card: the consequence strip sits above the hints, the left holds keycap
+/// hints, the right holds Skip / Pull In / Close.
 @available(macOS 26.0, *)
 struct CapturePullInChoiceFooter: View {
     @ObservedObject var model: CapturePanelModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Keycap plus action pairs, in display order. Kept static so tests can
     /// assert the documented keyboard contract without rendering.
@@ -872,22 +1065,30 @@ struct CapturePullInChoiceFooter: View {
         ("⌃N ⌃P", "Move"),
         ("space", "Mark"),
         ("⌘A", "All"),
+        ("⌃X", "Done"),
+        ("⌃⇧X", "Cancel"),
         ("esc", "Back"),
         ("⌃↩", "Pull In & Open"),
     ]
 
-    static func hintItems(openAfterCapture: Bool) -> [(keys: String, action: String)] {
-        if openAfterCapture {
-            return Array(hintItems.dropLast())
+    static func hintItems(openAfterCapture: Bool, closeSupported: Bool = false) -> [(
+        keys: String, action: String
+    )] {
+        var items = hintItems
+        if !closeSupported {
+            items.removeAll { $0.keys == "⌃X" || $0.keys == "⌃⇧X" }
         }
-        return hintItems
+        if openAfterCapture {
+            return Array(items.dropLast())
+        }
+        return items
     }
 
     static let accessibilityText =
-        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Return pulls in the marked offers, or the highlighted offer when none are marked. Shift-Return skips pulling in any offer. Control-Return pulls in and opens the reported notes. Escape goes back to the draft without writing."
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel with an optional reason. Return applies every staged choice. Shift-Return skips pull-ins and applies verdicts. Control-Return applies everything and opens the reported notes. Escape needs two presses while verdicts are staged."
 
     static let openIntentAccessibilityText =
-        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Return pulls in the marked offers, or the highlighted offer when none are marked, then opens the reported notes. Shift-Return skips pulling in any offer, then opens the reported notes. Escape goes back to the draft without writing."
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel with an optional reason. Return applies every staged choice, then opens the reported notes. Shift-Return skips pull-ins and applies verdicts. Escape needs two presses while verdicts are staged."
 
     private var openAfterCapture: Bool {
         model.pullInChoice?.openAfterCapture == true
@@ -897,59 +1098,99 @@ struct CapturePullInChoiceFooter: View {
         model.pullInChoice?.isOnlyNotePull == true
     }
 
+    private var closeSupported: Bool {
+        model.pullInChoice?.closeSupported == true
+    }
+
+    private var hasVerdicts: Bool {
+        (model.pullInChoice?.closeCount ?? 0) > 0
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ViewThatFits(in: .horizontal) {
-                hintRow(items: Self.hintItems(openAfterCapture: openAfterCapture))
-                hintRow(
-                    items: Array(
-                        Self.hintItems(openAfterCapture: openAfterCapture).filter {
-                            $0.keys != "⌃↩"
-                        }))
-                hintRow(items: Array(Self.hintItems(openAfterCapture: true).dropLast()))
-                hintRow(items: Array(Self.hintItems(openAfterCapture: true).prefix(2)))
+        VStack(alignment: .leading, spacing: 4) {
+            if let strip = verdictStripText {
+                Text(strip.text)
+                    .font(.caption)
+                    .foregroundStyle(strip.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .transition(.opacity)
+                    .animation(
+                        reduceMotion ? nil : .snappy(duration: 0.15),
+                        value: strip.text)
+                    .accessibilityAddTraits(.isStaticText)
             }
-            Spacer(minLength: 12)
-            if isOnlyNotePull {
-                Text("⇧↩ Back to draft")
+            HStack(alignment: .center, spacing: 12) {
+                ViewThatFits(in: .horizontal) {
+                    hintRow(
+                        items: Self.hintItems(
+                            openAfterCapture: openAfterCapture,
+                            closeSupported: closeSupported))
+                    hintRow(
+                        items: Array(
+                            Self.hintItems(
+                                openAfterCapture: openAfterCapture,
+                                closeSupported: closeSupported
+                            ).filter { $0.keys != "⌃↩" }))
+                    hintRow(
+                        items: Array(
+                            Self.hintItems(
+                                openAfterCapture: true,
+                                closeSupported: closeSupported
+                            ).dropLast()))
+                    hintRow(
+                        items: Array(
+                            Self.hintItems(
+                                openAfterCapture: true,
+                                closeSupported: closeSupported
+                            ).prefix(2)))
+                }
+                Spacer(minLength: 12)
+                Text(model.pullInChoice?.footerSummaryText ?? "Choose offers")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
+                    .lineLimit(1)
+                if isOnlyNotePull, !hasVerdicts {
+                    Text("⇧↩ Back to draft")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button {
+                        model.chooseNoPullInOffers()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(skipTitle)
+                            if openAfterCapture {
+                                Image(systemName: "arrow.up.forward")
+                            }
+                            Text("⇧↩")
+                                .opacity(0.7)
+                        }
+                    }
+                    .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
+                    .disabled(model.isSubmitting)
+                }
                 Button {
-                    model.chooseNoPullInOffers()
+                    model.confirmPullInChoice()
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Skip")
+                        Text(pullInTitle)
+                            .contentTransition(.numericText())
                         if openAfterCapture {
                             Image(systemName: "arrow.up.forward")
                         }
-                        Text("⇧↩")
+                        Text("↩")
                             .opacity(0.7)
                     }
                 }
-                .buttonStyle(CapturePullInActionButtonStyle(prominent: false))
-                .disabled(model.isSubmitting)
+                .buttonStyle(CapturePullInActionButtonStyle(prominent: true))
+                .disabled(model.isSubmitting || !canCommit)
             }
-            Button {
-                model.confirmPullInChoice()
-            } label: {
-                HStack(spacing: 4) {
-                    Text(pullInTitle)
-                        .contentTransition(.numericText())
-                    if openAfterCapture {
-                        Image(systemName: "arrow.up.forward")
-                    }
-                    Text("↩")
-                        .opacity(0.7)
-                }
-            }
-            .buttonStyle(CapturePullInActionButtonStyle(prominent: true))
-            .disabled(model.isSubmitting || pullInCount == 0)
         }
         .frame(minHeight: 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            isOnlyNotePull
+            isOnlyNotePull && !hasVerdicts
                 ? "Shift-Return returns to the draft. Escape returns to the draft without writing."
                 : openAfterCapture ? Self.openIntentAccessibilityText : Self.accessibilityText
         )
@@ -961,12 +1202,35 @@ struct CapturePullInChoiceFooter: View {
         }
     }
 
-    private var pullInCount: Int {
-        model.pullInChoice?.effectivePickCount ?? 0
+    private var verdictStripText: (text: String, color: Color)? {
+        guard let choice = model.pullInChoice else {
+            return nil
+        }
+        if let armed = choice.outcomes.escArmedText {
+            return (armed, .yellow)
+        }
+        if let refusal = choice.verdictRefusalMessage ?? choice.errorMessage,
+            !refusal.isEmpty,
+            hasVerdicts || choice.activeReasonKey != nil
+        {
+            return (refusal, .red)
+        }
+        if let message = choice.consequenceMessage, !message.isEmpty {
+            return (message, .secondary)
+        }
+        return nil
+    }
+
+    private var canCommit: Bool {
+        model.pullInChoice?.canCommit ?? false
     }
 
     private var pullInTitle: String {
-        model.pullInChoice?.pullInActionTitle ?? "Pull In"
+        model.pullInChoice?.primaryCommitLabel ?? "Pull In"
+    }
+
+    private var skipTitle: String {
+        model.pullInChoice?.skipCommitLabel ?? "Skip"
     }
 
     private func hintRow(items: [(keys: String, action: String)]) -> some View {

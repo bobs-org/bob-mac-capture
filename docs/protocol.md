@@ -242,6 +242,11 @@ The executable search paths and the Settings override live in [Install](install.
 [Move-card protocol](task-pickers.md#move-card-protocol) documents slots, refusals,
 answer chaining, and optional decoding.
 
+## Successor verdict submission
+
+`pull_in.close.supported` gates `--complete-offer` and `--cancel-offer`.
+Refusals reopen intact; stale picks refresh once and never retry writes.
+
 | App × Bob | Behavior |
 | --- | --- |
 | New × new | Move → Pull-In → inbox → capture |
@@ -251,10 +256,7 @@ answer chaining, and optional decoding.
 
 ## Timeouts and guards
 
-Every `bob` invocation is bounded by a 20-second timeout (`BobProcessClient.defaultTimeout`)
-  that terminates and reaps a wedged process instead of leaving the panel waiting
-  indefinitely; a fired timeout surfaces as an actionable `BobClientError.timedOut`. Quit
-  cancels every outstanding invocation via `cancelActiveProcess()`.
+Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 
 If Bob rejects the exact `--refuse-override` flag as an
 unexpected argument (exit 2), the app retries without that guard and remembers the

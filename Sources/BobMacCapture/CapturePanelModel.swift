@@ -407,6 +407,7 @@ enum CapturePanelFocusTarget: Hashable {
     case moveChoiceRows
     case pullInFilter
     case pullInOfferList
+    case pullInReasonField
     case inboxRouteFilter
     case inboxRouteRows
 }
@@ -442,6 +443,8 @@ private struct CaptureInboxRouteSubmitContext {
     let pullInSelection: CapturePullInSelection?
     let pullInChoiceForBack: CapturePullInChoiceState?
     let pullInCapabilityAdvertised: Bool
+    let offerVerdicts: CapturePullInOfferVerdicts?
+    let offerCloseCapabilityAdvertised: Bool
     let inboxRouteCapabilityAdvertised: Bool
     let hasOverride: Bool
     let vaultDirectoryIdentity: String
@@ -3064,6 +3067,8 @@ final class CapturePanelModel: ObservableObject {
                 pullInSelection: nil,
                 pullInChoiceForBack: nil,
                 pullInCapabilityAdvertised: preview.pullIn?.supported == true,
+                offerVerdicts: nil,
+                offerCloseCapabilityAdvertised: preview.pullIn?.close?.supported == true,
                 inboxRouteCapabilityAdvertised: true,
                 hasOverride: preview.hasOverride,
                 vaultDirectoryIdentity: processClient.vaultDirectoryIdentity,
@@ -3102,7 +3107,9 @@ final class CapturePanelModel: ObservableObject {
         routeContext: CaptureInboxRouteSubmitContext? = nil,
         pullInChoiceForBack: CapturePullInChoiceState? = nil,
         moveInSelection: String? = nil,
-        moveInCapabilityAdvertised: Bool = false
+        moveInCapabilityAdvertised: Bool = false,
+        offerVerdicts: CapturePullInOfferVerdicts? = nil,
+        offerCloseCapabilityAdvertised: Bool = false
     ) {
         cancelSimilarTasks(clear: true)
         guard let processClient else {
@@ -3124,13 +3131,16 @@ final class CapturePanelModel: ObservableObject {
             pullInChoiceForBack: pullInChoiceForBack,
             pullInCapabilityAdvertised: capabilityAdvertised
                 || matchingPreview?.pullIn?.supported == true,
-                inboxRouteCapabilityAdvertised: inboxRouteCapabilityAdvertised
-                    || matchingPreview?.inboxRoute?.supported == true,
-                hasOverride: allowsOverride,
-                vaultDirectoryIdentity: processClient.vaultDirectoryIdentity,
-                moveInSelection: moveInSelection,
-                moveInCapabilityAdvertised: moveInCapabilityAdvertised
-            )
+            offerVerdicts: offerVerdicts,
+            offerCloseCapabilityAdvertised: offerCloseCapabilityAdvertised
+                || matchingPreview?.pullIn?.close?.supported == true,
+            inboxRouteCapabilityAdvertised: inboxRouteCapabilityAdvertised
+                || matchingPreview?.inboxRoute?.supported == true,
+            hasOverride: allowsOverride,
+            vaultDirectoryIdentity: processClient.vaultDirectoryIdentity,
+            moveInSelection: moveInSelection,
+            moveInCapabilityAdvertised: moveInCapabilityAdvertised
+        )
         activeInboxRouteSubmitContext = submitContext
         invalidateRewrite()
         let expectPastWindows = expectedPastWindows(for: draft, processClient: processClient)
@@ -3152,9 +3162,12 @@ final class CapturePanelModel: ObservableObject {
                         moveInSelection: submitContext.moveInSelection,
                         moveInCapabilityAdvertised: submitContext.moveInCapabilityAdvertised,
                         pullInSelection: selection,
+                        offerVerdicts: submitContext.offerVerdicts,
                         requirePullInChoice: selection == nil && inboxRouteAnswers == nil,
                         refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
+                        offerCloseCapabilityAdvertised: submitContext
+                            .offerCloseCapabilityAdvertised,
                         inboxRouteAnswers: inboxRouteAnswers,
                         requireInboxRouteChoice: true,
                         inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
@@ -3652,6 +3665,181 @@ final class CapturePanelModel: ObservableObject {
             && context.generation == analysisGeneration
     }
 
+    private func reopenPullInChoiceAfterOfferRefusal(
+        failure: CaptureCommandFailure,
+        draft: String,
+        processClientIdentity: String,
+        openAfterCapture: Bool,
+        choiceSeed: String
+    ) -> Bool {
+        guard plainDraft == draft,
+            processClient?.identityToken == processClientIdentity
+        else {
+            return false
+        }
+        let remembered = activeInboxRouteSubmitContext?.pullInChoiceForBack
+        guard var choice = remembered else {
+            return false
+        }
+        // Refresh row data/descriptors from Bob, preserving marks, verdicts,
+        // reasons, and highlight. Removed keys are dropped and counted.
+        // Keep the original capability proof; fresh descriptors arrive via
+        // the refreshed offers. Never silently discard a still-present
+        // staged verdict: it stays visible with Bob's error until changed.
+        var lost = 0
+        if !failure.offers.isEmpty {
+            lost = choice.refresh(offers: failure.offers)
+            choice.verdictRefusalMessage = failure.error
+            choice.errorMessage = failure.error
+            pullInChoice = choice
+            editorInputLocked = true
+            requestFocus(.pullInOfferList)
+            let announcement: String
+            if lost > 0 {
+                announcement =
+                    "\(failure.error) · \(lost) staged choice\(lost == 1 ? "" : "s") lost"
+            } else {
+                announcement = failure.error
+            }
+            statusText = failure.error
+            announceStatus(announcement)
+            return true
+        }
+        // No structured offers: fall through to the dry-run refresh path.
+        return reopenPullInChoiceAfterStalePick(
+            failure: failure,
+            draft: draft,
+            processClientIdentity: processClientIdentity,
+            openAfterCapture: openAfterCapture,
+            choiceSeed: choiceSeed)
+    }
+
+    private func reopenPullInChoiceAfterStalePick(
+        failure: CaptureCommandFailure,
+        draft: String,
+        processClientIdentity: String,
+        openAfterCapture: Bool,
+        choiceSeed: String
+    ) -> Bool {
+        guard plainDraft == draft,
+            let processClient,
+            processClient.identityToken == processClientIdentity
+        else {
+            return false
+        }
+        guard let remembered = activeInboxRouteSubmitContext?.pullInChoiceForBack else {
+            return false
+        }
+        // Write-free refusal: at most one fresh dry-run of the same guarded
+        // draft/seed to obtain authoritative rows. Never retry the write.
+        isPreviewing = true
+        statusText = "Refreshing successor offers…"
+        let generation = analysisGeneration
+        let requestID = UUID()
+        Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.capture(
+                    draft,
+                    dryRun: true,
+                    readClipboard: true,
+                    priorityRollSeed: choiceSeed)
+                await MainActor.run {
+                    guard let self,
+                        self.plainDraft == draft,
+                        self.processClient?.identityToken == processClientIdentity,
+                        self.analysisGeneration == generation
+                    else {
+                        return
+                    }
+                    self.isPreviewing = false
+                    switch response {
+                    case .success(let success):
+                        var choice = remembered
+                        var offers: [TaskCompleteUnblocked] = []
+                        for capture in success.normalizedCaptures {
+                            if let complete = capture.taskComplete {
+                                offers.append(contentsOf: complete.unblocked)
+                                offers.append(contentsOf: complete.keepMoving)
+                            }
+                            if let close = capture.pomodoroClose {
+                                offers.append(contentsOf: close.unblocked)
+                                offers.append(contentsOf: close.keepMoving)
+                            }
+                            if let past = capture.pomodoroPast {
+                                offers.append(contentsOf: past.close.unblocked)
+                                offers.append(contentsOf: past.close.keepMoving)
+                            }
+                            if let projectNote = capture.projectNote,
+                                projectNote.form == "offer"
+                            {
+                                offers.append(contentsOf: projectNote.successors)
+                            }
+                            offers.append(contentsOf: capture.allNotePullRows)
+                            for relationComplete in capture.relationCompletes {
+                                guard let complete = relationComplete.taskComplete else {
+                                    continue
+                                }
+                                offers.append(contentsOf: complete.unblocked)
+                                offers.append(contentsOf: complete.keepMoving)
+                            }
+                        }
+                        if offers.isEmpty {
+                            // Refresh with no offers: empty recovery state,
+                            // route back to the draft, no enabled commit.
+                            self.pullInChoice = nil
+                            self.errorMessage = failure.error
+                            self.errorCode = failure.code
+                            self.statusText = failure.error
+                            self.announceStatus(
+                                "\(failure.error) · no offers remain")
+                            return
+                        }
+                        let lost = choice.refresh(offers: offers)
+                        choice.verdictRefusalMessage = failure.error
+                        choice.errorMessage = failure.error
+                        self.pullInChoice = choice
+                        self.editorInputLocked = true
+                        self.requestFocus(.pullInOfferList)
+                        if lost > 0 {
+                            self.announceStatus(
+                                "\(failure.error) · \(lost) staged choice\(lost == 1 ? "" : "s") lost")
+                        } else {
+                            self.announceStatus(failure.error)
+                        }
+                        self.statusText = failure.error
+                    case .failure(let refreshFailure):
+                        self.isPreviewing = false
+                        self.pullInChoice = remembered
+                        self.errorMessage = failure.error
+                        self.errorCode = failure.code
+                        self.statusText = failure.error
+                        self.announceStatus(
+                            "\(failure.error) · refresh failed: \(refreshFailure.error)")
+                    }
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self,
+                        self.plainDraft == draft,
+                        self.processClient?.identityToken == processClientIdentity,
+                        self.analysisGeneration == generation
+                    else {
+                        return
+                    }
+                    // Timeout/unknown outcome is never a write-free refusal:
+                    // keep the error and remembered choices available.
+                    self.isPreviewing = false
+                    self.pullInChoice = remembered
+                    self.errorMessage = failure.error
+                    self.errorCode = failure.code
+                    self.statusText = failure.error
+                    self.announceStatus(failure.error)
+                }
+            }
+        }
+        return true
+    }
+
     func updateInboxRouteChoiceFilter(_ text: String) {
         guard var choice = inboxRouteChoice else {
             return
@@ -3881,8 +4069,16 @@ final class CapturePanelModel: ObservableObject {
         guard var choice = pullInChoice, !isSubmitting else {
             return
         }
-        let keys = choice.effectiveSelectionKeys
-        guard !keys.isEmpty else {
+        // An active reason edit confirms first; blur also confirms once.
+        if choice.activeReasonKey != nil {
+            choice.confirmOfferCancel()
+            pullInChoice = choice
+            announceStatus(choice.consequenceMessage ?? "Cancel staged")
+            requestFocus(.pullInOfferList)
+        }
+        let selection = pullInSelectionForCommit(choice)
+        let verdicts = choice.outcomes.argvSelection().offerVerdicts
+        guard !selectionKeys(selection).isEmpty || !verdicts.isEmpty else {
             announceStatus("No visible successor offer is selected")
             return
         }
@@ -3890,17 +4086,36 @@ final class CapturePanelModel: ObservableObject {
             choice.openAfterCapture = true
             pullInChoice = choice
         }
-        commitPullInChoice(choice, selection: .keys(keys))
+        commitPullInChoice(choice, selection: selection)
+    }
+
+    private func pullInSelectionForCommit(_ choice: CapturePullInChoiceState) -> CapturePullInSelection {
+        let keys = choice.effectiveSelectionKeys
+        return keys.isEmpty ? .none : .keys(keys)
+    }
+
+    private func selectionKeys(_ selection: CapturePullInSelection) -> [String] {
+        switch selection {
+        case .keys(let keys):
+            return keys
+        case .none:
+            return []
+        }
     }
 
     func chooseNoPullInOffers() {
-        guard let choice = pullInChoice, !isSubmitting else {
+        guard var choice = pullInChoice, !isSubmitting else {
             return
         }
-        if choice.isOnlyNotePull {
+        if choice.activeReasonKey != nil {
+            choice.confirmOfferCancel()
+            pullInChoice = choice
+        }
+        if choice.isOnlyNotePull, choice.closeCount == 0 {
             announceStatus("Escape returns to the draft without pulling in")
             return
         }
+        // Shift-Return sends explicit .none and retains every verdict.
         commitPullInChoice(choice, selection: .none)
     }
 
@@ -3916,6 +4131,14 @@ final class CapturePanelModel: ObservableObject {
             cancelPullInChoiceFromKeyboard()
             return
         }
+        // Never emit verdicts without the matching preview capability proof.
+        let verdicts: CapturePullInOfferVerdicts? = {
+            let built = choice.outcomes.argvSelection().offerVerdicts
+            guard !built.isEmpty, choice.pullIn.close?.supported == true else {
+                return nil
+            }
+            return built
+        }()
         pullInChoice = nil
         clearEditorInputLockIfFree()
         dispatchCapture(
@@ -3927,12 +4150,31 @@ final class CapturePanelModel: ObservableObject {
             inboxRouteCapabilityAdvertised: processClient?.inboxRouteCapabilityKnown == true,
             pullInChoiceForBack: choice,
             moveInSelection: choice.moveInSelection,
-            moveInCapabilityAdvertised: choice.moveInSelection != nil
+            moveInCapabilityAdvertised: choice.moveInSelection != nil,
+            offerVerdicts: verdicts,
+            offerCloseCapabilityAdvertised: choice.pullIn.close?.supported == true
         )
     }
 
     func cancelPullInChoiceFromKeyboard() {
-        guard pullInChoice != nil else {
+        guard var choice = pullInChoice else {
+            return
+        }
+        // An active reason edit restores the exact prior outcome without
+        // arming the card discard warning.
+        if choice.activeReasonKey != nil {
+            choice.restoreOfferCancel()
+            pullInChoice = choice
+            requestFocus(.pullInOfferList)
+            return
+        }
+        // Two-step Esc while verdicts are staged.
+        if choice.closeCount > 0, !choice.outcomes.isEscArmed {
+            choice.armEscDiscard()
+            pullInChoice = choice
+            let text = choice.outcomes.escArmedText ?? "Esc again to discard closes"
+            statusText = text
+            announceStatus(text)
             return
         }
         pullInChoice = nil
@@ -3944,11 +4186,176 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Successor choice canceled"
     }
 
+    func disarmPullInDiscardForNativeKey() {
+        guard var choice = pullInChoice, choice.outcomes.isEscArmed else {
+            return
+        }
+        choice.disarmEscDiscard()
+        pullInChoice = choice
+    }
+
+    func stagePullInDoneForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard choice.closeSupported else {
+            announceStatus("Closing offers needs a newer bob")
+            NSSound.beep()
+            return
+        }
+        guard choice.outcomes.isEligible(.done, for: key) || choice.verdicts[key] == .done else {
+            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            NSSound.beep()
+            return
+        }
+        // Pointer actions target the acted-on row and never advance.
+        let highlight = choice.highlightedKey
+        choice.toggleOfferDone(key)
+        // Restore highlight when the pointer acted off-highlight.
+        if highlight != key, choice.highlightedKey == key {
+            choice.highlightedKey = highlight
+        }
+        pullInChoice = choice
+        if let verdict = choice.verdicts[key] {
+            announceStatus(choice.consequenceText(for: verdict, rowKey: key) ?? "Done staged")
+        } else {
+            announceStatus("Back to Leave")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    func beginPullInCancelForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard choice.closeSupported else {
+            announceStatus("Closing offers needs a newer bob")
+            NSSound.beep()
+            return
+        }
+        if choice.verdicts[key] != nil, case .cancel = choice.verdicts[key] {
+            choice.beginOfferCancel(key)
+            pullInChoice = choice
+            announceStatus("Back to Leave")
+            requestFocus(.pullInOfferList)
+            return
+        }
+        guard choice.outcomes.isEligible(.cancel(""), for: key) else {
+            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            NSSound.beep()
+            return
+        }
+        choice.beginOfferCancel(key)
+        pullInChoice = choice
+        requestFocus(.pullInReasonField)
+    }
+
+    func clearPullInVerdictForRow(_ key: String) {
+        guard var choice = pullInChoice, choice.verdicts[key] != nil else {
+            return
+        }
+        let highlight = choice.highlightedKey
+        _ = choice.outcomes.clearVerdict(for: key)
+        choice.consequenceMessage = nil
+        if highlight != key {
+            choice.highlightedKey = highlight
+        }
+        pullInChoice = choice
+        announceStatus("Back to Leave")
+        requestFocus(.pullInOfferList)
+    }
+
+    func stagePullInDoneForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard let key = choice.highlightedKey else {
+            return
+        }
+        guard choice.closeSupported else {
+            announceStatus("Closing offers needs a newer bob")
+            NSSound.beep()
+            return
+        }
+        guard choice.outcomes.isEligible(.done, for: key) || choice.verdicts[key] == .done else {
+            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            NSSound.beep()
+            return
+        }
+        choice.toggleOfferDone(key)
+        pullInChoice = choice
+        if let verdict = choice.verdicts[key] {
+            announceStatus(choice.consequenceText(for: verdict, rowKey: key) ?? "Done staged")
+        } else {
+            announceStatus("Back to Leave")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    func beginPullInCancelForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard let key = choice.highlightedKey else {
+            return
+        }
+        guard choice.closeSupported else {
+            announceStatus("Closing offers needs a newer bob")
+            NSSound.beep()
+            return
+        }
+        // Same chord on staged Cancel clears; otherwise open the reason.
+        if choice.verdicts[key] != nil, case .cancel = choice.verdicts[key] {
+            choice.beginOfferCancel(key)
+            pullInChoice = choice
+            announceStatus("Back to Leave")
+            requestFocus(.pullInOfferList)
+            return
+        }
+        guard choice.outcomes.isEligible(.cancel(""), for: key) else {
+            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            NSSound.beep()
+            return
+        }
+        choice.beginOfferCancel(key)
+        pullInChoice = choice
+        requestFocus(.pullInReasonField)
+    }
+
+    func confirmPullInReason() {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        choice.confirmOfferCancel()
+        pullInChoice = choice
+        announceStatus(choice.consequenceMessage ?? "Cancel staged")
+        requestFocus(.pullInOfferList)
+    }
+
+    func restorePullInReason() {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        choice.restoreOfferCancel()
+        pullInChoice = choice
+        requestFocus(.pullInOfferList)
+    }
+
+    func updatePullInReasonText(_ text: String) {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        choice.updateReasonText(text)
+        pullInChoice = choice
+    }
+
     func movePullInChoiceHighlight(by delta: Int) {
         guard var choice = pullInChoice else {
             return
         }
+        choice.disarmEscDiscard()
         choice.moveHighlight(by: delta)
+        choice.updateConsequenceForHighlight()
         pullInChoice = choice
         requestFocus(.pullInOfferList)
     }
@@ -3959,14 +4366,14 @@ final class CapturePanelModel: ObservableObject {
         }
         choice.toggleHighlighted()
         pullInChoice = choice
+        requestFocus(.pullInOfferList)
     }
 
     func togglePullInOffer(_ key: String) {
         guard var choice = pullInChoice else {
             return
         }
-        choice.highlightedKey = key
-        choice.toggleHighlighted()
+        choice.toggleOffer(key)
         pullInChoice = choice
         requestFocus(.pullInOfferList)
     }
@@ -3977,12 +4384,14 @@ final class CapturePanelModel: ObservableObject {
         }
         choice.markAll()
         pullInChoice = choice
+        requestFocus(.pullInOfferList)
     }
 
     func updatePullInChoiceFilter(_ text: String) {
         guard var choice = pullInChoice else {
             return
         }
+        choice.disarmEscDiscard()
         choice.updateFilter(text)
         pullInChoice = choice
     }
@@ -4040,6 +4449,8 @@ final class CapturePanelModel: ObservableObject {
             pullInSelection: nil,
             pullInChoiceForBack: nil,
             pullInCapabilityAdvertised: false,
+            offerVerdicts: nil,
+            offerCloseCapabilityAdvertised: false,
             inboxRouteCapabilityAdvertised: route.supported,
             hasOverride: false,
             vaultDirectoryIdentity: processClient?.vaultDirectoryIdentity ?? "preview-vault"
@@ -13916,6 +14327,33 @@ final class CapturePanelModel: ObservableObject {
                 errorCode = nil
                 announceStatus("Inbox tasks changed since the preview; press Return to choose again")
                 return
+            }
+            if let code = failure.code,
+                ["offer_close_stale", "offer_close_refused", "offer_verdict_conflict"]
+                    .contains(code)
+            {
+                if reopenPullInChoiceAfterOfferRefusal(
+                    failure: failure,
+                    draft: draft,
+                    processClientIdentity: processClientIdentity,
+                    openAfterCapture: openAfterCapture,
+                    choiceSeed: choiceSeed
+                ) {
+                    return
+                }
+            }
+            if failure.code == nil,
+                failure.error.hasPrefix("stale, unknown, or out-of-range --pull-in pick:")
+            {
+                if reopenPullInChoiceAfterStalePick(
+                    failure: failure,
+                    draft: draft,
+                    processClientIdentity: processClientIdentity,
+                    openAfterCapture: openAfterCapture,
+                    choiceSeed: choiceSeed
+                ) {
+                    return
+                }
             }
             previewPullInSnapshot = nil
             errorMessage = failure.error

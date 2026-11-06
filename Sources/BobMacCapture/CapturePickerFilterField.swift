@@ -6,6 +6,7 @@ import SwiftUI
 let pickerFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.picker-filter"
 let moveChoiceFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.move-choice-filter"
 let pullInFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.pull-in-filter"
+let pullInReasonFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.pull-in-reason"
 let inboxRouteFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.inbox-route-filter"
 
 @available(macOS 26.0, *)

@@ -7,7 +7,7 @@ Every capture action is reachable from the keyboard alone. Successor choice card
 
 ## Switching panels
 
-In either panel, Ctrl-Tab and Ctrl-Shift-Tab switch to the other panel. From Capture the draft and caret are retained; from Bob Refs the query, scope, filters, selection, and inspector place are restored. The switch works even with a picker, prompt, stash, shelf, or Refs card open: that surface closes as on a hotkey switch, with the draft and view kept. While IME-composing, the key belongs to the text system; a held key repeats without ping-ponging.
+Ctrl-Tab and Ctrl-Shift-Tab switch panels, keeping the draft and view.
 
 ## Bob Refs shortcuts
 
@@ -145,7 +145,7 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-When a preview reports successor offers, Return opens the choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).
+Return opens the choice card before writing. Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X opens the Cancel reason, Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Inbox routing
 

@@ -82,6 +82,11 @@ enum CaptureKeyCommand: Equatable {
     case previousPullInOffer
     case togglePullInOffer
     case markAllPullInOffers
+    case stagePullInDone
+    case beginPullInCancel
+    case confirmPullInReason
+    case restorePullInReason
+    case togglePullInOfferAt(String)
     case confirmInboxRouteChoice
     case confirmInboxRouteChoiceAndOpen
     case keepInboxRouteCandidate
@@ -151,6 +156,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
+    var pullInReasonFocused = false
     var inboxRouteChoiceVisible = false
     var keyIsRepeat = false
     /// Defaults true so omitted flags keep selected-row picker Return/Tab.
@@ -333,7 +339,8 @@ struct CaptureKeyCommandRouter {
                 modifiers: modifiers,
                 isRepeat: context.keyIsRepeat || event.isARepeat,
                 filterFocused: context.pullInFilterFocused,
-                filterIsEmpty: context.pullInFilterIsEmpty
+                filterIsEmpty: context.pullInFilterIsEmpty,
+                reasonFocused: context.pullInReasonFocused
             )
         }
 
@@ -625,8 +632,24 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         isRepeat: Bool,
         filterFocused: Bool,
-        filterIsEmpty: Bool
+        filterIsEmpty: Bool,
+        reasonFocused: Bool = false
     ) -> CaptureKeyCommand? {
+        if reasonFocused {
+            switch event.keyCode {
+            case KeyCode.return, KeyCode.keypadEnter:
+                guard !isRepeat else { return .consumeKey }
+                let keys = Self.strippedReturnModifiers(modifiers)
+                return keys.isEmpty ? .confirmPullInReason : nil
+            case KeyCode.escape:
+                guard !isRepeat else { return .consumeKey }
+                return .restorePullInReason
+            case KeyCode.leftBracket:
+                return modifiers == .control && !isRepeat ? .restorePullInReason : nil
+            default:
+                return nil
+            }
+        }
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             guard !isRepeat else { return .consumeKey }
@@ -642,9 +665,12 @@ struct CaptureKeyCommandRouter {
             }
             return keys.isEmpty ? .confirmPullInChoice : .consumeKey
         case KeyCode.escape:
-            return .cancelPullInChoice
+            return isRepeat ? .consumeKey : .cancelPullInChoice
         case KeyCode.leftBracket:
-            return modifiers == .control ? .cancelPullInChoice : nil
+            if modifiers == .control {
+                return isRepeat ? .consumeKey : .cancelPullInChoice
+            }
+            return nil
         case KeyCode.arrowUp:
             return modifiers.isEmpty ? .previousPullInOffer : nil
         case KeyCode.arrowDown:
@@ -661,6 +687,17 @@ struct CaptureKeyCommandRouter {
             return (!filterFocused || filterIsEmpty) ? .togglePullInOffer : nil
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
+        case KeyCode.x:
+            if modifiers == .command {
+                return nil
+            }
+            if modifiers == .control {
+                return isRepeat ? .consumeKey : .stagePullInDone
+            }
+            if modifiers == [.control, .shift] {
+                return isRepeat ? .consumeKey : .beginPullInCancel
+            }
+            return nil
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:

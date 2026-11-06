@@ -83,8 +83,8 @@ final class CapturePullInOutcomesTests: XCTestCase {
         outcomes.replaceVerdict(.cancel("reason"), for: "offer:b")
         outcomes.toggleMark(for: "offer:c")
         XCTAssertEqual(outcomes.footerSummaryText, "pull in 1 · ✓ 1 done · ⊘ 1 cancel")
-        XCTAssertEqual(outcomes.primaryLabel, "Apply choices")
-        XCTAssertEqual(outcomes.skipLabel, "Apply closes")
+        XCTAssertEqual(outcomes.primaryLabel, "Pull In 1 · Close 2")
+        XCTAssertEqual(outcomes.skipLabel, "Skip pull-ins · Close 2")
         XCTAssertTrue(outcomes.armEscDiscard())
         XCTAssertEqual(outcomes.escArmedText, "Esc again to discard 2 closes")
 
@@ -108,6 +108,66 @@ final class CapturePullInOutcomesTests: XCTestCase {
 
         let unsupported = CapturePullInOutcomes(offers: offers(), closeSupported: false)
         XCTAssertFalse(unsupported.isEligible(.done, for: "offer:a"))
+    }
+
+    func testApprovedPrimaryAndSkipLabels() {
+        var pullOnly = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        pullOnly.toggleMark(for: "offer:a")
+        pullOnly.toggleMark(for: "offer:b")
+        XCTAssertEqual(pullOnly.primaryLabel, "Pull In 2")
+        XCTAssertEqual(pullOnly.skipLabel, "Skip")
+
+        var verdictOnly = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        verdictOnly.replaceVerdict(.done, for: "offer:a")
+        XCTAssertEqual(verdictOnly.primaryLabel, "Close 1")
+        XCTAssertEqual(verdictOnly.skipLabel, "Skip pull-ins · Close 1")
+
+        verdictOnly.replaceVerdict(.cancel("why"), for: "offer:b")
+        XCTAssertEqual(verdictOnly.primaryLabel, "Close 2")
+        XCTAssertEqual(verdictOnly.skipLabel, "Skip pull-ins · Close 2")
+
+        var mixed = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        mixed.toggleMark(for: "offer:a")
+        mixed.replaceVerdict(.done, for: "offer:b")
+        XCTAssertEqual(mixed.primaryLabel, "Pull In 1 · Close 1")
+        XCTAssertEqual(mixed.skipLabel, "Skip pull-ins · Close 1")
+    }
+
+    func testVisibleOrderStagingDiffersFromBobOrder() {
+        var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        let visible = ["offer:c", "offer:a", "offer:b"]
+        XCTAssertEqual(
+            outcomes.replaceVerdict(.done, for: "offer:c", visibleOrder: visible),
+            "offer:a")
+        XCTAssertEqual(outcomes.highlightedKey, "offer:a")
+        // Argv keeps Bob offer order regardless of staging order.
+        outcomes.toggleMark(for: "offer:b")
+        let selection = outcomes.argvSelection()
+        XCTAssertEqual(selection.pullInSelection, .keys(["offer:b"]))
+        XCTAssertEqual(selection.offerVerdicts.completeKeys, ["offer:c"])
+    }
+
+    func testRefreshPreservesChoicesAndUpdatesDescriptors() {
+        var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        outcomes.replaceVerdict(.done, for: "offer:a")
+        outcomes.replaceVerdict(.cancel("kept"), for: "offer:b")
+        outcomes.toggleMark(for: "offer:c")
+        var fresh = offers()
+        fresh[0] = offer(
+            "offer:a", n: 1,
+            close: TaskCompleteOfferClose(
+                complete: true, cancel: true,
+                completeConsequence: "✓ updated",
+                cancelConsequence: "⊘ updated",
+                scopeNote: nil, unblocks: 5))
+        XCTAssertEqual(outcomes.refresh(rows: fresh), 0)
+        XCTAssertEqual(outcomes.verdicts["offer:a"], .done)
+        XCTAssertEqual(outcomes.verdicts["offer:b"], .cancel("kept"))
+        XCTAssertEqual(outcomes.consequence(for: .done, rowKey: "offer:a"), "✓ updated")
+        XCTAssertEqual(outcomes.unblocksCount(for: "offer:a"), 5)
+        XCTAssertEqual(outcomes.refresh(rows: Array(fresh.prefix(1))), 2)
+        XCTAssertEqual(outcomes.verdicts["offer:a"], .done)
+        XCTAssertNil(outcomes.verdicts["offer:b"])
     }
 
     private func offers() -> [TaskCompleteUnblocked] {

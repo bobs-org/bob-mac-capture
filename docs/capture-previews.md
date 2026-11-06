@@ -408,29 +408,19 @@ the task they start after, and never use dependency wording; missing copy keeps
 the legacy presentation. Project offers show the new project and its `^prj`
 task beside the offered rows.
 
-Nothing starts selected. Return chooses marked offers, or the highlight when
-none are marked; Space toggles it, Command-A marks all, and the filter supports
-keyboard navigation. Shift-Return skips offers and commits, but returns a
-note-pull draft unchanged. Escape returns unchanged; Control-Return confirms and
-opens Bob's reported notes. Cards show numbers, destinations, folds, blocked
-residents, and plan-link budget.
+Nothing starts selected. Each row is Leave, Pull in, Done, or Cancel.
+Control-X stages Done; Control-Shift-X opens the Cancel reason. Shift-Return
+keeps verdicts; two Esc presses discard them. Buttons read `Pull In {a}`,
+`Close {n}`, or both. Done shows `✓ Done`, Cancel `⊘ Cancel`. The strip shows
+Bob's consequence; refusals reopen with choices intact.
 
-`@route` previews up to five offers in `Pull from ‹route›` with tag, lane,
-destination, overflow, and fold; pull-only drafts say **Pull In**. Return opens a
-`tray.and.arrow.down.fill` chooser (Next tint); moved rows keep their requested
-note's group. Shift-Return returns without writing. Inbox picks changing status
-continue to route selection. Calm `nothing_to_pull_in` refusals show `Nothing
-ready in ‹route›`; missing notes remain errors. Notifications read `📥 Pulled in
-k from ‹route›`.
+`@route` previews up to five offers with tag, lane, destination, and fold.
+Shift-Return returns without writing; status changes continue to routing.
+`nothing_to_pull_in` shows `Nothing ready in ‹route›`.
 
-When no chooser opens, muted relation lines explain rows already started, waiting,
-blocked by dependency, schedule, or project, or hidden. `already_planned` stays
-silent; failed checks say “Couldn't check … · nothing offered” with one distinct
-label or “relation links”. Relation-only picks notify as
-`🪢 Pulled in n · label “T”`; mixed picks keep their copy and count each relation
-once. Relation diffs carry a `link` badge, dependency successors an unlock badge,
-and project picks count once as Task Links (“Linked N tasks into …”), not as
-pulled-in successors.
+Without a chooser, muted lines explain started, waiting, blocked, or hidden
+rows. Relation picks notify once; diffs carry `link`, successors unlock, and
+project picks count as Task Links.
 
 ## Project-note moves
 

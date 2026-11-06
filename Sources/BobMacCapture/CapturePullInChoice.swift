@@ -551,9 +551,9 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     }
 }
 
-/// Transient in-panel choice state. This stores only Bob-returned identities
-/// and metadata, plus local focus/filter state. It has no vault or eligibility
-/// logic.
+/// Transient in-panel choice state. Selection and verdicts live in
+/// `outcomes`; row eligibility and consequence copy come from Bob's close
+/// descriptors and are never inferred here.
 struct CapturePullInChoiceState: Equatable {
     var moveInSelection: String? = nil
 
@@ -566,11 +566,71 @@ struct CapturePullInChoiceState: Equatable {
     let pullIn: CapturePullIn
     let planBudget: CapturePlanBudget?
     var rows: [CapturePullInChoiceRow]
-    var highlightedKey: String?
-    var markedKeys: Set<String> = []
+    var outcomes: CapturePullInOutcomes
     var filterText = ""
     var collapsedGroups: Set<String> = []
     var errorMessage: String?
+    var activeReasonKey: String?
+    var activeReasonText = ""
+    var savedPriorVerdict: CapturePullInOfferVerdict?
+    var consequenceMessage: String?
+    var verdictRefusalMessage: String?
+
+    init(
+        moveInSelection: String? = nil,
+        draftSnapshot: String,
+        processClientIdentity: String,
+        openAfterCapture: Bool,
+        priorityRollSeed: String,
+        generation: UInt64,
+        requestID: UUID?,
+        pullIn: CapturePullIn,
+        planBudget: CapturePlanBudget? = nil,
+        rows: [CapturePullInChoiceRow],
+        highlightedKey: String? = nil,
+        markedKeys: Set<String> = [],
+        filterText: String = "",
+        collapsedGroups: Set<String> = [],
+        errorMessage: String? = nil
+    ) {
+        self.moveInSelection = moveInSelection
+        self.draftSnapshot = draftSnapshot
+        self.processClientIdentity = processClientIdentity
+        self.openAfterCapture = openAfterCapture
+        self.priorityRollSeed = priorityRollSeed
+        self.generation = generation
+        self.requestID = requestID
+        self.pullIn = pullIn
+        self.planBudget = planBudget
+        self.rows = rows
+        let offers = rows.compactMap(\.offerRow)
+        self.outcomes = CapturePullInOutcomes(
+            offers: offers,
+            closeSupported: pullIn.close?.supported == true,
+            highlightedKey: highlightedKey,
+            marks: markedKeys.isEmpty ? nil : markedKeys)
+        self.filterText = filterText
+        self.collapsedGroups = collapsedGroups
+        self.errorMessage = errorMessage
+    }
+
+    var highlightedKey: String? {
+        get { outcomes.highlightedKey }
+        set { outcomes.setHighlightedKeyForCard(newValue) }
+    }
+
+    var markedKeys: Set<String> {
+        get { outcomes.marks }
+        set { outcomes.setMarksForCard(newValue) }
+    }
+
+    var closeSupported: Bool {
+        pullIn.close?.supported == true
+    }
+
+    var hasVerdicts: Bool {
+        !outcomes.verdicts.isEmpty
+    }
 
     var selectableKeys: [String] {
         rows.compactMap(\.offerKey).sorted { lhs, rhs in
@@ -584,16 +644,72 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     var effectiveSelectionKeys: [String] {
-        let validMarked = markedKeys.intersection(Set(selectableKeys))
+        let validMarked = outcomes.marks.intersection(Set(selectableKeys))
         if !validMarked.isEmpty {
             return selectableKeys.filter(validMarked.contains)
         }
-        guard let highlightedKey,
-            visibleSelectableKeys.contains(highlightedKey)
+        // Once any verdict exists, Return has no highlight fallback.
+        // A hidden highlight never supplies a fallback pick.
+        guard outcomes.verdicts.isEmpty,
+            let highlighted = outcomes.highlightedKey,
+            visibleSelectableKeys.contains(highlighted)
         else {
             return []
         }
-        return [highlightedKey]
+        return [highlighted]
+    }
+
+    var verdicts: [String: CapturePullInOfferVerdict] {
+        outcomes.verdicts
+    }
+
+    var doneCount: Int {
+        outcomes.doneCount
+    }
+
+    var cancelCount: Int {
+        outcomes.cancelCount
+    }
+
+    var closeCount: Int {
+        outcomes.closeCount
+    }
+
+    var canCommit: Bool {
+        !effectiveSelectionKeys.isEmpty || closeCount > 0
+    }
+
+    var footerSummaryText: String {
+        var parts: [String] = []
+        let picks = effectivePickCount
+        if picks > 0 {
+            parts.append("pull in \(picks)")
+        }
+        if doneCount > 0 {
+            parts.append("✓ \(doneCount) done")
+        }
+        if cancelCount > 0 {
+            parts.append("⊘ \(cancelCount) cancel")
+        }
+        if parts.isEmpty {
+            return isOnlyNotePull ? "Choose tasks to pull in" : "Choose offers"
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    var primaryCommitLabel: String {
+        let picks = effectivePickCount
+        if picks > 0, closeCount > 0 {
+            return "Pull In \(picks) · Close \(closeCount)"
+        }
+        if closeCount > 0 {
+            return "Close \(closeCount)"
+        }
+        return picks == 0 ? "Pull In" : "Pull In \(picks)"
+    }
+
+    var skipCommitLabel: String {
+        closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
     }
 
     var visibleSelectableKeys: [String] {
@@ -789,9 +905,46 @@ struct CapturePullInChoiceState: Equatable {
         effectiveSelectionKeys.contains(key)
     }
 
+    func isStagedDone(_ key: String) -> Bool {
+        outcomes.verdicts[key] == .done
+    }
+
+    func stagedCancelReason(_ key: String) -> String? {
+        guard case .cancel(let reason) = outcomes.verdicts[key] else {
+            return nil
+        }
+        return reason
+    }
+
+    func isCloseEligible(_ key: String) -> Bool {
+        outcomes.isEligible(.done, for: key) || outcomes.isEligible(.cancel(""), for: key)
+    }
+
+    func refusalReason(for key: String) -> String? {
+        outcomes.refusalReason(for: key)
+    }
+
+    func consequenceText(for verdict: CapturePullInOfferVerdict, rowKey: String) -> String? {
+        var parts: [String] = []
+        if let consequence = outcomes.consequence(for: verdict, rowKey: rowKey) {
+            parts.append(consequence)
+        }
+        if let scope = outcomes.scopeNote(for: rowKey), !scope.isEmpty {
+            parts.append(scope)
+        }
+        let unblocks = outcomes.unblocksCount(for: rowKey)
+        if unblocks > 0 {
+            parts.append(unblocks == 1 ? "unblocks 1" : "unblocks \(unblocks)")
+        }
+        guard !parts.isEmpty else {
+            return nil
+        }
+        return parts.joined(separator: " ")
+    }
+
     /// Valid marks inside one section (stale keys never count).
     func markedCount(in section: CapturePullInChoiceSection) -> Int {
-        let valid = markedKeys.intersection(Set(selectableKeys))
+        let valid = outcomes.marks.intersection(Set(selectableKeys))
         guard !valid.isEmpty else {
             return 0
         }
@@ -799,8 +952,9 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     /// "Pull In N" / "Pull In" when nothing would be picked.
+    /// Verdict-aware commits use `primaryCommitLabel`.
     var pullInActionTitle: String {
-        effectivePickCount == 0 ? "Pull In" : "Pull In \(effectivePickCount)"
+        primaryCommitLabel
     }
 
     /// "+N" when the budget is present and something would be picked.
@@ -995,19 +1149,196 @@ struct CapturePullInChoiceState: Equatable {
         guard let highlightedKey, visibleSelectableKeys.contains(highlightedKey) else {
             return
         }
-        if markedKeys.contains(highlightedKey) {
-            markedKeys.remove(highlightedKey)
-        } else {
-            markedKeys.insert(highlightedKey)
+        cancelActiveReasonEditing()
+        outcomes.toggleMark(for: highlightedKey)
+        updateConsequenceForHighlight()
+    }
+
+    mutating func toggleOffer(_ key: String) {
+        guard selectableKeys.contains(key) else {
+            return
         }
+        cancelActiveReasonEditing()
+        highlightedKey = key
+        outcomes.toggleMark(for: key)
+        updateConsequenceForHighlight()
     }
 
     mutating func markAll() {
-        markedKeys = Set(selectableKeys)
+        cancelActiveReasonEditing()
+        outcomes.setAllMarked(true)
+    }
+
+    mutating func toggleAllMarks() {
+        cancelActiveReasonEditing()
+        outcomes.toggleAllMarks()
+    }
+
+    mutating func toggleOfferDone(_ key: String) {
+        guard closeSupported else {
+            return
+        }
+        cancelActiveReasonEditing()
+        if outcomes.verdicts[key] == .done {
+            _ = outcomes.clearVerdict(for: key)
+            consequenceMessage = nil
+            return
+        }
+        guard outcomes.isEligible(.done, for: key) else {
+            verdictRefusalMessage = outcomes.refusalReason(for: key)
+            return
+        }
+        verdictRefusalMessage = nil
+        _ = outcomes.replaceVerdict(.done, for: key, visibleOrder: visibleSelectableKeys)
+        if let verdict = outcomes.verdicts[key] {
+            consequenceMessage = consequenceText(for: verdict, rowKey: key)
+        }
+    }
+
+    mutating func beginOfferCancel(_ key: String) {
+        guard closeSupported else {
+            return
+        }
+        if case .cancel = outcomes.verdicts[key] {
+            // Same Cancel chord on an already staged Cancel row clears it
+            // regardless of its stored reason.
+            cancelActiveReasonEditing()
+            _ = outcomes.clearVerdict(for: key)
+            consequenceMessage = nil
+            return
+        }
+        guard outcomes.isEligible(.cancel(""), for: key) else {
+            verdictRefusalMessage = outcomes.refusalReason(for: key)
+            return
+        }
+        verdictRefusalMessage = nil
+        savedPriorVerdict = outcomes.verdicts[key]
+        activeReasonKey = key
+        if case .cancel(let reason) = outcomes.verdicts[key] {
+            activeReasonText = reason
+        } else {
+            activeReasonText = ""
+        }
+    }
+
+    mutating func confirmOfferCancel(_ key: String? = nil) {
+        guard let target = key ?? activeReasonKey else {
+            return
+        }
+        let reason = CapturePullInCancelOffer(key: "", reason: activeReasonText).reason
+        activeReasonKey = nil
+        activeReasonText = ""
+        savedPriorVerdict = nil
+        guard outcomes.isEligible(.cancel(reason), for: target) else {
+            verdictRefusalMessage = outcomes.refusalReason(for: target)
+            return
+        }
+        verdictRefusalMessage = nil
+        _ = outcomes.replaceVerdict(
+            .cancel(reason), for: target, visibleOrder: visibleSelectableKeys)
+        if let verdict = outcomes.verdicts[target] {
+            consequenceMessage = consequenceText(for: verdict, rowKey: target)
+        }
+    }
+
+    mutating func restoreOfferCancel() {
+        guard activeReasonKey != nil else {
+            return
+        }
+        activeReasonKey = nil
+        activeReasonText = ""
+        savedPriorVerdict = nil
+        // Esc in the reason field restores the exact prior outcome without
+        // arming the card discard warning.
+        outcomes.disarmEscDiscard()
+    }
+
+    mutating func cancelActiveReasonEditing() {
+        activeReasonKey = nil
+        activeReasonText = ""
+        savedPriorVerdict = nil
+    }
+
+    mutating func updateReasonText(_ text: String) {
+        activeReasonText = text
+    }
+
+    mutating func updateConsequenceForHighlight() {
+        guard let highlighted = highlightedKey,
+            let verdict = outcomes.verdicts[highlighted]
+        else {
+            return
+        }
+        consequenceMessage = consequenceText(for: verdict, rowKey: highlighted)
+    }
+
+    mutating func clearVerdictForHighlight() {
+        guard let highlighted = highlightedKey else {
+            return
+        }
+        _ = outcomes.clearVerdict(for: highlighted)
+        if consequenceMessage != nil {
+            consequenceMessage = nil
+        }
+    }
+
+    mutating func armEscDiscard() -> Bool {
+        outcomes.armEscDiscard()
+    }
+
+    mutating func disarmEscDiscard() {
+        outcomes.disarmEscDiscard()
+    }
+
+    mutating func discardVerdicts() {
+        outcomes.discardVerdicts()
+        consequenceMessage = nil
+        verdictRefusalMessage = nil
+        cancelActiveReasonEditing()
+    }
+
+    /// Refresh rows from Bob, preserving marks, verdicts, reasons, and
+    /// highlight. Removed keys are dropped and counted.
+    mutating func refresh(offers fresh: [TaskCompleteUnblocked]) -> Int {
+        let lost = outcomes.refresh(rows: fresh)
+        let freshRowsByKey = Dictionary(
+            uniqueKeysWithValues: fresh.compactMap { row in
+                row.offer.map { ($0.key, row) }
+            })
+        var rebuilt: [CapturePullInChoiceRow] = []
+        for row in rows {
+            guard let key = row.offerKey,
+                let freshOffer = freshRowsByKey[key]
+            else {
+                if row.offerKey == nil {
+                    rebuilt.append(row)
+                }
+                continue
+            }
+            rebuilt.append(CapturePullInChoiceRow(
+                offerRow: freshOffer,
+                blockedRow: nil,
+                group: freshOffer.offer?.group ?? row.group,
+                project: freshOffer.offer?.project ?? row.project))
+        }
+        let known = Set(rebuilt.compactMap(\.offerKey))
+        for offer in fresh where !known.contains(offer.offer?.key ?? "") {
+            guard let o = offer.offer, !o.key.isEmpty else {
+                continue
+            }
+            rebuilt.append(CapturePullInChoiceRow(
+                offerRow: offer,
+                blockedRow: nil,
+                group: o.group,
+                project: o.project))
+        }
+        rows = rebuilt
+        return lost
     }
 
     mutating func updateFilter(_ text: String) {
         filterText = text
+        cancelActiveReasonEditing()
         if let highlightedKey, visibleSelectableKeys.contains(highlightedKey) {
             return
         }

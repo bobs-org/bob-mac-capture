@@ -70,6 +70,29 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     public private(set) var verdicts: [String: Verdict]
     public private(set) var isEscArmed = false
 
+    /// Card compatibility: direct highlight assignment, including nil when
+    /// filtering hides every row. Staged verdicts never move the highlight
+    /// except through the explicit staging calls.
+    public mutating func setHighlightedKeyForCard(_ key: String?) {
+        if let key, rows.contains(where: { $0.offer?.key == key }) {
+            highlightedKey = key
+            isEscArmed = false
+        } else if key == nil {
+            highlightedKey = nil
+            isEscArmed = false
+        }
+    }
+
+    /// Card compatibility: direct mark replacement for filter/group tests.
+    /// Surviving verdicts still win over marks.
+    public mutating func setMarksForCard(_ keys: Set<String>) {
+        marks = keys
+        for key in verdicts.keys {
+            marks.remove(key)
+        }
+        isEscArmed = false
+    }
+
     public init(
         offers: [TaskCompleteUnblocked],
         closeSupported: Bool = false,
@@ -257,6 +280,39 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         return replaceVerdict(verdict, for: key)
     }
 
+    /// Visible-order staging: the card navigates grouped/filter-visible rows,
+    /// while argv keeps Bob's offer order. Callers pass the card's
+    /// `visibleSelectableKeys`; nil falls back to Bob order.
+    @discardableResult
+    public mutating func replaceVerdict(
+        _ verdict: Verdict,
+        for key: String,
+        visibleOrder: [String]?
+    ) -> String? {
+        guard selectableKeys.contains(key), isEligible(verdict, for: key) else {
+            return highlightedKey
+        }
+        verdicts[key] = Self.normalized(verdict)
+        marks.remove(key)
+        isEscArmed = false
+        let order = visibleOrder ?? selectableKeys
+        let target = Self.nextKey(after: key, in: order) ?? key
+        highlightedKey = selectableKeys.contains(target) ? target : key
+        return highlightedKey
+    }
+
+    @discardableResult
+    public mutating func toggleVerdict(
+        _ verdict: Verdict,
+        for key: String,
+        visibleOrder: [String]?
+    ) -> String? {
+        if verdicts[key] == Self.normalized(verdict) {
+            return clearVerdict(for: key)
+        }
+        return replaceVerdict(verdict, for: key, visibleOrder: visibleOrder)
+    }
+
     /// Clear a row back to Leave without moving the highlight.
     @discardableResult
     public mutating func clearVerdict(for key: String) -> String? {
@@ -299,6 +355,48 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         reseed(validKeys: Set(validKeys))
     }
 
+    /// Bob-authored unblock count for one row; never derived locally.
+    public func unblocksCount(for key: String) -> Int {
+        rows.first(where: { $0.offer?.key == key })?.offer?.close?.unblocks ?? 0
+    }
+
+    /// Refresh row descriptors from Bob, preserving surviving marks,
+    /// verdicts, reasons, and highlight. Unlike `reseed(validKeys:)`, this
+    /// replaces eligibility and consequence copy so a refused-then-refreshed
+    /// row never keeps stale data. Removed keys are dropped and counted.
+    @discardableResult
+    public mutating func refresh(rows freshRows: [TaskCompleteUnblocked]) -> Int {
+        var seen = Set<String>()
+        let usable = freshRows.compactMap { row -> TaskCompleteUnblocked? in
+            guard let offer = row.offer, !offer.key.isEmpty,
+                seen.insert(offer.key).inserted
+            else {
+                return nil
+            }
+            return row
+        }.sorted {
+            let left = $0.offer?.n ?? .max
+            let right = $1.offer?.n ?? .max
+            return left == right
+                ? ($0.offer?.key ?? "") < ($1.offer?.key ?? "")
+                : left < right
+        }
+        let validKeys = Set(usable.compactMap { $0.offer?.key })
+        let staged = Set(marks).union(verdicts.keys)
+        let lost = staged.subtracting(validKeys).count
+        rows = usable
+        marks.formIntersection(validKeys)
+        // Keep surviving staged verdicts visible even when Bob's fresh
+        // descriptor now refuses them; Bob remains the final write
+        // validator and the user changes the judgment explicitly.
+        verdicts = verdicts.filter { validKeys.contains($0.key) }
+        if let highlightedKey, !validKeys.contains(highlightedKey) {
+            self.highlightedKey = usable.compactMap { $0.offer?.key }.first
+        }
+        isEscArmed = false
+        return lost
+    }
+
     /// The shared footer copy, with zero-count segments omitted.
     public var footerSummaryText: String {
         var parts: [String] = []
@@ -317,20 +415,17 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
 
     public var primaryLabel: String {
         let picks = effectivePickCount
-        if closeCount > 0 && picks > 0 {
-            return "Apply choices"
+        if picks > 0, closeCount > 0 {
+            return "Pull In \(picks) · Close \(closeCount)"
         }
-        if closeCount == 1 {
-            return "Apply 1 close"
-        }
-        if closeCount > 1 {
-            return "Apply \(closeCount) closes"
+        if closeCount > 0 {
+            return "Close \(closeCount)"
         }
         return picks == 0 ? "Pull In" : "Pull In \(picks)"
     }
 
     public var skipLabel: String {
-        closeCount == 0 ? "Skip" : "Apply closes"
+        closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
     }
 
     public var escArmedText: String? {
@@ -385,12 +480,16 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     private func nextSelectableKey(after key: String) -> String? {
-        guard let index = selectableKeys.firstIndex(of: key),
-            selectableKeys.indices.contains(index + 1)
+        Self.nextKey(after: key, in: selectableKeys)
+    }
+
+    static func nextKey(after key: String, in order: [String]) -> String? {
+        guard let index = order.firstIndex(of: key),
+            order.indices.contains(index + 1)
         else {
             return nil
         }
-        return selectableKeys[index + 1]
+        return order[index + 1]
     }
 
     private static func isEligible(

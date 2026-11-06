@@ -2182,8 +2182,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .togglePullInOffer:
             model.toggleHighlightedPullInOffer()
             return true
+        case .togglePullInOfferAt(let key):
+            resignPullInFilterIfFocused()
+            model.togglePullInOffer(key)
+            return true
         case .markAllPullInOffers:
             model.markAllPullInOffers()
+            return true
+        case .stagePullInDone:
+            resignPullInFilterIfFocused()
+            model.stagePullInDoneForHighlight()
+            return true
+        case .beginPullInCancel:
+            resignPullInFilterIfFocused()
+            model.beginPullInCancelForHighlight()
+            return true
+        case .confirmPullInReason:
+            model.confirmPullInReason()
+            return true
+        case .restorePullInReason:
+            model.restorePullInReason()
             return true
         case .confirmInboxRouteChoice:
             model.confirmInboxRouteChoice()
@@ -2356,11 +2374,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pullInFilterFocused: model.pullInChoiceVisible
                         && (Self.findPickerFilterField(
                             in: panel?.contentView,
-                        identifier: pullInFilterFieldAccessibilityIdentifier,
-                        firstResponder: panel?.firstResponder
-                    )?.holdsFirstResponder ?? false),
-                pullInFilterIsEmpty: model.pullInChoice?.filterText.isEmpty ?? true,
-                inboxRouteChoiceVisible: model.inboxRouteChoiceVisible,
+                            identifier: pullInFilterFieldAccessibilityIdentifier,
+                            firstResponder: panel?.firstResponder
+                        )?.holdsFirstResponder ?? false),
+                    pullInFilterIsEmpty: model.pullInChoice?.filterText.isEmpty ?? true,
+                    pullInReasonFocused: model.pullInChoiceVisible
+                        && (Self.findPickerFilterField(
+                            in: panel?.contentView,
+                            identifier: pullInReasonFieldAccessibilityIdentifier,
+                            firstResponder: panel?.firstResponder
+                        )?.holdsFirstResponder ?? false),
+                    inboxRouteChoiceVisible: model.inboxRouteChoiceVisible,
                 keyIsRepeat: event.isARepeat,
                 pickerHasSelection: model.picker?.selectedRowID != nil,
                 pickerVisible: model.pickerVisible,
@@ -2392,6 +2416,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             // included) so typing stays native.
             if model.isSimilarRowFocused {
                 model.unfocusSimilarRow()
+            }
+            // Any native key while the Pull-In discard warning is armed
+            // disarms it, including filter typing and Cut.
+            if model.pullInChoiceVisible {
+                model.disarmPullInDiscardForNativeKey()
             }
             noteSeparatorToggleIntentFromEvent(event)
             return event
