@@ -178,10 +178,12 @@ fi
 bob "$scratch_root/vault-basic" capture-complete --format json --cursor 4 -- 'x=bu' \
   > "$scratch_root/complete-name.json"
 
-# Grammar-14 segment parse, preview, tail cut, picker, rewrite, and stale guard.
+# Segment parse, preview, tail cut, picker, rewrite, and stale guard at the current gate.
 vault_segments "$scratch_root/vault-segments"
 bob_segments "$scratch_root/vault-segments" capture-parse --format json -- 'x=2~1!' \
   > "$scratch_root/parse-segment.json"
+bob_segments "$scratch_root/vault-segments" capture-parse --format json -- 'x=2~' \
+  > "$scratch_root/parse-segment-tail.json"
 bob_segments "$scratch_root/vault-segments" capture --dry-run --format json -- 'x=2~1!' \
   > "$scratch_root/preview-segment-repair.json"
 bob_segments "$scratch_root/vault-segments" capture --dry-run --format json -- 'x=read4~' \
@@ -291,10 +293,13 @@ assert complete["context"] == "pomodoro_past_name", complete
 assert complete["replacement"] == {"start": 2, "end": 4}, complete
 
 segment_parse = load("parse-segment.json")
-assert segment_parse["grammar"] == 14, segment_parse
+assert segment_parse["grammar"] == 15, segment_parse
 assert segment_parse["mode"] == "pomodoro_past", segment_parse
 assert any(span["kind"] == "pomodoro_past_segment" for span in segment_parse["spans"]), segment_parse
 assert segment_parse["pomodoro_past"]["stack"]["pin"] == "start", segment_parse
+segment_tail = load("parse-segment-tail.json")
+assert segment_tail["grammar"] == 15, segment_tail
+assert segment_tail["pomodoro_past"]["segment"]["kind"] == "tail", segment_tail
 
 segment_preview = load("preview-segment-repair.json")
 segment_past = segment_preview["pomodoro_past"]
@@ -342,6 +347,7 @@ persist "$scratch_root/preview-worklog.json" pomodoro-past-preview-worklog.json
 persist "$scratch_root/preview-refusal.json" pomodoro-past-preview-refusal.json
 persist "$scratch_root/complete-name.json" pomodoro-past-complete-name.json
 persist "$scratch_root/parse-segment.json" pomodoro-past-parse-segment.json
+persist "$scratch_root/parse-segment-tail.json" pomodoro-past-parse-segment-tail.json
 persist "$scratch_root/preview-segment-repair.json" pomodoro-past-preview-segment-repair.json
 persist "$scratch_root/preview-segment-cut.json" pomodoro-past-preview-segment-cut.json
 persist "$scratch_root/complete-segment.json" pomodoro-past-complete-segment.json

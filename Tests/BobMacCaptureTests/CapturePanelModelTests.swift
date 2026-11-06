@@ -2782,6 +2782,7 @@ final class CapturePanelModelTests: XCTestCase {
             model.previewOutputsDraft == draft && !model.isPreviewing
                 && model.previewResult?.pomodoroPast?.segment?.index == 1
         }
+        XCTAssertTrue(model.captureGrammarAllowsSubmit)
         model.submit(openAfterCapture: false)
 
         await waitUntil { model.errorCode == "pomodoro_past_windows_changed" }

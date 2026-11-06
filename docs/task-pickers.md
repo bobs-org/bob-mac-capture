@@ -191,6 +191,19 @@ Capture, Control-Return Select, Capture & Open, Escape Clear/Cancel, Backspace
 on empty filter removes Bob's trigger range. In the card-mode Add block ID
 prompt, Tab / Shift-Tab cycle suggestions.
 
+## Merge-in Source Picker
+
+After naming a new task, type `< +query` to pick sources across the vault,
+or `< @route+` to pick from one note. The header says **⤵ Merge into “T”**.
+Only eligible sources appear; already-picked tasks stay out of the list.
+
+Return picks one source. Comma or Shift-Return picks it and opens the next
+source slot when Bob offers continuation (**↩ pick · , pick another**).
+A source without an ID opens **Add block ID**; canceling leaves your draft
+unchanged. Successful insertion keeps the new task and earlier sources intact.
+Pending sources and refusal buttons clear when their draft changes or Bob is
+switched, so an old response cannot rewrite your new draft.
+
 ## Move Picker
 
 Typing `^` or `:` after `- ` on a first-level bullet of a sealed project-note

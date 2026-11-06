@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"grammar":8,"input":"Buy milk @grocery","body":"Buy milk","mode":"task","route":"grocery","section":null,"block_id":null,"needs":[],"spans":[{"start":9,"end":17,"kind":"route"}],"diagnostics":[]}
+{"ok":true,"schema_version":1,"grammar":15,"input":"Buy milk @grocery","body":"Buy milk","mode":"task","route":"grocery","section":null,"block_id":null,"needs":[],"spans":[{"start":9,"end":17,"kind":"route"}],"diagnostics":[]}

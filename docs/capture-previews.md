@@ -286,6 +286,21 @@ A whole-item `=`/`=<X>` start instead shows its own card
   Pomodoro` (`#name` in the name tint). Missing `explicit` leaves only the
   `#name` line; `=*#fix` keeps **Current** and `Same as`.
 
+### Merge-in band
+
+**⤵ Merging in N tasks** lists source titles, note/line, status transitions,
+and note counts (**title only** for zero).
+**Show all N** expands beyond three sources; warnings/consequences stay visible.
+Pull-In offers start unselected.
+
+Pending retains sources/errors with
+**⤵ Merge tasks into this one — type + to pick**. Refusals offer **Use >**,
+**Move before <**, or **Add spaces**; Return never rewrites.
+
+Single-item action: **Capture & merge N tasks** (singular for one); bulk:
+**Capture**. The target block appears once; both arrows fold moved notes under
+expandable source titles. Grammar below 15 shows **Update bob to merge tasks with <**.
+
 ### Past card
 
 One `Record past work` card renders per past stack: total minutes, a timeline

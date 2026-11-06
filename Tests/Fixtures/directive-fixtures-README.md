@@ -7,10 +7,14 @@ BOB_BIN=/path/to/bob-cli/target/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-directive-fixtures.sh
 ```
 
-Generated with `bob 0.4.0` built from bob-cli revision `b8688d9ef802f719d5ee46f02d3b87c1080fcaa2`
-(grammar revision 8, `schema_version` 1). The script refuses a binary that reports
-below the Mac gate (`CaptureGrammarGate.minimumRevision` 5), a bob-cli checkout without
+Parse/completion and non-history capture fixtures were regenerated with `bob 0.4.0`
+built from bob-cli revision `b70a8fbffd809aed3aae33f4183de93d99ce3bf9`
+(grammar revision 15, `schema_version` 1). The script refuses a binary that reports
+below the Mac gate (`CaptureGrammarGate.minimumRevision` 15), a bob-cli checkout without
 `e660c8d8`, or a dirty checkout.
+
+The `clip-history-*` fixtures retain their earlier generation from `b8688d9e`:
+their live-pasteboard validation requires a Mac and cannot be regenerated on Linux.
 
 Inputs are fully isolated: a scratch vault (`dev.md` and `mac_inbox.md` areas plus a
 daily note with one running `FIX` Pomodoro at 09:00-09:30), an empty Bob config (and

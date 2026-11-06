@@ -1,12 +1,12 @@
 import Foundation
 
 /// Capture-language revision the Mac requires before it will submit.
-/// Grammar 5 adds Pomodoro split and merge tokens. `schema_version` stays 1.
+/// Grammar 15 adds merge-in `<` captures. `schema_version` stays 1.
 public enum CaptureGrammarGate: Sendable {
-    public static let minimumRevision = 5
+    public static let minimumRevision = 15
 
     /// Exact copy shown when `capture-parse` grammar is missing or too low.
-    public static let blockedMessage = "Update bob to use Pomodoro split and merge syntax"
+    public static let blockedMessage = "Update bob to merge tasks with <"
 
     /// True when Bob reported a revision this client can capture with.
     /// A missing value is incompatible: the gate cannot tell an older Bob

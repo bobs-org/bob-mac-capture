@@ -11,18 +11,20 @@ final class CaptureGrammarGateTests: XCTestCase {
         XCTAssertFalse(CaptureGrammarGate.isCompatible(2), "grammar 2 predates drawers")
         XCTAssertFalse(CaptureGrammarGate.isCompatible(3))
         XCTAssertFalse(CaptureGrammarGate.isCompatible(4), "grammar 4 predates split/merge")
+        XCTAssertFalse(CaptureGrammarGate.isCompatible(5), "grammar 5 predates merge-in")
+        XCTAssertFalse(CaptureGrammarGate.isCompatible(14), "grammar 14 predates merge-in")
     }
 
     func testMinimumAndHigherRevisionsAreCompatible() {
-        XCTAssertEqual(CaptureGrammarGate.minimumRevision, 5)
-        XCTAssertTrue(CaptureGrammarGate.isCompatible(5))
-        XCTAssertTrue(CaptureGrammarGate.isCompatible(6))
+        XCTAssertEqual(CaptureGrammarGate.minimumRevision, 15)
+        XCTAssertTrue(CaptureGrammarGate.isCompatible(15))
+        XCTAssertTrue(CaptureGrammarGate.isCompatible(16))
     }
 
     func testBlockedMessageIsThePrescribedCopy() {
         XCTAssertEqual(
             CaptureGrammarGate.blockedMessage,
-            "Update bob to use Pomodoro split and merge syntax"
+            "Update bob to merge tasks with <"
         )
     }
 

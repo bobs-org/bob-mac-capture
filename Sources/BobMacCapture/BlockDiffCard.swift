@@ -172,6 +172,7 @@ struct BlockDiffCard: View {
                     Text(fold.labelText)
                         .font(.caption)
                         .foregroundStyle(foldTint(for: fold))
+                        .fixedSize(horizontal: false, vertical: fold.style == .mergeOrigin)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(fold.accessibilityLabel)
@@ -181,6 +182,7 @@ struct BlockDiffCard: View {
                 Text(fold.labelText)
                     .font(.caption)
                     .foregroundStyle(foldTint(for: fold))
+                    .fixedSize(horizontal: false, vertical: fold.style == .mergeOrigin)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

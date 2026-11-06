@@ -55,7 +55,7 @@ struct CaptureMergeInBandView: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(tint.opacity(0.22), lineWidth: 1)
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(presentation.previewAccessibilitySummary)
         .transaction { $0.animation = nil }
     }
@@ -94,21 +94,24 @@ struct CaptureMergeInBandView: View {
                     toName: row.targetStatusName
                 )
                 Spacer(minLength: 0)
+            }
+            HStack(spacing: 6) {
+                if let detailText = row.detailText {
+                    Text(detailText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+                Spacer(minLength: 0)
                 if !row.locator.isEmpty {
                     Text(row.locator)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                        .layoutPriority(0)
                 }
             }
-            if let detailText = row.detailText {
-                Text(detailText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 20)
-            }
+            .padding(.leading, 20)
         }
     }
 
