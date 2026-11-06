@@ -69,7 +69,7 @@ docs-test:
       Scripts/generate-list-fixtures.sh Scripts/generate-move-preview-fixtures.sh \
       Scripts/generate-transfer-preview-fixtures.sh Scripts/generate-merge-in-preview-fixtures.sh \
       Scripts/generate-move-choice-fixtures.sh \
-      Scripts/generate-pomodoro-past-fixtures.sh
+      Scripts/generate-pomodoro-past-fixtures.sh Scripts/generate-gmail-preview-fixtures.sh
     python3 -B Scripts/test_docs_scripts.py
 
 # Offline script tests, including the macOS CI precommit gate.

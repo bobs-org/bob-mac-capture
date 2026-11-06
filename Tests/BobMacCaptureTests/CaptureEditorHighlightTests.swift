@@ -652,6 +652,39 @@ final class CaptureEditorHighlightTests: XCTestCase {
         return try JSONDecoder().decode(CaptureParseResponse.self, from: Data(contentsOf: url))
     }
 
+    func testGmailUrlSpanPaintsLikeRefUrl() throws {
+        let draft =
+            "Follow up https://mail.google.com/mail/u/0/#inbox/FMfcgzQhWTsNRgxMhQNwhZDfgqwXpPsx"
+        let url = String(draft.dropFirst("Follow up ".count))
+        let span = CaptureSpan(
+            start: 10,
+            end: 82,
+            kind: "gmail_url",
+            key: "1a0b9eb2cc26ab96",
+            gmail: CaptureGmailSpanMetadata(
+                verdict: "decoded", dateHint: "2026-09-19T13:46:32.514+00:00")
+        )
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: [span])
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        let link = NSColor(CaptureEditorPalette.color(for: .link))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == link } ?? false
+            }),
+            [url]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.underlineStyle == .single }),
+            [url]
+        )
+    }
+
     private static func parse(draft: String, spans: [CaptureSpan]) -> CaptureParseResponse {
         CaptureParseResponse(
             ok: true,

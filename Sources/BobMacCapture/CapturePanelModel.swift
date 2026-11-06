@@ -592,6 +592,16 @@ final class CapturePanelModel: ObservableObject {
     var similarPendingActionForTesting: CaptureRelatedAction? { similarPendingAction }
     var hasSimilarPendingResponseForTesting: Bool { similarPendingResponse != nil }
 #endif
+    /// Settled `bob gmail peek` messages keyed by Gmail URL. The item
+    /// preview shows the peek line in place of the dry-run offline line
+    /// while `gmailPeekDraft` still equals the current draft; any keystroke
+    /// re-arms the settle and the offline lines show until the fresh peek
+    /// lands. A URL with no entry keeps its offline line (peek failed or
+    /// is still settling).
+    @Published var gmailPeekMessages: [String: String] = [:]
+    /// Draft the peek messages above were computed for. Nil when no peek
+    /// has settled for the current draft.
+    @Published var gmailPeekDraft: String?
     /// Latest live-preview open plan, built from bob's `open_notes` or the
     /// legacy fallback. Nil means this draft has no preview yet.
     @Published var previewOpenPlan: CaptureOpenPlan?
@@ -752,6 +762,7 @@ final class CapturePanelModel: ObservableObject {
 
     private let debounceNanoseconds: UInt64
     private let similarTasksSettleNanoseconds: UInt64
+    private let gmailPeekSettleNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
     private var pendingExplicitSubmitIntent: PendingExplicitSubmitIntent?
     private var pendingExplicitSubmitTask: Task<Void, Never>?
@@ -766,6 +777,7 @@ final class CapturePanelModel: ObservableObject {
     var pastNow: () -> Date = { Date() }
     var pastSleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     private var similarTasksTask: Task<Void, Never>?
+    private var gmailPeekTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
     private var pendingRewriteSubmitIntent: PendingRewriteSubmitIntent?
     private var deferredRewriteInputDraft: String?
@@ -815,6 +827,10 @@ final class CapturePanelModel: ObservableObject {
     /// counter reads, so observation stays at or under 1 Hz.
     static let clipboardPollIntervalNanoseconds: UInt64 = 1_000_000_000
     private var similarTasksGeneration: UInt64 = 0
+    /// Settled-peek generation for `bob gmail peek`: typing or a client
+    /// replacement bumps it so a stale peek can never overwrite the
+    /// current draft's lines.
+    private var gmailPeekGeneration: UInt64 = 0
     /// Candidate provenance and request ordering for the active Go To session.
     /// Core keeps requested scope separate from the scope of the displayed rows.
     private var gotoClosedTasksState: CaptureTaskGotoScopeState?
@@ -1424,12 +1440,14 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient? = nil,
         debounceNanoseconds: UInt64 = 50_000_000,
         similarTasksSettleNanoseconds: UInt64 = 350_000_000,
+        gmailPeekSettleNanoseconds: UInt64 = 350_000_000,
         canceledDraftStash: CanceledDraftStash? = nil,
         savedTemplateShelf: SavedTemplateShelf? = nil
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
         self.similarTasksSettleNanoseconds = similarTasksSettleNanoseconds
+        self.gmailPeekSettleNanoseconds = gmailPeekSettleNanoseconds
         let canceledDraftStash = canceledDraftStash ?? CanceledDraftStash()
         self.canceledDraftStash = canceledDraftStash
         let savedTemplateShelf = savedTemplateShelf ?? SavedTemplateShelf(processClient: processClient)
@@ -1457,6 +1475,7 @@ final class CapturePanelModel: ObservableObject {
         clipboardPollTask?.cancel()
         pastRefreshTask?.cancel()
         similarTasksTask?.cancel()
+        gmailPeekTask?.cancel()
         rewriteTask?.cancel()
         todayPomodoroGotoTask?.cancel()
         pomodoroThemeSuggestionsTask?.cancel()
@@ -2348,6 +2367,7 @@ final class CapturePanelModel: ObservableObject {
         previewOpenPlan = nil
         previewOutputsDraft = nil
         cancelPastBoundaryRefresh()
+        cancelGmailPeek(clear: true)
     }
 
     /// Follows both close-list gates from the agenda store. The store
@@ -16581,6 +16601,139 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    // MARK: - Gmail peek lane
+
+    /// Peek line for one Gmail URL from the settled `bob gmail peek`,
+    /// or nil while the peek for the current draft has not landed, the
+    /// peek failed, or Bob predates `gmail peek`. The item preview shows
+    /// this in place of the dry-run offline line.
+    func gmailPeekMessage(for url: String) -> String? {
+        guard gmailPeekDraft == plainDraft else { return nil }
+        return gmailPeekMessages[url]
+    }
+
+    /// Schedules one settled `bob gmail peek` per Gmail URL Bob's parse
+    /// reported. It copies the Similar-tasks settle: a 350 ms pause, a
+    /// generation counter, cancel-previous, and `isCurrent…Request`
+    /// checks, on its own `gmail-peek` process lane. A draft without
+    /// `gmail_url` spans settles to no peek. Bob stays authoritative:
+    /// the app only slices the span bytes Bob reported and renders the
+    /// `message` lines Bob returns.
+    private func scheduleGmailPeek(parse: CaptureParseResponse, draft: String) {
+        gmailPeekGeneration &+= 1
+        let generation = gmailPeekGeneration
+        gmailPeekTask?.cancel()
+        gmailPeekTask = nil
+
+        var seen: Set<String> = []
+        let urls = parse.spans
+            .filter { $0.kind == "gmail_url" }
+            .compactMap { span -> String? in
+                guard let range = stringRange(in: draft, start: span.start, end: span.end) else {
+                    return nil
+                }
+                return String(draft[range])
+            }
+            .filter { seen.insert($0).inserted }
+
+        guard !urls.isEmpty,
+              let processClient,
+              !processClient.gmailPeekKnownUnsupported
+        else {
+            return
+        }
+
+        let processClientIdentity = processClient.identityToken
+        let settleNanoseconds = gmailPeekSettleNanoseconds
+        gmailPeekTask = Task { [weak self, processClient] in
+            do {
+                try await Task.sleep(nanoseconds: settleNanoseconds)
+                try Task.checkCancellation()
+                guard let self,
+                      self.isCurrentGmailPeekRequest(
+                        generation: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        identity: processClientIdentity
+                      )
+                else {
+                    return
+                }
+                var landed: [String: String] = [:]
+                for url in urls {
+                    try Task.checkCancellation()
+                    do {
+                        let response = try await processClient.gmailPeek(url)
+                        try Task.checkCancellation()
+                        guard self.isCurrentGmailPeekRequest(
+                          generation: generation,
+                          draft: draft,
+                          processClient: processClient,
+                          identity: processClientIdentity
+                        ) else {
+                            return
+                        }
+                        guard response.ok, response.verdict == "resolved" else { continue }
+                        landed[url] = response.message
+                    } catch is CancellationError {
+                        return
+                    } catch let error as BobClientError {
+                        if case .unsupportedCommand("gmail peek") = error {
+                            await MainActor.run {
+                                self.gmailPeekTask = nil
+                            }
+                            return
+                        }
+                        continue
+                    } catch {
+                        continue
+                    }
+                }
+                guard self.isCurrentGmailPeekRequest(
+                  generation: generation,
+                  draft: draft,
+                  processClient: processClient,
+                  identity: processClientIdentity
+                ) else {
+                    return
+                }
+                await MainActor.run {
+                    self.gmailPeekMessages = landed
+                    self.gmailPeekDraft = draft
+                    self.gmailPeekTask = nil
+                }
+            } catch is CancellationError {
+                // Cancelled while settling or peeking: the newer schedule
+                // owns the lane, so there is nothing to publish.
+            } catch {
+                // Unreachable: the settle only fails by cancellation and
+                // each peek handles its own errors above.
+            }
+        }
+    }
+
+    private func isCurrentGmailPeekRequest(
+        generation: UInt64,
+        draft: String,
+        processClient: BobProcessClient,
+        identity: String
+    ) -> Bool {
+        gmailPeekGeneration == generation
+          && plainDraft == draft
+          && self.processClient === processClient
+          && processClient.identityToken == identity
+    }
+
+    private func cancelGmailPeek(clear: Bool) {
+        gmailPeekGeneration &+= 1
+        gmailPeekTask?.cancel()
+        gmailPeekTask = nil
+        if clear {
+            gmailPeekMessages = [:]
+            gmailPeekDraft = nil
+        }
+    }
+
     // MARK: - Similar-tasks focus and strip actions
 
     /// Visible rows in ⌘-number order for key routing and the strip.
@@ -17148,6 +17301,7 @@ final class CapturePanelModel: ObservableObject {
         }
         updateClipboardPolling(parse: parse, draft: draft)
         applyHighlighting(parse: parse, draft: draft, cursorUTF8: cursorUTF8)
+        scheduleGmailPeek(parse: parse, draft: draft)
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {
             statusText = diagnostic.message

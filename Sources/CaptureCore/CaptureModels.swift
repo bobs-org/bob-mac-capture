@@ -1267,6 +1267,18 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// History count for `%c<N>` when N is at least 2, on a `directive` span. Bob omits it
     /// for `%c`, `%c1`, and every other span.
     public let count: Int?
+    /// Decoded Gmail thread hex on a `gmail_url` span. Present when Bob
+    /// decoded or already knew the thread; omitted for unresolvable or
+    /// refused URLs and by older Bob.
+    public let key: String?
+    /// Saved-thread label on a `gmail_url` span. Present only when the
+    /// thread is already saved (`verdict == "known"`); omitted otherwise
+    /// and by older Bob.
+    public let title: String?
+    /// Offline verdict for a `gmail_url` span (`known` | `decoded` |
+    /// `search` | `unresolved` | `refused`), plus an optional RFC 3339
+    /// date hint. Omitted for every other span kind and by older Bob.
+    public let gmail: CaptureGmailSpanMetadata?
 
     public init(
         start: Int,
@@ -1279,7 +1291,10 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         offersSource: Bool = false,
         projectNote: String? = nil,
         directive: String? = nil,
-        count: Int? = nil
+        count: Int? = nil,
+        key: String? = nil,
+        title: String? = nil,
+        gmail: CaptureGmailSpanMetadata? = nil
     ) {
         self.start = start
         self.end = end
@@ -1292,6 +1307,9 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.projectNote = projectNote
         self.directive = directive
         self.count = count
+        self.key = key
+        self.title = title
+        self.gmail = gmail
     }
 
     public init(from decoder: Decoder) throws {
@@ -1311,6 +1329,10 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         projectNote = (try? container.decodeIfPresent(String.self, forKey: .projectNote)) ?? nil
         directive = (try? container.decodeIfPresent(String.self, forKey: .directive)) ?? nil
         count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? nil
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? nil
+        gmail =
+            (try? container.decodeIfPresent(CaptureGmailSpanMetadata.self, forKey: .gmail)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1325,6 +1347,90 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case projectNote = "project_note"
         case directive
         case count
+        case key
+        case title
+        case gmail
+    }
+}
+
+/// Offline verdict Bob attaches to a `gmail_url` capture-parse span.
+/// `verdict` is one of `known` | `decoded` | `search` | `unresolved` |
+/// `refused`; `dateHint` is Bob's RFC 3339 thread-date hint, present only
+/// when Bob decoded a thread id. Unknown verdict strings still decode so a
+/// newer Bob never breaks the parse.
+public struct CaptureGmailSpanMetadata: Codable, Equatable, Sendable {
+    public let verdict: String
+    public let dateHint: String?
+
+    public init(verdict: String = "", dateHint: String? = nil) {
+        self.verdict = verdict
+        self.dateHint = dateHint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        verdict = (try? container.decodeIfPresent(String.self, forKey: .verdict)) ?? ""
+        dateHint = (try? container.decodeIfPresent(String.self, forKey: .dateHint)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case verdict
+        case dateHint = "date_hint"
+    }
+}
+
+/// One Gmail URL Bob found in a capture item's dry-run text. `message` is
+/// the ready-made human line the item preview shows; a settled
+/// `bob gmail peek` may replace it with the live subject and sender.
+/// `threadID`, `note`, `link`, and `dateHint` are present per Bob's
+/// verdict; unknown verdicts still decode so a newer Bob never breaks
+/// the preview.
+public struct CaptureGmailPreview: Codable, Equatable, Sendable {
+    public let url: String
+    public let verdict: String
+    public let threadID: String?
+    public let note: String?
+    public let link: String?
+    public let dateHint: String?
+    public let message: String
+
+    public init(
+        url: String = "",
+        verdict: String = "",
+        threadID: String? = nil,
+        note: String? = nil,
+        link: String? = nil,
+        dateHint: String? = nil,
+        message: String = ""
+    ) {
+        self.url = url
+        self.verdict = verdict
+        self.threadID = threadID
+        self.note = note
+        self.link = link
+        self.dateHint = dateHint
+        self.message = message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = (try? container.decodeIfPresent(String.self, forKey: .url)) ?? ""
+        verdict = (try? container.decodeIfPresent(String.self, forKey: .verdict)) ?? ""
+        threadID = (try? container.decodeIfPresent(String.self, forKey: .threadID)) ?? nil
+        note = (try? container.decodeIfPresent(String.self, forKey: .note)) ?? nil
+        link = (try? container.decodeIfPresent(String.self, forKey: .link)) ?? nil
+        dateHint = (try? container.decodeIfPresent(String.self, forKey: .dateHint)) ?? nil
+        message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case url
+        case verdict
+        case threadID = "thread_id"
+        case note
+        case link
+        case dateHint = "date_hint"
+        case message
     }
 }
 
@@ -5132,6 +5238,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     // entirely; decode as nil, and a malformed value decodes as nil so it
     // can never fail the capture decode.
     public let ref: CaptureRef?
+    /// Additive per-item Gmail previews (`gmail[]`) on a dry-run capture.
+    /// One entry per Gmail URL Bob found in the item text, carrying the
+    /// ready-made `message` line the item preview shows. Older Bob omits
+    /// the key; decode as empty so the rest of capture still shows.
+    public let gmail: [CaptureGmailPreview]
     // Additive top-level `plan_budget`: present only when the batch changed
     // today's Pomodoros section. It is not per item. Older Bob omits it
     // entirely; decode as nil.
@@ -5273,6 +5384,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         repairedFiles: [CaptureTransferRepairedFile] = [],
         notePull: CaptureNotePull? = nil,
         ref: CaptureRef? = nil,
+        gmail: [CaptureGmailPreview] = [],
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
         offerCloses: [CaptureOfferClose] = [],
@@ -5369,6 +5481,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.repairedFiles = repairedFiles
         self.notePull = notePull
         self.ref = ref
+        self.gmail = gmail
         self.planBudget = planBudget
         self.pullIn = pullIn
         self.offerCloses = offerCloses
@@ -5568,6 +5681,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decode([CaptureTransferRepairedFile].self, forKey: .repairedFiles)) ?? []
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
+        gmail =
+            (try? container.decodeIfPresent([CaptureGmailPreview].self, forKey: .gmail)) ?? []
         planBudget = try container.decodeIfPresent(
             CapturePlanBudget.self,
             forKey: .planBudget
@@ -5720,6 +5835,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case repairedFiles = "repaired_files"
         case notePull = "note_pull"
         case ref
+        case gmail
         case planBudget = "plan_budget"
         case pullIn = "pull_in"
         case offerCloses = "offer_closes"

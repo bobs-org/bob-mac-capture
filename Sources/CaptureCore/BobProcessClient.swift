@@ -73,6 +73,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedGuardIdentity: String?
     private var unsupportedGuardFlags: Set<String> = []
     private var unsupportedRelatedIdentity: String?
+    private var unsupportedGmailPeekIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
     /// `inbox_route.supported == true`. Once remembered for the current
@@ -180,6 +181,21 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    /// Whether this executable has already rejected `gmail peek`. The
+    /// answer is scoped to the current Bob file identity, so replacing Bob
+    /// retries the capability once.
+    public var gmailPeekKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedGmailPeekIdentity else { return false }
+            let identity = identityToken
+            if unsupportedGmailPeekIdentity != identity {
+                self.unsupportedGmailPeekIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
     public func captureParse(
         _ draft: String,
         lane: String = "parse"
@@ -267,6 +283,88 @@ public final class BobProcessClient: @unchecked Sendable {
         let normalized = stderr.lowercased()
         return normalized.contains("unrecognized subcommand 'capture-related'")
             || normalized.contains("unrecognized subcommand \"capture-related\"")
+    }
+
+    /// Reads one Gmail thread's metadata-only preview. It runs on its own
+    /// `gmail-peek` process lane so a settled keystroke's peek never delays
+    /// the parser or live preview, and a newer keystroke's lane replacement
+    /// cancels the stale peek. Peek failures that are not capability probes
+    /// surface to the caller; the panel keeps the offline line.
+    public func gmailPeek(_ url: String) async throws -> CaptureGmailPeekResponse {
+        if gmailPeekKnownUnsupported {
+            throw BobClientError.unsupportedCommand("gmail peek")
+        }
+
+        let arguments = ["gmail", "peek", url, "-f", "json"]
+        let result = try await run(arguments: arguments, lane: "gmail-peek")
+        let stderr = boundedProcessText(result.stderr)
+        if Self.isUnsupportedGmailPeekFailure(exitStatus: result.exitStatus, stderr: stderr) {
+            stateQueue.sync {
+                unsupportedGmailPeekIdentity = identityToken
+            }
+            throw BobClientError.unsupportedCommand("gmail peek")
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let response = try decoder.decode(
+                CaptureGmailPeekResponse.self, from: Data(trimmedStdout.utf8))
+            guard response.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: 1,
+                    actual: response.schemaVersion
+                )
+            }
+            guard result.exitStatus == 0 else {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            return response
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    static func isUnsupportedGmailPeekFailure(exitStatus: Int32, stderr: String) -> Bool {
+        guard exitStatus == 2 else { return false }
+        let normalized = stderr.lowercased()
+        return normalized.contains("unrecognized subcommand 'peek'")
+            || normalized.contains("unrecognized subcommand \"peek\"")
+            || normalized.contains("unrecognized subcommand 'gmail'")
+            || normalized.contains("unrecognized subcommand \"gmail\"")
     }
 
     static func isUnsupportedRelationsFailure(exitStatus: Int32, stderr: String) -> Bool {

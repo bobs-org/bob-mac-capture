@@ -6431,8 +6431,31 @@ struct PreviewPane: View {
                 .textSelection(.enabled)
         }
 
+        gmailPreviewSection(for: success)
         mergeInBand(for: success)
         similarTasksBand(forCaptureIndex: index)
+    }
+
+    /// Gmail link lines come straight from Bob's dry-run `gmail[]`: one
+    /// ready-made `message` line per Gmail URL in the item text. After
+    /// typing settles, the `bob gmail peek` line replaces the offline line
+    /// for its URL; a URL with no settled peek keeps the offline line.
+    /// Bob owns detection, wording, and the peek — the panel only paints.
+    @ViewBuilder
+    private func gmailPreviewSection(for success: CaptureCommandSuccess) -> some View {
+        if !success.gmail.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(success.gmail.enumerated()), id: \.offset) { _, preview in
+                    let line = model.gmailPeekMessage(for: preview.url) ?? preview.message
+                    Text(line)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel(line)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     @ViewBuilder

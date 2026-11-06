@@ -187,6 +187,24 @@ case "${command}" in
     related_fixture="${FAKE_BOB_RELATED_FIXTURE:-capture-related-empty.json}"
     cat "${fixtures_dir}/${related_fixture}"
     ;;
+  gmail)
+    gmail_subcommand="${1:-}"
+    shift || true
+    if [[ "${FAKE_BOB_GMAIL_PEEK_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'peek'\n\nUsage: bob gmail [COMMAND]\n" >&2
+      exit 2
+    fi
+    if [[ "${gmail_subcommand}" != "peek" ]]; then
+      printf "error: unrecognized subcommand '%s'\n" "${gmail_subcommand}" >&2
+      exit 2
+    fi
+    if [[ -n "${FAKE_BOB_GMAIL_PEEK_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_GMAIL_PEEK_DELAY_SECONDS}" &
+      wait $!
+    fi
+    peek_fixture="${FAKE_BOB_GMAIL_PEEK_FIXTURE:-gmail-peek-resolved.json}"
+    cat "${fixtures_dir}/${peek_fixture}"
+    ;;
   capture-templates)
     if [[ "${FAKE_BOB_TEMPLATES_UNSUPPORTED:-}" == "1" ]]; then
       printf "error: unrecognized subcommand 'capture-templates'\n\nUsage: bob [COMMAND]\n" >&2

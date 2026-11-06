@@ -49,8 +49,8 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
 }
 
 extension CaptureSemanticCategory {
-    /// Only the reading-queue link underline uses this: `ref_url` renders as
-    /// an underlined link, every other span kind renders without one.
+    /// Only link spans underline: `ref_url` and `gmail_url` render as
+    /// underlined links, every other span kind renders without one.
     public var isUnderlined: Bool {
         self == .link
     }
@@ -214,6 +214,11 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .pomodoroStartDrop
     case "ref_url":
         // The whole reference URL token on a `ref` item renders as a link.
+        return .link
+    case "gmail_url":
+        // A Gmail URL token paints exactly like a reference URL: link
+        // color, underlined. Bob owns detection and the offline verdict;
+        // the app only renders the span.
         return .link
     case "task_type":
         return .taskType
