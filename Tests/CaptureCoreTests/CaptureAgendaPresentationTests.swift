@@ -63,7 +63,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         items: [CaptureAgendaItem] = [],
         themes: [CapturePomodoroThemeRef] = [],
         slug: String? = "fix",
-        selectable: Bool = true
+        selectable: Bool = true,
+        startToken: String? = nil
     ) -> CaptureAgendaPomodoro {
         CaptureAgendaPomodoro(
             line: line,
@@ -78,6 +79,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             items: items,
             slug: slug,
             selectable: selectable,
+            startToken: startToken,
             themes: themes
         )
     }
@@ -298,7 +300,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
     func testEmptyAgendaStates() {
         let planned = present(makeSnapshot(entries: []))
         XCTAssertEqual(planned.state, .noOpen)
-        XCTAssertEqual(planned.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertEqual(planned.stateRow?.text, "No Pomodoros planned · =NAME starts one")
 
         let missing = present(makeSnapshot(
             entries: [],
@@ -327,7 +329,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         }
 
         XCTAssertEqual(presentation.state, .noOpen)
-        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =NAME starts one")
         XCTAssertEqual(row.kind, .planBudget)
         XCTAssertEqual(row.text, "TODAY 8/10")
         XCTAssertEqual(row.key.text, "TODAY 8/10")
@@ -348,7 +350,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.state, .noOpen)
         XCTAssertEqual(presentation.planBudgetRow?.text, "TODAY 0/7")
-        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =NAME starts one")
     }
 
     func testBudgetUnavailableWarningKeepsTheReadableEmptyAgendaState() {
@@ -358,7 +360,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         ))
 
         XCTAssertEqual(presentation.state, .noOpen)
-        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =NAME starts one")
         XCTAssertNil(presentation.planBudgetRow)
     }
 
@@ -422,9 +424,137 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             ])
         )
         XCTAssertEqual(presentation.groups[0].headerRow.accessoryText, "08:00–08:30")
+        XCTAssertFalse(presentation.groups[0].headerRow.hintDimmed)
         XCTAssertEqual(presentation.groups[1].headerRow.accessoryText, "= starts it")
+        XCTAssertFalse(presentation.groups[1].headerRow.hintDimmed)
         XCTAssertEqual(presentation.groups[2].headerRow.accessoryText, "=#later")
+        XCTAssertTrue(presentation.groups[2].headerRow.hintDimmed)
         XCTAssertNil(presentation.groups[3].headerRow.accessoryText)
+        XCTAssertFalse(presentation.groups[3].headerRow.hintDimmed)
+    }
+
+    func testLaterHeaderUsesStartTokenAndDimsHint() {
+        let bare = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 20,
+                name: "LATER",
+                role: .later,
+                startsAt: nil,
+                endsAt: nil,
+                slug: "later",
+                startToken: "=later"
+            ),
+        ]))
+        XCTAssertEqual(bare.groups[0].headerRow.accessoryText, "=later")
+        XCTAssertTrue(bare.groups[0].headerRow.hintDimmed)
+
+        let hashed = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 20,
+                name: "DEEP WORK",
+                role: .later,
+                startsAt: nil,
+                endsAt: nil,
+                slug: "deep-work",
+                startToken: "=#deep-work"
+            ),
+        ]))
+        XCTAssertEqual(hashed.groups[0].headerRow.accessoryText, "=#deep-work")
+        XCTAssertTrue(hashed.groups[0].headerRow.hintDimmed)
+
+        let legacy = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 20,
+                name: "LATER",
+                role: .later,
+                startsAt: nil,
+                endsAt: nil,
+                slug: "later"
+            ),
+        ]))
+        XCTAssertEqual(legacy.groups[0].headerRow.accessoryText, "=#later")
+        XCTAssertTrue(legacy.groups[0].headerRow.hintDimmed)
+
+        let hidden = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 30,
+                name: "HIDDEN",
+                role: .later,
+                startsAt: nil,
+                endsAt: nil,
+                slug: "hidden",
+                selectable: false,
+                startToken: "=hidden"
+            ),
+        ]))
+        XCTAssertNil(hidden.groups[0].headerRow.accessoryText)
+        XCTAssertFalse(hidden.groups[0].headerRow.hintDimmed)
+    }
+
+    func testFoldedLaterHeaderKeepsHintDimmed() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 20,
+                name: "LATER",
+                role: .later,
+                startsAt: nil,
+                endsAt: nil,
+                notes: [makeLine("note")],
+                slug: "later",
+                startToken: "=later"
+            ),
+        ]))
+        let group = presentation.groups[0]
+        let folded = CaptureAgendaFitPlanner.headerWithNotesChip(group: group)
+        XCTAssertEqual(folded.accessoryText, "=later")
+        XCTAssertTrue(group.headerRow.hintDimmed)
+        XCTAssertTrue(folded.hintDimmed)
+        XCTAssertEqual(folded.notesChip, "1 notes")
+    }
+
+    func testAgendaPomodoroDecodesStartToken() throws {
+        let json = Data(
+            """
+            {"line":20,"name":"LATER","role":"later","slug":"later","selectable":true,"start_token":"=later"}
+            """.utf8
+        )
+        let entry = try JSONDecoder().decode(CaptureAgendaPomodoro.self, from: json)
+        XCTAssertEqual(entry.startToken, "=later")
+
+        let older = Data(
+            """
+            {"line":20,"name":"LATER","role":"later","slug":"later","selectable":true}
+            """.utf8
+        )
+        let legacy = try JSONDecoder().decode(CaptureAgendaPomodoro.self, from: older)
+        XCTAssertNil(legacy.startToken)
+    }
+
+    func testPomodoroEntryDecodesStartToken() throws {
+        let json = Data(
+            """
+            {"ref":"1:abc","line":1,"state":"open","status_symbol":" ","name":"BUGS","slug":"bugs","selectable":true,"placeholder":false,"is_current":false,"child_count":0,"start_token":"=bugs"}
+            """.utf8
+        )
+        let entry = try JSONDecoder().decode(CapturePomodoroEntry.self, from: json)
+        XCTAssertEqual(entry.startToken, "=bugs")
+
+        let hashed = Data(
+            """
+            {"ref":"1:abc","line":1,"state":"open","status_symbol":" ","name":"DEEP WORK","slug":"deep-work","selectable":true,"placeholder":false,"is_current":false,"child_count":0,"start_token":"=#deep-work"}
+            """.utf8
+        )
+        let hashedEntry = try JSONDecoder().decode(CapturePomodoroEntry.self, from: hashed)
+        XCTAssertEqual(hashedEntry.startToken, "=#deep-work")
+
+        let older = Data(
+            """
+            {"ref":"1:abc","line":1,"state":"open","status_symbol":" ","slug":"bugs","selectable":false,"placeholder":false,"is_current":false,"child_count":0}
+            """.utf8
+        )
+        let legacy = try JSONDecoder().decode(CapturePomodoroEntry.self, from: older)
+        XCTAssertNil(legacy.startToken)
+        XCTAssertFalse(legacy.selectable)
     }
 
     func testCountdownJoinsTheCurrentTrailing() {

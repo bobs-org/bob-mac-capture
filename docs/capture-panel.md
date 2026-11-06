@@ -358,7 +358,7 @@ the live preview (`bob capture --dry-run [--no-clip] --format json`), including 
 mixed drafts — and submission runs the same Bob command; the footer says **Start**
 and the notification summarizes the same returned start. The same `=` token
 overrides the running Pomodoro when one is open: `=` / `=<X>` restarts it now
-with fresh `se<X>` timing, and `=#name` swaps that Pomodoro in (taking over
+with fresh `se<X>` timing, and `=name` swaps that Pomodoro in (taking over
 the running ledger unless a timing is given) while the old session returns to
 first future. Preview renders an orange override banner plus Bob's resolved
 before → after range and demoted row — sourced only from
@@ -385,7 +385,7 @@ a leading number is always a task number, so `- 1 fixed 3 bugs` needs no escape
 get a cyan index chip matching the card's new entry line, while positional
 entries get none. Text on the `x` line itself still takes an inline entry
 (`x wired the lexer` logs to task 1): it shows the bullet to write instead. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
-`=#bugs~2`) starts the next session without those numbered queued Task Links —
+`=bugs~2`) starts the next session without those numbered queued Task Links —
 `~` drops, so `=~2` drops task 2 from the session you start the way `x~2` drops
 task 2 from the session you stop, using the numbers the start card shows. The
 start card numbers every queued row, strikes and dims dropped rows in place with

@@ -8371,6 +8371,9 @@ public struct CapturePomodoroEntry: Codable, Equatable {
     public let placeholder: Bool
     public let isCurrent: Bool
     public let childCount: Int
+    /// Bob's canonical named-start spelling (`=bugs`, `=#deep-work`).
+    /// Nil on an older Bob that omits `start_token`.
+    public let startToken: String?
 
     public init(
         pomodoroRef: String,
@@ -8383,7 +8386,8 @@ public struct CapturePomodoroEntry: Codable, Equatable {
         timeRange: String? = nil,
         placeholder: Bool,
         isCurrent: Bool,
-        childCount: Int
+        childCount: Int,
+        startToken: String? = nil
     ) {
         self.pomodoroRef = pomodoroRef
         self.line = line
@@ -8396,6 +8400,7 @@ public struct CapturePomodoroEntry: Codable, Equatable {
         self.placeholder = placeholder
         self.isCurrent = isCurrent
         self.childCount = childCount
+        self.startToken = startToken
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8410,6 +8415,7 @@ public struct CapturePomodoroEntry: Codable, Equatable {
         case placeholder
         case isCurrent = "is_current"
         case childCount = "child_count"
+        case startToken = "start_token"
     }
 }
 

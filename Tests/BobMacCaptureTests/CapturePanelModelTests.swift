@@ -3887,17 +3887,17 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.plainDraft = "x =#de"
-        model.editorTextDidChange(cursorUTF8Offset: 6)
+        model.plainDraft = "x =de"
+        model.editorTextDidChange(cursorUTF8Offset: 5)
         await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
 
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(
             model.completionResponse?.replacement,
-            CaptureRange(start: 4, end: 6)
+            CaptureRange(start: 3, end: 5)
         )
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- x =#de"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 5 --format json -- x =de"))
     }
 
     func testStartSuffixCaretRequestsNoCompletion() async throws {

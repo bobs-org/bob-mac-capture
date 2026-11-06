@@ -271,6 +271,9 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let items: [CaptureAgendaItem]
     public let slug: String?
     public let selectable: Bool
+    /// Bob's canonical named-start spelling (`=bugs`, `=#deep-work`).
+    /// Nil on an older Bob that omits `start_token`.
+    public let startToken: String?
     public let homes: CaptureAgendaHomes?
     /// Whether the entry's session is off the clock. Nil when an older
     /// bob reports neither `off_clock` nor the deprecated `tracked` key.
@@ -293,6 +296,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         items: [CaptureAgendaItem] = [],
         slug: String? = nil,
         selectable: Bool = false,
+        startToken: String? = nil,
         homes: CaptureAgendaHomes? = nil,
         offClock: Bool? = nil,
         themes: [CapturePomodoroThemeRef] = []
@@ -309,6 +313,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.items = items
         self.slug = slug
         self.selectable = selectable
+        self.startToken = startToken
         self.homes = homes
         self.offClock = offClock
         self.themes = themes
@@ -330,6 +335,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         items = try container.decodeIfPresent([CaptureAgendaItem].self, forKey: .items) ?? []
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
+        startToken = try container.decodeIfPresent(String.self, forKey: .startToken)
         homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
         offClock = try container.decodeIfPresent(Bool.self, forKey: .offClock)
             ?? container.decodeIfPresent(Bool.self, forKey: .tracked).map { !$0 }
@@ -353,6 +359,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case items
         case slug
         case selectable
+        case startToken = "start_token"
         case homes
         case offClock = "off_clock"
         case tracked

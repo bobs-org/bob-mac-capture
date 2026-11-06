@@ -387,8 +387,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `vault-sync -q` | Background Refs pull | Pull failure is logged only; list stays | Upgrade `bob` for pull |
 | `marker_id` | Copy-card `I` row | `I` asks for a newer `bob`; other copy rows still work | Upgrade `bob` for marker IDs |
 | `open_notes` | Control-Return lands on captured lines | Tabs open without landing | Upgrade `bob`; needs plugin 2.44.1+ |
-| `--tasks` on `capture-pomodoros` | Agenda, counts, `=#name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
-| `pomodoro_start_name` | Start list for `=#name` | No rows | Upgrade `bob` |
+| `--tasks` on `capture-pomodoros` | Agenda, counts, `=name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
+| `pomodoro_start_name` | Start list for `=name` | No rows | Upgrade `bob` |
 | Template spans, `%t` | Template rows, shelf, preview capsule | Ordinary drafts keep working; `%t` may be refused before writing | Upgrade `bob` for templates |
 | `override`, guard flags | Orange banner; guarded commit; choice card | Plain start; retry without the flag is remembered | Upgrade `bob` for overrides |
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |

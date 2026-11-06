@@ -124,7 +124,7 @@ The additive `sub_bullets` field on `capture` output is the exact rendered autho
   becomes **Start** for a session start and **Link** otherwise. A single close
   (whole-item `x`, link `=x`, new-task `=x`) becomes **Close**; a single
   whole-item `=`/`=<X>` start becomes **Start**, a `=` restart of the running
-  session **Restart**, and a `=#name` swap **Swap**; a single whole-item
+  session **Restart**, and a `=name` swap **Swap**; a single whole-item
   `!note:block-id` completion becomes **Complete**; past stacks become **Record**.
   Batches keep **Capture**, since Return submits more.
   Ensure Next preview, VoiceOver, and notifications report status and relocation
@@ -241,7 +241,7 @@ A whole-item `=`/`=<X>` start instead shows its own card
   retitles to `Restart NAME` / `Restarted NAME`, reads
   `Would restart CAPTURE 0920-0945 → 0935-1000 (15m) at line 5` in the status,
   and adds a dim `was 0920–0945` caption under the destination. A
-  `=#name` swap instead uses `arrow.left.arrow.right.circle.fill`,
+  `=name` swap instead uses `arrow.left.arrow.right.circle.fill`,
   retitles to `Swap in NAME` / `Swapped in NAME`, reads
   `Would swap in BUGS 0920-0945 (takes over CAPTURE) at line 5` for a kept
   ledger (or the fresh session range otherwise), adds a `Takes over` capsule

@@ -69,6 +69,10 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let calendar: CaptureAgendaCalendarRowData?
     public let calendarRail: CaptureAgendaRailData?
     public let sessionOffClock: Bool
+    /// True when the trailing accessory is a start-hint token that the
+    /// view paints tertiary. Explicit so later rows dim `=bugs` the same
+    /// way they dim a legacy `=#slug`.
+    public let hintDimmed: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -85,7 +89,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         themeHues: [PomodoroHomeHue?] = [],
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
-        sessionOffClock: Bool = false
+        sessionOffClock: Bool = false,
+        hintDimmed: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -102,6 +107,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.calendar = calendar
         self.calendarRail = calendarRail
         self.sessionOffClock = sessionOffClock
+        self.hintDimmed = hintDimmed
     }
 }
 
@@ -149,6 +155,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// True only for an entry Bob explicitly reports as off-clock
     /// session; older Bob leaves the Now header unchanged.
     public let sessionOffClock: Bool
+    /// True when `accessoryText` is a later-row start hint that the view
+    /// paints tertiary. The view never infers this from the token prefix.
+    public let hintDimmed: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -170,7 +179,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         themeRefs: [CapturePomodoroThemeRef] = [],
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
-        sessionOffClock: Bool = false
+        sessionOffClock: Bool = false,
+        hintDimmed: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -192,6 +202,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.calendar = calendar
         self.calendarRail = calendarRail
         self.sessionOffClock = sessionOffClock
+        self.hintDimmed = hintDimmed
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -208,7 +219,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             themeHues: themeRefs.map(\.hue),
             calendar: calendar,
             calendarRail: calendarRail,
-            sessionOffClock: sessionOffClock
+            sessionOffClock: sessionOffClock,
+            hintDimmed: hintDimmed
         )
     }
 
@@ -397,7 +409,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 stateRow = Self.makeStateRow(text: "No daily note for today yet")
             } else {
                 state = .noOpen
-                stateRow = Self.makeStateRow(text: "No Pomodoros planned · =#NAME starts one")
+                stateRow = Self.makeStateRow(text: "No Pomodoros planned · =NAME starts one")
             }
             return
         }
@@ -785,11 +797,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             accessory = "= starts it"
             label = "Header, \(spoken)"
         case .later:
-            if entry.selectable, let slug = entry.slug, !slug.isEmpty {
-                accessory = "=#\(slug)"
-            } else {
-                accessory = nil
-            }
+            accessory = Self.laterStartAccessory(entry)
             label = "Header, \(spoken)"
         case .completed, .other:
             accessory = nil
@@ -815,8 +823,23 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
             themeRefs: themeRefs,
-            sessionOffClock: entry.role == .current && entry.offClock == true
+            sessionOffClock: entry.role == .current && entry.offClock == true,
+            hintDimmed: entry.role == .later && trimmed != nil
         )
+    }
+
+    /// Later-row start hint: Bob's `start_token` when present, else the
+    /// legacy `=#slug` fallback for an older Bob. Nonselectable entries
+    /// and empty slugs carry no accessory.
+    static func laterStartAccessory(_ entry: CaptureAgendaPomodoro) -> String? {
+        guard entry.selectable else { return nil }
+        if let token = entry.startToken, !token.isEmpty {
+            return token
+        }
+        if let slug = entry.slug, !slug.isEmpty {
+            return "=#\(slug)"
+        }
+        return nil
     }
 
     static func groupAccessibilityLabel(

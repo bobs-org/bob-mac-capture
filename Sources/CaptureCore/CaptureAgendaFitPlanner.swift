@@ -420,7 +420,8 @@ public enum CaptureAgendaFitPlanner {
             nameIsDerived: base.nameIsDerived,
             homeChip: base.homeChip,
             homeHue: base.homeHue,
-            homeIsForecast: base.homeIsForecast
+            homeIsForecast: base.homeIsForecast,
+            hintDimmed: base.hintDimmed
         )
     }
 

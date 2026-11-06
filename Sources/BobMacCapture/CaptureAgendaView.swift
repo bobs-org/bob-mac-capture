@@ -971,7 +971,7 @@ struct CaptureAgendaRowView: View {
                 }
             }
         } else if let accessory = row.accessoryText {
-            headerTimeView(accessory)
+            headerTimeView(accessory, hintDimmed: row.hintDimmed)
         }
     }
 
@@ -982,20 +982,20 @@ struct CaptureAgendaRowView: View {
         return accessory
     }
 
-    private func headerTimeView(_ accessory: String) -> some View {
+    private func headerTimeView(_ accessory: String, hintDimmed: Bool) -> some View {
         // The current entry joins "range · countdown"; an overdue
-        // countdown reads orange. Later entries show "=#slug".
+        // countdown reads orange. Later start hints dim from
+        // `row.hintDimmed`, never from the token prefix.
         let parts = accessory.split(separator: "·")
         let first = parts.first.map { $0.trimmingCharacters(in: .whitespaces) } ?? accessory
         let second = parts.count > 1
             ? parts[1].trimmingCharacters(in: .whitespaces)
             : nil
         let overdue = second?.hasPrefix("overdue") == true
-        let slug = first.hasPrefix("=#")
         return HStack(spacing: 4) {
             Text(first)
                 .font(.callout.monospacedDigit())
-                .foregroundStyle(slug ? .tertiary : .secondary)
+                .foregroundStyle(hintDimmed ? .tertiary : .secondary)
                 .lineLimit(1)
             if let second {
                 Text("· \(second)")

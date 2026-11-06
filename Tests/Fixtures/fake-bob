@@ -417,7 +417,7 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-start-named-parse-near-miss.json" | inject_parse_grammar
     elif [[ "${draft}" == "x =#bugs" ]]; then
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json" | inject_parse_grammar
-    elif [[ "${draft}" == "x =#de" ]]; then
+    elif [[ "${draft}" == "x =de" ]]; then
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json" | inject_parse_grammar
     elif [[ "${draft}" == "==" || "${draft}" == "==#bugs" || "${draft}" == "==#" || "${draft}" == "==3#" ]]; then
       # Claimed `==` is a teaching error (real `bob capture-parse` output).
@@ -3872,7 +3872,7 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-new.json"
     elif [[ "${draft}" == "=#de" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-query.json"
-    elif [[ "${draft}" == "x =#de" ]]; then
+    elif [[ "${draft}" == "x =de" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-chain-query.json"
     elif [[ "${draft}" == "=#deep-work" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-existing.json"

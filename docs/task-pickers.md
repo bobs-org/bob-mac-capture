@@ -545,7 +545,7 @@ In the `pomodoro_start_name` context — the name part of a whole-item
   calm `Pick a Pomodoro to start, or type a new name` status instead of a
   doomed dry run; a caret on the `=<X>` suffix itself requests nothing. The
   list narrows as you type while the live preview already shows the resolved
-  session, and Return starts it. Under a `=#name` field while a session runs,
+  session, and Return starts it. Under a `=name` field while a session runs,
   Bob adds its additive top-level `override` object (`keeps_ledger` plus the
   running session) and the list reads as a swap picker: the status becomes
   `Pick a Pomodoro to take over CAPTURE's 0920–0945` (or

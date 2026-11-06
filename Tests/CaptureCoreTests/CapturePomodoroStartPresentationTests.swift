@@ -840,7 +840,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
                 [
                     ("pomodoro_close", 0, 1, "x"),
                     ("pomodoro_start", 2, 3, "="),
-                    ("pomodoro_name", 4, 6, "de"),
+                    ("pomodoro_name", 3, 5, "de"),
                 ]
             ),
             (
