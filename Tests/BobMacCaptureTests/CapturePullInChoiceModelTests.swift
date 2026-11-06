@@ -111,7 +111,8 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(choice.promptStatusText, "Choose tasks to pull in from 2 notes")
         XCTAssertEqual(model.statusText, "Choose tasks to pull in from 2 notes")
         XCTAssertEqual(choice.sections.map(\.title), ["Pull from ‹work›", "Pull from ‹dev›"])
-        XCTAssertEqual(choice.sections.map { $0.rows.compactMap(\.offerNumber) }, [[1, 2, 3], [4]])
+        XCTAssertEqual(
+            choice.sections.map { $0.rows.compactMap(\.offerNumber) }, [[1, 2, 3], [4]])
         XCTAssertTrue(choice.markedKeys.isEmpty)
 
         // Shift-Return stays explanatory and Esc leaves the draft unchanged.
@@ -148,10 +149,12 @@ final class CapturePullInChoiceModelTests: XCTestCase {
 
     func testRequiredChoiceFlatOffersKeepRequestedSourceSections() throws {
         let data = Data(try fixtureText("note-pull-move-choice.json").utf8)
-        guard case .failure(let failure) = try JSONDecoder().decode(
-            CaptureCommandResponse.self,
-            from: data
-        ) else {
+        guard
+            case .failure(let failure) = try JSONDecoder().decode(
+                CaptureCommandResponse.self,
+                from: data
+            )
+        else {
             return XCTFail("Expected Bob's pull_in_choice_required refusal")
         }
         XCTAssertEqual(failure.code, "pull_in_choice_required")
@@ -727,6 +730,302 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertFalse(model.editorInputLocked)
     }
 
+    func testStagingVerdictsWritesNothing() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        let previewCount = captureCallCount(try recordText(record))
+        XCTAssertEqual(previewCount, 1)
+
+        model.stagePullInDoneForHighlight()
+        model.beginPullInCancelForHighlight()
+        model.updatePullInReasonText("later")
+        model.restorePullInReason()
+        model.beginPullInCancelForHighlight()
+        model.updatePullInReasonText("later")
+        model.confirmPullInReason()
+
+        XCTAssertEqual(captureCallCount(try recordText(record)), previewCount)
+        XCTAssertTrue(model.pullInChoiceVisible)
+    }
+
+    func testVerdictOnlyCommitSendsNoneAndCompleteOffer() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, Self.alphaKey)
+        model.stagePullInDoneForHighlight()
+        XCTAssertEqual(model.pullInChoice?.primaryCommitLabel, "Close 1")
+        XCTAssertEqual(model.pullInChoice?.effectiveSelectionKeys, [])
+
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+        XCTAssertTrue(write.contains("--pull-in none"), write)
+        XCTAssertTrue(write.contains("--complete-offer \(Self.alphaKey)"), write)
+        XCTAssertFalse(write.contains("--pull-in \(Self.alphaKey)"), write)
+        XCTAssertFalse(write.contains("--cancel-offer"), write)
+    }
+
+    func testMixedCommitSendsPullInKeyAndVerdict() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.togglePullInOffer(Self.betaKey)
+        model.stagePullInDoneForRow(Self.alphaKey)
+        XCTAssertEqual(model.pullInChoice?.primaryCommitLabel, "Pull In 1 · Close 1")
+
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+        XCTAssertTrue(write.contains("--pull-in \(Self.betaKey)"), write)
+        XCTAssertTrue(write.contains("--complete-offer \(Self.alphaKey)"), write)
+        XCTAssertFalse(write.contains("--pull-in \(Self.alphaKey)"), write)
+    }
+
+    func testShiftReturnKeepsVerdictsIncludingCancelReason() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.beginPullInCancelForRow(Self.alphaKey)
+        model.updatePullInReasonText("rerouted")
+        model.confirmPullInReason()
+        model.stagePullInDoneForRow(Self.betaKey)
+
+        model.chooseNoPullInOffers()
+        try await waitUntil { !model.isSubmitting }
+
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(write.contains("--pull-in none"), write)
+        XCTAssertTrue(write.contains("--complete-offer \(Self.betaKey)"), write)
+        XCTAssertTrue(write.contains("--cancel-offer \(Self.alphaKey)=rerouted"), write)
+    }
+
+    func testControlReturnSubmitsPicksVerdictsAndOpenIntent() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.togglePullInOffer(Self.betaKey)
+        model.stagePullInDoneForRow(Self.alphaKey)
+        let controller = CapturePanelController(model: model)
+        var opened: [URL] = []
+        model.captureSuccessNotifier = { _, _, _ in }
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        XCTAssertTrue(controller.perform(.confirmPullInChoiceAndOpen))
+        try await waitUntil { !model.isSubmitting }
+
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(write.contains("--pull-in \(Self.betaKey)"), write)
+        XCTAssertTrue(write.contains("--complete-offer \(Self.alphaKey)"), write)
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(opened[0].host, "bob-open-notes")
+    }
+
+    func testReasonEditingRestoresPriorPullInAndConfirmsOnce() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.togglePullInOffer(Self.alphaKey)
+        XCTAssertEqual(model.pullInChoice?.markedKeys, [Self.alphaKey])
+
+        model.beginPullInCancelForRow(Self.alphaKey)
+        model.updatePullInReasonText("scratch")
+        model.restorePullInReason()
+        XCTAssertEqual(model.pullInChoice?.markedKeys, [Self.alphaKey])
+        XCTAssertNil(model.pullInChoice?.verdicts[Self.alphaKey])
+        XCTAssertNil(model.pullInChoice?.activeReasonKey)
+        XCTAssertFalse(model.pullInChoice?.outcomes.isEscArmed == true)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+
+        model.beginPullInCancelForRow(Self.alphaKey)
+        model.updatePullInReasonText("  because\nit moved  ")
+        model.confirmPullInReason()
+        XCTAssertEqual(model.pullInChoice?.stagedCancelReason(Self.alphaKey), "because it moved")
+        XCTAssertFalse(model.pullInChoice?.markedKeys.contains(Self.alphaKey) == true)
+        let highlight = model.pullInChoice?.highlightedKey
+        model.confirmPullInReason()
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, highlight)
+        XCTAssertEqual(model.pullInChoice?.stagedCancelReason(Self.alphaKey), "because it moved")
+
+        if var choice = model.pullInChoice {
+            choice.highlightedKey = Self.alphaKey
+            model.pullInChoice = choice
+        }
+        model.beginPullInCancelForHighlight()
+        XCTAssertNil(model.pullInChoice?.verdicts[Self.alphaKey])
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testTwoStepEscArmsDisarmsAndDiscardsWithoutWriting() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.stagePullInDoneForHighlight()
+        XCTAssertEqual(model.pullInChoice?.closeCount, 1)
+
+        model.cancelPullInChoiceFromKeyboard()
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(model.statusText, "Esc again to discard 1 close")
+        XCTAssertTrue(model.pullInChoice?.outcomes.isEscArmed == true)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+
+        model.disarmPullInDiscardForNativeKey()
+        XCTAssertFalse(model.pullInChoice?.outcomes.isEscArmed == true)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.cancelPullInChoiceFromKeyboard()
+        model.cancelPullInChoiceFromKeyboard()
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+        model.togglePullInOffer(Self.alphaKey)
+        XCTAssertEqual(model.pullInChoice?.closeCount, 0)
+        model.cancelPullInChoiceFromKeyboard()
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testStaleAndConflictReopenKeepStagedChoices() async throws {
+        for code in ["stale", "conflict"] {
+            let record = temporaryRecordURL()
+            let model = try await openOfferCloseChoice(
+                record: record,
+                extra: ["FAKE_BOB_OFFER_CLOSE_REFUSAL": code]
+            )
+            try stageMixedChoices(on: model)
+            let highlight = try XCTUnwrap(model.pullInChoice?.highlightedKey)
+            model.confirmPullInChoice()
+            try await waitUntil { !model.isSubmitting && model.pullInChoiceVisible }
+
+            let choice = try XCTUnwrap(model.pullInChoice)
+            XCTAssertEqual(choice.verdicts[Self.alphaKey], .cancel("rerouted"))
+            XCTAssertEqual(choice.markedKeys, [Self.betaKey])
+            XCTAssertEqual(choice.highlightedKey, highlight)
+            XCTAssertEqual(choice.stagedCancelReason(Self.alphaKey), "rerouted")
+            XCTAssertNotNil(choice.verdictRefusalMessage)
+            XCTAssertFalse(choice.verdictRefusalMessage?.isEmpty == true)
+            XCTAssertEqual(choice.errorMessage, choice.verdictRefusalMessage)
+            XCTAssertEqual(model.statusText, choice.verdictRefusalMessage)
+            XCTAssertFalse(model.statusText.contains("staged choice"))
+            XCTAssertEqual(writeCallCount(try recordText(record)), 1)
+            XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+        }
+    }
+
+    func testRefusedReopenAnnouncesLostChoices() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(
+            record: record,
+            extra: ["FAKE_BOB_OFFER_CLOSE_REFUSAL": "refused"]
+        )
+        try stageMixedChoices(on: model)
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting && model.pullInChoiceVisible }
+
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertTrue(model.statusText.contains("2 staged choices lost"), model.statusText)
+        XCTAssertNil(model.pullInChoice?.verdicts[Self.alphaKey])
+        XCTAssertFalse(model.pullInChoice?.markedKeys.contains(Self.betaKey) == true)
+        XCTAssertEqual(writeCallCount(try recordText(record)), 1)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+    }
+
+    func testLegacyStalePickRefreshReseedsWithoutRetryingWrite() async throws {
+        let record = temporaryRecordURL()
+        let writeFile = temporaryRecordURL()
+        try write(legacyStalePickFailure(), to: writeFile)
+        let model = makeOfferCloseModel(
+            record: record,
+            writeFile: writeFile,
+            dryRun: try fixtureText("capture-offer-close-preview.json"),
+            writeExit: "1"
+        )
+        model.plainDraft = "!sase:bar"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        try stageMixedChoices(on: model)
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting && model.pullInChoiceVisible }
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertEqual(choice.verdicts[Self.alphaKey], .cancel("rerouted"))
+        XCTAssertEqual(choice.markedKeys, [Self.betaKey])
+        XCTAssertEqual(choice.selectableKeys, [Self.alphaKey, Self.betaKey])
+        XCTAssertEqual(writeCallCount(try recordText(record)), 1)
+        XCTAssertEqual(dryRunCallCount(try recordText(record)), 2)
+    }
+
+    func testLegacyStalePickRefreshIgnoresDraftChange() async throws {
+        let record = temporaryRecordURL()
+        let writeFile = temporaryRecordURL()
+        try write(legacyStalePickFailure(), to: writeFile)
+        let model = makeOfferCloseModel(
+            record: record,
+            writeFile: writeFile,
+            dryRun: try fixtureText("capture-offer-close-preview.json"),
+            extra: ["FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS": "0.25"],
+            writeExit: "1"
+        )
+        model.plainDraft = "!sase:bar"
+        model.preview()
+        try await waitUntil(timeout: 5) { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        try stageMixedChoices(on: model)
+        model.confirmPullInChoice()
+        try await waitUntil { model.isPreviewing }
+        model.plainDraft = "edited after commit"
+        try await waitUntil(timeout: 5) { !model.isPreviewing }
+        XCTAssertNil(model.pullInChoice)
+        XCTAssertEqual(writeCallCount(try recordText(record)), 1)
+    }
+
+    func testStaleGuardDismissesWithoutArmingEscOrWriting() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(record: record)
+        model.stagePullInDoneForHighlight()
+        XCTAssertEqual(model.pullInChoice?.closeCount, 1)
+        // Bypass setPlainDraft, which already drops the card, so Return hits
+        // commitPullInChoice's stale guard with the card still on screen.
+        model.attributedDraft = AttributedString("changed without editor callback")
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertNotEqual(model.plainDraft, model.pullInChoice?.draftSnapshot)
+        model.confirmPullInChoice()
+
+        XCTAssertFalse(model.pullInChoiceVisible)
+        XCTAssertNotEqual(model.statusText, "Esc again to discard 1 close")
+        XCTAssertEqual(model.statusText, "Successor choice canceled")
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+    }
+
+    func testOldBobCannotStageVerdictsOrEmitCloseArgv() async throws {
+        let record = temporaryRecordURL()
+        let model = try await openOfferCloseChoice(
+            record: record,
+            dryRunName: "capture-offer-close-legacy.json"
+        )
+        XCTAssertFalse(model.pullInChoice?.closeSupported == true)
+        model.stagePullInDoneForHighlight()
+        model.beginPullInCancelForHighlight()
+        XCTAssertTrue(model.pullInChoice?.verdicts.isEmpty == true)
+        XCTAssertEqual(model.statusText, "Closing offers needs a newer bob")
+
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+        let write = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertFalse(write.contains("--complete-offer"), write)
+        XCTAssertFalse(write.contains("--cancel-offer"), write)
+    }
+
+    private static let alphaKey = "deps.md#^alpha"
+    private static let betaKey = "deps.md#^beta"
     private static let projectOfferDraft = "Finish the exit packet @cash:goog-exit@"
 
     /// Previews the generated real-Bob project-offer response and opens its
@@ -744,6 +1043,78 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertTrue(model.pullInChoiceVisible)
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
         return model
+    }
+
+    private func stageMixedChoices(on model: CapturePanelModel) throws {
+        model.beginPullInCancelForRow(Self.alphaKey)
+        model.updatePullInReasonText("rerouted")
+        model.confirmPullInReason()
+        model.togglePullInOffer(Self.betaKey)
+        XCTAssertEqual(model.pullInChoice?.verdicts[Self.alphaKey], .cancel("rerouted"))
+        XCTAssertEqual(model.pullInChoice?.markedKeys, [Self.betaKey])
+    }
+
+    private func openOfferCloseChoice(
+        record: URL,
+        extra: [String: String] = [:],
+        dryRunName: String = "capture-offer-close-preview.json",
+        writeName: String = "capture-offer-close-write.json",
+        writeExit: String = "0",
+        draft: String = "!sase:bar"
+    ) async throws -> CapturePanelModel {
+        let writeFile = temporaryRecordURL()
+        try write(fixtureText(writeName), to: writeFile)
+        let model = makeOfferCloseModel(
+            record: record,
+            writeFile: writeFile,
+            dryRun: try fixtureText(dryRunName),
+            extra: extra,
+            writeExit: writeExit
+        )
+        model.plainDraft = draft
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 1)
+        return model
+    }
+
+    private func makeOfferCloseModel(
+        record: URL,
+        writeFile: URL,
+        dryRun: String,
+        extra: [String: String] = [:],
+        writeExit: String = "0"
+    ) -> CapturePanelModel {
+        var environment = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+            "BOB_DIR": "/tmp/offer-close-test-\(UUID().uuidString)",
+            "FAKE_BOB_RECORD_PATH": record.path,
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": dryRun,
+            "FAKE_BOB_CAPTURE_WRITE_STDOUT_FILE": writeFile.path,
+            "FAKE_BOB_CAPTURE_WRITE_EXIT": writeExit,
+        ]
+        for (key, value) in extra {
+            environment[key] = value
+        }
+        return CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: environment
+            ),
+            debounceNanoseconds: 0
+        )
+    }
+
+    private func write(_ text: String, to url: URL) throws {
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func legacyStalePickFailure() -> String {
+        #"{"ok":false,"error":"stale, unknown, or out-of-range --pull-in pick: 99"}"#
     }
 
     private func makeModel(record: URL, stdout: String, exit: String = "0") -> CapturePanelModel {
@@ -837,8 +1208,19 @@ final class CapturePullInChoiceModelTests: XCTestCase {
 }
 
 private func captureCallCount(_ record: String) -> Int {
+    captureBlocks(record).count
+}
+
+private func captureBlocks(_ record: String) -> [String] {
     record.components(separatedBy: "argv=")
         .dropFirst()
         .filter { $0.hasPrefix("capture ") }
-        .count
+}
+
+private func writeCallCount(_ record: String) -> Int {
+    captureBlocks(record).filter { !$0.contains("--dry-run") }.count
+}
+
+private func dryRunCallCount(_ record: String) -> Int {
+    captureBlocks(record).filter { $0.contains("--dry-run") }.count
 }

@@ -3831,19 +3831,45 @@ final class CapturePanelModel: ObservableObject {
             && context.generation == analysisGeneration
     }
 
+    private func showReseededPullInChoice(
+        _ choice: CapturePullInChoiceState,
+        error: String,
+        lostCount: Int,
+        status: String? = nil
+    ) {
+        var next = choice
+        next.verdictRefusalMessage = error
+        next.errorMessage = error
+        pullInChoice = next
+        editorInputLocked = true
+        completionResponse = nil
+        pickerChip = nil
+        requestFocus(.pullInOfferList)
+        let announcement: String
+        if let status {
+            announcement = status
+        } else if lostCount > 0 {
+            announcement =
+                "\(error) · \(lostCount) staged choice\(lostCount == 1 ? "" : "s") lost"
+        } else {
+            announcement = error
+        }
+        announceStatus(announcement)
+    }
+
     private func reopenPullInChoiceAfterOfferRefusal(
         failure: CaptureCommandFailure,
         draft: String,
         processClientIdentity: String,
         openAfterCapture: Bool,
-        choiceSeed: String
+        choiceSeed: String,
+        remembered: CapturePullInChoiceState?
     ) -> Bool {
         guard plainDraft == draft,
             processClient?.identityToken == processClientIdentity
         else {
             return false
         }
-        let remembered = activeInboxRouteSubmitContext?.pullInChoiceForBack
         guard var choice = remembered else {
             return false
         }
@@ -3852,23 +3878,9 @@ final class CapturePanelModel: ObservableObject {
         // Keep the original capability proof; fresh descriptors arrive via
         // the refreshed offers. Never silently discard a still-present
         // staged verdict: it stays visible with Bob's error until changed.
-        var lost = 0
         if !failure.offers.isEmpty {
-            lost = choice.refresh(offers: failure.offers)
-            choice.verdictRefusalMessage = failure.error
-            choice.errorMessage = failure.error
-            pullInChoice = choice
-            editorInputLocked = true
-            requestFocus(.pullInOfferList)
-            let announcement: String
-            if lost > 0 {
-                announcement =
-                    "\(failure.error) · \(lost) staged choice\(lost == 1 ? "" : "s") lost"
-            } else {
-                announcement = failure.error
-            }
-            statusText = failure.error
-            announceStatus(announcement)
+            let lost = choice.refresh(offers: failure.offers)
+            showReseededPullInChoice(choice, error: failure.error, lostCount: lost)
             return true
         }
         // No structured offers: fall through to the dry-run refresh path.
@@ -3877,7 +3889,8 @@ final class CapturePanelModel: ObservableObject {
             draft: draft,
             processClientIdentity: processClientIdentity,
             openAfterCapture: openAfterCapture,
-            choiceSeed: choiceSeed)
+            choiceSeed: choiceSeed,
+            remembered: remembered)
     }
 
     private func reopenPullInChoiceAfterStalePick(
@@ -3885,7 +3898,8 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         processClientIdentity: String,
         openAfterCapture: Bool,
-        choiceSeed: String
+        choiceSeed: String,
+        remembered: CapturePullInChoiceState?
     ) -> Bool {
         guard plainDraft == draft,
             let processClient,
@@ -3893,7 +3907,7 @@ final class CapturePanelModel: ObservableObject {
         else {
             return false
         }
-        guard let remembered = activeInboxRouteSubmitContext?.pullInChoiceForBack else {
+        guard let remembered else {
             return false
         }
         // Write-free refusal: at most one fresh dry-run of the same guarded
@@ -3910,14 +3924,17 @@ final class CapturePanelModel: ObservableObject {
                     readClipboard: true,
                     priorityRollSeed: choiceSeed)
                 await MainActor.run {
-                    guard let self,
+                    guard let self else { return }
+                    let sameGeneration = self.analysisGeneration == generation
+                    if sameGeneration {
+                        self.isPreviewing = false
+                    }
+                    guard sameGeneration,
                         self.plainDraft == draft,
-                        self.processClient?.identityToken == processClientIdentity,
-                        self.analysisGeneration == generation
+                        self.processClient?.identityToken == processClientIdentity
                     else {
                         return
                     }
-                    self.isPreviewing = false
                     switch response {
                     case .success(let success):
                         var choice = remembered
@@ -3961,45 +3978,37 @@ final class CapturePanelModel: ObservableObject {
                             return
                         }
                         let lost = choice.refresh(offers: offers)
-                        choice.verdictRefusalMessage = failure.error
-                        choice.errorMessage = failure.error
-                        self.pullInChoice = choice
-                        self.editorInputLocked = true
-                        self.requestFocus(.pullInOfferList)
-                        if lost > 0 {
-                            self.announceStatus(
-                                "\(failure.error) · \(lost) staged choice\(lost == 1 ? "" : "s") lost")
-                        } else {
-                            self.announceStatus(failure.error)
-                        }
-                        self.statusText = failure.error
+                        self.showReseededPullInChoice(
+                            choice, error: failure.error, lostCount: lost)
                     case .failure(let refreshFailure):
-                        self.isPreviewing = false
-                        self.pullInChoice = remembered
+                        self.showReseededPullInChoice(
+                            remembered,
+                            error: failure.error,
+                            lostCount: 0,
+                            status: "\(failure.error) · refresh failed: \(refreshFailure.error)")
                         self.errorMessage = failure.error
                         self.errorCode = failure.code
-                        self.statusText = failure.error
-                        self.announceStatus(
-                            "\(failure.error) · refresh failed: \(refreshFailure.error)")
                     }
                 }
             } catch {
                 await MainActor.run { [weak self] in
-                    guard let self,
+                    guard let self else { return }
+                    let sameGeneration = self.analysisGeneration == generation
+                    if sameGeneration {
+                        self.isPreviewing = false
+                    }
+                    guard sameGeneration,
                         self.plainDraft == draft,
-                        self.processClient?.identityToken == processClientIdentity,
-                        self.analysisGeneration == generation
+                        self.processClient?.identityToken == processClientIdentity
                     else {
                         return
                     }
                     // Timeout/unknown outcome is never a write-free refusal:
                     // keep the error and remembered choices available.
-                    self.isPreviewing = false
-                    self.pullInChoice = remembered
+                    self.showReseededPullInChoice(
+                        remembered, error: failure.error, lostCount: 0)
                     self.errorMessage = failure.error
                     self.errorCode = failure.code
-                    self.statusText = failure.error
-                    self.announceStatus(failure.error)
                 }
             }
         }
@@ -4294,7 +4303,7 @@ final class CapturePanelModel: ObservableObject {
               choice.generation == analysisGeneration,
               choice.pullIn.supported
         else {
-            cancelPullInChoiceFromKeyboard()
+            dismissPullInChoice(status: "Successor choice canceled")
             return
         }
         // Never emit verdicts without the matching preview capability proof.
@@ -4343,13 +4352,17 @@ final class CapturePanelModel: ObservableObject {
             announceStatus(text)
             return
         }
+        dismissPullInChoice(status: "Successor choice canceled")
+    }
+
+    private func dismissPullInChoice(status: String) {
         pullInChoice = nil
         errorMessage = nil
         errorCode = nil
         if restoreMoveChoiceForBack() { return }
         clearEditorInputLockIfFree()
         requestFocus(.editor)
-        statusText = "Successor choice canceled"
+        statusText = status
     }
 
     func disarmPullInDiscardForNativeKey() {
@@ -14559,7 +14572,8 @@ final class CapturePanelModel: ObservableObject {
                     draft: draft,
                     processClientIdentity: processClientIdentity,
                     openAfterCapture: openAfterCapture,
-                    choiceSeed: choiceSeed
+                    choiceSeed: choiceSeed,
+                    remembered: routeContext?.pullInChoiceForBack
                 ) {
                     return
                 }
@@ -14572,7 +14586,8 @@ final class CapturePanelModel: ObservableObject {
                     draft: draft,
                     processClientIdentity: processClientIdentity,
                     openAfterCapture: openAfterCapture,
-                    choiceSeed: choiceSeed
+                    choiceSeed: choiceSeed,
+                    remembered: routeContext?.pullInChoiceForBack
                 ) {
                     return
                 }

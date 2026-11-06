@@ -277,6 +277,92 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         XCTAssertEqual(seeds[1], seeds[2])
     }
 
+    func testVerdictCommitKeepsChoicesThroughInboxRouteConfirmation() async throws {
+        let record = temporaryURL()
+        let responseFile = temporaryURL()
+        try write(fixture("inbox-route-choice-required.json"), to: responseFile)
+        let model = makeModel(
+            record: record,
+            responseFile: responseFile,
+            dryRunResponse: pullInAndRoutePreviewWithClose()
+        )
+        model.plainDraft = "!dev:prereq\n\n@mac_inbox:route-task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let offer = try XCTUnwrap(model.pullInChoice?.selectableKeys.first)
+        model.beginPullInCancelForRow(offer)
+        model.updatePullInReasonText("parked")
+        model.confirmPullInReason()
+        var opened: [URL] = []
+        model.captureSuccessNotifier = { _, _, _ in }
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        model.confirmPullInChoice(openAfterCapture: true)
+        try await waitUntil { model.inboxRouteChoiceVisible }
+
+        XCTAssertEqual(model.plainDraft, "!dev:prereq\n\n@mac_inbox:route-task")
+        XCTAssertEqual(opened, [])
+        try write(fixture("inbox-route-moved.json"), to: responseFile)
+        model.selectInboxRouteDestination("health.md")
+        model.confirmInboxRouteChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let routeSubmit = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(routeSubmit.contains("--pull-in none"), routeSubmit)
+        XCTAssertTrue(routeSubmit.contains("--cancel-offer \(offer)=parked"), routeSubmit)
+        XCTAssertTrue(
+            routeSubmit.contains("--inbox-route mac_inbox.md#^route-task=health.md"),
+            routeSubmit)
+        let seeds = captureBlocks(try recordText(record)).compactMap { block in
+            block.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=").dropFirst()
+                .first?.components(separatedBy: "\n").first
+        }
+        XCTAssertGreaterThanOrEqual(seeds.count, 2)
+        XCTAssertEqual(seeds.dropFirst().first, seeds.last)
+        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(opened[0].host, "bob-open-notes")
+    }
+
+    func testRouteBackRestoresPullInVerdictsWithoutHighlightFallback() async throws {
+        let record = temporaryURL()
+        let responseFile = temporaryURL()
+        try write(fixture("inbox-route-choice-required.json"), to: responseFile)
+        let model = makeModel(
+            record: record,
+            responseFile: responseFile,
+            dryRunResponse: pullInAndRoutePreviewWithClose()
+        )
+        model.plainDraft = "!dev:prereq\n\n@mac_inbox:route-task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let offer = try XCTUnwrap(model.pullInChoice?.selectableKeys.first)
+        model.beginPullInCancelForRow(offer)
+        model.updatePullInReasonText("parked")
+        model.confirmPullInReason()
+        XCTAssertEqual(model.pullInChoice?.effectiveSelectionKeys, [])
+        model.confirmPullInChoice()
+        try await waitUntil { model.inboxRouteChoiceVisible }
+        XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+
+        model.backInboxRouteChoice()
+        let restored = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertFalse(model.inboxRouteChoiceVisible)
+        XCTAssertEqual(restored.stagedCancelReason(offer), "parked")
+        XCTAssertEqual(restored.effectiveSelectionKeys, [])
+        XCTAssertTrue(restored.canCommit)
+        XCTAssertEqual(captureCallCount(try recordText(record)), 2)
+    }
+
     private func makeModel(
         record: URL,
         responseFile: URL,
@@ -362,6 +448,12 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
     private func oldBobResponse(dryRun: Bool) -> String {
         #"""
         {"ok":true,"dry_run":\#(dryRun ? "true" : "false"),"routed":true,"route_label":"cash.md","relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Task","task_line":"- [ ] #task Task","kind":"task","created":"2026-10-24","placement":"inserted"}
+        """#
+    }
+
+    private func pullInAndRoutePreviewWithClose() -> String {
+        #"""
+        {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"dev.md","target":"/tmp/dev.md","text":"!dev:prereq","task_line":"- [x] #task Prereq ^prereq","kind":"task_complete","created":"2026-10-24","placement":"updated","pull_in":{"supported":true,"offer_count":1,"choice":null,"picked_count":0,"close":{"supported":true,"done_count":0,"cancelled_count":0}},"task_complete":{"raw":"!dev:prereq","unblocked":[{"note_path":"dev.md","block_id":"dep","line":6,"text":"Dependent","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"dev.md#^dep","n":1,"group":"hand_off","destination":{"day_file":"20261024.md","entry_name":"WORK","entry_role":"current"},"close":{"complete":true,"cancel":true,"complete_consequence":"Completes Dependent","cancel_consequence":"Cancels Dependent","unblocks":0}}}]},"inbox_route":{"supported":true,"candidate_count":1,"routed_count":0,"kept_count":0,"candidates":[{"key":"mac_inbox.md#^route-task","n":1,"note_path":"mac_inbox.md","inbox":"mac_inbox","block_id":"route-task","line":6,"text":"Route me","previous_status_symbol":" ","previous_status_name":"Ready","status_symbol":"*","status_name":"Next","outcome":"pending"}],"destinations":[{"relative_path":"health.md","route":"health","label":"health","kind":"area","blocked":false}]}}
         """#
     }
 

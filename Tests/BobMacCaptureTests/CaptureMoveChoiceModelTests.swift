@@ -73,8 +73,16 @@ final class CaptureMoveChoiceModelTests: XCTestCase {
         let text = try calls(record)
         XCTAssertTrue(text.contains("--move-in \(selection) --pull-in none"))
         XCTAssertTrue(text.contains("--inbox-route mac_inbox.md#^route-task="))
-        let seeds = text.split(separator: "\n").filter { $0.hasPrefix("BOB_PRIORITY_ROLL_SEED=") }
-        XCTAssertEqual(Set(seeds).count, 1)
+        // Parse/rewrite/completion log an empty seed; the contract is one
+        // roll seed across the capture writes in this chain.
+        let captureBlocks = text.components(separatedBy: "argv=")
+            .dropFirst()
+            .filter { $0.hasPrefix("capture ") }
+        let seeds = captureBlocks.compactMap { block in
+            block.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=").dropFirst()
+                .first?.components(separatedBy: "\n").first
+        }.filter { !$0.isEmpty }
+        XCTAssertEqual(Set(seeds).count, 1, "capture seeds=\(seeds)")
         XCTAssertEqual(model.plainDraft, "")
     }
 

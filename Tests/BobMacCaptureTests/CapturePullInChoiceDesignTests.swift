@@ -356,6 +356,99 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         }
     }
 
+    func testRenderDoneRowWithUnblocks() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-done") { model in
+            installCloseCard(model, unblocks: 3)
+            model.stagePullInDoneForRow("opaque#1^suffix")
+        }
+    }
+
+    func testRenderCancelWithReasonRow() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-cancel-reason") { model in
+            installCloseCard(model)
+            model.beginPullInCancelForRow("opaque#1^suffix")
+            model.updatePullInReasonText("Rerouted to next week")
+            model.confirmPullInReason()
+        }
+    }
+
+    func testRenderActiveReasonEditorRow() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-reason-editor") { model in
+            installCloseCard(model)
+            model.beginPullInCancelForRow("opaque#1^suffix")
+        }
+    }
+
+    func testRenderMixedFooterCounts() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-mixed-footer") { model in
+            installCloseCard(model, extra: true)
+            model.togglePullInOffer("opaque#2^suffix")
+            model.stagePullInDoneForRow("opaque#1^suffix")
+            model.beginPullInCancelForRow("opaque#3^suffix")
+            model.updatePullInReasonText("Parked")
+            model.confirmPullInReason()
+        }
+    }
+
+    func testRenderEscArmedStrip() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-esc-armed") { model in
+            installCloseCard(model)
+            model.stagePullInDoneForRow("opaque#1^suffix")
+            model.cancelPullInChoiceFromKeyboard()
+        }
+    }
+
+    func testRenderRefusalStrip() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-refusal") { model in
+            installCloseCard(model)
+            model.stagePullInDoneForRow("opaque#1^suffix")
+            guard var choice = model.pullInChoice else {
+                return
+            }
+            choice.verdictRefusalMessage = "offer 1 cannot be marked done: the row changed"
+            model.pullInChoice = choice
+        }
+    }
+
+    private func installCloseCard(
+        _ model: CapturePanelModel,
+        unblocks: Int = 0,
+        extra: Bool = false
+    ) {
+        var offers = [
+            cardOffer(
+                n: 1, text: "Re-launch all failed agents",
+                close: closeDescriptor(unblocks: unblocks)),
+            cardOffer(n: 2, text: "Book flights", close: closeDescriptor()),
+        ]
+        if extra {
+            offers.append(cardOffer(n: 3, text: "Ship the outcome", close: closeDescriptor()))
+        }
+        model.installPullInChoiceForPreviews(
+            offers: offers,
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: offers.count,
+                close: CapturePullInClose(supported: true)
+            ),
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
+            ),
+            draft: "!task with dependents"
+        )
+    }
+
+    private func closeDescriptor(unblocks: Int = 0) -> TaskCompleteOfferClose {
+        TaskCompleteOfferClose(
+            complete: true,
+            cancel: true,
+            completeConsequence: "✓ Completes “T” · Ready → Done",
+            cancelConsequence: "⊘ Cancels “T” · Ready → Cancelled",
+            unblocks: unblocks
+        )
+    }
+
     private func writeCardFixtures(
         name: String,
         configure: (CapturePanelModel) -> Void
@@ -393,7 +486,8 @@ extension XCTestCase {
         cause: String? = nil,
         trigger: String? = nil,
         blockIDNeeded: Bool = false,
-        hideRemoved: Bool = false
+        hideRemoved: Bool = false,
+        close: TaskCompleteOfferClose? = nil
     ) -> TaskCompleteUnblocked {
         TaskCompleteUnblocked(
             notePath: project ?? "sase.md",
@@ -419,7 +513,8 @@ extension XCTestCase {
                     entryRole: "next_up",
                     fallback: false
                 ),
-                blockIDNeeded: blockIDNeeded
+                blockIDNeeded: blockIDNeeded,
+                close: close
             ),
             trigger: trigger,
             hideRemoved: hideRemoved

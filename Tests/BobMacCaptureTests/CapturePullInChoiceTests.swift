@@ -210,6 +210,54 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(36), context: promptWins), .submitTaskIDPrompt)
     }
 
+    func testRouterMapsOfferCloseChordsAndReasonFieldKeys() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(pullInChoiceVisible: true)
+        XCTAssertEqual(
+            router.command(for: keyEvent(7, modifiers: .control), context: context),
+            .stagePullInDone)
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(7, modifiers: [.control, .shift]), context: context),
+            .beginPullInCancel)
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(7, modifiers: .control, repeat: true), context: context),
+            .consumeKey)
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(7, modifiers: [.control, .shift], repeat: true),
+                context: context),
+            .consumeKey)
+        XCTAssertNil(router.command(for: keyEvent(7, modifiers: .command), context: context))
+        XCTAssertNil(router.command(for: keyEvent(7), context: context))
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(7, modifiers: [.control, .option]), context: context))
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(7, modifiers: [.control, .command]), context: context))
+
+        let reason = CaptureKeyRoutingContext(
+            pullInChoiceVisible: true, pullInReasonFocused: true)
+        XCTAssertEqual(
+            router.command(for: keyEvent(36), context: reason), .confirmPullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(76), context: reason), .confirmPullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(53), context: reason), .restorePullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(33, modifiers: .control), context: reason),
+            .restorePullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(36, repeat: true), context: reason), .consumeKey)
+        XCTAssertNil(router.command(for: keyEvent(36, modifiers: .shift), context: reason))
+        XCTAssertNil(router.command(for: keyEvent(36, modifiers: .control), context: reason))
+        XCTAssertNil(router.command(for: keyEvent(49), context: reason))
+        XCTAssertNil(router.command(for: keyEvent(7, modifiers: .control), context: reason))
+        XCTAssertNil(router.command(for: keyEvent(0, modifiers: .command), context: reason))
+    }
+
     @MainActor
     func testControllerDispatchMovesMarksAndCancelsOnlyTheChoice() {
         let offers = offers(count: 3)
@@ -1162,7 +1210,8 @@ final class CapturePullInChoiceTests: XCTestCase {
             items.map { $0.action },
             ["Move", "Mark", "All", "Done", "Cancel", "Back", "Pull In & Open"])
         XCTAssertEqual(
-            CapturePullInChoiceFooter.hintItems(openAfterCapture: true).map { $0.keys },
+            CapturePullInChoiceFooter.hintItems(openAfterCapture: true, closeSupported: true)
+                .map { $0.keys },
             ["⌃N ⌃P", "space", "⌘A", "⌃X", "⌃⇧X", "esc"]
         )
         XCTAssertEqual(
