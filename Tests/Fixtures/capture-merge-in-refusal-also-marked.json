@@ -1,0 +1,1 @@
+{"code":"merge_in_source_also_marked","error":"capture item 1 starting on line 1: that source merges into the new task; it can't also be its prerequisite/dependent/relation","item":1,"ok":false,"span":{"end":28,"start":18}}

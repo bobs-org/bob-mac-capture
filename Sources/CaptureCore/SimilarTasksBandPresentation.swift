@@ -77,7 +77,7 @@ public enum SimilarTasksBandPresentation {
                 return "Prerequisite"
             case .blockedTask:
                 return "Blocked by this"
-            case .parent, .unknown:
+            case .parent, .mergeIn, .unknown:
                 break
             }
         }

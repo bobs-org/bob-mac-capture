@@ -298,7 +298,9 @@ public enum SimilarTasksBandPolicy {
         switch link {
         case .relation, .dependency, .blockedTask, .parent:
             true
-        case .unknown:
+        case .mergeIn, .unknown:
+            // Merge-in sources stay out of Similar tasks; Bob lists them
+            // under `linked` and never in `matches`.
             false
         }
     }

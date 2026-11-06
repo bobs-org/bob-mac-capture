@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"warnings":[],"items":[{"index":0,"mode":"task","range":{"start":0,"end":24},"marker_at":12,"discard_range":{"start":0,"end":24},"matches":[],"linked":[{"key":"inbox.md#aaa","link":"merge_in"}]}]}

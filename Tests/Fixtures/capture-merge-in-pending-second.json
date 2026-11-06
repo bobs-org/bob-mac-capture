@@ -1,0 +1,1 @@
+{"code":"incomplete_merge_in","error":"capture item 1 starting on line 1: pick tasks to merge in after <, or write \\< to keep it","merge_in_pending":{"item":1,"need":"merge_in_source","sources":[{"block_id":"aaa","line":5,"marker":"@inbox+aaa","mergeable":true,"path":"inbox.md","status_name":"Ready","status_symbol":" ","title":"Alpha task"}]},"ok":false}

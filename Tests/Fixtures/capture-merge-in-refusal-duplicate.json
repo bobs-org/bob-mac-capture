@@ -1,0 +1,1 @@
+{"code":"duplicate_capture_target","error":"capture item 1 starting on line 1: `@inbox+aaa` names ^aaa twice on this line; name each task once","ok":false}

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":15,"input":"New outcome <","body":"New outcome","mode":"task","route":null,"section":null,"block_id":null,"needs":["merge_in_source"],"spans":[{"start":12,"end":13,"kind":"merge_in_arrow"},{"start":13,"end":13,"kind":"interactive_placeholder"}],"diagnostics":[],"merge_in":{"arrow":{"start":12,"end":13},"sources":[]}}

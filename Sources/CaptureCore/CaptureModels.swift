@@ -264,6 +264,9 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let dependencyTarget: DependencyOwner?
     /// Additive template parse contract; absent in older Bob and for ordinary drafts.
     public let template: CaptureParseTemplate?
+    /// Additive first-item `<` merge-in clause, when the first item carries
+    /// one. Older Bob omits the key; missing or malformed decodes as nil.
+    public let mergeIn: CaptureMergeIn?
 
     public init(
         ok: Bool,
@@ -294,7 +297,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         blockedTasks: [CaptureParseRelationshipMarker] = [],
         relations: [CaptureParseRelationshipMarker] = [],
         dependencyTarget: DependencyOwner? = nil,
-        template: CaptureParseTemplate? = nil
+        template: CaptureParseTemplate? = nil,
+        mergeIn: CaptureMergeIn? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -328,6 +332,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.relations = relations
         self.dependencyTarget = dependencyTarget
         self.template = template
+        self.mergeIn = mergeIn
     }
 
     public init(from decoder: Decoder) throws {
@@ -400,6 +405,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             forKey: .dependencyTarget
         )
         template = (try? container.decodeIfPresent(CaptureParseTemplate.self, forKey: .template)) ?? nil
+        mergeIn = (try? container.decodeIfPresent(CaptureMergeIn.self, forKey: .mergeIn)) ?? nil
     }
 
     private static func normalizedSubBulletDepths(
@@ -456,6 +462,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case relations
         case dependencyTarget = "dependency_target"
         case template
+        case mergeIn = "merge_in"
     }
 }
 
@@ -521,6 +528,9 @@ public struct CaptureParseItem: Codable, Equatable {
     public let dependencyTarget: DependencyOwner?
     /// Additive row metadata for template parse items; omitted by older Bob.
     public let templateRow: CaptureTemplateRow?
+    /// Additive `<` merge-in clause for this item, when claimed. Older Bob
+    /// omits the key; missing or malformed decodes as nil.
+    public let mergeIn: CaptureMergeIn?
 
     public init(
         index: Int,
@@ -546,7 +556,8 @@ public struct CaptureParseItem: Codable, Equatable {
         blockedTasks: [CaptureParseRelationshipMarker] = [],
         relations: [CaptureParseRelationshipMarker] = [],
         dependencyTarget: DependencyOwner? = nil,
-        templateRow: CaptureTemplateRow? = nil
+        templateRow: CaptureTemplateRow? = nil,
+        mergeIn: CaptureMergeIn? = nil
     ) {
         self.index = index
         self.range = range
@@ -572,6 +583,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.relations = relations
         self.dependencyTarget = dependencyTarget
         self.templateRow = templateRow
+        self.mergeIn = mergeIn
     }
 
     public init(from decoder: Decoder) throws {
@@ -629,6 +641,8 @@ public struct CaptureParseItem: Codable, Equatable {
         )
         templateRow =
             (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
+        mergeIn =
+            (try? container.decodeIfPresent(CaptureMergeIn.self, forKey: .mergeIn)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -656,6 +670,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case relations
         case dependencyTarget = "dependency_target"
         case templateRow = "template_row"
+        case mergeIn = "merge_in"
     }
 }
 
@@ -1318,17 +1333,24 @@ public struct CaptureDiagnostic: Codable, Equatable {
     public let code: String
     public let message: String
     public let range: CaptureRange?
+    /// Additive explicit rewrite Bob authors for merge-in diagnostics
+    /// (`merge_in_extra_text`, `merge_in_arrow_spacing`,
+    /// `merge_in_needs_new_task`). Omitted otherwise; malformed values
+    /// degrade to nil so the diagnostic itself still decodes.
+    public let rewrite: CaptureDiagnosticRewrite?
 
     public init(
         severity: String,
         code: String,
         message: String,
-        range: CaptureRange? = nil
+        range: CaptureRange? = nil,
+        rewrite: CaptureDiagnosticRewrite? = nil
     ) {
         self.severity = severity
         self.code = code
         self.message = message
         self.range = range
+        self.rewrite = rewrite
     }
 
     public init(from decoder: Decoder) throws {
@@ -1354,6 +1376,8 @@ public struct CaptureDiagnostic: Codable, Equatable {
                 range = nil
             }
         }
+        rewrite =
+            (try? container.decodeIfPresent(CaptureDiagnosticRewrite.self, forKey: .rewrite)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1361,6 +1385,7 @@ public struct CaptureDiagnostic: Codable, Equatable {
         case code
         case message
         case range
+        case rewrite
     }
 }
 
@@ -2287,19 +2312,26 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
     /// (`docs/task-dependencies.md` §12.5). Older Bob omits it; a malformed
     /// value decodes as nil so one bad line cannot wipe every block.
     public let reason: String?
+    /// Additive merge origin: `"<relative_path>#^<block_id>"` naming the
+    /// merge source this row landed under. Present only on rows a `<` or
+    /// `>` merge in this capture wrote; omitted elsewhere. Older Bob omits
+    /// it entirely.
+    public let origin: String?
 
     public init(
         text: String,
         depth: Int = 0,
         change: CapturePomodoroBlockChange = .unchanged,
         before: String? = nil,
-        reason: String? = nil
+        reason: String? = nil,
+        origin: String? = nil
     ) {
         self.text = text
         self.depth = depth
         self.change = change
         self.before = before
         self.reason = reason
+        self.origin = origin
     }
 
     public init(from decoder: Decoder) throws {
@@ -2313,6 +2345,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
             ) ?? .unchanged
         before = try container.decodeIfPresent(String.self, forKey: .before)
         reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? nil
+        origin = (try? container.decodeIfPresent(String.self, forKey: .origin)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2321,6 +2354,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         case change
         case before
         case reason
+        case origin
     }
 }
 
@@ -7815,6 +7849,10 @@ public struct CaptureCommandFailure: Codable, Equatable {
     /// Read-only resolved source context for an unfinished capture transfer.
     /// Older Bob omits it; malformed additive data degrades to nil.
     public let transferPending: CaptureTransferPending?
+    /// Read-only resolved source context for an unfinished merge-in whose
+    /// sources are still being typed (`incomplete_merge_in`). Older Bob
+    /// omits it; malformed additive data degrades to nil.
+    public let mergeInPending: CaptureMergeInPending?
     public let offers: [TaskCompleteUnblocked]
     /// Additive batch-level inbox-route payload on
     /// `inbox_route_choice_required`, `inbox_route_refused`, and
@@ -7849,6 +7887,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         pullIn: CapturePullIn? = nil,
         notePull: CaptureNotePull? = nil,
         transferPending: CaptureTransferPending? = nil,
+        mergeInPending: CaptureMergeInPending? = nil,
         offers: [TaskCompleteUnblocked] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
@@ -7860,6 +7899,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.pullIn = pullIn
         self.notePull = notePull
         self.transferPending = transferPending
+        self.mergeInPending = mergeInPending
         self.offers = offers
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
@@ -7875,6 +7915,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         transferPending =
             (try? container.decodeIfPresent(CaptureTransferPending.self, forKey: .transferPending))
+            ?? nil
+        mergeInPending =
+            (try? container.decodeIfPresent(CaptureMergeInPending.self, forKey: .mergeInPending))
             ?? nil
         offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
         inboxRoute =
@@ -7892,6 +7935,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case pullIn = "pull_in"
         case notePull = "note_pull"
         case transferPending = "transfer_pending"
+        case mergeInPending = "merge_in_pending"
         case offers
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"

@@ -205,6 +205,7 @@ public enum CaptureRelatedLinkKind: Equatable, Sendable {
     case dependency
     case blockedTask
     case parent
+    case mergeIn
     case unknown(String)
 
     public init(_ value: String) {
@@ -213,6 +214,7 @@ public enum CaptureRelatedLinkKind: Equatable, Sendable {
         case "dependency": self = .dependency
         case "blocked_task": self = .blockedTask
         case "parent": self = .parent
+        case "merge_in": self = .mergeIn
         default: self = .unknown(value)
         }
     }
@@ -223,6 +225,7 @@ public enum CaptureRelatedLinkKind: Equatable, Sendable {
         case .dependency: "dependency"
         case .blockedTask: "blocked_task"
         case .parent: "parent"
+        case .mergeIn: "merge_in"
         case .unknown(let value): value
         }
     }
