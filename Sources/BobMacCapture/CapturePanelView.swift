@@ -1251,6 +1251,10 @@ private struct CapturePanelFooter: View {
                     guard let announcement = model.transferVerbAnnouncement else { return }
                     AccessibilityNotification.Announcement(announcement).post()
                 }
+                .onChange(of: model.mergeInAnnouncementTick) { _, _ in
+                    guard let announcement = model.mergeInAnnouncement else { return }
+                    AccessibilityNotification.Announcement(announcement).post()
+                }
             Spacer(minLength: 12)
             ViewThatFits(in: .horizontal) {
                 actionRow(includeOpenChip: true)
@@ -3673,8 +3677,14 @@ struct PreviewPane: View {
         VStack(alignment: .leading, spacing: 6) {
             switch model.previewState {
             case .idle:
-                Text("Preview")
-                    .foregroundStyle(.secondary)
+                if let pending = model.currentMergeInPending.flatMap(
+                    CaptureMergeInPendingPresentation.init(pending:)
+                ) {
+                    CaptureMergeInPendingCardView(presentation: pending)
+                } else {
+                    Text("Preview")
+                        .foregroundStyle(.secondary)
+                }
             case .loading:
                 ProgressView()
                     .controlSize(.small)
@@ -3685,6 +3695,10 @@ struct PreviewPane: View {
                     CaptureTransferPendingCardView(presentation: pending)
                 } else if let refusal = model.transferRefusalPresentation {
                     CaptureTransferRefusalCardView(presentation: refusal)
+                } else if let refusal = model.mergeInRefusalPresentation {
+                    CaptureMergeInRefusalCardView(presentation: refusal) { rewrite in
+                        _ = model.applyDiagnosticRewrite(rewrite)
+                    }
                 } else if let emptyPull = model.emptyNotePullPresentation {
                     CaptureNotePullEmptyCard(presentation: emptyPull)
                 } else {
@@ -6407,7 +6421,31 @@ struct PreviewPane: View {
                 .textSelection(.enabled)
         }
 
+        mergeInBand(for: success)
         similarTasksBand(forCaptureIndex: index)
+    }
+
+    @ViewBuilder
+    private func mergeInBand(for success: CaptureCommandSuccess) -> some View {
+        if let presentation = CaptureMergeInPresentation(capture: success) {
+            let offers = success.allUnblockedRows + success.allKeepMovingRows
+                + success.allRelationSuccessors
+            let offerContent: AnyView? = offers.isEmpty
+                ? nil
+                : AnyView(
+                    pullInPreviewSummary(
+                        for: offers,
+                        pullIn: success.pullIn,
+                        held: success.allRelationHeld,
+                        check: success.allRelationCheck,
+                        showsInvitation: false
+                    )
+                )
+            CaptureMergeInBandView(
+                presentation: presentation,
+                offerContent: offerContent
+            )
+        }
     }
 
     @ViewBuilder

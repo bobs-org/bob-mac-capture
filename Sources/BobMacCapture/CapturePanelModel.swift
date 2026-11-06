@@ -547,6 +547,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var transferPendingPresentation: CaptureTransferPendingPresentation?
     /// Designed refusal content for a failed live transfer preview.
     @Published var transferRefusalPresentation: CaptureTransferRefusalPresentation?
+    /// Designed refusal content for a failed live merge-in preview, with
+    /// explicit rewrite buttons. Return never rewrites; only a button does.
+    @Published var mergeInRefusalPresentation: CaptureMergeInRefusalPresentation?
     /// Revision-bound Bob context while a `<` source is being completed.
     @Published private(set) var mergeInPendingRevision: CaptureMergeInPendingRevision?
     /// The exact draft string the current preview outputs were computed
@@ -595,12 +598,15 @@ final class CapturePanelModel: ObservableObject {
     @Published var statusAnnouncementTick = 0
     @Published var transferVerbAnnouncementTick = 0
     @Published var transferVerbAnnouncement: String?
+    @Published var mergeInAnnouncementTick = 0
+    @Published var mergeInAnnouncement: String?
     /// Remembers the last previewed transfer verb across the preview caches
     /// that `clearPreviewOutputs()` resets, so a move → merge flip for the
     /// same draft announces once. Set whenever a preview assigns a
     /// single-transfer result; untouched through transfer pending and
     /// refusal states; nil once the draft stops being a transfer.
     private var lastPreviewTransferVerb: CaptureTransferPresentation.Verb?
+    private var lastPreviewMergeInKey: String?
     /// The footer text `showTransferFailure` last wrote (pending title,
     /// older-bob diagnostic, or refusal title). A later successful preview
     /// or non-transfer parse resets the footer to Ready only while it still
@@ -2069,6 +2075,15 @@ final class CapturePanelModel: ObservableObject {
         return CaptureTransferPresentation(capture: previewResult)
     }
 
+    /// The live preview's merge-in result for a single new-task item.
+    /// Bulk drafts keep the aggregate `Capture` title; the band renders per item.
+    var mergeInPresentation: CaptureMergeInPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureMergeInPresentation(capture: previewResult)
+    }
+
     /// True when any capture in the on-screen preview is a restart or swap,
     /// so the footer's primary Return tints orange.
     var primaryActionIsOverride: Bool {
@@ -2088,6 +2103,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if let transfer = transferPresentation {
             return transfer.primaryActionTitle
+        }
+        if let mergeIn = mergeInPresentation {
+            return mergeIn.primaryActionTitle
         }
         if resetPresentation != nil {
             return "Reset"
@@ -2243,9 +2261,22 @@ final class CapturePanelModel: ObservableObject {
         } else {
             lastPreviewTransferVerb = nil
         }
+        let nextMergeIn: CaptureMergeInPresentation? =
+            captures.count == 1 ? CaptureMergeInPresentation(capture: captures[0]) : nil
+        if let nextMergeIn {
+            let key = "\(nextMergeIn.count)#\(nextMergeIn.destination.title.text)#\(nextMergeIn.relativeTarget)"
+            if lastPreviewMergeInKey != key {
+                mergeInAnnouncement = "Now \(nextMergeIn.headerText.lowercased()) into “\(nextMergeIn.destination.title.text)”"
+                mergeInAnnouncementTick += 1
+            }
+            lastPreviewMergeInKey = key
+        } else {
+            lastPreviewMergeInKey = nil
+        }
         emptyNotePullPresentation = nil
         transferPendingPresentation = nil
         transferRefusalPresentation = nil
+        mergeInRefusalPresentation = nil
         previewResult = captures.first
         previewResults = captures
         previewGlobalDestination = globalDestination
@@ -2271,6 +2302,7 @@ final class CapturePanelModel: ObservableObject {
         emptyNotePullPresentation = nil
         transferPendingPresentation = nil
         transferRefusalPresentation = nil
+        mergeInRefusalPresentation = nil
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
@@ -14846,6 +14878,26 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
 
+        if let code = failure.code, code.contains("merge_in") {
+            let rewrites = latestParse?.diagnostics.compactMap(\.rewrite) ?? []
+            if let presentation = CaptureMergeInRefusalPresentation(
+                failure: failure,
+                rewrites: rewrites
+            ) {
+                clearPreviewOutputs()
+                previewPullInSnapshot = nil
+                closePendingText = nil
+                closePendingAction = "Close"
+                mergeInRefusalPresentation = presentation
+                previewState = .failed(failure.error)
+                errorMessage = nil
+                errorCode = nil
+                statusText = failure.error
+                transferOwnedStatusText = failure.error
+                return true
+            }
+        }
+
         guard
             let presentation = CaptureTransferRefusalPresentation(
                 failure: failure,
@@ -14881,6 +14933,7 @@ final class CapturePanelModel: ObservableObject {
             emptyNotePullPresentation = nil
             transferPendingPresentation = nil
             transferRefusalPresentation = nil
+            mergeInRefusalPresentation = nil
             if let pullInChoice, pullInChoice.draftSnapshot != text {
                 self.pullInChoice = nil
                 clearEditorInputLockIfFree()
@@ -15786,6 +15839,10 @@ final class CapturePanelModel: ObservableObject {
                                   let transfer = CaptureTransferPresentation(capture: captures[0])
                         {
                             self?.statusText = transfer.statusLineText
+                        } else if captures.count == 1,
+                                  let mergeIn = CaptureMergeInPresentation(capture: captures[0])
+                        {
+                            self?.statusText = mergeIn.statusLineText
                         } else if self?.statusText == "Preview failed" {
                             // A successful live preview that sets no
                             // kind-specific status clears a stale failure
@@ -17534,6 +17591,11 @@ final class CapturePanelModel: ObservableObject {
         {
             return transfer.statusLineText
         }
+        if captures.count == 1,
+           let mergeIn = CaptureMergeInPresentation(capture: captures[0])
+        {
+            return mergeIn.statusLineText
+        }
 
         guard captures.count != 1 else {
             let capture = captures[0]
@@ -17583,6 +17645,11 @@ final class CapturePanelModel: ObservableObject {
            let transfer = CaptureTransferPresentation(capture: captures[0])
         {
             return transfer.statusLineText
+        }
+        if captures.count == 1,
+           let mergeIn = CaptureMergeInPresentation(capture: captures[0])
+        {
+            return mergeIn.statusLineText
         }
 
         guard captures.count != 1 else {

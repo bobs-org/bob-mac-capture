@@ -693,6 +693,15 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let mergeIn = CaptureMergeInPresentation(capture: capture) {
+                return singlePresentation(
+                    title: mergeIn.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: mergeIn.notificationBody,
+                    capture: capture,
+                    targetPaths: targetPaths
+                )
+            }
             if let moves = CaptureProjectNoteMovePresentation(capture: capture) {
                 return singlePresentation(
                     title: moves.notificationTitle,
