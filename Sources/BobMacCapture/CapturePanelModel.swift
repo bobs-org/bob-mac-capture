@@ -474,6 +474,13 @@ struct CaptureMergeInPendingRevision: Equatable {
     let processClientIdentity: String
 }
 
+private struct PendingRewriteSubmitIntent: Equatable {
+    let inputDraft: String
+    let processClientIdentity: String
+    let rewriteGeneration: UInt64
+    let openAfterCapture: Bool
+}
+
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
@@ -760,9 +767,13 @@ final class CapturePanelModel: ObservableObject {
     var pastSleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     private var similarTasksTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
-    private var pendingRewriteSubmitTask: Task<Void, Never>?
+    private var pendingRewriteSubmitIntent: PendingRewriteSubmitIntent?
     private var deferredRewriteInputDraft: String?
     private var completedDeferredRewriteDraft: String?
+    /// Exact native-editor echo for Bob's accepted segment dash rewrite. It
+    /// lets editor echoes preserve a Return intent while later edits still cancel it.
+    private var deferredRewriteEchoDraft: String?
+    private var deferredRewriteEchoCursorUTF8: Int?
     private var stashCancellable: AnyCancellable?
     private var templateShelfCancellable: AnyCancellable?
     private var rememberedSelectedTemplateID: String?
@@ -2600,9 +2611,27 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        cancelPendingExplicitSubmit()
-
         let draft = plainDraft
+        let deferredRewriteInputEcho = pendingRewriteSubmitIntent?.inputDraft == draft
+            && deferredRewriteInputDraft == draft
+        if deferredRewriteInputEcho {
+            // A native rewrite can notify the editor before the model mirror
+            // receives Bob's replacement. The unchanged input is not a user
+            // edit, so keep the Return intent and let the rewrite apply first.
+            return
+        }
+        if deferredRewriteEchoDraft != draft {
+            deferredRewriteEchoDraft = nil
+            deferredRewriteEchoCursorUTF8 = nil
+        }
+        let acceptedDeferredRewriteEcho = deferredRewriteEchoDraft == draft
+            && (pendingRewriteSubmitIntent != nil
+                || pendingExplicitSubmitIntent?.draft == draft
+                || isSubmitting)
+        if !acceptedDeferredRewriteEcho {
+            cancelPendingExplicitSubmit()
+        }
+
         invalidateMoveChoiceForEdit(draft)
         if let hiddenThemeDraftSnapshot, hiddenThemeDraftSnapshot != draft {
             temporarilyHiddenThemeKey = nil
@@ -2640,8 +2669,9 @@ final class CapturePanelModel: ObservableObject {
             }
             suppressedCompletionAcceptanceDraft = nil
         }
-
-        cancelPendingRewriteSubmit()
+        if !acceptedDeferredRewriteEcho {
+            cancelPendingRewriteSubmit()
+        }
 
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
@@ -2755,6 +2785,23 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             programmaticSelectionOffsetToIgnore = nil
+        }
+        let deferredRewriteSubmitIsPending = pendingRewriteSubmitIntent != nil
+            || pendingExplicitSubmitIntent?.draft == plainDraft
+            || isSubmitting
+        if deferredRewriteEchoDraft == plainDraft,
+           deferredRewriteSubmitIsPending,
+           let expectedCursor = deferredRewriteEchoCursorUTF8,
+           insertionOffset == expectedCursor || insertionOffset == expectedCursor - 1
+        {
+            return
+        }
+        if let intent = pendingRewriteSubmitIntent,
+           intent.inputDraft == plainDraft,
+           let expected = rewriteExpectedCursorUTF8,
+           insertionOffset == expected || insertionOffset == expected - 1
+        {
+            return
         }
         if let expected = rewriteExpectedCursorUTF8 {
             if insertionOffset == expected {
@@ -2938,32 +2985,39 @@ final class CapturePanelModel: ObservableObject {
     /// If Bob replaces the typed dash with `~`, submission then waits for the
     /// analysis and preview of that rewritten draft. Editing or moving the
     /// caret cancels this continuation through the rewrite generation.
-    private func waitForRewriteBeforeSubmit(
-        _ rewriteTask: Task<Void, Never>,
-        inputDraft: String,
-        openAfterCapture: Bool
-    ) {
+    private func waitForRewriteBeforeSubmit(inputDraft: String, openAfterCapture: Bool) {
         guard let processClient else {
             return
         }
         cancelPendingRewriteSubmit()
-        let generation = rewriteGeneration
-        pendingRewriteSubmitTask = Task { [weak self, rewriteTask, processClient] in
-            await rewriteTask.value
-            guard !Task.isCancelled,
-                  let self,
-                  self.rewriteGeneration == generation,
-                  self.processClient === processClient,
-                  self.hasDraft,
-                  self.plainDraft != inputDraft,
-                  self.completedDeferredRewriteDraft == self.plainDraft
-            else {
-                return
-            }
-            self.pendingRewriteSubmitTask = nil
-            self.completedDeferredRewriteDraft = nil
-            self.continueSubmitAfterDeferredRewrite(openAfterCapture: openAfterCapture)
+        pendingRewriteSubmitIntent = PendingRewriteSubmitIntent(
+            inputDraft: inputDraft,
+            processClientIdentity: processClient.identityToken,
+            rewriteGeneration: rewriteGeneration,
+            openAfterCapture: openAfterCapture
+        )
+    }
+
+    private func submitDeferredRewriteAfterAnalysis(
+        draft: String,
+        generation: UInt64,
+        processClient: BobProcessClient
+    ) {
+        guard isCurrentAnalysis(generation),
+              self.processClient === processClient,
+              let intent = pendingRewriteSubmitIntent,
+              intent.rewriteGeneration == rewriteGeneration,
+              intent.inputDraft != draft,
+              intent.processClientIdentity == processClient.identityToken,
+              completedDeferredRewriteDraft == draft,
+              plainDraft == draft,
+              hasDraft
+        else {
+            return
         }
+        pendingRewriteSubmitIntent = nil
+        completedDeferredRewriteDraft = nil
+        submit(openAfterCapture: intent.openAfterCapture)
     }
 
     private func continueSubmitAfterDeferredRewrite(openAfterCapture: Bool) {
@@ -3022,9 +3076,8 @@ final class CapturePanelModel: ObservableObject {
             statusText = CapturePickerNeed.mergeInSource.statusText
             return
         }
-        if let rewriteTask, let deferredRewriteInputDraft {
+        if rewriteTask != nil, let deferredRewriteInputDraft {
             waitForRewriteBeforeSubmit(
-                rewriteTask,
                 inputDraft: deferredRewriteInputDraft,
                 openAfterCapture: openAfterCapture
             )
@@ -15174,6 +15227,13 @@ final class CapturePanelModel: ObservableObject {
 
                 await previewTask?.value
                 try Task.checkCancellation()
+                await MainActor.run {
+                    self?.submitDeferredRewriteAfterAnalysis(
+                        draft: draft,
+                        generation: generation,
+                        processClient: processClient
+                    )
+                }
             } catch is CancellationError {
             } catch {
                 await MainActor.run {
@@ -15198,8 +15258,11 @@ final class CapturePanelModel: ObservableObject {
 
         rewriteGeneration &+= 1
         let generation = rewriteGeneration
+        cancelPendingRewriteSubmit()
         deferredRewriteInputDraft = deferSubmitForPastSegmentDash ? draft : nil
         completedDeferredRewriteDraft = nil
+        deferredRewriteEchoDraft = nil
+        deferredRewriteEchoCursorUTF8 = nil
         rewriteExpectedCursorUTF8 = cursorUTF8Offset
         rewriteSawMatchingSelection = collapsedSelectionUTF8Offset() == cursorUTF8Offset
         rewriteTask?.cancel()
@@ -15226,6 +15289,13 @@ final class CapturePanelModel: ObservableObject {
                                 self?.completedDeferredRewriteDraft = response.text
                             }
                         }
+                        if self?.pendingRewriteSubmitIntent?.rewriteGeneration == generation,
+                           self?.pendingRewriteSubmitIntent?.inputDraft == draft
+                        {
+                            if self?.completedDeferredRewriteDraft != self?.plainDraft {
+                                self?.cancelPendingRewriteSubmit()
+                            }
+                        }
                     }
                 }
             } catch is CancellationError {
@@ -15237,7 +15307,11 @@ final class CapturePanelModel: ObservableObject {
                         return
                     }
                     self?.rewriteTask = nil
+                    self?.cancelPendingRewriteSubmit()
                     self?.deferredRewriteInputDraft = nil
+                    self?.completedDeferredRewriteDraft = nil
+                    self?.deferredRewriteEchoDraft = nil
+                    self?.deferredRewriteEchoCursorUTF8 = nil
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
                     self?.pendingHashAlias = nil
@@ -15440,11 +15514,31 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
 
+            if deferredRewriteInputDraft == draft,
+               response.rule == "expand_sigil_alias",
+               response.edits.count == 1,
+               let edit = response.edits.first,
+               edit.replacement == "~",
+               let triggerRange = stringRange(
+                   in: draft,
+                   start: edit.range.start,
+                   end: edit.range.end
+               ),
+               String(draft[triggerRange]) == "-"
+            {
+                deferredRewriteEchoDraft = response.text
+                deferredRewriteEchoCursorUTF8 = response.cursor ?? response.text.utf8.count
+            }
+
             if response.rule == "switch_block_id_separator"
                 || response.rule == "attach_relation_label"
                 || response.rule == "expand_sigil_alias"
             {
-                applyNativeSingleEditRewrite(response, draft: draft)
+                applyNativeSingleEditRewrite(
+                    response,
+                    draft: draft,
+                    armRelationDashLiteral: deferredRewriteInputDraft != draft
+                )
                 return
             }
 
@@ -15466,7 +15560,8 @@ final class CapturePanelModel: ObservableObject {
 
     private func applyNativeSingleEditRewrite(
         _ response: CaptureRewriteResponse,
-        draft: String
+        draft: String,
+        armRelationDashLiteral: Bool = true
     ) {
         guard let edit = response.coveringEdit(in: draft) else {
             return
@@ -15490,14 +15585,16 @@ final class CapturePanelModel: ObservableObject {
                 resultingDraft: response.text
             ),
             response: response,
-            cursorUTF8Offset: cursor
+            cursorUTF8Offset: cursor,
+            armRelationDashLiteral: armRelationDashLiteral
         )
     }
 
     private func applyNativeRewrite(
         _ nativeEdit: CaptureNativeRewriteEdit,
         response: CaptureRewriteResponse,
-        cursorUTF8Offset: Int
+        cursorUTF8Offset: Int,
+        armRelationDashLiteral: Bool = true
     ) {
         relationFlipAliasOpen = nil
         suppressedCompletionAcceptanceDraft = response.text
@@ -15572,7 +15669,8 @@ final class CapturePanelModel: ObservableObject {
                     caretUTF16: caretUTF16,
                     hashUTF16Range: hashUTF16Range
                 )
-            } else if edit.replacement == "~",
+            } else if armRelationDashLiteral,
+                      edit.replacement == "~",
                       trigger == "-",
                       let tildeUTF16Range = utf16Range(
                           in: response.text,
@@ -16892,14 +16990,15 @@ final class CapturePanelModel: ObservableObject {
         rewriteTask = nil
         deferredRewriteInputDraft = nil
         completedDeferredRewriteDraft = nil
+        deferredRewriteEchoDraft = nil
+        deferredRewriteEchoCursorUTF8 = nil
         rewriteGeneration &+= 1
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
     }
 
     private func cancelPendingRewriteSubmit() {
-        pendingRewriteSubmitTask?.cancel()
-        pendingRewriteSubmitTask = nil
+        pendingRewriteSubmitIntent = nil
     }
 
     /// Whether the observed caret fits a fast double-tap probe delivery:

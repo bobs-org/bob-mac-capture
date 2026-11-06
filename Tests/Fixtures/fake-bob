@@ -252,6 +252,8 @@ case "${command}" in
       cat "${fixtures_dir}/capture-parse-wikilink-task-query.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up [[mac_inbox#^inbox-plain]]" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json" | inject_parse_grammar
+    elif [[ "${draft}" == "x=2~" ]]; then
+      cat "${fixtures_dir}/pomodoro-past-parse-segment-tail.json"
     elif [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
       if [[ "${draft}" == "#f" ]]; then
         cat "${fixtures_dir}/task-type-parse-leading-short.json" | inject_parse_grammar

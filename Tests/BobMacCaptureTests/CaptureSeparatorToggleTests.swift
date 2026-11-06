@@ -376,7 +376,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertNotEqual(model.statusText, "Changed @file:id to @file^id")
     }
 
-    func testRelationDashIntentForwardsOnlyAfterWhitespaceInTheMainEditor() async throws {
+    func testRelationDashIntentForwardsUngatedInTheMainEditor() async throws {
         let afterSpace = try await relationDashWasForwarded(text: "Fix it ")
         let afterTab = try await relationDashWasForwarded(text: "Fix it\t")
         let afterLetter = try await relationDashWasForwarded(text: "Fix itx")
@@ -393,7 +393,9 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         )
         XCTAssertTrue(afterSpace)
         XCTAssertTrue(afterTab)
-        XCTAssertFalse(afterLetter)
+        // `-` is sent through Bob's rewrite lane in any main-editor context;
+        // Bob decides whether it is a segment suffix or literal name text.
+        XCTAssertTrue(afterLetter)
         XCTAssertFalse(command)
         XCTAssertFalse(control)
         XCTAssertFalse(option)

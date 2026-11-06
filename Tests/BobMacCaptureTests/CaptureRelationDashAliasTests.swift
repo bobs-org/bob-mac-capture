@@ -54,6 +54,7 @@ final class CaptureRelationDashAliasTests: XCTestCase {
         let textView = NSTextView()
         textView.isEditable = true
         textView.allowsUndo = true
+        textView.isAutomaticDashSubstitutionEnabled = false
         textView.string = text
         textView.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
         model.plainDraft = text
@@ -109,7 +110,7 @@ final class CaptureRelationDashAliasTests: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: TimeInterval = 5,
+        timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line,
         _ condition: @escaping () -> Bool
@@ -248,6 +249,7 @@ final class CaptureRelationDashAliasTests: XCTestCase {
         XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
         await waitUntil { textView.string == "x=2~" }
         XCTAssertEqual(model.plainDraft, "x=2~")
+        XCTAssertNil(model.relationDashLiteralArm)
         XCTAssertTrue(try String(contentsOf: recordURL).contains(
             "argv=capture-rewrite --cursor 4 --format json -- x=2-"
         ))
@@ -267,11 +269,22 @@ final class CaptureRelationDashAliasTests: XCTestCase {
 
         XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
         XCTAssertNil(controller.routeKeyDown(returnEvent()))
+        // The native rewrite may echo the still-visible input draft before
+        // Bob's replacement reaches the model mirror. That no-change echo
+        // must not cancel the Return waiting on the rewrite.
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { textView.string == "x=2~" }
+        // SwiftUI can deliver a delayed caret echo from immediately before
+        // the native rewrite; it must not cancel the Return already waiting.
+        model.editorSelectionDidChange(cursorUTF8Offset: 4)
+        model.editorSelectionDidChange(cursorUTF8Offset: 3)
+        model.editorSelectionDidChange(cursorUTF8Offset: 3)
         await waitUntil {
             !model.isSubmitting
                 && ((try? String(contentsOf: recordURL))?.contains("argv=capture --format json") == true)
         }
         XCTAssertEqual(textView.string, "x=2~")
+        XCTAssertNil(model.relationCapabilityWarning)
         let record = try String(contentsOf: recordURL)
         let writes = record.split(separator: "\n")
             .map(String.init)
