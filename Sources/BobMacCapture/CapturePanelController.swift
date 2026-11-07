@@ -1830,8 +1830,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         let collapsed = NSRange(location: target, length: 0)
         if collapsed != selection {
+            // Motions must not leave an undo step even if AppKit treats the
+            // selection change as an edit.
+            let undoManager = textView.undoManager
+            undoManager?.disableUndoRegistration()
             textView.setSelectedRange(collapsed)
             textView.scrollRangeToVisible(collapsed)
+            undoManager?.enableUndoRegistration()
         }
         return true
     }

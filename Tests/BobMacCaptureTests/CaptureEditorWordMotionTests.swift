@@ -60,6 +60,11 @@ final class CaptureEditorWordMotionTests: XCTestCase {
         let (_, controller, textView, panel) = makeHostedEditor(text: "foo bar")
         defer { panel.orderOut(nil) }
         textView.setSelectedRange(NSRange(location: 0, length: 0))
+        // Native undo lives on the panel window and may already hold an action
+        // from makePanelIfNeeded() or assigning textView.string. Clear it so
+        // this assertion covers the motions, not the fixture.
+        textView.undoManager?.removeAllActions()
+        XCTAssertFalse(textView.undoManager?.canUndo ?? false)
 
         XCTAssertNil(controller.routeKeyDown(controlL()))
         XCTAssertNil(controller.routeKeyDown(controlH()))
@@ -79,6 +84,7 @@ final class CaptureEditorWordMotionTests: XCTestCase {
         textView.string = text
         panel.contentView = textView
         XCTAssertTrue(panel.makeFirstResponder(textView))
+        textView.undoManager?.removeAllActions()
         return (model, controller, textView, panel)
     }
 
