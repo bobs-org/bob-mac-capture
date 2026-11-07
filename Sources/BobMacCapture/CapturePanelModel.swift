@@ -2845,6 +2845,9 @@ final class CapturePanelModel: ObservableObject {
         if !acceptedDeferredRewriteEcho {
             cancelPendingRewriteSubmit()
         }
+        if shouldDismissPickerAfterEditorDraftChange(draft: draft) {
+            closePickerAfterStaleDraft()
+        }
 
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
@@ -10018,6 +10021,22 @@ final class CapturePanelModel: ObservableObject {
         pickerChip = nil
         clearEditorInputLockIfFree()
         requestFocus(.editor)
+    }
+
+    /// Native undo of a `.` / move-bullet alias restores the literal while the
+    /// picker still holds the rewritten snapshot. Dismiss only those token
+    /// sessions. Modal dependency pickers keep owning the panel while the user
+    /// types, and `=` rewrite echoes must not clear `equalsGestureArm`.
+    private func shouldDismissPickerAfterEditorDraftChange(draft: String) -> Bool {
+        guard let openPicker = picker, openPicker.draftSnapshot != draft else {
+            return false
+        }
+        switch openPicker.source {
+        case .blockID, .projectTaskMove:
+            return true
+        default:
+            return false
+        }
     }
 
     private func closePickerAfterStaleDraft() {

@@ -1363,9 +1363,17 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
         typeSeparator(",", into: textView, model: model)
 
-        await waitUntil { model.completionResponse?.context == "task_parent" }
+        await waitUntil { model.pickerSourceIsParentTask }
         XCTAssertEqual(model.plainDraft, "@cash+goog-exit +")
-        XCTAssertEqual(model.completionResponse?.picker?.continuation, " +")
+        XCTAssertEqual(textView.string, "@cash+goog-exit +")
+        XCTAssertNil(model.completionResponse)
+        guard case .parentTask(let context)? = model.picker?.source else {
+            XCTFail("expected a parent-task picker")
+            return
+        }
+        XCTAssertEqual(context.scope, .vault)
+        XCTAssertEqual(context.scopeToken, "+")
+        XCTAssertEqual(context.continuation, " +")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains(
@@ -1698,7 +1706,10 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(recordURL: recordURL)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_TASK_TYPE_CHOOSER": "1"]
+        )
         let textView = makeTextView("jot idea ")
         wireNativeApply(model, textView: textView)
 
@@ -1840,7 +1851,10 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(recordURL: recordURL)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_TASK_TYPE_CHOOSER": "1"]
+        )
         let textView = makeTextView("jot idea ")
         wireNativeApply(model, textView: textView)
 

@@ -2045,6 +2045,25 @@ final class BobProcessClientTests: XCTestCase {
         let older = try await client.captureComplete("@file+", cursor: 6)
         XCTAssertEqual(older.context, "task")
         XCTAssertNil(older.picker)
+
+        let routedPlus = try await client.captureComplete("Call bank @cash+", cursor: 16)
+        XCTAssertEqual(routedPlus.context, "task")
+        XCTAssertNil(routedPlus.picker)
+
+        let commaClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_PARENT_TASK_COMMA": "1",
+            ]
+        )
+        let routedComma = try await commaClient.captureComplete("Call bank @cash+", cursor: 16)
+        XCTAssertEqual(routedComma.context, "task")
+        XCTAssertEqual(routedComma.picker?.kind, "parent_task")
+        XCTAssertEqual(routedComma.picker?.scope, "note")
+        XCTAssertEqual(routedComma.picker?.scopeToken, "@cash+")
+        XCTAssertEqual(routedComma.picker?.continuation, " +")
     }
 
     func testCaptureParseLonePlusStaysAdjustmentAndProseNeedsParent() async throws {
@@ -2070,6 +2089,34 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(plusTwo.mode, "pomodoro_adjust")
         XCTAssertEqual(plusTwo.needs, [])
         XCTAssertEqual(plusTwo.pomodoroAdjust?.units, 2)
+    }
+
+    func testCaptureParseAliasLaneDraftsAdvertiseCompletionNeeds() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let newID = try await client.captureParse("@file^")
+        XCTAssertEqual(newID.needs, ["block_id"])
+        XCTAssertEqual(newID.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
+
+        let move = try await client.captureParse("@cash^goog-exit@\n- ^")
+        XCTAssertEqual(move.needs, ["project_task_move"])
+
+        let moveLink = try await client.captureParse("@cash:goog-exit@\n- :")
+        XCTAssertEqual(moveLink.needs, ["project_task_move"])
+
+        let nextParent = try await client.captureParse("@cash+goog-exit +")
+        XCTAssertEqual(nextParent.needs, ["task_parent"])
+
+        let partialRoute = try await client.captureParse("Call bank @ca")
+        XCTAssertEqual(partialRoute.spans.map(\.kind), ["route"])
+        XCTAssertEqual(partialRoute.route, "ca")
+
+        let exactRoute = try await client.captureParse("Call bank @cash")
+        XCTAssertEqual(exactRoute.spans.map(\.kind), ["route"])
+        XCTAssertEqual(exactRoute.route, "cash")
     }
 
     // MARK: decodeReport

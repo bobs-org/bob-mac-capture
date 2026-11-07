@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@cash+goog-exit +",
+  "body": "@cash+goog-exit",
+  "mode": "incomplete",
+  "route": "cash",
+  "section": null,
+  "block_id": "goog-exit",
+  "needs": ["task_parent"],
+  "spans": [
+    { "start": 16, "end": 17, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}

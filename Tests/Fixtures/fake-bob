@@ -707,13 +707,13 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "Call bank @Ca" ]]; then
-      cat <<'JSON'
+    elif [[ "${draft}" == "Call bank @Ca" || "${draft}" == "Call bank @ca" ]]; then
+      cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
   "grammar": 15,
-  "input": "Call bank @Ca",
+  "input": "${draft}",
   "body": "Call bank",
   "mode": "task",
   "route": "ca",
@@ -724,13 +724,13 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "Call bank @Cash" ]]; then
-      cat <<'JSON'
+    elif [[ "${draft}" == "Call bank @Cash" || "${draft}" == "Call bank @cash" ]]; then
+      cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
   "grammar": 15,
-  "input": "Call bank @Cash",
+  "input": "${draft}",
   "body": "Call bank",
   "mode": "task",
   "route": "cash",
@@ -1261,6 +1261,12 @@ JSON
       cat "${fixtures_dir}/parent-task-parse-cash.json" | inject_parse_grammar
     elif [[ "${draft}" == "@cash+goog-exit" ]]; then
       cat "${fixtures_dir}/parent-task-parse-scoped-exact.json" | inject_parse_grammar
+    elif [[ "${draft}" == "@cash+goog-exit +" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-comma-next-target.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'@cash^goog-exit@\n- ^' ]]; then
+      cat "${fixtures_dir}/move-parse-sigil-alias-caret.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'@cash:goog-exit@\n- :' ]]; then
+      cat "${fixtures_dir}/move-parse-sigil-alias-link.json" | inject_parse_grammar
     elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^' ]]; then
       cat "${fixtures_dir}/move-parse-mc1.json" | inject_parse_grammar
     elif [[ "${draft}" == $'Finish the exit packet @cash^goog-exit@\n- ^dr' ]]; then
@@ -1504,6 +1510,25 @@ JSON
       "range": [0, 14]
     }
   ]
+}
+JSON
+    elif [[ "${draft}" == "@file^" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "grammar": 15,
+  "input": "@file^",
+  "body": "",
+  "mode": "incomplete",
+  "route": "file",
+  "block_id": "",
+  "needs": ["block_id"],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "task_block_id_route" },
+    { "start": 6, "end": 6, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
 }
 JSON
     elif [[ "${draft}" == "@file:" ]]; then
@@ -2580,7 +2605,11 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "Call bank @Cash+" || "${draft}" == "Call bank @cash+" ]]; then
+    elif [[ "${draft}" == "Call bank @Cash+" || (
+      "${draft}" == "Call bank @cash+" && "${FAKE_BOB_PARENT_TASK_COMMA:-}" != "1"
+    ) ]]; then
+      # Legacy inline task completion for the plus-route tests. Comma tests set
+      # FAKE_BOB_PARENT_TASK_COMMA=1 so the later parent-task fixture is reachable.
       cat <<JSON
 {
   "ok": true,

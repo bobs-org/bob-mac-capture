@@ -5982,6 +5982,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_PARENT_TASK_COMMA": "1",
             ]
         )
         installTargetCache(
@@ -6003,6 +6004,8 @@ final class CapturePanelModelTests: XCTestCase {
         textView.string = model.plainDraft
         textView.setSelectedRange(
             NSRange(location: (textView.string as NSString).length, length: 0))
+        wireNativeApply(model, textView: textView)
+        let editorSync = bindEditor(model, to: textView)
         CapturePanelController.noteSeparatorToggleIntentIfEligible(
             event: NSEvent.keyEvent(
                 with: .keyDown,
@@ -6024,10 +6027,21 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = textView.string
         model.editorTextDidChange(cursorUTF8Offset: nil)
 
-        XCTAssertEqual(model.plainDraft, "Call bank @cash+")
+        await waitUntil {
+            model.plainDraft == "Call bank @cash+" && model.pickerSourceIsParentTask
+        }
+        withExtendedLifetime(editorSync) {}
+        XCTAssertEqual(textView.string, "Call bank @cash+")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
-        await waitUntil { model.completionResponse?.context == "task" }
-        XCTAssertEqual(model.completionResponse?.picker?.continuation, " +")
+        XCTAssertNil(model.completionResponse)
+        guard case .parentTask(let context)? = model.picker?.source else {
+            XCTFail("expected a parent-task picker")
+            return
+        }
+        XCTAssertEqual(context.scope, .note)
+        XCTAssertEqual(context.scopeToken, "@cash+")
+        XCTAssertEqual(context.noteTarget, "cash.md")
+        XCTAssertEqual(context.continuation, " +")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains("argv=capture-rewrite --cursor 16 --format json -- Call bank @cash,"))
@@ -6046,6 +6060,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_PARENT_TASK_COMMA": "1",
             ]
         )
         installTargetCache(
@@ -6066,6 +6081,8 @@ final class CapturePanelModelTests: XCTestCase {
         textView.string = model.plainDraft
         textView.setSelectedRange(
             NSRange(location: (textView.string as NSString).length, length: 0))
+        wireNativeApply(model, textView: textView)
+        let editorSync = bindEditor(model, to: textView)
         CapturePanelController.noteSeparatorToggleIntentIfEligible(
             event: NSEvent.keyEvent(
                 with: .keyDown,
@@ -6087,11 +6104,26 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = textView.string
         model.editorTextDidChange(cursorUTF8Offset: nil)
 
-        await waitUntil { model.completionResponse?.context == "task" }
-        XCTAssertEqual(model.plainDraft, "Call bank @cash+")
+        await waitUntil {
+            model.plainDraft == "Call bank @cash+" && model.pickerSourceIsParentTask
+        }
+        withExtendedLifetime(editorSync) {}
+        XCTAssertEqual(textView.string, "Call bank @cash+")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
+        XCTAssertNil(model.completionResponse)
+        guard case .parentTask(let context)? = model.picker?.source else {
+            XCTFail("expected a parent-task picker")
+            return
+        }
+        XCTAssertEqual(context.scope, .note)
+        XCTAssertEqual(context.scopeToken, "@cash+")
+        XCTAssertEqual(context.continuation, " +")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains("argv=capture-rewrite --cursor 16 --format json -- Call bank @cash,"))
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash+"))
         XCTAssertFalse(
             record.contains(
                 "capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash,"))
@@ -8007,6 +8039,33 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.taskIDPrompt?.authoredID, "call-bank")
         model.submitTaskIDPrompt()
         await waitUntil { model.plainDraft == "New outcome < @mac_inbox+call-bank" }
+    }
+
+    private func wireNativeApply(_ model: CapturePanelModel, textView: NSTextView) {
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applySeparatorToggleInEditableTextView(
+                edit,
+                firstResponder: textView
+            )
+        }
+    }
+
+    /// Mirrors the real panel's SwiftUI draft binding: a programmatic model
+    /// rewrite (partial-route comma acceptance) must reach the detached
+    /// NSTextView before Bob's native edit is applied.
+    private func bindEditor(
+        _ model: CapturePanelModel,
+        to textView: NSTextView
+    ) -> AnyCancellable {
+        model.$attributedDraft.sink { attributed in
+            let text = String(attributed.characters)
+            guard textView.string != text else {
+                return
+            }
+            textView.string = text
+            let end = (text as NSString).length
+            textView.setSelectedRange(NSRange(location: end, length: 0))
+        }
     }
 
     private func waitUntil(
