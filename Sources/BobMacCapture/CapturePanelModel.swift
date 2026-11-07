@@ -912,6 +912,10 @@ final class CapturePanelModel: ObservableObject {
 #if DEBUG
     var analysisBaselineForTesting: String { editAnalysisBaseline }
 #endif
+    /// Every capture-rewrite launch sets `rewriteTask` synchronously, so a
+    /// test can read this right after an edit to learn whether the key went
+    /// to Bob's rewrite lane, and wait on it for Bob's reply.
+    var rewriteInFlightForTesting: Bool { rewriteTask != nil }
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.

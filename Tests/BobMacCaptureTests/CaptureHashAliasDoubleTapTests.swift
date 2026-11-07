@@ -135,16 +135,34 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,
         line: UInt = #line,
-        _ condition: @escaping () -> Bool
+        _ condition: @escaping () -> Bool,
+        detail: () -> String = { "" }
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() > deadline {
-                XCTFail("Condition not met before timeout", file: file, line: line)
+                XCTFail("Condition not met before timeout\(detail())", file: file, line: line)
                 return
             }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+
+    /// State dump for an alias that never opened its menu, so a rare CI
+    /// timeout says whether the rewrite, parse, or completion went missing.
+    private func aliasOpenDetail(
+        textView: NSTextView,
+        model: CapturePanelModel,
+        recordURL: URL
+    ) -> String {
+        let record = (try? String(contentsOf: recordURL)) ?? "<no record>"
+        let argv = record.split(separator: "\n").filter { $0.hasPrefix("argv=") }
+        return "; text=\(textView.string.debugDescription)"
+            + " draft=\(model.plainDraft.debugDescription)"
+            + " completion=\(String(describing: model.completionResponse?.context))"
+            + " completionVisible=\(model.completionVisible)"
+            + " rewriteInFlight=\(model.rewriteInFlightForTesting)"
+            + " argv=\(argv)"
     }
 
     private func makeRecordURL() -> URL {
@@ -161,7 +179,11 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient(recordURL: recordURL)
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil {
+            textView.string == "jot idea #" && model.completionVisible
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
         // A current bob opens the task_type menu here; this environment
         // answers route (the pre-existing task-type test sees the same).
         // Assert only that a menu opened.
@@ -369,7 +391,11 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient(recordURL: recordURL)
 
         XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "Postgres 17 minimum @foo+bar#" && model.completionVisible }
+        await waitUntil {
+            textView.string == "Postgres 17 minimum @foo+bar#" && model.completionVisible
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
         XCTAssertEqual(model.completionResponse?.context, "drawer")
         XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
 
