@@ -158,6 +158,32 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         }
     }
 
+    /// Whether the edit just handed to `model` went to Bob's rewrite lane.
+    /// Every rewrite launch sets the model's rewrite task synchronously, so
+    /// the answer is known right after the edit; a fixed sleep before
+    /// reading the record lost the race on slow CI runners. A forwarded key
+    /// must also reach fake-bob, so poll its record instead of sleeping.
+    private func rewriteWasForwarded(
+        model: CapturePanelModel,
+        recordURL: URL,
+        timeout: TimeInterval = 5
+    ) async -> Bool {
+        guard model.rewriteInFlightForTesting else {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            if record.contains("argv=capture-rewrite") {
+                return true
+            }
+            if Date() > deadline {
+                return false
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     private func relationDashWasForwarded(
         text: String,
         modifiers: NSEvent.ModifierFlags = [],
@@ -186,11 +212,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             utf16Offset: textView.selectedRange().location
         ) ?? textView.string.utf8.count
         model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
-        try await Task.sleep(nanoseconds: 160_000_000)
-        guard let record = try? String(contentsOf: recordURL) else {
-            return false
-        }
-        return record.contains("argv=capture-rewrite")
+        return await rewriteWasForwarded(model: model, recordURL: recordURL)
     }
 
     private func relationEqualsWasForwarded(
@@ -224,11 +246,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             utf16Offset: textView.selectedRange().location
         ) ?? textView.string.utf8.count
         model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
-        try await Task.sleep(nanoseconds: 160_000_000)
-        guard let record = try? String(contentsOf: recordURL) else {
-            return false
-        }
-        return record.contains("argv=capture-rewrite")
+        return await rewriteWasForwarded(model: model, recordURL: recordURL)
     }
 
     // MARK: - Intent
@@ -1346,7 +1364,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
         typeSeparator(",", into: textView, model: model)
 
-        await waitUntil { model.isClosePending }
+        // Parse and rewrite run concurrently, so close-pending can show
+        // before fake-bob records the rewrite. Wait for Bob's rewrite reply
+        // too: the literal-comma checks below must see Bob's answer.
+        XCTAssertTrue(model.rewriteInFlightForTesting)
+        await waitUntil { model.isClosePending && !model.rewriteInFlightForTesting }
         XCTAssertEqual(model.plainDraft, "x1,")
         XCTAssertEqual(textView.string, "x1,")
         let record = try String(contentsOf: recordURL)

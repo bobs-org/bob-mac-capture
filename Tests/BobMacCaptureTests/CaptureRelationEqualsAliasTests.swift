@@ -137,16 +137,34 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line,
-        _ condition: @escaping () -> Bool
+        _ condition: @escaping () -> Bool,
+        detail: () -> String = { "" }
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             if Date() > deadline {
-                XCTFail("Condition not met before timeout", file: file, line: line)
+                XCTFail("Condition not met before timeout\(detail())", file: file, line: line)
                 return
             }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+
+    /// State dump for an alias that never opened its picker, so a rare CI
+    /// timeout says whether the rewrite, parse, or completion went missing.
+    private func aliasOpenDetail(
+        textView: NSTextView,
+        model: CapturePanelModel,
+        recordURL: URL
+    ) -> String {
+        let record = (try? String(contentsOf: recordURL)) ?? "<no record>"
+        let argv = record.split(separator: "\n").filter { $0.hasPrefix("argv=") }
+        return "; text=\(textView.string.debugDescription)"
+            + " draft=\(model.plainDraft.debugDescription)"
+            + " picker=\(String(describing: model.picker?.source))"
+            + " filter=\(String(describing: model.picker?.filterText))"
+            + " rewriteInFlight=\(model.rewriteInFlightForTesting)"
+            + " argv=\(argv)"
     }
 
     private func makeRecordURL() -> URL {
@@ -167,6 +185,8 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         await waitUntil {
             textView.string == "Fix it ~" && model.picker?.source == .linksTo
                 && model.picker?.filterText.isEmpty == true
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
         }
         return (model, controller, textView, panel, recordURL)
     }
@@ -449,6 +469,8 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         await waitUntil {
             textView.string == "Fix it ~" && model.picker?.source == .linksTo
                 && model.picker?.filterText.isEmpty == true
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
         }
         return (model, controller, textView, panel)
     }
