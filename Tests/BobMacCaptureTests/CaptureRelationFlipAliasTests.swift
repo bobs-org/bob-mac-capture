@@ -45,6 +45,10 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         keyEvent(keyCode: 51, characters: "")
     }
 
+    private func spaceEvent() -> NSEvent {
+        keyEvent(keyCode: 49, characters: " ")
+    }
+
     private func makeHostedEditor(
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
@@ -216,11 +220,11 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
             textView.string == "Fix it ~" && model.picker?.source == .linksTo
                 && model.picker?.filterText.isEmpty == true
         }
-        XCTAssertNotNil(model.relationEqualsOpenerArm)
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
 
         XCTAssertNil(controller.routeKeyDown(equalsEvent()))
         XCTAssertEqual(model.plainDraft, "Fix it ~~")
-        XCTAssertNil(model.relationEqualsOpenerArm)
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
         await waitUntil { model.picker?.source == .linkedFrom }
         XCTAssertTrue(model.pickerVisible)
 
@@ -389,5 +393,116 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(textView.string, "New task ~=")
+    }
+
+    func testTildeEqualsFlipDoesNotArmSpaceEscape() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "New task ~")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil { textView.string == "New task ~~" }
+
+        // A `~=` flip arms the escape record but never the opener: Space
+        // passes through instead of restoring.
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+        XCTAssertFalse(model.relationEqualsOpenerRestorable)
+        XCTAssertNotNil(controller.routeKeyDown(spaceEvent()))
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+    }
+
+    func testPickerFastEqualsRestoresDirectionAndTypesIntoFilter() {
+        let (model, controller, _, panel) = makeHostedEditor(text: "New task ~")
+        defer { panel.orderOut(nil) }
+        installLinksToPicker(on: model)
+        XCTAssertEqual(model.picker?.filterText, "")
+
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.0)))
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        XCTAssertEqual(model.equalsGestureArm?.surface, .picker)
+
+        // A fast second `=` restores the Links To direction and types one
+        // `=` into the filter instead of flipping again.
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.1)))
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        XCTAssertEqual(model.picker?.filterText, "=")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testPickerSlowEqualsFlipsTwice() {
+        let (model, controller, _, panel) = makeHostedEditor(text: "New task ~")
+        defer { panel.orderOut(nil) }
+        installLinksToPicker(on: model)
+
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.0)))
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        // Past the window: an ordinary second flip, not an undo.
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.351)))
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertNotNil(model.equalsGestureArm)
+    }
+
+    func testPostTokenFlipFastEqualsUndoes() async throws {
+        let draft = "Fix it ~foo:bar"
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "Fix it",
+            mode: "task",
+            relationGrammar: 1,
+            spans: [CaptureSpan(start: 7, end: draft.utf8.count, kind: "relation_block_id")]
+        )
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: draft)
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+        model.latestParse = parse
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil { textView.string == "Fix it ~~foo:bar" }
+        XCTAssertEqual(model.statusText, "Flipped to Linked From")
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+
+        // Undoing a post-token flip restores the trigger byte Bob reports
+        // as an invalid relation; that is expected.
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.1)))
+        XCTAssertEqual(textView.string, "Fix it ~foo:bar=")
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testOpenerLiveActionLineTeachesFastEscape() throws {
+        let model = CapturePanelModel()
+        installLinksToPicker(on: model)
+        let row = try XCTUnwrap(model.pickerPresentation?.rowsByID.values.first)
+        let plain = try XCTUnwrap(model.pickerActionLine(for: row))
+        XCTAssertTrue(plain.contains("~ or = flips direction"))
+
+        model.equalsGestureArm = CaptureEqualsGestureArm(
+            surface: .editor,
+            firstTimestamp: 1.0,
+            isOpener: true,
+            preDraft: "New task ",
+            preCaretUTF8: 9,
+            postDraft: "New task ~",
+            postCaretUTF8: 10,
+            pickerSnapshot: nil
+        )
+        let armed = try XCTUnwrap(model.pickerActionLine(for: row))
+        XCTAssertTrue(armed.contains("== types ="))
+        XCTAssertFalse(armed.contains("~ or = flips direction"))
     }
 }

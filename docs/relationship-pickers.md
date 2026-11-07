@@ -103,6 +103,19 @@ and Escape restores `=`; other keys enter the filter normally. Undo after a
 restore returns to the post-key `~` draft. A `-` after a space stays literal;
 the separate past-segment form `x=2-` still becomes `x=2~`.
 
+A fast second `=` (350 ms key-to-key) anywhere `=` acted as `~` undoes that
+gesture and types one literal `=`: on an alias-opened Links To it gives `D =`
+with the picker dismissed; after a `~=` / `~~=` flip it restores `~=` / `~~=`;
+after a token flip it restores the trigger byte (Bob reports `~foo:bar=` as
+an invalid relation, as expected); in the picker it restores the direction
+and inserts `=` into the filter; in the label card it undoes the flip and
+types `=` into the label field. While the opener record is live the action
+line reads `↩ link · ⇧↩ link with a relation · == types = · ~ flips`. If the
+second key lands before Bob answers the first, the app re-asks Bob about the
+first draft: `==` collapses to one `=` and `=~` becomes `~~` (the reliable
+Linked From spelling at any speed); any other answer leaves the typed text.
+A slow second `=` flips again. `===` gives `==`. `~` never inserts text.
+
 Typing `=` right after bare `~` or `~~` flips direction before the picker
 appears: `Fix it ~=` opens Linked From, while `Fix it ~~=` opens Links To
 (`Fix it ~`). At the end of a complete relation token, a glued `~` or `=` flips
@@ -118,7 +131,8 @@ an existing label. Prerequisite-too rows show **Prerequisite too**. Archived row
 Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
 `read-only note`, `archived tasks can't get an id`).
 
-The action line reads `↩ link · ⇧↩ link with a relation · ~ or = flips direction`.
+The action line reads `↩ link · ⇧↩ link with a relation · ~ or = flips direction`
+(while an `=` opener record is live, `↩ link · ⇧↩ link with a relation · == types = · ~ flips`).
 Shift-Return inserts the token and opens the relation card. Typing `|` after a
 relation token also opens the card; Bob removes any spaces or tabs before the
 pipe through the rewrite lane, and Undo restores the typed ` |`. The card keeps

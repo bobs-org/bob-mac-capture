@@ -119,6 +119,8 @@ enum CaptureKeyCommand: Equatable {
     case typeLiteralBackslash
     case typeKeyBeforeHashAliasReply
     case typeLiteralForHashAlias
+    case typeKeyBeforeEqualsReply
+    case undoEqualsGestureAndTypeLiteral
     case restoreRelationEqualsOpener(String)
     case joinCalendarEvent
     case switchPanel
@@ -183,6 +185,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var hashAliasLiteralKey: String? = nil
     var hashAliasReplyPendingKey: String? = nil
     var relationEqualsOpenerArmed = false
+    var equalsGestureFastSecond = false
+    var equalsProbeReplyPendingKey: String? = nil
     var editorHasMarkedText = false
     var editorLeaderPending = false
 }
@@ -240,6 +244,22 @@ struct CaptureKeyCommandRouter {
             return "/"
         }
         return nil
+    }
+
+    /// The typed equals-probe key (`=` or `~`) by characters, or nil for any
+    /// other key. Shift is allowed (for `~`); Command, Option, and Control
+    /// veto; marked text is checked by the caller through
+    /// `editorHasMarkedText`.
+    static func typedEqualsProbeKey(
+        event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> String? {
+        guard event.characters == "=" || event.characters == "~",
+              modifiers.intersection([.command, .option, .control]).isEmpty
+        else {
+            return nil
+        }
+        return event.characters
     }
 
     private enum KeyCode {
@@ -363,6 +383,19 @@ struct CaptureKeyCommandRouter {
             return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
+        // A fast second `=` undoes whatever the first `=` did and types
+        // one literal `=`. Checked before the opener restores and every
+        // other editor path.
+        if context.equalsGestureFastSecond,
+           event.characters == "=",
+           modifiers.intersection([.command, .option, .control]).isEmpty,
+           !context.editorHasMarkedText,
+           !context.keyIsRepeat,
+           !event.isARepeat
+        {
+            return .undoEqualsGestureAndTypeLiteral
+        }
+
         if let command = relationEqualsOpenerRestoreCommand(
             for: event,
             modifiers: modifiers,
@@ -464,6 +497,16 @@ struct CaptureKeyCommandRouter {
                 }
                 return .typeKeyBeforeHashAliasReply
             }
+        }
+
+        if let probeKey = Self.typedEqualsProbeKey(event: event, modifiers: modifiers),
+           !context.editorHasMarkedText,
+           context.equalsProbeReplyPendingKey == probeKey
+        {
+            if context.keyIsRepeat || event.isARepeat {
+                return nil
+            }
+            return .typeKeyBeforeEqualsReply
         }
 
         if event.keyCode == KeyCode.s, modifiers == .command {
@@ -1012,6 +1055,18 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
+        // A fast second `=` undoes the first `=` (opener or flip) and types
+        // one literal `=`. Checked before the opener restores and the
+        // ordinary flip routing.
+        if context.equalsGestureFastSecond,
+           event.characters == "=",
+           modifiers.intersection([.command, .option, .control]).isEmpty,
+           !context.editorHasMarkedText,
+           !context.keyIsRepeat,
+           !event.isARepeat
+        {
+            return .undoEqualsGestureAndTypeLiteral
+        }
         if let command = relationEqualsOpenerRestoreCommand(
             for: event,
             modifiers: modifiers,

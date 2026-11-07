@@ -231,6 +231,10 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   have become `#`, and Undo then restores the doubled key.
   Undo restores the literal key; an older bob leaves either key literal and
   never arms the double-tap.
+  The `=` relation alias adds a timed escape to the same lane: a fast
+  second `=` (350 ms key-to-key) undoes the first and types one literal `=`,
+  in the editor, picker, and label card. Any other key, caret move, paste,
+  Undo, or dismissal clears it; a slow second `=` flips twice.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

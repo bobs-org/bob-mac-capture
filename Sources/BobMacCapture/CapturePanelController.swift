@@ -2111,6 +2111,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return false
         case .typeKeyBeforeHashAliasReply:
             return false
+        case .typeKeyBeforeEqualsReply:
+            return false
+        case .undoEqualsGestureAndTypeLiteral:
+            return false
         case .joinCalendarEvent:
             model.dismissCompletion()
             model.joinFocusCalendarEvent()
@@ -2328,13 +2332,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let editorLeaderPending = takeEditorLeader()
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
-        let takenRelationEqualsArm = model.takeRelationEqualsOpenerArm()
         model.clearRelationFlipAliasOpen()
-        // The arm is judged against the live editor, not the SwiftUI
+        // The hash arm is judged against the live editor, not the SwiftUI
         // mirror: SwiftUI can report the caret one edit behind, and right
         // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
         // The action takes the arm passed here and never re-reads the
-        // property just cleared.
+        // property just cleared. The equals record is read live instead:
+        // Space/Escape restores and fast-`==` undos re-validate inside the
+        // model, and the record survives across key-downs until consumed.
         let deviceIndependentModifiers = event.modifierFlags.intersection(
             .deviceIndependentFlagsMask
         )
@@ -2355,22 +2360,57 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             }
             return arm.key
         }()
+        // The opener arm is judged against the live editor when no picker
+        // is open: SwiftUI can report the caret one edit behind, and the
+        // model mirror may not have caught a just-typed key. While a picker
+        // is open, typing lands in its filter field, so the model state is
+        // exact.
         let relationEqualsOpenerArmed: Bool = {
-            guard let arm = takenRelationEqualsArm else {
+            guard model.relationEqualsOpenerRestorable,
+                  let arm = model.equalsGestureArm
+            else {
                 return false
             }
-            if let picker = model.picker {
-                return picker.source == .linksTo
-                    && picker.draftSnapshot == arm.draft
-                    && picker.replacementRange.start == arm.tildeUTF8
-                    && picker.filterText.isEmpty
+            if model.picker != nil {
+                return true
             }
             guard let textView = Self.editableTextView(panel?.firstResponder),
                   !textView.hasMarkedText(),
-                  textView.string == arm.draft,
-                  textView.selectedRange() == NSRange(location: arm.caretUTF16, length: 0)
+                  textView.string == arm.postDraft,
+                  textView.selectedRange().length == 0,
+                  let caretUTF8 = utf8Offset(
+                      in: textView.string,
+                      utf16Offset: textView.selectedRange().location
+                  ),
+                  caretUTF8 == arm.postCaretUTF8
             else {
                 return false
+            }
+            return true
+        }()
+        let equalsGestureFastSecond: Bool = {
+            guard let surface = model.equalsGestureSecondEqualsSurface(
+                timestamp: event.timestamp,
+                isRepeat: event.isARepeat,
+                markedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
+            ) else {
+                return false
+            }
+            // With no picker open the key lands in the editor, so judge it
+            // against the live editor for the same mirror-lag reason.
+            if surface == .editor, model.picker == nil {
+                guard let arm = model.equalsGestureArm,
+                      let textView = Self.editableTextView(panel?.firstResponder),
+                      textView.string == arm.postDraft,
+                      textView.selectedRange().length == 0,
+                      let caretUTF8 = utf8Offset(
+                          in: textView.string,
+                          utf16Offset: textView.selectedRange().location
+                      ),
+                      caretUTF8 == arm.postCaretUTF8
+                else {
+                    return false
+                }
             }
             return true
         }()
@@ -2391,6 +2431,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 liveCaretUTF16: selection.location,
                 hasMarkedText: false,
                 typedKey: typedKey
+            ) ? typedKey : nil
+        }()
+        let typedEqualsProbeKey = CaptureKeyCommandRouter.typedEqualsProbeKey(
+            event: event,
+            modifiers: deviceIndependentModifiers
+        )
+        let equalsProbeReplyPendingKey: String? = {
+            guard let typedKey = typedEqualsProbeKey,
+                  let textView = Self.editableTextView(panel?.firstResponder),
+                  !textView.hasMarkedText()
+            else {
+                return nil
+            }
+            let selection = textView.selectedRange()
+            guard selection.length == 0 else {
+                return nil
+            }
+            return model.equalsProbeReplyPending(
+                liveString: textView.string,
+                liveCaretUTF16: selection.location,
+                hasMarkedText: false,
+                typedKey: typedKey,
+                timestamp: event.timestamp
             ) ? typedKey : nil
         }()
         guard let command = keyRouter.command(
@@ -2465,6 +2528,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 hashAliasLiteralKey: hashAliasLiteralKey,
                 hashAliasReplyPendingKey: hashAliasReplyPendingKey,
                 relationEqualsOpenerArmed: relationEqualsOpenerArmed,
+                equalsGestureFastSecond: equalsGestureFastSecond,
+                equalsProbeReplyPendingKey: equalsProbeReplyPendingKey,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending
             )
@@ -2501,18 +2566,38 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             return model.replaceHashAliasWithLiteralKey(arm) ? nil : event
         }
-        if command == .consumeKey,
-           let arm = takenRelationEqualsArm,
-           relationEqualsOpenerArmed,
-           event.isARepeat
-        {
-            model.restoreRelationEqualsOpenerArm(arm)
-        }
         if case .restoreRelationEqualsOpener(let key) = command,
-           let arm = takenRelationEqualsArm,
            relationEqualsOpenerArmed
         {
-            return model.restoreRelationEqualsOpener(arm, key: key) ? nil : event
+            return model.restoreRelationEqualsOpener(key: key) ? nil : event
+        }
+        if command == .undoEqualsGestureAndTypeLiteral {
+            if model.undoEqualsGestureAndTypeLiteral() {
+                return nil
+            }
+            noteSeparatorToggleIntentFromEvent(event)
+            return event
+        }
+        if command == .typeKeyBeforeEqualsReply {
+            // The probe stores the one-shot re-ask; AppKit types the second
+            // key natively. No separator intent is recorded for this key.
+            guard let typedKey = typedEqualsProbeKey else {
+                return event
+            }
+            Self.noteEqualsProbeIfEligible(
+                firstResponder: panel?.firstResponder,
+                model: model,
+                typedKey: typedKey,
+                timestamp: event.timestamp
+            )
+            return event
+        }
+        if command == .flipRelationDirection {
+            model.flipRelationDirection(
+                key: event.characters ?? "",
+                timestamp: event.timestamp
+            )
+            return nil
         }
         if command == .flipRelationLabelDirection {
             model.flipRelationLabelDirection(
@@ -2571,6 +2656,45 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.noteHashAliasBeforeReply(
             secondDraft: secondDraft,
             secondCaretUTF8: secondCaretUTF8
+        )
+    }
+
+    /// Records the one-shot fast double-tap probe for a second `=`/`~`
+    /// typed before Bob answers the first `=`. Computes the post-key buffer
+    /// from the live editor at key-down time, so nothing depends on when
+    /// SwiftUI delivers the text change.
+    static func noteEqualsProbeIfEligible(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel,
+        typedKey: String,
+        timestamp: TimeInterval
+    ) {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0,
+              selection.location >= 0
+        else {
+            return
+        }
+        let nsString = textView.string as NSString
+        guard selection.location <= nsString.length else {
+            return
+        }
+        let secondDraft = nsString.replacingCharacters(in: selection, with: typedKey)
+        let secondUTF16 = selection.location + (typedKey as NSString).length
+        guard let secondCaretUTF8 = utf8Offset(in: secondDraft, utf16Offset: secondUTF16)
+        else {
+            return
+        }
+        model.noteEqualsBeforeReply(
+            secondDraft: secondDraft,
+            secondCaretUTF8: secondCaretUTF8,
+            secondKey: typedKey,
+            secondTimestamp: timestamp
         )
     }
 

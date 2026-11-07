@@ -10,13 +10,14 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         keyCode: UInt16,
         characters: String,
         modifiers: NSEvent.ModifierFlags = [],
+        timestamp: TimeInterval = 0,
         isRepeat: Bool = false
     ) -> NSEvent {
         NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
             modifierFlags: modifiers,
-            timestamp: 0,
+            timestamp: timestamp,
             windowNumber: 0,
             context: nil,
             characters: characters,
@@ -35,9 +36,25 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
 
     private func equalsEvent(
         modifiers: NSEvent.ModifierFlags = [],
+        timestamp: TimeInterval = 0,
         isRepeat: Bool = false
     ) -> NSEvent {
-        keyEvent(keyCode: 24, characters: "=", modifiers: modifiers, isRepeat: isRepeat)
+        keyEvent(
+            keyCode: 24,
+            characters: "=",
+            modifiers: modifiers,
+            timestamp: timestamp,
+            isRepeat: isRepeat
+        )
+    }
+
+    private func tildeEvent(timestamp: TimeInterval = 0) -> NSEvent {
+        keyEvent(
+            keyCode: 50,
+            characters: "~",
+            modifiers: .shift,
+            timestamp: timestamp
+        )
     }
 
     private func spaceEvent(isRepeat: Bool = false) -> NSEvent {
@@ -175,7 +192,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 9, length: 0))
         XCTAssertFalse(model.pickerVisible)
         XCTAssertNil(model.pickerChip)
-        XCTAssertNil(model.relationEqualsOpenerArm)
+        XCTAssertNil(model.equalsGestureArm)
 
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, "Fix it ~")
@@ -202,7 +219,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
 
         XCTAssertNotNil(typeKey(equalsEvent(), into: textView, model: model, controller: controller))
         await waitUntil {
-            textView.string == "Fix it ~" && model.relationEqualsOpenerArm != nil
+            textView.string == "Fix it ~" && model.equalsGestureArm?.isOpener == true
                 && !model.pickerVisible
         }
         XCTAssertNil(typeKey(spaceEvent(), into: textView, model: model, controller: controller))
@@ -227,7 +244,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         }
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertFalse(model.pickerVisible)
-        XCTAssertNil(model.relationEqualsOpenerArm)
+        XCTAssertNil(model.equalsGestureArm)
     }
 
     func testSpaceDashStaysLiteralAndDoesNotOpenLinksTo() async throws {
@@ -242,7 +259,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
                 && (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") == true
         }
         XCTAssertFalse(model.pickerVisible)
-        XCTAssertNil(model.relationEqualsOpenerArm)
+        XCTAssertNil(model.equalsGestureArm)
     }
 
     func testPastSegmentDashAliasIsUngatedAndUndoRestoresTheDash() async throws {
@@ -257,7 +274,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
         await waitUntil { textView.string == "x=2~" }
         XCTAssertEqual(model.plainDraft, "x=2~")
-        XCTAssertNil(model.relationEqualsOpenerArm)
+        XCTAssertNil(model.equalsGestureArm)
         XCTAssertTrue(try String(contentsOf: recordURL).contains(
             "argv=capture-rewrite --cursor 4 --format json -- x=2-"
         ))
@@ -410,5 +427,250 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
             .restoreRelationEqualsOpener(" ")
         )
         XCTAssertEqual(router.command(for: equalsEvent(), context: context), nil)
+    }
+
+    private func openTimestampedAlias(
+        firstTimestamp: TimeInterval
+    ) async throws -> (
+        CapturePanelModel,
+        CapturePanelController,
+        NSTextView,
+        NSPanel
+    ) {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
+        model.processClient = try processClient(recordURL: recordURL)
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: firstTimestamp),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil {
+            textView.string == "Fix it ~" && model.picker?.source == .linksTo
+                && model.picker?.filterText.isEmpty == true
+        }
+        return (model, controller, textView, panel)
+    }
+
+    func testFastSecondEqualsUndoesOpenerAfterReply() async throws {
+        let (model, controller, textView, panel) = try await openTimestampedAlias(
+            firstTimestamp: 1.0
+        )
+        defer { panel.orderOut(nil) }
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
+
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.350)))
+        XCTAssertEqual(textView.string, "Fix it =")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.picker)
+        XCTAssertNil(model.equalsGestureArm)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Fix it ~")
+    }
+
+    func testSlowSecondEqualsFlipsAfterReply() async throws {
+        let (model, controller, _, panel) = try await openTimestampedAlias(
+            firstTimestamp: 1.0
+        )
+        defer { panel.orderOut(nil) }
+
+        // 351 ms after the first key is past the window: an ordinary flip.
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.351)))
+        XCTAssertEqual(model.plainDraft, "Fix it ~~")
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+        await waitUntil { model.picker?.source == .linkedFrom }
+        XCTAssertTrue(model.pickerVisible)
+    }
+
+    func testFastDoubleEqualsBeforeReplyCollapsesToOne() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, "Fix it =")
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.1),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, "Fix it ==")
+
+        // The probe re-asks Bob about the first draft; the alias answer
+        // collapses the pair without ever opening the picker.
+        await waitUntil {
+            textView.string == "Fix it =" && model.equalsProbe == nil
+        }
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.equalsGestureArm)
+        let record = try String(contentsOf: recordURL)
+        let asks = record.split(separator: "\n").filter {
+            $0.hasPrefix("argv=capture-rewrite") && $0.hasSuffix("-- Fix it =")
+        }
+        XCTAssertEqual(asks.count, 2)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Fix it ==")
+    }
+
+    func testFastEqualsTildeBeforeReplyProducesLinkedFrom() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertNotNil(typeKey(
+            tildeEvent(timestamp: 1.1),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, "Fix it =~")
+
+        // The reliable Linked From spelling at any speed: `=~` becomes `~~`
+        // and arms the record like the slow flip path.
+        await waitUntil {
+            textView.string == "Fix it ~~" && model.equalsProbe == nil
+        }
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+        XCTAssertEqual(model.equalsGestureArm?.preDraft, "Fix it ")
+    }
+
+    func testTripleEqualsGivesDoubleEquals() async throws {
+        let (model, controller, textView, panel) = try await openTimestampedAlias(
+            firstTimestamp: 1.0
+        )
+        defer { panel.orderOut(nil) }
+
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.1)))
+        XCTAssertEqual(textView.string, "Fix it =")
+
+        // The undo consumed the record, so the third `=` types natively and
+        // no alias fires: `===` gives `==`.
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.2),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil { textView.string == "Fix it ==" }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(textView.string, "Fix it ==")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testTildeFlipThenFastEqualsRestoresTildeEquals() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "New task ~")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil { textView.string == "New task ~~" }
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+
+        // `~=` became `~~`; a fast `=` undoes the flip back to `~=`.
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.1)))
+        XCTAssertEqual(textView.string, "New task ~=")
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testEqualsGestureGuardsRepeatMarkedTextAndZeroTimestamps() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Fix it ~"
+        model.equalsGestureArm = CaptureEqualsGestureArm(
+            surface: .editor,
+            firstTimestamp: 1.0,
+            isOpener: true,
+            preDraft: "Fix it ",
+            preCaretUTF8: 7,
+            postDraft: "Fix it ~",
+            postCaretUTF8: 8,
+            pickerSnapshot: nil
+        )
+        XCTAssertEqual(
+            model.equalsGestureSecondEqualsSurface(
+                timestamp: 1.1,
+                isRepeat: false,
+                markedText: false
+            ),
+            .editor
+        )
+        XCTAssertNil(model.equalsGestureSecondEqualsSurface(
+            timestamp: 0,
+            isRepeat: false,
+            markedText: false
+        ))
+        XCTAssertNil(model.equalsGestureSecondEqualsSurface(
+            timestamp: 0.1,
+            isRepeat: false,
+            markedText: false
+        ))
+        XCTAssertNil(model.equalsGestureSecondEqualsSurface(
+            timestamp: 1.1,
+            isRepeat: true,
+            markedText: false
+        ))
+        XCTAssertNil(model.equalsGestureSecondEqualsSurface(
+            timestamp: 1.1,
+            isRepeat: false,
+            markedText: true
+        ))
+        XCTAssertNil(model.equalsGestureSecondEqualsSurface(
+            timestamp: 1.351,
+            isRepeat: false,
+            markedText: false
+        ))
+    }
+
+    func testRouterFastEqualsUndoCommand() {
+        let router = CaptureKeyCommandRouter()
+        var armed = CaptureKeyRoutingContext()
+        armed.equalsGestureFastSecond = true
+        XCTAssertEqual(
+            router.command(for: equalsEvent(), context: armed),
+            .undoEqualsGestureAndTypeLiteral
+        )
+        // `~` never takes the undo path.
+        XCTAssertNil(router.command(for: tildeEvent(), context: armed))
+        // Repeats fall through to the ordinary path.
+        var repeating = armed
+        repeating.keyIsRepeat = true
+        XCTAssertNil(router.command(for: equalsEvent(), context: repeating))
+        XCTAssertNil(router.command(
+            for: equalsEvent(isRepeat: true),
+            context: armed
+        ))
+        // Without a live record the key passes through natively.
+        XCTAssertNil(router.command(
+            for: equalsEvent(),
+            context: CaptureKeyRoutingContext()
+        ))
     }
 }
