@@ -15624,11 +15624,15 @@ final class CapturePanelModel: ObservableObject {
     /// `completionGate` holds this analysis's completion request until that task
     /// settles. An accepted correction reschedules the analysis meanwhile, which
     /// supersedes this one; any other outcome completes as if ungated.
+    /// `writtenRange` overrides the baseline-to-draft edit window; sigil-alias
+    /// rewrites pass Bob's input→text range so auto-open still sees the typed
+    /// separator when a superseded parse already advanced the baseline.
     private func scheduleAnalysis(
         cursorUTF8Offset: Int?,
         requestCompletion: Bool,
         trigger: CompletionTrigger,
-        completionGate: Task<Void, Never>? = nil
+        completionGate: Task<Void, Never>? = nil,
+        writtenRange rewriteWrittenRange: CaptureRange? = nil
     ) {
         if pullInChoice != nil {
             cancelPullInChoiceFromKeyboard()
@@ -15648,9 +15652,9 @@ final class CapturePanelModel: ObservableObject {
         if overrideRefusalDraft != draft {
             overrideRefusalDraft = nil
         }
-        let writtenRange = trigger == .edit
+        let writtenRange = rewriteWrittenRange ?? (trigger == .edit
             ? captureWrittenByteRange(from: editAnalysisBaseline, to: draft)
-            : nil
+            : nil)
         if let cursorUTF8Offset {
             guard cursorUTF8Offset >= 0,
                   cursorUTF8Offset <= draft.utf8.count,
@@ -16563,11 +16567,15 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
         }
+        let aliasWrittenRange = response.rule == "expand_sigil_alias"
+            ? captureWrittenByteRange(from: response.input, to: response.text)
+            : nil
         scheduleAnalysis(
             cursorUTF8Offset: cursorUTF8Offset,
             requestCompletion: response.rule == "attach_relation_label"
                 || response.rule == "expand_sigil_alias",
-            trigger: .edit
+            trigger: .edit,
+            writtenRange: aliasWrittenRange
         )
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false

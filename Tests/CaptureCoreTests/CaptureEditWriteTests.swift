@@ -46,6 +46,12 @@ final class CaptureEditWriteTests: XCTestCase {
         )
     }
 
+    func testPeriodAliasRewriteWritesTheCaretSeparator() {
+        let written = captureWrittenByteRange(from: "@file.", to: "@file^")
+        XCTAssertEqual(written, CaptureRange(start: 5, end: 6))
+        XCTAssertTrue(captureEditWroteSeparator(written, before: 6))
+    }
+
     func testMultiBytePrefixUsesUTF8Offsets() {
         XCTAssertEqual(
             captureWrittenByteRange(from: "Hi 🧪 @file", to: "Hi 🧪 @file:"),

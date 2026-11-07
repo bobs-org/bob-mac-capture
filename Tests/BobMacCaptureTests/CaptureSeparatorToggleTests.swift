@@ -988,15 +988,16 @@ final class CaptureSeparatorToggleTests: XCTestCase {
     }
 
     func testPeriodAliasAfterRouteOpensNewIDBlockPicker() async throws {
+        let (textView, window) = makeHostedTextView("@file")
+        defer { window.close() }
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(recordURL: recordURL)
-        let textView = makeTextView("@file")
         wireNativeApply(model, textView: textView)
 
         typeSeparator(".", into: textView, model: model)
-        await waitUntil { model.pickerVisible }
+        await waitUntil { textView.string == "@file^" && model.pickerVisible }
 
         XCTAssertEqual(model.plainDraft, "@file^")
         guard case .blockID(let context)? = model.picker?.source else {
