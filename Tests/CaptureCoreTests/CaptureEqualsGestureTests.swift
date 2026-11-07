@@ -38,4 +38,10 @@ final class CaptureEqualsGestureTests: XCTestCase {
             )
         )
     }
+
+    func testEarlierSecondNeverQualifies() {
+        XCTAssertFalse(CaptureEqualsGesture.isFastSecond(first: 1.0, second: 0.9))
+        XCTAssertFalse(CaptureEqualsGesture.isFastSecond(first: 1.0, second: 0.1))
+        XCTAssertTrue(CaptureEqualsGesture.isFastSecond(first: 1.0, second: 1.0))
+    }
 }

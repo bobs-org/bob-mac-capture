@@ -16718,6 +16718,88 @@ final class CapturePanelModel: ObservableObject {
         return true
     }
 
+    /// Shared non-timing precondition for a fast-second undo. Returns the
+    /// surface the undo would take, or nil when the key must take its
+    /// ordinary path. Both routing (`equalsGestureSecondEqualsSurface`) and
+    /// the undo itself use this, so the router never claims an undo the
+    /// undo would refuse. Never mutates state.
+    private func equalsGestureUndoEligibility(
+        for arm: CaptureEqualsGestureArm
+    ) -> CaptureEqualsGestureArm.Surface? {
+        guard !isSubmitting else {
+            return nil
+        }
+        // The editor stays locked while a picker is open; that lock is
+        // expected for both editor and picker undos. Without a picker a
+        // lock means a modal owns the editor, so refuse.
+        if picker == nil, editorInputLocked {
+            return nil
+        }
+        switch arm.surface {
+        case .editor:
+            guard relationLabelPrompt == nil,
+                plainDraft == arm.postDraft,
+                stringRange(
+                    in: arm.preDraft,
+                    start: arm.preCaretUTF8,
+                    end: arm.preCaretUTF8
+                ) != nil
+            else {
+                return nil
+            }
+            if let openPicker = picker {
+                guard openPicker.source.isRelation,
+                    openPicker.draftSnapshot == arm.postDraft
+                else {
+                    return nil
+                }
+            }
+            var probeDraft = arm.preDraft
+            guard let probeInsert = stringRange(
+                in: arm.preDraft,
+                start: arm.preCaretUTF8,
+                end: arm.preCaretUTF8
+            ) else {
+                return nil
+            }
+            probeDraft.replaceSubrange(probeInsert, with: "=")
+            let probeCaret = arm.preCaretUTF8 + 1
+            guard utf16Range(
+                in: arm.postDraft,
+                start: 0,
+                end: arm.postDraft.utf8.count
+            ) != nil,
+                utf16Range(in: probeDraft, start: probeCaret, end: probeCaret) != nil,
+                utf16Range(
+                    in: arm.postDraft,
+                    start: arm.postCaretUTF8,
+                    end: arm.postCaretUTF8
+                ) != nil
+            else {
+                return nil
+            }
+            return .editor
+        case .picker:
+            guard let snapshot = arm.pickerSnapshot,
+                let openPicker = picker,
+                openPicker.source.isRelation,
+                openPicker.draftSnapshot == arm.postDraft,
+                plainDraft == arm.postDraft,
+                stringRange(
+                    in: arm.preDraft,
+                    start: arm.preCaretUTF8,
+                    end: arm.preCaretUTF8
+                ) != nil
+            else {
+                return nil
+            }
+            _ = snapshot
+            return .picker
+        case .relationLabelCard:
+            return nil
+        }
+    }
+
     /// Which live surface a fast second `=` undoes, or nil when the key
     /// should take its ordinary path. Never consumes synthesized
     /// (`timestamp == 0`) or repeat keys.
@@ -16727,39 +16809,17 @@ final class CapturePanelModel: ObservableObject {
         markedText: Bool
     ) -> CaptureEqualsGestureArm.Surface? {
         guard !isRepeat,
-              !markedText,
-              let arm = equalsGestureArm,
-              CaptureEqualsGesture.isFastSecond(
-                  first: arm.firstTimestamp,
-                  second: timestamp,
-                  isRepeat: isRepeat
-              )
+            !markedText,
+            let arm = equalsGestureArm,
+            CaptureEqualsGesture.isFastSecond(
+                first: arm.firstTimestamp,
+                second: timestamp,
+                isRepeat: isRepeat
+            )
         else {
             return nil
         }
-        switch arm.surface {
-        case .editor:
-            guard relationLabelPrompt == nil,
-                  plainDraft == arm.postDraft
-            else {
-                return nil
-            }
-            if let openPicker = picker, !openPicker.source.isRelation {
-                return nil
-            }
-            return .editor
-        case .picker:
-            guard let openPicker = picker,
-                  openPicker.source.isRelation,
-                  openPicker.draftSnapshot == arm.postDraft,
-                  plainDraft == arm.postDraft
-            else {
-                return nil
-            }
-            return .picker
-        case .relationLabelCard:
-            return nil
-        }
+        return equalsGestureUndoEligibility(for: arm)
     }
 
     /// Undoes whatever the first `=` did and types one literal `=` at the
@@ -16768,10 +16828,12 @@ final class CapturePanelModel: ObservableObject {
     /// Returns false without changing state when the record no longer
     /// matches, so the key falls through to its ordinary path.
     func undoEqualsGestureAndTypeLiteral() -> Bool {
-        guard let arm = equalsGestureArm, !isSubmitting, !editorInputLocked else {
+        guard let arm = equalsGestureArm,
+            let surface = equalsGestureUndoEligibility(for: arm)
+        else {
             return false
         }
-        switch arm.surface {
+        switch surface {
         case .editor:
             return undoEditorEqualsGesture(arm)
         case .picker:
@@ -16783,20 +16845,22 @@ final class CapturePanelModel: ObservableObject {
 
     /// Editor undo: restore the pre-gesture draft, type one `=` at the
     /// original caret, and dismiss the picker Bob's reply may have opened.
+    /// Never mutates state when the native edit refuses, so a refused
+    /// claim leaves the key to its ordinary path with the record intact.
     private func undoEditorEqualsGesture(_ arm: CaptureEqualsGestureArm) -> Bool {
         guard relationLabelPrompt == nil,
-              plainDraft == arm.postDraft,
-              let insertRange = stringRange(
-                  in: arm.preDraft,
-                  start: arm.preCaretUTF8,
-                  end: arm.preCaretUTF8
-              )
+            plainDraft == arm.postDraft,
+            let insertRange = stringRange(
+                in: arm.preDraft,
+                start: arm.preCaretUTF8,
+                end: arm.preCaretUTF8
+            )
         else {
             return false
         }
         if let openPicker = picker {
             guard openPicker.source.isRelation,
-                  openPicker.draftSnapshot == arm.postDraft
+                openPicker.draftSnapshot == arm.postDraft
             else {
                 return false
             }
@@ -16816,27 +16880,24 @@ final class CapturePanelModel: ObservableObject {
                 return true
             }
         }
-        equalsGestureArm = nil
-        pendingEqualsFirstKey = nil
-        equalsProbe = nil
         var newDraft = arm.preDraft
         newDraft.replaceSubrange(insertRange, with: "=")
         let newCaretUTF8 = arm.preCaretUTF8 + 1
         guard let fullRange = utf16Range(
-                  in: arm.postDraft,
-                  start: 0,
-                  end: arm.postDraft.utf8.count
-              ),
-              let caretUTF16 = utf16Range(
-                  in: newDraft,
-                  start: newCaretUTF8,
-                  end: newCaretUTF8
-              )?.location,
-              let expectedCaretUTF16 = utf16Range(
-                  in: arm.postDraft,
-                  start: arm.postCaretUTF8,
-                  end: arm.postCaretUTF8
-              )?.location
+            in: arm.postDraft,
+            start: 0,
+            end: arm.postDraft.utf8.count
+        ),
+            let caretUTF16 = utf16Range(
+                in: newDraft,
+                start: newCaretUTF8,
+                end: newCaretUTF8
+            )?.location,
+            let expectedCaretUTF16 = utf16Range(
+                in: arm.postDraft,
+                start: arm.postCaretUTF8,
+                end: arm.postCaretUTF8
+            )?.location
         else {
             return false
         }
@@ -16848,13 +16909,16 @@ final class CapturePanelModel: ObservableObject {
             resultingDraft: newDraft,
             expectedSelection: NSRange(location: expectedCaretUTF16, length: 0)
         )
-        if picker != nil {
-            closePickerForAccept()
-        }
         suppressedCompletionAcceptanceDraft = newDraft
         guard applyNativeRewriteEdit?(edit) == true else {
             suppressedCompletionAcceptanceDraft = nil
             return false
+        }
+        equalsGestureArm = nil
+        pendingEqualsFirstKey = nil
+        equalsProbe = nil
+        if picker != nil {
+            closePickerForAccept()
         }
         if plainDraft != newDraft {
             isApplyingProgrammaticDraft = true

@@ -15,7 +15,7 @@ public enum CaptureEqualsGesture {
         second: TimeInterval,
         isRepeat: Bool = false
     ) -> Bool {
-        guard !isRepeat, first > 0, second > 0 else {
+        guard !isRepeat, first > 0, second > 0, second >= first else {
             return false
         }
         // NSEvent timestamps are binary TimeIntervals; 0.350 is not exact,

@@ -601,6 +601,32 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         XCTAssertNil(model.equalsGestureArm)
     }
 
+    func testTildeFlipFastEqualsAfterPickerRestoresTildeEquals() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "New task ~")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(
+            equalsEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil {
+            textView.string == "New task ~~" && model.picker?.source == .linkedFrom
+        }
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, false)
+
+        XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.1)))
+        XCTAssertEqual(textView.string, "New task ~=")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.equalsGestureArm)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "New task ~~")
+    }
+
     func testEqualsGestureGuardsRepeatMarkedTextAndZeroTimestamps() {
         let model = CapturePanelModel()
         model.plainDraft = "Fix it ~"

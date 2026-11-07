@@ -321,7 +321,12 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
 
         let event = keyEvent(keyCode: 50, characters: "~", modifiers: .shift, timestamp: 3.0)
         XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "Fix it ~~foo:bar|see" }
+        await waitUntil {
+            textView.string == "Fix it ~~foo:bar|see"
+                && (try? String(contentsOf: recordURL))?.contains(
+                    "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see~"
+                ) == true
+        }
         XCTAssertFalse(model.pickerVisible)
         XCTAssertTrue(try String(contentsOf: recordURL).contains(
             "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see~"
@@ -338,7 +343,12 @@ final class CaptureRelationFlipAliasTests: XCTestCase {
             model: literalModel,
             controller: literalController
         ))
-        await waitUntil { literalView.string == draft + "=" }
+        await waitUntil {
+            literalView.string == draft + "="
+                && (try? String(contentsOf: literalRecord))?.contains(
+                    "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see="
+                ) == true
+        }
         XCTAssertFalse(literalModel.pickerVisible)
         XCTAssertTrue(try String(contentsOf: literalRecord).contains(
             "argv=capture-rewrite --cursor 20 --format json -- Fix it ~foo:bar|see="
