@@ -1156,9 +1156,43 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Lexical send filter for close-outcome `x`/`s`: a strict superset of
+    /// Bob's slots. It decides only when not to ask Bob; Bob still decides
+    /// every alias.
+    static func closeAliasPrefilterAllows(text: String, caretUTF8: Int) -> Bool {
+        guard caretUTF8 > 0, caretUTF8 <= text.utf8.count else {
+            return false
+        }
+        let bytes = Array(text.utf8)
+        let previous = bytes[caretUTF8 - 1]
+        let previousIsAliasAdjacent = previous == 0x78
+            || (previous >= 0x30 && previous <= 0x39)
+            || previous == 0x3D
+            || previous == 0x21
+            || previous == 0x2A
+            || previous == 0x7E
+        guard previousIsAliasAdjacent else {
+            return false
+        }
+        guard let caretIndex = String.Index(
+            text.utf8.index(text.utf8.startIndex, offsetBy: caretUTF8),
+            within: text
+        ) else {
+            return false
+        }
+        let prefix = String(text[..<caretIndex])
+        let lineBeforeCaret = prefix.components(separatedBy: CharacterSet.newlines).last ?? ""
+        if lineBeforeCaret.hasPrefix("x") {
+            return true
+        }
+        return lineBeforeCaret.contains(" x")
+            || lineBeforeCaret.contains("\tx")
+            || lineBeforeCaret.contains("=x")
+    }
+
     /// Records a one-shot rewrite-lane separator gesture or sigil alias
     /// (`:`, `^`, `+`, `|`, `,`, `.`, `;`, `\\`, `/`, segment `-`, relation `=`,
-    /// or a glued relation `~`) when
+    /// a glued relation `~`, or close-outcome `x` / `s`) when
     /// the focused main draft editor can insert that character natively.
     /// The key event still reaches AppKit; the model consumes the
     /// intent from the resulting text change.
@@ -1201,6 +1235,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             if textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return
             }
+        } else if characters == "x" || characters == "s" {
+            guard !event.isARepeat,
+                  event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+            else {
+                return
+            }
         } else {
             guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
                 characters == ":" || characters == "^" || characters == "+"
@@ -1220,6 +1260,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             utf16Offset: selection.location
         ) else {
             return
+        }
+        if characters == "x" || characters == "s" {
+            guard Self.closeAliasPrefilterAllows(text: textView.string, caretUTF8: caretUTF8) else {
+                return
+            }
+            guard model.closeAliasForwardingAllowed() else {
+                model.noteCloseAliasBlocked()
+                return
+            }
         }
         let relationTokenEndsHere = relationTokenEndsAtCaret(
             text: textView.string,

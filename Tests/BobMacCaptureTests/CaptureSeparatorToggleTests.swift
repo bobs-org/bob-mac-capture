@@ -2012,4 +2012,295 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertFalse(record.contains("argv=capture-rewrite"))
     }
 
+    // MARK: - Close-outcome x/s aliases
+
+    private func typeCloseAlias(
+        _ typed: String,
+        into textView: NSTextView,
+        model: CapturePanelModel,
+        modifiers: NSEvent.ModifierFlags = [],
+        isRepeat: Bool = false
+    ) {
+        let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: typed,
+            charactersIgnoringModifiers: typed,
+            isARepeat: isRepeat,
+            keyCode: typed == "x" ? 7 : 1
+        )!
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: event,
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        let selection = textView.selectedRange()
+        textView.insertText(typed, replacementRange: selection)
+        model.plainDraft = textView.string
+        let caretUTF8 = utf8Offset(
+            in: textView.string,
+            utf16Offset: textView.selectedRange().location
+        ) ?? textView.string.utf8.count
+        model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
+    }
+
+    private func makeSupportedModel(recordURL: URL? = nil) throws -> CapturePanelModel {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        if let recordURL {
+            model.processClient = try processClient(recordURL: recordURL)
+        } else {
+            model.processClient = try processClient()
+        }
+        model.installCloseAliasSupportForTests(supported: true)
+        return model
+    }
+
+    func testCloseAliasPrefilterTable() {
+        // Fires rows must pass the lexical send filter.
+        let fires: [(String, Int)] = [
+            ("x", 1),
+            ("x1", 2),
+            ("x=1=", 4),
+            ("@r:id=x", 7),
+            ("+2 x", 4),
+            ("Plan\n\nx", 7),
+            ("x=fix=", 6),
+        ]
+        for (text, caret) in fires {
+            XCTAssertTrue(
+                CapturePanelController.closeAliasPrefilterAllows(text: text, caretUTF8: caret),
+                "prefilter should allow \(text.debugDescription)"
+            )
+        }
+        // Clear non-slots are blocked without spawning Bob.
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "ta", caretUTF8: 2))
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "X", caretUTF8: 1))
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "", caretUTF8: 0))
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "Plan", caretUTF8: 4))
+        // Uppercase opener never forwards: previous char `X` is not adjacent.
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "X", caretUTF8: 1))
+        XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "@r:id=X", caretUTF8: 7))
+    }
+
+    func testCloseAliasForwardsWholePastLinkLeadAndNumbered() async throws {
+        let cases: [(before: String, typed: String, expected: String, summary: String, record: String)] = [
+            ("x", "x", "x!", "Typed ! for x", "argv=capture-rewrite --cursor 2 --format json -- xx"),
+            ("x", "s", "x*", "Typed * for s", "argv=capture-rewrite --cursor 2 --format json -- xs"),
+            ("x=1=", "s", "x=1=*", "Typed * for s", "argv=capture-rewrite --cursor 5 --format json -- x=1=s"),
+            ("@r:id=x", "x", "@r:id=x!", "Typed ! for x", "argv=capture-rewrite --cursor 8 --format json -- @r:id=xx"),
+            ("+2 x", "s", "+2 x*", "Typed * for s", "argv=capture-rewrite --cursor 5 --format json -- +2 xs"),
+            ("x1", "s", "x1*", "Typed * for s", "argv=capture-rewrite --cursor 3 --format json -- x1s"),
+        ]
+        for (before, typed, expected, summary, record) in cases {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView(before)
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias(typed, into: textView, model: model)
+            await waitUntil { model.plainDraft == expected && model.statusText == summary }
+            XCTAssertEqual(textView.string, expected, "before=\(before) typed=\(typed)")
+            let logged = try String(contentsOf: recordURL)
+            XCTAssertTrue(logged.contains(record), "missing \(record) in \(logged)")
+        }
+    }
+
+    func testCloseAliasLeavesProseLiteral() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = try makeSupportedModel(recordURL: recordURL)
+        let textView = makeTextView("Plan x")
+        wireNativeApply(model, textView: textView)
+        typeCloseAlias("s", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(model.plainDraft, "Plan xs")
+        XCTAssertEqual(textView.string, "Plan xs")
+        let logged = try String(contentsOf: recordURL)
+        XCTAssertTrue(logged.contains("argv=capture-rewrite --cursor 7 --format json -- Plan xs"))
+    }
+
+    func testCloseAliasDeclinesRepeatsModifiersUppercaseAndIME() async throws {
+        // Repeats never alias.
+        do {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView("x")
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias("x", into: textView, model: model, isRepeat: true)
+            try await Task.sleep(nanoseconds: 150_000_000)
+            XCTAssertEqual(model.plainDraft, "xx")
+            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+        }
+        // Command, Control, and Option never alias.
+        for modifiers in [NSEvent.ModifierFlags.command, .control, .option] {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView("x")
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias("x", into: textView, model: model, modifiers: modifiers)
+            try await Task.sleep(nanoseconds: 100_000_000)
+            XCTAssertEqual(model.plainDraft, "xx")
+            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+        }
+        // Uppercase never aliases.
+        do {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView("x")
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias("X", into: textView, model: model)
+            try await Task.sleep(nanoseconds: 150_000_000)
+            XCTAssertEqual(model.plainDraft, "xX")
+            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+        }
+        // Marked text never aliases.
+        do {
+            let model = try makeSupportedModel()
+            let textView = makeTextView("x")
+            textView.setMarkedText(
+                "x",
+                selectedRange: NSRange(location: 0, length: 1),
+                replacementRange: NSRange(location: 1, length: 0)
+            )
+            CapturePanelController.noteSeparatorToggleIntentIfEligible(
+                event: keyEvent(characters: "x"),
+                firstResponder: textView,
+                model: model,
+                modalFieldActive: false
+            )
+            textView.unmarkText()
+            model.plainDraft = "xx"
+            model.editorTextDidChange(cursorUTF8Offset: 2)
+            XCTAssertNotEqual(model.statusText, "Typed ! for x")
+        }
+        // Non-collapsed selections and modal fields never alias.
+        do {
+            let model = try makeSupportedModel()
+            let textView = makeTextView("x")
+            textView.setSelectedRange(NSRange(location: 0, length: 1))
+            CapturePanelController.noteSeparatorToggleIntentIfEligible(
+                event: keyEvent(characters: "x"),
+                firstResponder: textView,
+                model: model,
+                modalFieldActive: false
+            )
+            CapturePanelController.noteSeparatorToggleIntentIfEligible(
+                event: keyEvent(characters: "x"),
+                firstResponder: makeTextView("x"),
+                model: model,
+                modalFieldActive: true
+            )
+            XCTAssertFalse(model.rewriteInFlightForTesting)
+        }
+    }
+
+    func testCloseAliasUndoRestoresLiteralInOneStep() async throws {
+        let model = try makeSupportedModel()
+        let (textView, window) = makeHostedTextView("x")
+        defer { window.orderOut(nil) }
+        wireNativeApply(model, textView: textView)
+        typeCloseAlias("x", into: textView, model: model)
+        await waitUntil { model.plainDraft == "x!" }
+        XCTAssertEqual(textView.string, "x!")
+        textView.undoManager?.undo()
+        // Undo restores the literal post-key draft; the model mirrors AppKit.
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        XCTAssertEqual(textView.string, "xx")
+        textView.undoManager?.redo()
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        await waitUntil { model.plainDraft == "x!" }
+        XCTAssertEqual(textView.string, "x!")
+    }
+
+    func testCloseAliasEmojiDraftConvertsCaret() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = try makeSupportedModel(recordURL: recordURL)
+        let textView = makeTextView("Hi 🧪\n\nx")
+        wireNativeApply(model, textView: textView)
+        typeCloseAlias("x", into: textView, model: model)
+        await waitUntil { model.plainDraft == "Hi 🧪\n\nx!" }
+        XCTAssertEqual(textView.string, "Hi 🧪\n\nx!")
+        let logged = try String(contentsOf: recordURL)
+        XCTAssertTrue(logged.contains("argv=capture-rewrite --cursor"))
+    }
+
+    func testCloseAliasOldBobProbeBlocksAndWarnsOnce() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_CLOSE_UNCHANGED": "1"]
+        )
+        await model.awaitCloseAliasProbeForTests()
+        XCTAssertFalse(model.closeAliasForwardingAllowed())
+        let textView = makeTextView("x")
+        wireNativeApply(model, textView: textView)
+        typeCloseAlias("x", into: textView, model: model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(model.plainDraft, "xx")
+        XCTAssertEqual(model.statusText, CapturePanelModel.closeAliasOldBobMessage)
+        XCTAssertTrue(model.closeAliasAnnouncedForTests())
+        let logged = try String(contentsOf: recordURL)
+        XCTAssertTrue(logged.contains("argv=capture-rewrite --cursor 2 --format json -- xx"))
+        let xxRewrites = logged.components(separatedBy: "argv=capture-rewrite --cursor 2 --format json -- xx").count - 1
+        XCTAssertEqual(xxRewrites, 1, "blocked x/s must not spawn a rewrite; only the probe runs")
+        // Second blocked key does not repeat the status.
+        model.statusText = ""
+        let secondView = makeTextView("x")
+        wireNativeApply(model, textView: secondView)
+        // Reuse the same model identity so the warning stays one-time.
+        typeCloseAlias("s", into: secondView, model: model)
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(secondView.string, "xs")
+        XCTAssertEqual(model.statusText, "")
+    }
+
+    func testCloseAliasUnknownBobStaysLiteralSilently() throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        // No client means no support and no warning.
+        XCTAssertFalse(model.closeAliasForwardingAllowed())
+        model.noteCloseAliasBlocked()
+        XCTAssertEqual(model.statusText, "")
+    }
+
+    func testCloseAliasCommaAssistParity() async throws {
+        // After `xs` -> `x*`, typing `1` must behave exactly as after a typed `*`.
+        let snapshot = CaptureParseSnapshot(
+            draft: "x*",
+            spans: [
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
+            ]
+        )
+        let direct = CapturePanelModel(debounceNanoseconds: 0)
+        direct.setCurrentPomodoroTaskLinkCountForTests(1)
+        direct.setCloseListParseSnapshotForTests(snapshot)
+        let directEdit = direct.closeTaskCommaEdit(
+            typed: "1",
+            text: "x*",
+            selectedRange: NSRange(location: 2, length: 0)
+        )
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let aliased = try makeSupportedModel(recordURL: recordURL)
+        aliased.setCurrentPomodoroTaskLinkCountForTests(1)
+        let textView = makeTextView("xs")
+        // Simulate the post-rewrite draft; the helper only reads the snapshot.
+        aliased.setCloseListParseSnapshotForTests(snapshot)
+        aliased.plainDraft = "x*"
+        let aliasedEdit = aliased.closeTaskCommaEdit(
+            typed: "1",
+            text: "x*",
+            selectedRange: NSRange(location: 2, length: 0)
+        )
+        XCTAssertEqual(directEdit, aliasedEdit)
+        XCTAssertNotNil(aliasedEdit)
+        XCTAssertEqual(aliasedEdit?.replacementText, ",1")
+    }
+
+
 }

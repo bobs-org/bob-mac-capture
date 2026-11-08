@@ -1923,6 +1923,64 @@ JSON
         fi
         cat "${fixtures_dir}/pomodoro-past-rewrite-segment-dash.json"
       fi
+    elif [[ "${draft}" == "xx" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-old-bob.json"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-whole.json"
+      fi
+    elif [[ "${draft}" == "xs" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-park.json"
+      fi
+    elif [[ "${draft}" == "x=1=s" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-past.json"
+      fi
+    elif [[ "${draft}" == "@r:id=xx" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-link.json"
+      fi
+    elif [[ "${draft}" == "+2 xs" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-lead.json"
+      fi
+    elif [[ "${draft}" == "x1s" ]]; then
+      if [[ "${FAKE_BOB_REWRITE_CLOSE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-numbered.json"
+      fi
+    elif [[ "${draft}" == "Plan xs" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-prose.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then

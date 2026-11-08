@@ -203,15 +203,16 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `@route:` or whole-item `^`) types literally; its picker opens as usual.
   This gesture needs a bob build that implements `switch_block_id_separator`.
   Typing `=` after a space or tab aliases `~` only where Bob reports the
-  Links To relation picker. While that picker has an empty filter, Space
-  restores `= ` and Escape restores `=`; the caret follows the restored text
-  and the picker closes. Undo restores the post-key `~` draft; Undo immediately
-  after the alias restores the literal `=`. Older bob leaves `=` literal.
+  Links To picker. With an empty filter, Space restores `= ` and Escape
+  restores `=`; the caret follows and the picker closes. Undo restores the
+  post-key `~` draft; Undo right after restores the literal `=`. Older bob leaves `=` literal.
   A `-` after a space stays literal; Bob still rewrites the past-segment alias
-  such as `x=2-` to `x=2~`. Meaning-changing aliases hold later edits and Return
+  such as `x=2-` to `x=2~`. Typing `x`/`s` in close slots gives `!`/`*`;
+  elsewhere literal. Use `=XS` for starts.
+  Meaning-changing aliases hold later edits and Return
   until Bob replies; then edits replay before submission. On timeout, the key
   stays literal, edits replay, and Return is dropped with
-  “Bob did not answer; press Return again”.
+  “Bob did not answer; press Return again”. Old bob stays literal with update hint.
   Typing `=` right after bare `~` or `~~` uses the
   same lane to flip direction and open the corresponding picker. A glued `~`
   or `=` after a complete relation token flips direction in place without

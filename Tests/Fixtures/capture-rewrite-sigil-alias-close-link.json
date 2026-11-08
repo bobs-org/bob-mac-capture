@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@r:id=xx","text":"@r:id=x!","changed":true,"cursor":8,"rule":"expand_sigil_alias","edits":[{"range":{"start":7,"end":8},"replacement":"!"}],"summary":"Typed ! for x"}

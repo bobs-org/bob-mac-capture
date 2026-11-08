@@ -759,6 +759,13 @@ final class CapturePanelModel: ObservableObject {
             clearEditorInputLockIfFree()
             savedTemplateShelf.processClient = processClient
             savedTemplateShelf.refresh(reason: .recheck)
+            if processClient != nil {
+                startCloseAliasProbeIfNeeded()
+            } else {
+                closeAliasProbeTask?.cancel()
+                closeAliasProbeTask = nil
+                closeAliasProbeInFlightIdentity = nil
+            }
         }
     }
     var notificationService: NotificationService?
@@ -857,6 +864,17 @@ final class CapturePanelModel: ObservableObject {
     /// Draft the capability warning was already shown for (first ⌘↩). A
     /// second ⌘↩ on the same draft submits. Cleared when the draft changes.
     private var relationCapabilityAcknowledgedDraft: String?
+    /// Close-outcome alias probe verdicts, cached by process-client identity.
+    /// Supported only when `captureRewrite("xx", cursor: 2)` answers changed
+    /// with text `x!`. Until a supported verdict arrives, `x`/`s` stay literal.
+    static let closeAliasProbeDraft = "xx"
+    static let closeAliasProbeCursor = 2
+    static let closeAliasOldBobMessage = "This bob predates x/s close aliases · update bob"
+    private var closeAliasSupportedIdentities: Set<String> = []
+    private var closeAliasUnsupportedIdentities: Set<String> = []
+    private var closeAliasAnnouncedIdentities: Set<String> = []
+    private var closeAliasProbeTask: Task<Void, Never>?
+    private var closeAliasProbeInFlightIdentity: String?
     private var analysisGeneration: UInt64 = 0
     /// Pasteboard-counter poll refreshes `%c` previews while the panel is
     /// key and the current compatible parse reports a clip directive. The
@@ -2579,6 +2597,116 @@ final class CapturePanelModel: ObservableObject {
         invalidateRewrite()
     }
 
+    /// True only after the one-time old-bob probe for the current client
+    /// answered supported. Unknown, unsupported, and failure states all stay
+    /// literal.
+    func closeAliasForwardingAllowed() -> Bool {
+        guard let client = processClient else {
+            return false
+        }
+        return closeAliasSupportedIdentities.contains(client.identityToken)
+    }
+
+    /// Records the one-time old-bob status the first time an `x`/`s` key
+    /// would have been forwarded but the probe already reported unsupported.
+    /// Unknown (probe in flight or transport failure) stays silent.
+    func noteCloseAliasBlocked() {
+        guard let client = processClient else {
+            return
+        }
+        let identity = client.identityToken
+        guard closeAliasUnsupportedIdentities.contains(identity),
+              !closeAliasAnnouncedIdentities.contains(identity)
+        else {
+            return
+        }
+        closeAliasAnnouncedIdentities.insert(identity)
+        announceStatus(Self.closeAliasOldBobMessage)
+    }
+
+    /// Starts the one-time old-bob probe for the current client when its
+    /// verdict is not yet cached. Supported only when `captureRewrite("xx")`
+    /// answers changed with text `x!`. Transport failures stay uncached so
+    /// the next resolution retries.
+    func startCloseAliasProbeIfNeeded() {
+        guard let client = processClient else {
+            return
+        }
+        let identity = client.identityToken
+        if closeAliasSupportedIdentities.contains(identity)
+            || closeAliasUnsupportedIdentities.contains(identity)
+        {
+            return
+        }
+        if closeAliasProbeInFlightIdentity == identity {
+            return
+        }
+        closeAliasProbeTask?.cancel()
+        closeAliasProbeInFlightIdentity = identity
+        closeAliasProbeTask = Task { [weak self, client] in
+            do {
+                let response = try await client.captureRewrite(
+                    Self.closeAliasProbeDraft,
+                    cursor: Self.closeAliasProbeCursor
+                )
+                await MainActor.run {
+                    guard let self,
+                          self.processClient === client,
+                          self.processClient?.identityToken == identity
+                    else {
+                        return
+                    }
+                    self.closeAliasProbeInFlightIdentity = nil
+                    if response.changed, response.text == "x!" {
+                        self.closeAliasSupportedIdentities.insert(identity)
+                    } else {
+                        self.closeAliasUnsupportedIdentities.insert(identity)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self,
+                          self.processClient === client
+                    else {
+                        return
+                    }
+                    self.closeAliasProbeInFlightIdentity = nil
+                }
+            }
+        }
+    }
+
+    /// Awaits the in-flight close-alias probe, if any. Tests use this after
+    /// installing a fake Bob so forwarding gates settle deterministically.
+    func awaitCloseAliasProbeForTests() async {
+        await closeAliasProbeTask?.value
+    }
+
+    /// Test seam: marks the current client identity as supporting (or
+    /// predating) close-outcome aliases without spawning Bob.
+    func installCloseAliasSupportForTests(supported: Bool) {
+        guard let client = processClient else {
+            return
+        }
+        let identity = client.identityToken
+        if supported {
+            closeAliasSupportedIdentities.insert(identity)
+            closeAliasUnsupportedIdentities.remove(identity)
+        } else {
+            closeAliasUnsupportedIdentities.insert(identity)
+            closeAliasSupportedIdentities.remove(identity)
+        }
+    }
+
+    /// Test seam: whether the old-bob close-alias warning was announced for
+    /// the current client identity.
+    func closeAliasAnnouncedForTests() -> Bool {
+        guard let client = processClient else {
+            return false
+        }
+        return closeAliasAnnouncedIdentities.contains(client.identityToken)
+    }
+
     /// Forwards one typed digit to the pure close-comma helper with the
     /// latest parse snapshot and both list bounds. Nil means type the digit natively.
     func closeTaskCommaEdit(
@@ -2635,7 +2763,8 @@ final class CapturePanelModel: ObservableObject {
 
     /// Records the expected post-key draft and caret for a rewrite-lane
     /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
-    /// `\\`, `/`, the Pomodoro-segment `-` alias, or relation `=` / `~` aliases).
+    /// `\\`, `/`, the Pomodoro-segment `-` alias, relation `=` / `~` aliases,
+    /// or close-outcome `x` / `s` aliases).
     /// The character still inserts natively; `editorTextDidChange` consumes
     /// this only when the resulting buffer matches.
     func noteSeparatorToggleIntent(
@@ -2648,7 +2777,8 @@ final class CapturePanelModel: ObservableObject {
         guard
             typed == ":" || typed == "^" || typed == "+" || typed == "|"
                 || typed == "," || typed == "." || typed == ";" || typed == "\\"
-                || typed == "/" || typed == "-" || typed == "=" || typed == "~",
+                || typed == "/" || typed == "-" || typed == "=" || typed == "~"
+                || typed == "x" || typed == "s",
             selectedRange.length == 0,
             selectedRange.location >= 0
         else {
@@ -15976,12 +16106,17 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private static func isMeaningChangingAlias(trigger: String, draft: String) -> Bool {
-        trigger == "-" && draft.contains("x=")
+        if trigger == "x" || trigger == "s" {
+            return true
+        }
+        return trigger == "-" && draft.contains("x=")
     }
 
     private static func meaningChangingAliasReplacement(for trigger: String) -> String? {
         switch trigger {
         case "-": "~"
+        case "x": "!"
+        case "s": "*"
         default: nil
         }
     }

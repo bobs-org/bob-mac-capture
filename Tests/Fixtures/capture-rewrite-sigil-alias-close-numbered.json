@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"x1s","text":"x1*","changed":true,"cursor":3,"rule":"expand_sigil_alias","edits":[{"range":{"start":2,"end":3},"replacement":"*"}],"summary":"Typed * for s"}
