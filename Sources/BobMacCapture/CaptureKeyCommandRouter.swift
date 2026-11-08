@@ -186,6 +186,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var hashAliasReplyPendingKey: String? = nil
     var relationEqualsOpenerArmed = false
     var equalsGestureFastSecond = false
+    var equalsGestureFastSecondKey = "="
     var equalsProbeReplyPendingKey: String? = nil
     var editorHasMarkedText = false
     var editorLeaderPending = false
@@ -246,15 +247,17 @@ struct CaptureKeyCommandRouter {
         return nil
     }
 
-    /// The typed equals-probe key (`=` or `~`) by characters, or nil for any
-    /// other key. Shift is allowed (for `~`); Command, Option, and Control
-    /// veto; marked text is checked by the caller through
-    /// `editorHasMarkedText`.
+    /// The typed equals-probe key (`=`, `~`, or `.`) by characters, or nil
+    /// for any other key. Shift is allowed (for `~`); Command, Option, and
+    /// Control veto; marked text is checked by the caller through
+    /// `editorHasMarkedText`. A `.` second key only counts after a pending
+    /// first `.` (checked by the caller through
+    /// `equalsProbeReplyPendingKey`).
     static func typedEqualsProbeKey(
         event: NSEvent,
         modifiers: NSEvent.ModifierFlags
     ) -> String? {
-        guard event.characters == "=" || event.characters == "~",
+        guard event.characters == "=" || event.characters == "~" || event.characters == ".",
               modifiers.intersection([.command, .option, .control]).isEmpty
         else {
             return nil
@@ -383,11 +386,11 @@ struct CaptureKeyCommandRouter {
             return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
-        // A fast second `=` undoes whatever the first `=` did and types
-        // one literal `=`. Checked before the opener restores and every
-        // other editor path.
+        // A fast second key undoes whatever the first key did and types
+        // one literal (`=` or `.`). Checked before the opener restores and
+        // every other editor path.
         if context.equalsGestureFastSecond,
-           event.characters == "=",
+           event.characters == context.equalsGestureFastSecondKey,
            modifiers.intersection([.command, .option, .control]).isEmpty,
            !context.editorHasMarkedText,
            !context.keyIsRepeat,
@@ -1055,11 +1058,11 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
-        // A fast second `=` undoes the first `=` (opener or flip) and types
-        // one literal `=`. Checked before the opener restores and the
-        // ordinary flip routing.
+        // A fast second key undoes the first key (opener or flip) and types
+        // one literal (`=` or `.`). Checked before the opener restores and
+        // the ordinary flip routing.
         if context.equalsGestureFastSecond,
-           event.characters == "=",
+           event.characters == context.equalsGestureFastSecondKey,
            modifiers.intersection([.command, .option, .control]).isEmpty,
            !context.editorHasMarkedText,
            !context.keyIsRepeat,

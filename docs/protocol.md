@@ -283,7 +283,7 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
 - `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows for Go To)
-- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases, template start)
+- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases including the spaced `.` → `@` route alias, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound on new builds and supplies the running count for older-bob fallback
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
@@ -338,7 +338,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias`, `toggle_relation_direction` | Rewrites `@@`, separators, relation pipes, `=` → `~` Links To, segment `-` → `~`, `=` flips, relation `~` / `=` flips, Parent Task commas, and `x`/`s` outcomes | Older Bob leaves aliases literal (`x`/`s` + hint); old app skips `x`/`s` | Upgrade `bob` |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias`, `toggle_relation_direction` | Rewrites `@@`, separators, relation pipes, `=` → `~` Links To, spaced `.` → `@` route completion, segment `-` → `~`, `=` flips, relation `~` / `=` flips, Parent Task commas, and `x`/`s` outcomes | Older Bob leaves aliases literal (`x`/`s` + hint; a spaced `.` stays literal); old app skips `x`/`s` | Upgrade `bob` |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Chip behind the sealed marker (brown name/seal; green `:`/`@` on offers) | Older Bob omits the modifier; an older app shows a yellow seal and neutral separator, without wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |

@@ -2814,7 +2814,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // model mirror may not have caught a just-typed key. While a picker
         // is open, typing lands in its filter field, so the model state is
         // exact.
-        let relationEqualsOpenerArmed: Bool = {
+        var relationEqualsOpenerArmed: Bool = {
             guard model.relationEqualsOpenerRestorable,
                   let arm = model.equalsGestureArm
             else {
@@ -2837,7 +2837,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             }
             return true
         }()
-        let equalsGestureFastSecond: Bool = {
+        var equalsGestureFastSecond: Bool = {
             guard let surface = model.equalsGestureSecondEqualsSurface(
                 timestamp: event.timestamp,
                 isRepeat: event.isARepeat,
@@ -2905,6 +2905,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 timestamp: event.timestamp
             ) ? typedKey : nil
         }()
+        let equalsGestureFastSecondKey = model.equalsGestureArm?.key ?? "="
+        // A `.` arm clears on every key-down that is neither its fast
+        // second `.` nor a Space/Escape restore (Down, Up, Ctrl-N, Ctrl-P,
+        // and a non-restoring Escape included). The `=` arm stays until
+        // consumed.
+        if model.equalsGestureArm?.key == "." {
+            let isDotFastSecond = equalsGestureFastSecond && event.characters == "."
+            let modifiersClear = deviceIndependentModifiers
+                .intersection([.command, .control, .option]).isEmpty
+                && !((panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false)
+            let isDotRestore = relationEqualsOpenerArmed && modifiersClear
+                && (event.characters == " " || event.keyCode == 53)
+            if !isDotFastSecond && !isDotRestore {
+                model.clearDotGestureArmForInterveningKey()
+                relationEqualsOpenerArmed = false
+                equalsGestureFastSecond = false
+            }
+        }
         guard let command = keyRouter.command(
             for: event,
             context: CaptureKeyRoutingContext(
@@ -2978,6 +2996,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 hashAliasReplyPendingKey: hashAliasReplyPendingKey,
                 relationEqualsOpenerArmed: relationEqualsOpenerArmed,
                 equalsGestureFastSecond: equalsGestureFastSecond,
+                equalsGestureFastSecondKey: equalsGestureFastSecondKey,
                 equalsProbeReplyPendingKey: equalsProbeReplyPendingKey,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending

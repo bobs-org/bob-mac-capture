@@ -220,10 +220,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
   `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
   project-note item (where the Move picker would open) and `- ^.` (which makes
-  `- ^^`). Bob decides whether the candidate would open that sigil's picker; when
-  it does, the app applies the swap natively and requests completion so the picker
-  opens through the existing handlers. Undo restores the literal `.` or `;`; an
-  older bob leaves either key literal.
+  `- ^^`). A `.` after a space or tab following text aliases `@` wherever a
+  bare `@` would open route completion. Bob decides whether the candidate would
+  open that sigil's picker; when it does, the app applies the swap natively and
+  requests completion so the picker opens through the existing handlers. Undo
+  restores the literal `.` or `;`; an older bob leaves either key literal.
   Typing `\` or `/` uses the same lane as an alias for `#` where `#` would
   open a menu, never at a line start. A `/` also stays literal where Bob
   already reads it as part of a field (`=/`, `[[folder/`, and section and
@@ -237,7 +238,12 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   never arms the double-tap.
   `=` also has a 350 ms escape: a fast second press restores literal `=` in the
   editor, picker, or label card. Other keys, caret moves, paste, Undo, or
-  dismissal clear it; a slow second press flips twice.
+  dismissal clear it; a slow second press flips twice. The `.` → `@` alias has
+  the same timed escape: a fast second `.` restores one literal `.`, while Space
+  restores `. ` and Escape restores `.` on the still-empty route list. Any other
+  key, Down, Up, Ctrl-N, Ctrl-P, or a non-restoring Escape clears the `.` arm, so
+  ` ...` after a space takes four presses (as `===` gives `==`), and `..` types a
+  leading `.` such as `.bashrc`.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

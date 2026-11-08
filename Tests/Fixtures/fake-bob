@@ -1354,6 +1354,8 @@ JSON
       cat "${fixtures_dir}/blocked-task-parse-notes-kept.json" | inject_parse_grammar
     elif [[ "${draft}" == "Ship work *release:prj" ]]; then
       cat "${fixtures_dir}/blocked-task-parse-project.json" | inject_parse_grammar
+    elif [[ "${draft}" == "Buy milk @" ]]; then
+      cat "${fixtures_dir}/dot-route-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~" ]]; then
       cat "${fixtures_dir}/relation-parse-need-dash.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~~" ]]; then
@@ -1910,6 +1912,12 @@ JSON
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "Buy milk ." && "${FAKE_BOB_REWRITE_DOT_ROUTE_UNCHANGED:-}" == "1" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
     elif [[ "${draft}" == "x=2-" ]]; then
       if [[ "${FAKE_BOB_PAST_SEGMENT_REWRITE_UNCHANGED:-}" == "1" ]]; then
         printf '{"ok":true,"schema_version":1,"input":'
@@ -1981,6 +1989,8 @@ JSON
       fi
     elif [[ "${draft}" == "Plan xs" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-prose.json"
+    elif [[ "${draft}" == "Buy milk ." ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then
@@ -3328,6 +3338,8 @@ JSON
       cat "${fixtures_dir}/relation-label-complete-nonascii-see.json"
     elif [[ "${draft}" == 'New task ~~tasks:source|"follow @work' && "${cursor}" == "31" ]]; then
       cat "${fixtures_dir}/relation-label-complete-from-follow.json"
+    elif [[ "${draft}" == "Buy milk @" ]]; then
+      cat "${fixtures_dir}/dot-route-complete.json"
     elif [[ "${draft}" == "Fix it ~" ]]; then
       cat "${fixtures_dir}/relation-complete-to-dash.json"
     elif [[ "${draft}" == "Fix it ~~" ]]; then
