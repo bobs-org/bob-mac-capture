@@ -1,3 +1,4 @@
+import Foundation
 import os
 
 // Metadata-only instrumentation: signpost names and durations, never captured text.
@@ -18,6 +19,13 @@ enum CaptureSignpost {
 
     static func event(_ name: StaticString) {
         signposter.emitEvent(name)
+    }
+
+    static func typeAheadHoldEnded(duration: TimeInterval, keyCount: Int) {
+        signposter.emitEvent(
+            "capture-type-ahead-hold",
+            "duration=\(duration, format: .fixed(precision: 3)) keys=\(keyCount)"
+        )
     }
 
     static func begin(_ name: StaticString) -> IntervalToken {

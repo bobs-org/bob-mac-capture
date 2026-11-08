@@ -84,6 +84,19 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         model.plainDraft = text
         panel.contentView = textView
         XCTAssertTrue(panel.makeFirstResponder(textView))
+        controller.replayedKeyForTesting = { event in
+            textView.insertText(
+                event.characters ?? "",
+                replacementRange: textView.selectedRange()
+            )
+            model.plainDraft = textView.string
+            let caretUTF8 =
+                utf8Offset(
+                    in: textView.string,
+                    utf16Offset: textView.selectedRange().location
+                ) ?? textView.string.utf8.count
+            model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
+        }
         return (model, controller, textView, panel)
     }
 
@@ -131,6 +144,10 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         return packageRoot.appendingPathComponent("Tests/Fixtures/fake-bob").path
+    }
+
+    private func keepTypeAheadHoldOpenForTest(_ controller: CapturePanelController) {
+        controller.typeAheadNow = { 0 }
     }
 
     private func waitUntil(
@@ -286,6 +303,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
         defer { panel.orderOut(nil) }
+        keepTypeAheadHoldOpenForTest(controller)
         model.processClient = try processClient(
             recordURL: recordURL,
             extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.15"]
@@ -307,6 +325,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
         defer { panel.orderOut(nil) }
+        keepTypeAheadHoldOpenForTest(controller)
         model.processClient = try processClient(
             recordURL: recordURL,
             extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.15"]
@@ -342,6 +361,207 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         XCTAssertFalse(write.hasSuffix("-- x=2-"), record)
     }
 
+    func testTypeAheadReplaysEditKeysAndReturnAfterDashRewrite() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        keepTypeAheadHoldOpenForTest(controller)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.05"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 20, characters: "3", timestamp: 1.25),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+        XCTAssertEqual(textView.string, "x=2-")
+
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return textView.string == "x=2~3"
+                && record.contains("argv=capture --format json")
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+                + " warning=\(String(describing: model.relationCapabilityWarning))"
+                + " submitting=\(model.isSubmitting)"
+        }
+        XCTAssertNil(model.relationCapabilityWarning)
+        let record = try String(contentsOf: recordURL)
+        let writes = record.split(separator: "\n")
+            .map(String.init)
+            .filter { $0.hasPrefix("argv=capture --format json") && !$0.contains("--dry-run") }
+        XCTAssertEqual(writes.count, 1, record)
+        XCTAssertTrue(writes.first?.hasSuffix("-- x=2~3") == true, record)
+    }
+
+    func testNoChangeReplyReplaysLiteralEditAndReturn() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        keepTypeAheadHoldOpenForTest(controller)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_UNCHANGED": "1"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 20, characters: "3"),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return textView.string == "x=2-3"
+                && record.contains("argv=capture --format json")
+        }
+        let record = try String(contentsOf: recordURL)
+        let writes = record.split(separator: "\n")
+            .map(String.init)
+            .filter { $0.hasPrefix("argv=capture --format json") && !$0.contains("--dry-run") }
+        XCTAssertEqual(writes.count, 1, record)
+        XCTAssertTrue(writes.first?.hasSuffix("-- x=2-3") == true, record)
+    }
+
+    func testRewriteFailureReplaysEditsDropsReturnAndAnnouncesRetry() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_FAIL": "1"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 20, characters: "3"),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+
+        await waitUntil { model.statusText == "Bob did not answer; press Return again" }
+        XCTAssertEqual(textView.string, "x=2-3")
+        let record = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertFalse(
+            record.split(separator: "\n").contains {
+                $0.hasPrefix("argv=capture --format json") && !$0.contains("--dry-run")
+            }, record)
+    }
+
+    func testDeadlineKeepsAliasLiteralAndDropsBufferedReturn() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        var now: TimeInterval = 10
+        controller.typeAheadNow = { now }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 20, characters: "3"),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+
+        now = 10.21
+        controller.expireTypeAheadHoldForTesting()
+        XCTAssertEqual(textView.string, "x=2-3")
+        XCTAssertEqual(model.statusText, "Bob did not answer; press Return again")
+        XCTAssertFalse(model.isSubmitting)
+    }
+
+    func testDeadlineWithNoBufferedKeysLeavesRewriteRunning() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        var now: TimeInterval = 10
+        controller.typeAheadNow = { now }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.05"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        now = 10.21
+        controller.expireTypeAheadHoldForTesting()
+
+        await waitUntil { textView.string == "x=2~" }
+        XCTAssertEqual(model.plainDraft, "x=2~")
+    }
+
+    func testReplayedBackslashRoutesOnceAndKeepsItsOriginalTimestamp() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        defer { panel.orderOut(nil) }
+        keepTypeAheadHoldOpenForTest(controller)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS": "0.05"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 42, characters: "\\", timestamp: 42.75),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return textView.string == "x=2~\\"
+                && record.split(separator: "\n").filter {
+                    $0.hasPrefix("argv=capture-rewrite")
+                }.count == 2
+        }
+        XCTAssertEqual(controller.replayedKeyRouteCountForTesting, 1)
+        XCTAssertEqual(controller.replayedKeyTimestampsForTesting, [42.75])
+    }
+
+    func testLeavingTheDraftEditorFlushesHeldEditsBeforeFocusMoves() throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertNil(
+            typeKey(
+                keyEvent(keyCode: 20, characters: "3"),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+        XCTAssertNil(controller.routeKeyDown(returnEvent()))
+
+        XCTAssertTrue(panel.makeFirstResponder(nil))
+        XCTAssertEqual(textView.string, "x=2-3")
+        XCTAssertEqual(model.statusText, "Bob did not answer; press Return again")
+        XCTAssertFalse(model.isSubmitting)
+    }
+
     func testRapidSecondDashCannotReceiveTheFirstRewriteReply() async throws {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: "x=2")
@@ -352,8 +572,8 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         )
 
         XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
-        XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
-        XCTAssertEqual(textView.string, "x=2--")
+        XCTAssertNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "x=2-")
         try await Task.sleep(nanoseconds: 400_000_000)
         XCTAssertEqual(textView.string, "x=2--")
         XCTAssertEqual(model.plainDraft, "x=2--")
@@ -369,13 +589,13 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         )
 
         XCTAssertNotNil(typeKey(dashEvent(), into: textView, model: model, controller: controller))
-        XCTAssertNotNil(typeKey(
+        XCTAssertNil(typeKey(
             keyEvent(keyCode: 0, characters: "1"),
             into: textView,
             model: model,
             controller: controller
         ))
-        XCTAssertNotNil(typeKey(
+        XCTAssertNil(typeKey(
             keyEvent(keyCode: 0, characters: "+"),
             into: textView,
             model: model,

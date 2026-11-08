@@ -277,6 +277,10 @@ case "${command}" in
       cat "${fixtures_dir}/capture-parse-wikilink-task-inserted.json" | inject_parse_grammar
     elif [[ "${draft}" == "x=2~" ]]; then
       cat "${fixtures_dir}/pomodoro-past-parse-segment-tail.json"
+    elif [[ "${draft}" == "x=2~3" ]]; then
+      # Same relation_grammar as x=2~ so a replayed Return after the dash
+      # rewrite submits instead of hitting the old-bob ~ warning.
+      cat "${fixtures_dir}/pomodoro-past-parse-segment-index.json"
     elif [[ "${FAKE_BOB_TASK_TYPE_CHOOSER:-}" == "1" ]]; then
       if [[ "${draft}" == "#f" ]]; then
         cat "${fixtures_dir}/task-type-parse-leading-short.json" | inject_parse_grammar
@@ -1907,10 +1911,18 @@ JSON
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
     elif [[ "${draft}" == "x=2-" ]]; then
-      if [[ -n "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS:-}" ]]; then
-        sleep "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS}"
+      if [[ "${FAKE_BOB_PAST_SEGMENT_REWRITE_UNCHANGED:-}" == "1" ]]; then
+        printf '{"ok":true,"schema_version":1,"input":'
+        json_string "${draft}"
+        printf ',"text":'
+        json_string "${draft}"
+        printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+      else
+        if [[ -n "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS:-}" ]]; then
+          sleep "${FAKE_BOB_PAST_SEGMENT_REWRITE_DELAY_SECONDS}"
+        fi
+        cat "${fixtures_dir}/pomodoro-past-rewrite-segment-dash.json"
       fi
-      cat "${fixtures_dir}/pomodoro-past-rewrite-segment-dash.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then

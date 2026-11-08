@@ -199,9 +199,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   after `@route:block-id@` use the same lane to switch between the two project forms
   (an older bob leaves them literal), while the same separator or `+` after a seal
   stays literal and `@` itself is never a rewrite key. Undo after a successful rewrite
-  restores the literal post-key draft. When Bob leaves a key alone (for example
-  `@route:` or `@route^` with no ID yet, or a whole-item `^`), the keystroke
-  behaves like ordinary typing, and its picker or completion opens as before.
+  restores the literal post-key draft. An unchanged key (for example bare
+  `@route:` or whole-item `^`) types literally; its picker opens as usual.
   This gesture needs a bob build that implements `switch_block_id_separator`.
   Typing `=` after a space or tab aliases `~` only where Bob reports the
   Links To relation picker. While that picker has an empty filter, Space
@@ -209,7 +208,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   and the picker closes. Undo restores the post-key `~` draft; Undo immediately
   after the alias restores the literal `=`. Older bob leaves `=` literal.
   A `-` after a space stays literal; Bob still rewrites the past-segment alias
-  such as `x=2-` to `x=2~`. Typing `=` right after bare `~` or `~~` uses the
+  such as `x=2-` to `x=2~`. Meaning-changing aliases hold later edits and Return
+  until Bob replies; then edits replay before submission. On timeout, the key
+  stays literal, edits replay, and Return is dropped with
+  “Bob did not answer; press Return again”.
+  Typing `=` right after bare `~` or `~~` uses the
   same lane to flip direction and open the corresponding picker. A glued `~`
   or `=` after a complete relation token flips direction in place without
   opening a picker; after a label, only `~` flips because `=` is label text.
@@ -231,10 +234,9 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   have become `#`, and Undo then restores the doubled key.
   Undo restores the literal key; an older bob leaves either key literal and
   never arms the double-tap.
-  The `=` relation alias adds a timed escape to the same lane: a fast
-  second `=` (350 ms key-to-key) undoes the first and types one literal `=`,
-  in the editor, picker, and label card. Any other key, caret move, paste,
-  Undo, or dismissal clears it; a slow second `=` flips twice.
+  `=` also has a 350 ms escape: a fast second press restores literal `=` in the
+  editor, picker, or label card. Other keys, caret moves, paste, Undo, or
+  dismissal clear it; a slow second press flips twice.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

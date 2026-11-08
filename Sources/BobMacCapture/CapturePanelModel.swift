@@ -795,6 +795,13 @@ final class CapturePanelModel: ObservableObject {
     /// through the focused `NSTextView` so Undo stays native. Nil in tests
     /// that do not wire a text view; those results are left as typed.
     var applyNativeRewriteEdit: ((CaptureNativeRewriteEdit) -> Bool)?
+    /// The controller holds later key-downs only while a meaning-changing
+    /// rewrite is outstanding. A false start result means the current focus
+    /// is not the main draft editor, so the rewrite keeps its legacy behavior.
+    var meaningChangingRewriteHoldDidStart: ((UInt64) -> Bool)?
+    /// `didReceiveReply` distinguishes a Bob verdict from a cancelled or
+    /// failed request; only a verdict may replay a buffered submit.
+    var meaningChangingRewriteHoldDidEnd: ((UInt64, Bool) -> Void)?
     /// Narrow controller bridge: insert a saved template through the
     /// focused `NSTextView` so Undo stays native. Nil in tests that do
     /// not wire a text view; those apply `setPlainDraft` as a fallback.
@@ -824,8 +831,8 @@ final class CapturePanelModel: ObservableObject {
     private var pendingRewriteSubmitIntent: PendingRewriteSubmitIntent?
     private var deferredRewriteInputDraft: String?
     private var completedDeferredRewriteDraft: String?
-    /// Exact native-editor echo for Bob's accepted segment dash rewrite. It
-    /// lets editor echoes preserve a Return intent while later edits still cancel it.
+    /// Exact native-editor echo for an accepted meaning-changing rewrite. It lets
+    /// editor echoes preserve a Return intent while later edits still cancel it.
     private var deferredRewriteEchoDraft: String?
     private var deferredRewriteEchoCursorUTF8: Int?
     private var stashCancellable: AnyCancellable?
@@ -889,6 +896,7 @@ final class CapturePanelModel: ObservableObject {
     private var relationLabelRenameGeneration: UInt64 = 0
     private var relationLabelRenameInFlight: (generation: UInt64, draft: String, oldKey: String, newName: String, merge: Bool)?
     private var rewriteGeneration: UInt64 = 0
+    private var meaningChangingRewriteHoldGeneration: UInt64?
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
     private var pendingSeparatorToggleIntent: SeparatorToggleIntent?
@@ -2560,6 +2568,17 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    /// Cancels the exact rewrite whose later keys are currently held. The
+    /// controller calls this before replaying a non-empty flushed queue.
+    func cancelMeaningChangingRewrite(generation: UInt64) {
+        guard rewriteGeneration == generation,
+            meaningChangingRewriteHoldGeneration == generation
+        else {
+            return
+        }
+        invalidateRewrite()
+    }
+
     /// Forwards one typed digit to the pure close-comma helper with the
     /// latest parse snapshot and both list bounds. Nil means type the digit natively.
     func closeTaskCommaEdit(
@@ -2789,12 +2808,12 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
-        let deferredRewriteInputEcho = pendingRewriteSubmitIntent?.inputDraft == draft
+        let deferredRewriteInputEcho = rewriteTask != nil
             && deferredRewriteInputDraft == draft
         if deferredRewriteInputEcho {
             // A native rewrite can notify the editor before the model mirror
             // receives Bob's replacement. The unchanged input is not a user
-            // edit, so keep the Return intent and let the rewrite apply first.
+            // edit, so keep the rewrite alive until its reply arrives.
             return
         }
         if deferredRewriteEchoDraft != draft {
@@ -2900,8 +2919,10 @@ final class CapturePanelModel: ObservableObject {
                 triggeredCharacter: intent.typed,
                 triggerTimestamp: intent.timestamp,
                 expectsRelationDirectionToggle: intent.expectsRelationDirectionToggle,
-                deferSubmitForPastSegmentDash: intent.typed == "-"
-                    && intent.expectedDraft.contains("x=")
+                deferSubmitForMeaningChangingAlias: Self.isMeaningChangingAlias(
+                    trigger: intent.typed,
+                    draft: intent.expectedDraft
+                )
             )
             analysisCursor = intent.expectedCursorUTF8
         } else if let insertionOffset,
@@ -3175,6 +3196,17 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             self.resumeExplicitSubmit(intent, processClient: processClient)
+        }
+    }
+
+    /// A held Return is replayed after its buffered edits. Those edits can
+    /// start a fresh parse and preview, so keep the explicit submit attached
+    /// to that final draft until its analysis completes.
+    func submitAfterTypeAheadReplay(openAfterCapture: Bool) {
+        if analysisTask != nil {
+            submitAfterCurrentAnalysis(openAfterCapture: openAfterCapture)
+        } else {
+            submit(openAfterCapture: openAfterCapture)
         }
     }
 
@@ -5672,6 +5704,10 @@ final class CapturePanelModel: ObservableObject {
     private func announceStatus(_ message: String) {
         statusText = message
         statusAnnouncementTick += 1
+    }
+
+    func announceTypeAheadSubmitDropped() {
+        announceStatus("Bob did not answer; press Return again")
     }
 
     private func clampStashSelectionAfterStoreChange() {
@@ -15849,16 +15885,17 @@ final class CapturePanelModel: ObservableObject {
         triggeredCharacter: String = "",
         triggerTimestamp: TimeInterval = 0,
         expectsRelationDirectionToggle: Bool = false,
-        deferSubmitForPastSegmentDash: Bool = false
+        deferSubmitForMeaningChangingAlias: Bool = false
     ) -> Task<Void, Never>? {
         guard let processClient else {
             return nil
         }
 
+        finishMeaningChangingRewriteHold(didReceiveReply: false)
         rewriteGeneration &+= 1
         let generation = rewriteGeneration
         cancelPendingRewriteSubmit()
-        deferredRewriteInputDraft = deferSubmitForPastSegmentDash ? draft : nil
+        deferredRewriteInputDraft = deferSubmitForMeaningChangingAlias ? draft : nil
         completedDeferredRewriteDraft = nil
         deferredRewriteEchoDraft = nil
         deferredRewriteEchoCursorUTF8 = nil
@@ -15899,6 +15936,10 @@ final class CapturePanelModel: ObservableObject {
                             }
                         }
                     }
+                    self?.finishMeaningChangingRewriteHold(
+                        generation: generation,
+                        didReceiveReply: true
+                    )
                 }
             } catch is CancellationError {
             } catch {
@@ -15917,11 +15958,32 @@ final class CapturePanelModel: ObservableObject {
                     self?.rewriteExpectedCursorUTF8 = nil
                     self?.rewriteSawMatchingSelection = false
                     self?.pendingHashAlias = nil
+                    self?.finishMeaningChangingRewriteHold(
+                        generation: generation,
+                        didReceiveReply: false
+                    )
                 }
             }
         }
         rewriteTask = task
+        if deferSubmitForMeaningChangingAlias {
+            meaningChangingRewriteHoldGeneration = generation
+            if meaningChangingRewriteHoldDidStart?(generation) != true {
+                meaningChangingRewriteHoldGeneration = nil
+            }
+        }
         return task
+    }
+
+    private static func isMeaningChangingAlias(trigger: String, draft: String) -> Bool {
+        trigger == "-" && draft.contains("x=")
+    }
+
+    private static func meaningChangingAliasReplacement(for trigger: String) -> String? {
+        switch trigger {
+        case "-": "~"
+        default: nil
+        }
     }
 
     /// Re-asks Bob about the first alias key for a fast double-tap. Reuses
@@ -16342,16 +16404,19 @@ final class CapturePanelModel: ObservableObject {
             }
 
             if deferredRewriteInputDraft == draft,
-               response.rule == "expand_sigil_alias",
-               response.edits.count == 1,
-               let edit = response.edits.first,
-               edit.replacement == "~",
-               let triggerRange = stringRange(
-                   in: draft,
-                   start: edit.range.start,
-                   end: edit.range.end
-               ),
-               String(draft[triggerRange]) == "-"
+                response.rule == "expand_sigil_alias",
+                response.edits.count == 1,
+                let replacement = Self.meaningChangingAliasReplacement(
+                    for: triggeredCharacter
+                ),
+                let edit = response.edits.first,
+                edit.replacement == replacement,
+                let triggerRange = stringRange(
+                    in: draft,
+                    start: edit.range.start,
+                    end: edit.range.end
+                ),
+                String(draft[triggerRange]) == triggeredCharacter
             {
                 deferredRewriteEchoDraft = response.text
                 deferredRewriteEchoCursorUTF8 = response.cursor ?? response.text.utf8.count
@@ -18310,6 +18375,28 @@ final class CapturePanelModel: ObservableObject {
         rewriteGeneration &+= 1
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
+        finishMeaningChangingRewriteHold(didReceiveReply: false)
+    }
+
+    private func finishMeaningChangingRewriteHold(didReceiveReply: Bool) {
+        guard let generation = meaningChangingRewriteHoldGeneration else {
+            return
+        }
+        finishMeaningChangingRewriteHold(
+            generation: generation,
+            didReceiveReply: didReceiveReply
+        )
+    }
+
+    private func finishMeaningChangingRewriteHold(
+        generation: UInt64,
+        didReceiveReply: Bool
+    ) {
+        guard meaningChangingRewriteHoldGeneration == generation else {
+            return
+        }
+        meaningChangingRewriteHoldGeneration = nil
+        meaningChangingRewriteHoldDidEnd?(generation, didReceiveReply)
     }
 
     private func cancelPendingRewriteSubmit() {

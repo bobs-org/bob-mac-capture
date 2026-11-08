@@ -264,11 +264,40 @@ enum CaptureLineAboveEditResolver {
 }
 
 @MainActor
+private final class CapturePanelWindow: NSPanel {
+    var willChangeFirstResponder: ((NSResponder?, NSResponder?) -> Void)?
+
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if firstResponder !== responder {
+            willChangeFirstResponder?(firstResponder, responder)
+        }
+        return super.makeFirstResponder(responder)
+    }
+}
+
+@MainActor
 final class CapturePanelController: NSObject, NSWindowDelegate {
     private let model: CapturePanelModel
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
+    private var typeAheadHold = CaptureTypeAheadHold<NSEvent>()
+    private var typeAheadDeadlineTask: Task<Void, Never>?
+    private var isDispatchingReplayedKey = false
+    private var typeAheadReplayQueue: [NSEvent] = []
+    private var typeAheadReplayTask: Task<Void, Never>?
+    private var isReplayingTypeAheadKeys = false
+    private var typeAheadReplayDroppedSubmit = false
+    var typeAheadNow: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// Hosted editor tests use the same key routing, then simulate AppKit's
+    /// native insertion without depending on an active GUI application.
+    var replayedKeyForTesting: ((NSEvent) -> Void)?
+#if DEBUG
+    var replayedKeyRouteCountForTesting = 0
+    var replayedKeyTimestampsForTesting: [TimeInterval] = []
+    private var isRoutingReplayedKeyForTesting = false
+#endif
+
     /// Deferred Ctrl+Tab hop, wired by the app delegate to the panel
     /// coordinator. Fired on the next main-queue turn so the other
     /// panel's local monitor never sees the same key event.
@@ -329,9 +358,20 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model: self.model
             )
         }
+        model.meaningChangingRewriteHoldDidStart = { [weak self] generation in
+            self?.beginTypeAheadHold(generation: generation) ?? false
+        }
+        model.meaningChangingRewriteHoldDidEnd = { [weak self] generation, didReceiveReply in
+            self?.endTypeAheadHold(
+                generation: generation,
+                didReceiveReply: didReceiveReply
+            )
+        }
     }
 
     deinit {
+        typeAheadDeadlineTask?.cancel()
+        typeAheadReplayTask?.cancel()
         if let localMonitor {
             NSEvent.removeMonitor(localMonitor)
         }
@@ -407,6 +447,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        flushTypeAheadHoldBeforeFocusOrDismissal()
         model.prepareForRetainedClose()
         return true
     }
@@ -434,6 +475,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_: Notification) {
+        flushTypeAheadHoldBeforeFocusOrDismissal()
         model.clearEditorLeader()
         editorLeaderAnchor = nil
         // Focus loss stops the pasteboard-counter poll; the counter is only
@@ -756,6 +798,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let created = Self.makePanel()
         created.delegate = self
         panel = created
+        (created as? CapturePanelWindow)?.willChangeFirstResponder = { [weak self] old, new in
+            guard let self,
+                self.isDraftEditorResponder(old),
+                !self.isDraftEditorResponder(new)
+            else {
+                return
+            }
+            self.flushTypeAheadHoldBeforeFocusOrDismissal()
+        }
         updateAvailableScreenHeight()
         let hostingView = NSHostingView(
             rootView: CapturePanelView(model: model) { [weak self] metrics in
@@ -828,7 +879,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private static let unlimitedVisibleFrame = NSRect(x: -1_000_000, y: -1_000_000, width: 2_000_000, height: 2_000_000)
 
     static func makePanel() -> NSPanel {
-        let panel = NSPanel(
+        let panel = CapturePanelWindow(
             contentRect: NSRect(
                 origin: .zero,
                 size: CapturePanelLayout.panelInitialContentSize
@@ -1864,10 +1915,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     func perform(_ command: CaptureKeyCommand) -> Bool {
         switch command {
         case .submit:
-            model.submit(openAfterCapture: false)
+            if isDispatchingReplayedKey {
+                model.submitAfterTypeAheadReplay(openAfterCapture: false)
+            } else {
+                model.submit(openAfterCapture: false)
+            }
             return true
         case .submitAndOpen:
-            model.submit(openAfterCapture: true)
+            if isDispatchingReplayedKey {
+                model.submitAfterTypeAheadReplay(openAfterCapture: true)
+            } else {
+                model.submit(openAfterCapture: true)
+            }
             return true
         case .acceptCompletionThenSubmitAndOpen:
             model.acceptSelectedCompletionThenSubmitAndOpen()
@@ -2306,6 +2365,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let token = CaptureSignpost.begin(CaptureSignpost.captureDismiss)
         defer { CaptureSignpost.end(token) }
         CaptureSignpost.event("panel-dismiss")
+        flushTypeAheadHoldBeforeFocusOrDismissal()
         model.prepareForDismissal()
         editorLeaderAnchor = nil
         panel?.orderOut(nil)
@@ -2316,10 +2376,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
 
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .flagsChanged, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] event in
             guard let self,
-                  self.panel?.isKeyWindow == true
+                self.panel?.isKeyWindow == true
             else {
+                return event
+            }
+            if event.type == .leftMouseDown
+                || event.type == .rightMouseDown
+                || event.type == .otherMouseDown
+            {
+                if event.windowNumber == self.panel?.windowNumber {
+                    self.flushTypeAheadHoldBeforeFocusOrDismissal()
+                }
                 return event
             }
             if event.type == .flagsChanged {
@@ -2330,7 +2401,331 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private enum TypeAheadKeyKind: Equatable {
+        case edit
+        case submit
+    }
+
+    private func beginTypeAheadHold(generation: UInt64) -> Bool {
+        guard isDraftEditorResponder(panel?.firstResponder),
+            let textView = Self.editableTextView(panel?.firstResponder),
+            !textView.hasMarkedText(),
+            !isModalCaptureFieldActive,
+            typeAheadHold.begin(generation: generation, at: typeAheadNow())
+        else {
+            return false
+        }
+
+        scheduleTypeAheadDeadline(generation: generation)
+        return true
+    }
+
+    private func scheduleTypeAheadDeadline(generation: UInt64) {
+        guard let remaining = typeAheadHold.timeRemaining(at: typeAheadNow()) else {
+            return
+        }
+        typeAheadDeadlineTask?.cancel()
+        let nanoseconds = UInt64(remaining * 1_000_000_000)
+        typeAheadDeadlineTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            guard let self,
+                !Task.isCancelled,
+                self.typeAheadHold.generation == generation
+            else {
+                return
+            }
+            self.expireTypeAheadHold(generation: generation)
+            if self.typeAheadHold.generation == generation {
+                self.scheduleTypeAheadDeadline(generation: generation)
+            }
+        }
+    }
+
+    private var isModalCaptureFieldActive: Bool {
+        model.inlinePromptVisible
+            || model.pickerVisible
+            || model.isStashPickerPresented
+            || model.isTemplateShelfPresented
+            || model.editorInputLocked
+    }
+
+    private func isDraftEditorResponder(_ responder: NSResponder?) -> Bool {
+        guard let textView = Self.editableTextView(responder) else {
+            return false
+        }
+        if let cached = cachedEditor.textView,
+            cached.window === panel
+        {
+            return textView === cached
+        }
+        return textView === panel?.contentView
+    }
+
+    /// Returns true when the active hold consumed this event. Non-bufferable
+    /// commands flush ahead of routing so no editor arm sees a stale rewrite.
+    private func holdOrFlushTypeAheadKey(_ event: NSEvent) -> Bool {
+        guard typeAheadHold.isActive else {
+            return false
+        }
+        guard Self.typeAheadKeyKind(for: event) != nil else {
+            flushTypeAheadHoldBeforeFocusOrDismissal()
+            return false
+        }
+
+        switch typeAheadHold.append(event, at: typeAheadNow()) {
+        case .inactive:
+            return false
+        case .buffered:
+            return true
+        case .expired(let snapshot), .overflow(let snapshot):
+            finishFlushedTypeAheadHold(snapshot, cancelRewrite: true)
+            return true
+        }
+    }
+
+    private static func typeAheadKeyKind(for event: NSEvent) -> TypeAheadKeyKind? {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if event.keyCode == 36 || event.keyCode == 76 {
+            guard !modifiers.contains(.control), !modifiers.contains(.option) else {
+                return nil
+            }
+            return .submit
+        }
+        guard !modifiers.contains(.command), !modifiers.contains(.control) else {
+            return nil
+        }
+        if event.keyCode == 51 || event.keyCode == 117 {
+            return .edit
+        }
+        guard let characters = event.characters, !characters.isEmpty else {
+            return nil
+        }
+        let hasText = characters.unicodeScalars.contains { scalar in
+            !CharacterSet.controlCharacters.contains(scalar)
+                && !(0xF700...0xF8FF).contains(scalar.value)
+        }
+        return hasText ? .edit : nil
+    }
+
+    private func endTypeAheadHold(generation: UInt64, didReceiveReply: Bool) {
+        guard
+            let snapshot = typeAheadHold.finish(
+                generation: generation,
+                at: typeAheadNow()
+            )
+        else {
+            return
+        }
+        typeAheadDeadlineTask?.cancel()
+        typeAheadDeadlineTask = nil
+        recordTypeAheadHold(snapshot)
+        replayTypeAheadKeys(
+            snapshot.keys,
+            dropSubmitKeys: !didReceiveReply,
+            acrossTurns: didReceiveReply
+        )
+    }
+
+    private func expireTypeAheadHold(generation: UInt64) {
+        guard
+            let snapshot = typeAheadHold.expire(
+                generation: generation,
+                at: typeAheadNow()
+            )
+        else {
+            return
+        }
+        finishFlushedTypeAheadHold(
+            snapshot,
+            cancelRewrite: !snapshot.keys.isEmpty
+        )
+    }
+
+    /// Test seam: advance `typeAheadNow`, then fire the same expiry path as the
+    /// deadline task without sleeping in an async test.
+    func expireTypeAheadHoldForTesting() {
+        guard let generation = typeAheadHold.generation else {
+            return
+        }
+        expireTypeAheadHold(generation: generation)
+    }
+
+    private func flushTypeAheadHoldBeforeFocusOrDismissal() {
+        while let snapshot = typeAheadHold.end(at: typeAheadNow()) {
+            finishFlushedTypeAheadHold(
+                snapshot,
+                cancelRewrite: !snapshot.keys.isEmpty
+            )
+        }
+    }
+
+    private func finishFlushedTypeAheadHold(
+        _ snapshot: CaptureTypeAheadHold<NSEvent>.Snapshot,
+        cancelRewrite: Bool
+    ) {
+        typeAheadDeadlineTask?.cancel()
+        typeAheadDeadlineTask = nil
+        recordTypeAheadHold(snapshot)
+        if cancelRewrite {
+            model.cancelMeaningChangingRewrite(generation: snapshot.generation)
+        }
+        replayTypeAheadKeys(snapshot.keys, dropSubmitKeys: true)
+    }
+
+    private func recordTypeAheadHold(_ snapshot: CaptureTypeAheadHold<NSEvent>.Snapshot) {
+        CaptureSignpost.typeAheadHoldEnded(
+            duration: snapshot.duration,
+            keyCount: snapshot.keys.count
+        )
+    }
+
+    private func replayTypeAheadKeys(
+        _ keys: [NSEvent],
+        dropSubmitKeys: Bool,
+        acrossTurns: Bool = false
+    ) {
+        guard acrossTurns else {
+            replayTypeAheadKeysImmediately(keys, dropSubmitKeys: dropSubmitKeys)
+            return
+        }
+
+        var replayable: [NSEvent] = []
+        for event in keys {
+            if dropSubmitKeys, Self.typeAheadKeyKind(for: event) == .submit {
+                typeAheadReplayDroppedSubmit = true
+            } else {
+                replayable.append(event)
+            }
+        }
+        if isReplayingTypeAheadKeys {
+            typeAheadReplayQueue.insert(contentsOf: replayable, at: 0)
+        } else {
+            typeAheadReplayQueue.append(contentsOf: replayable)
+        }
+        guard !typeAheadReplayQueue.isEmpty || isReplayingTypeAheadKeys else {
+            announceDroppedTypeAheadSubmitIfNeeded()
+            return
+        }
+        isReplayingTypeAheadKeys = true
+        scheduleNextTypeAheadReplayKey()
+    }
+
+    private func replayTypeAheadKeysImmediately(_ keys: [NSEvent], dropSubmitKeys: Bool) {
+        var droppedSubmit = false
+        for event in keys {
+            if dropSubmitKeys, Self.typeAheadKeyKind(for: event) == .submit {
+                droppedSubmit = true
+                continue
+            }
+            if typeAheadHold.isActive {
+                switch typeAheadHold.append(event, at: typeAheadNow()) {
+                case .inactive:
+                    dispatchReplayedKey(event)
+                case .buffered:
+                    continue
+                case .expired(let snapshot), .overflow(let snapshot):
+                    finishFlushedTypeAheadHold(snapshot, cancelRewrite: true)
+                }
+            } else {
+                dispatchReplayedKey(event)
+            }
+        }
+        if droppedSubmit {
+            model.announceTypeAheadSubmitDropped()
+        }
+    }
+
+    private func scheduleNextTypeAheadReplayKey() {
+        guard typeAheadReplayTask == nil else {
+            return
+        }
+        typeAheadReplayTask = Task { @MainActor [weak self] in
+            // Let AppKit and SwiftUI finish the preceding editor transaction
+            // before routing a later key such as Return against the updated
+            // draft. A cooperative task yield can run before that transaction.
+            do {
+                try await Task.sleep(nanoseconds: 16_000_000)
+            } catch {
+                return
+            }
+            guard let self else {
+                return
+            }
+            self.typeAheadReplayTask = nil
+            self.dispatchNextTypeAheadReplayKey()
+        }
+    }
+
+    private func dispatchNextTypeAheadReplayKey() {
+        guard !typeAheadReplayQueue.isEmpty else {
+            isReplayingTypeAheadKeys = false
+            announceDroppedTypeAheadSubmitIfNeeded()
+            return
+        }
+        let event = typeAheadReplayQueue.removeFirst()
+        dispatchReplayedKey(event)
+        if typeAheadReplayQueue.isEmpty {
+            isReplayingTypeAheadKeys = false
+            announceDroppedTypeAheadSubmitIfNeeded()
+        } else {
+            scheduleNextTypeAheadReplayKey()
+        }
+    }
+
+    private func announceDroppedTypeAheadSubmitIfNeeded() {
+        guard typeAheadReplayDroppedSubmit else {
+            return
+        }
+        typeAheadReplayDroppedSubmit = false
+        model.announceTypeAheadSubmitDropped()
+    }
+
+    private func dispatchReplayedKey(_ event: NSEvent) {
+        isDispatchingReplayedKey = true
+        #if DEBUG
+            isRoutingReplayedKeyForTesting = true
+        #endif
+        let routedEvent = routeKeyDown(event)
+        isDispatchingReplayedKey = false
+        #if DEBUG
+            isRoutingReplayedKeyForTesting = false
+        #endif
+        guard let routed = routedEvent else {
+            return
+        }
+        if let replayedKeyForTesting {
+            replayedKeyForTesting(routed)
+            return
+        }
+        guard let panel else {
+            return
+        }
+        // Route once above, then send directly to the window. This bypasses
+        // NSApplication's local-monitor boundary and keeps aliases from
+        // receiving the same replay twice.
+        panel.sendEvent(routed)
+    }
+
     func routeKeyDown(_ event: NSEvent) -> NSEvent? {
+        #if DEBUG
+            if isRoutingReplayedKeyForTesting {
+                replayedKeyRouteCountForTesting += 1
+                replayedKeyTimestampsForTesting.append(event.timestamp)
+            }
+        #endif
+        if isReplayingTypeAheadKeys, !isDispatchingReplayedKey {
+            // Keep physical keys behind the already-buffered replay sequence.
+            typeAheadReplayQueue.append(event)
+            scheduleNextTypeAheadReplayKey()
+            return nil
+        }
+        if holdOrFlushTypeAheadKey(event) {
+            return nil
+        }
         model.clearOpenHintReveal()
         repairPromptFieldFocusIfOrphaned()
         repairPickerFilterFocusIfNeeded()
