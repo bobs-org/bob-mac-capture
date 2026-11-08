@@ -1101,6 +1101,9 @@ struct CaptureKeyCommandRouter {
                 return context.pickerHasSelection ? .acceptPickerRowAndSubmit : .submitAndOpen
             }
             if keys == .control {
+                if context.pickerSourceIsRelation {
+                    return .openRelationLabelPrompt
+                }
                 if !context.pickerHasSelection {
                     return .submitAndOpen
                 }
@@ -1123,9 +1126,6 @@ struct CaptureKeyCommandRouter {
                     context.pickerParentContinuationAvailable
                 {
                     return .acceptPickerRowAndContinue
-                }
-                if context.pickerSourceIsRelation {
-                    return .openRelationLabelPrompt
                 }
                 return .consumeKey
             }

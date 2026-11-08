@@ -274,13 +274,13 @@ final class CapturePickerDesignTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .linksTo).map { $0.keys },
-            ["↑↓", "↩", "⇧↩", "~", "⌘↩", "⌃↩", "esc"]
+            ["↑↓", "↩", "⌃↩", "~", "⌘↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .linksTo).map { $0.action },
             [
                 "Move", "Link", "Link with a relation", "Flip direction", "Capture",
-                "Capture & Open", "Clear / Cancel",
+                "Clear / Cancel",
             ]
         )
         XCTAssertEqual(
@@ -336,6 +336,20 @@ final class CapturePickerDesignTests: XCTestCase {
                 ["↑↓", "↩", "⌘↩", "⌃↩", "esc"],
                 ["↑↓", "↩", "⌘↩", "esc"],
             ]
+        )
+        XCTAssertEqual(
+            CapturePickerSource.linksTo.keyHintVariants().map { $0.map(\.keys) },
+            [
+                ["↑↓", "↩", "⌃↩", "~", "⌘↩", "esc"],
+            ]
+        )
+        XCTAssertTrue(
+            CapturePickerSource.linksTo.keyHintVariants().allSatisfy { variant in
+                variant.contains(where: { $0.keys == "⌃↩" && $0.action == "Link with a relation" })
+            }
+        )
+        XCTAssertFalse(
+            CapturePickerSource.activeTask.keyHintVariants()[1].contains(where: { $0.keys == "⌃↩" })
         )
     }
 

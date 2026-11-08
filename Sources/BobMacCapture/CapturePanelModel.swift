@@ -11105,7 +11105,7 @@ final class CapturePanelModel: ObservableObject {
         return !typed.replacement.isEmpty
     }
 
-    /// Shift-Return on a relation picker row: insert the token like Return,
+    /// Control-Return on a relation picker row: insert the token like Return,
     /// then open the label card for the inserted token.
     func openRelationLabelPromptFromPickerRow(id: String) {
         guard let picker, let presentation = pickerPresentation,
@@ -13262,7 +13262,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Preview hook: mount the relation-label card production presents for a
-    /// Shift-Return relation pick, so design tests render the card production
+    /// Control-Return relation pick, so design tests render the card production
     /// mounts.
     func installRelationLabelPromptForPreviews(
         draft: String = "New task ~tasks:target",

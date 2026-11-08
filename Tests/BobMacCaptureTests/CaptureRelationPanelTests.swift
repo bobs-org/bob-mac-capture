@@ -478,26 +478,60 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertNil(model.relationCapabilityWarning)
     }
 
-    func testShiftReturnOpensRelationCard() {
+    func testControlReturnOpensRelationCard() {
         let router = CaptureKeyCommandRouter()
-        let context = CaptureKeyRoutingContext(
+        let selected = CaptureKeyRoutingContext(
             pickerSourceIsRelation: true,
             pickerVisible: true
         )
-        // Shift-Return is keyCode 36 with .shift.
-        let event = NSEvent.keyEvent(
+        XCTAssertEqual(
+            router.command(for: returnEvent(modifiers: .control), context: selected),
+            .openRelationLabelPrompt
+        )
+        XCTAssertEqual(
+            router.command(
+                for: returnEvent(keyCode: 76, modifiers: .control),
+                context: selected
+            ),
+            .openRelationLabelPrompt
+        )
+        var unselected = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true
+        )
+        unselected.pickerHasSelection = false
+        XCTAssertEqual(
+            router.command(for: returnEvent(modifiers: .control), context: unselected),
+            .openRelationLabelPrompt
+        )
+        var dependency = CaptureKeyRoutingContext(pickerVisible: true)
+        dependency.pickerSourceIsRelation = false
+        XCTAssertEqual(
+            router.command(for: returnEvent(modifiers: .control), context: dependency),
+            .acceptPickerRowAndSubmitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: returnEvent(modifiers: .shift), context: selected),
+            .consumeKey
+        )
+    }
+
+    private func returnEvent(
+        keyCode: UInt16 = 36,
+        modifiers: NSEvent.ModifierFlags = []
+    ) -> NSEvent {
+        NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
-            modifierFlags: .shift,
+            modifierFlags: modifiers,
             timestamp: 0,
             windowNumber: 0,
             context: nil,
             characters: "",
             charactersIgnoringModifiers: "",
             isARepeat: false,
-            keyCode: 36
+            keyCode: keyCode
         )!
-        XCTAssertEqual(router.command(for: event, context: context), .openRelationLabelPrompt)
     }
 
     // MARK: - Relation-label race (bob-cli-al)

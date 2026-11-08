@@ -476,7 +476,7 @@ final class DependencyPickerPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             insertIndex.actionLine(for: insertRow),
-            "↩ link · ⇧↩ link with a relation · ~ or = flips direction"
+            "↩ link · ⌃↩ link with a relation · ~ or = flips direction"
         )
     }
 

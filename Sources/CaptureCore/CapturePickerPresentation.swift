@@ -570,7 +570,7 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .blockedTask:
             return "Arrow keys move, Return inserts the task to block, Command Return inserts and captures, Control-Return inserts, captures, and opens, Escape cancels."
         case .linksTo, .linkedFrom:
-            return "Arrow keys move, Return inserts the relation, Shift Return links with a relation, Command Return inserts and captures, Control-Return inserts, captures, and opens, tilde or equals flips direction, Escape cancels."
+            return "Arrow keys move, Return inserts the relation, Control-Return links with a relation, Command Return inserts and captures, tilde or equals flips direction, Escape cancels."
         case .taskComplete:
             return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Control-Return completes and opens, Escape cancels."
         case .wikilinkTask(_):
@@ -627,12 +627,19 @@ public enum CapturePickerSource: Equatable, Sendable {
         insertingControlReturnHint(into: coreKeyHintItems(includesClosedTasks: includesClosedTasks))
     }
 
-    /// Full hints, then the same list without Control-Return.
+    /// Full hints, then the same list without the Control-Return *open* hint.
+    /// Relation pickers keep their `⌃↩` link-with-a-relation hint in every
+    /// variant, including narrow layouts.
     public func keyHintVariants(includesClosedTasks: Bool = false) -> [[(
         keys: String, action: String
     )]] {
         let items = keyHintItems(includesClosedTasks: includesClosedTasks)
-        let compact = items.filter { $0.keys != "⌃↩" }
+        guard let openHint = controlReturnHint else {
+            return [items]
+        }
+        let compact = items.filter {
+            $0.keys != openHint.keys || $0.action != openHint.action
+        }
         if compact.count == items.count {
             return [items]
         }
@@ -641,7 +648,7 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     private var controlReturnHint: (keys: String, action: String)? {
         switch self {
-        case .taskGoto:
+        case .taskGoto, .linksTo, .linkedFrom:
             return nil
         case .taskComplete:
             return ("⌃↩", "Complete & Open")
@@ -708,12 +715,10 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("esc", "Clear / Cancel"),
             ]
         case .linksTo, .linkedFrom:
-            // Shift-Return is a copy/key-hint this phase; the relation card
-            // is a later phase. Consume it like `&` until then.
             return [
                 ("↑↓", "Move"),
                 ("↩", "Link"),
-                ("⇧↩", "Link with a relation"),
+                ("⌃↩", "Link with a relation"),
                 ("~", "Flip direction"),
                 ("⌘↩", "Capture"),
                 ("esc", "Clear / Cancel"),

@@ -397,7 +397,7 @@ public struct DependencyPickerIndex: Sendable {
     public func actionLine(for row: CapturePickerRow) -> String {
         if let insertion = row.insertion {
             if direction.isRelation {
-                return "↩ link · ⇧↩ link with a relation · ~ or = flips direction"
+                return "↩ link · ⌃↩ link with a relation · ~ or = flips direction"
             }
             return "↩ inserts \(insertion) · space adds another \(direction.leadingSigil)"
         }

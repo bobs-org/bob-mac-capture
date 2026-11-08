@@ -110,7 +110,7 @@ after a token flip it restores the trigger byte (Bob reports `~foo:bar=` as
 an invalid relation, as expected); in the picker it restores the direction
 and inserts `=` into the filter; in the label card it undoes the flip and
 types `=` into the label field. While the opener record is live the action
-line reads `↩ link · ⇧↩ link with a relation · == types = · ~ flips`. If the
+line reads `↩ link · ⌃↩ link with a relation · == types = · ~ flips`. If the
 second key lands before Bob answers the first, the app re-asks Bob about the
 first draft: `==` collapses to one `=` and `=~` becomes `~~` (the reliable
 Linked From spelling at any speed); any other answer leaves the typed text.
@@ -131,9 +131,9 @@ an existing label. Prerequisite-too rows show **Prerequisite too**. Archived row
 Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
 `read-only note`, `archived tasks can't get an id`).
 
-The action line reads `↩ link · ⇧↩ link with a relation · ~ or = flips direction`
-(while an `=` opener record is live, `↩ link · ⇧↩ link with a relation · == types = · ~ flips`).
-Shift-Return inserts the token and opens the relation card. Typing `|` after a
+The action line reads `↩ link · ⌃↩ link with a relation · ~ or = flips direction`
+(while an `=` opener record is live, `↩ link · ⌃↩ link with a relation · == types = · ~ flips`).
+Control-Return inserts the token and opens the relation card. Typing `|` after a
 relation token also opens the card; Bob removes any spaces or tabs before the
 pipe through the rewrite lane, and Undo restores the typed ` |`. The card keeps
 its query field separate from the highlighted label and filters the catalog
@@ -145,7 +145,7 @@ text. Ctrl-N/P and Down/Up move the highlight, wrapping through the field. Tab
 inserts the selected label, or the top match when nothing is selected. Return
 inserts the selected label, or uses Bob's fresh typed-label replacement; with
 an empty field it removes the pipe and leaves the bare relation token.
-Shift-Tab is consumed. Escape from a Shift-Return card restores the picker's
+Shift-Tab is consumed. Escape from a Control-Return card restores the picker's
 draft and rebuilds the picker, in the new direction after a flip. Escape from
 the `|` flow keeps the (possibly flipped) token and restores the caret.
 Command-Return
@@ -184,16 +184,16 @@ ID-less rows use `capture-task-id --note-path` and splice
 **This Bob is too old for ~ links. Update Bob first.** The prompt buttons
 read Add ID & Use / Add ID & Capture.
 
-Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
-(opens the relation card), tilde or equals Flip direction, Command-Return Insert & Capture,
-Control-Return Insert, Capture & Open when the owner is complete.
+Relation Picker keys: Return/Tab Link, Control-Return Link with a relation
+(opens the relation card), tilde or equals Flip direction, Command-Return Insert & Capture.
+Return then Control-Return in the editor still captures and opens.
 
 Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return
 accept selected or typed label, `~` or `=` flip direction (re-asks Bob, keeps
 query and selection), fast `==` types a literal `=`, Ctrl-D hide what Return
 would insert (or toggle one-off), typed `|` one-off on, Ctrl-H Hidden section,
 Ctrl-R rename the label everywhere with a live dry-run preview and merge
-confirm, Escape back (leaving rename mode first; Shift-Return cards restore
+confirm, Escape back (leaving rename mode first; Control-Return cards restore
 the picker, including after a flip). The card
 opens in one-off mode on a `||` token. Hidden labels live in the Hidden section
 and stay insertable; a hide or unhide keeps its row as a ghost with ⌃D undo

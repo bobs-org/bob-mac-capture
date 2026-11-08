@@ -1308,16 +1308,18 @@ struct CapturePickerKeyHints: View {
         source.keyHintItems(includesClosedTasks: includesClosedTasks)
     }
 
-    private var items: [(keys: String, action: String)] {
-        source.keyHintItems(includesClosedTasks: includesClosedTasks)
+    private var hintVariants: [[(keys: String, action: String)]] {
+        source.keyHintVariants(includesClosedTasks: includesClosedTasks)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 ViewThatFits(in: .horizontal) {
-                    hintRow(items: items)
-                    hintRow(items: items.filter { $0.keys != "⌃↩" })
+                    hintRow(items: hintVariants[0])
+                    if hintVariants.count > 1 {
+                        hintRow(items: hintVariants[1])
+                    }
                 }
                 Spacer(minLength: 12)
             }

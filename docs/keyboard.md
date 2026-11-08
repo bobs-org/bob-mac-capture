@@ -75,7 +75,7 @@ as Command-Y L does.
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |
 | Return | Capture, then close the panel | Accept the selected completion; with no selected row, capture the draft as typed | Add the ID and select the task | Name the Pomodoro and select it |
-| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows; with no selected row, capture and open as typed | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
+| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows; no row, capture and open as typed. Relation picker: open the card | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
 | Command-Return | Same as Control-Return | Same as Control-Return | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline; at the end of a lone `@file` or `@file#section` header that bob's parse reports as needing a `list_item`, insert `\n- ` to start the first bullet | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
@@ -119,7 +119,7 @@ as Command-Y L does.
 
 ## Capture picker keys
 
-Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =`. If `=` opens Links To, Space restores `= ` and Escape restores `=` on an empty filter. In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips; Shift-Return inserts the token and opens its label card. `|` after a relation token opens that card with or without spaces; Return removes an empty-label pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =`. If `=` opens Links To, Space restores `= ` and Escape restores `=` on an empty filter. In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips; Control-Return inserts the token and opens its label card. `|` after a relation token opens that card with or without spaces; Return removes an empty-label pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ## Move choices
 
@@ -195,7 +195,7 @@ Filtering is local after Bob returns the catalog.
 | Fast `==` | Undo a `=` flip into `=` (350 ms) |
 | Click a row | Accept it; the eye icon on a hovered or selected row hides or unhides it |
 | Click ◌ N hidden | Toggle the Hidden section |
-| Escape / Ctrl-[ | Leave rename first; else restore the picker and its draft after Shift-Return (flipped if the card flipped), or keep the token from `\|` |
+| Escape / Ctrl-[ | Leave rename first; else restore the picker and its draft after Control-Return (flipped if the card flipped), or keep the token from `\|` |
 
 With one-off on, Return inserts the `||` form: capturing hides the label from
 suggestions everywhere. On a visible label the card warns in amber
