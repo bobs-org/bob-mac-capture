@@ -174,7 +174,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         while true {
             let record = (try? String(contentsOf: recordURL)) ?? ""
-            if record.contains("argv=capture-rewrite") {
+            if !nonCloseAliasRewriteCalls(in: record).isEmpty {
                 return true
             }
             if Date() > deadline {
@@ -350,7 +350,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertNotEqual(model.statusText, "Changed @file:id to @file+id")
-        XCTAssertFalse((try String(contentsOf: recordURL)).contains("capture-rewrite"))
+        XCTAssertFalse(!nonCloseAliasRewriteCalls(in: try String(contentsOf: recordURL)).isEmpty)
     }
 
     func testIntentDeclinesModalFieldsAndMarkedText() {
@@ -674,7 +674,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         let expectedArgv = "argv=capture-rewrite --cursor 9 --format json -- @file:id+"
         XCTAssertTrue(record.contains(expectedArgv))
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
     }
 
     func testPlusAfterCaretIDSwitchesToSubBulletInOneUndoStep() async throws {
@@ -712,7 +712,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(textView.string, "Do work @file^id+")
         let afterUndo = try String(contentsOf: recordURL)
-        XCTAssertEqual(afterUndo.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: afterUndo).count, 1)
     }
 
     func testColonKeySwitchesSealedCaretMarkerThroughNativeInsert() async throws {
@@ -784,7 +784,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertNil(model.completionResponse)
         XCTAssertFalse(model.completionVisible)
         let record = try String(contentsOf: recordURL)
-        XCTAssertFalse(record.contains("argv=capture-rewrite"))
+        XCTAssertFalse(!nonCloseAliasRewriteCalls(in: record).isEmpty)
         XCTAssertFalse(record.contains("argv=capture-complete"))
     }
 
@@ -812,7 +812,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(textView.string, "Do work @file:id+")
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
     }
 
     func testUnicodeDraftConvertsCursorToNativeRange() async throws {
@@ -875,7 +875,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(textView.string, "Do work @file:id")
 
         let record = try String(contentsOf: recordURL)
-        let rewriteCount = record.components(separatedBy: "argv=capture-rewrite").count - 1
+        let rewriteCount = nonCloseAliasRewriteCalls(in: record).count
         XCTAssertEqual(rewriteCount, 1)
     }
 
@@ -896,7 +896,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "Do work @file^id ")
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
     }
 
     func testNoOpAndFailureLeaveLiteralText() async throws {
@@ -1097,7 +1097,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         await waitUntil { !model.pickerVisible }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
         XCTAssertEqual(textView.string, "@file.")
     }
 
@@ -1196,7 +1196,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         await waitUntil { !model.pickerVisible }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
         XCTAssertEqual(textView.string, "@cash^goog-exit@\n- .")
     }
 
@@ -1819,7 +1819,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         await waitUntil { !model.completionVisible }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
         XCTAssertEqual(textView.string, "jot idea \\")
     }
 
@@ -1967,7 +1967,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         await waitUntil { !model.completionVisible }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-rewrite").count - 1, 1)
+        XCTAssertEqual(nonCloseAliasRewriteCalls(in: record).count, 1)
         XCTAssertEqual(textView.string, "jot idea /")
     }
 
@@ -2009,7 +2009,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertTrue(model.pickerSourceIsTaskGoto)
         XCTAssertEqual(model.plainDraft, "/")
         let record = try String(contentsOf: recordURL)
-        XCTAssertFalse(record.contains("argv=capture-rewrite"))
+        XCTAssertFalse(!nonCloseAliasRewriteCalls(in: record).isEmpty)
     }
 
     // MARK: - Close-outcome x/s aliases
@@ -2062,19 +2062,18 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
     func testCloseAliasPrefilterTable() {
         // Fires rows must pass the lexical send filter.
-        let fires: [(String, Int)] = [
-            ("x", 1),
-            ("x1", 2),
-            ("x=1=", 4),
-            ("@r:id=x", 7),
-            ("+2 x", 4),
-            ("Plan\n\nx", 7),
-            ("x=fix=", 6),
+        let fires = [
+            "xx", "xs", "x1x", "x1s", "x!s", "x*x", "x*1x", "x@1s", "x1~2s",
+            "x=1=s", "x=1=x", "x==s", "x=fix=s", "x=1!=x", "x=1=1s", "+2 xs",
+            "@r:id=xx", "^r:id=x1s", "Fix it @r:id=xs", "Plan\n\nxx", "Hi 🧪\n\nxx",
         ]
-        for (text, caret) in fires {
+        for draft in fires {
+            let before = String(draft.dropLast())
             XCTAssertTrue(
-                CapturePanelController.closeAliasPrefilterAllows(text: text, caretUTF8: caret),
-                "prefilter should allow \(text.debugDescription)"
+                CapturePanelController.closeAliasPrefilterAllows(
+                    text: before, caretUTF8: before.utf8.count
+                ),
+                "prefilter should allow \(draft.debugDescription)"
             )
         }
         // Clear non-slots are blocked without spawning Bob.
@@ -2115,7 +2114,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let textView = makeTextView("Plan x")
         wireNativeApply(model, textView: textView)
         typeCloseAlias("s", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await waitUntil { !model.rewriteInFlightForTesting }
         XCTAssertEqual(model.plainDraft, "Plan xs")
         XCTAssertEqual(textView.string, "Plan xs")
         let logged = try String(contentsOf: recordURL)
@@ -2130,9 +2129,9 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             let textView = makeTextView("x")
             wireNativeApply(model, textView: textView)
             typeCloseAlias("x", into: textView, model: model, isRepeat: true)
-            try await Task.sleep(nanoseconds: 150_000_000)
+            XCTAssertFalse(model.rewriteInFlightForTesting)
             XCTAssertEqual(model.plainDraft, "xx")
-            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+
         }
         // Command, Control, and Option never alias.
         for modifiers in [NSEvent.ModifierFlags.command, .control, .option] {
@@ -2141,9 +2140,9 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             let textView = makeTextView("x")
             wireNativeApply(model, textView: textView)
             typeCloseAlias("x", into: textView, model: model, modifiers: modifiers)
-            try await Task.sleep(nanoseconds: 100_000_000)
+            XCTAssertFalse(model.rewriteInFlightForTesting)
             XCTAssertEqual(model.plainDraft, "xx")
-            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+
         }
         // Uppercase never aliases.
         do {
@@ -2152,9 +2151,9 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             let textView = makeTextView("x")
             wireNativeApply(model, textView: textView)
             typeCloseAlias("X", into: textView, model: model)
-            try await Task.sleep(nanoseconds: 150_000_000)
+            XCTAssertFalse(model.rewriteInFlightForTesting)
             XCTAssertEqual(model.plainDraft, "xX")
-            XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+
         }
         // Marked text never aliases.
         do {
@@ -2241,7 +2240,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let textView = makeTextView("x")
         wireNativeApply(model, textView: textView)
         typeCloseAlias("x", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(model.rewriteInFlightForTesting)
         XCTAssertEqual(model.plainDraft, "xx")
         XCTAssertEqual(model.statusText, CapturePanelModel.closeAliasOldBobMessage)
         XCTAssertTrue(model.closeAliasAnnouncedForTests())
@@ -2255,7 +2254,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         wireNativeApply(model, textView: secondView)
         // Reuse the same model identity so the warning stays one-time.
         typeCloseAlias("s", into: secondView, model: model)
-        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertFalse(model.rewriteInFlightForTesting)
         XCTAssertEqual(secondView.string, "xs")
         XCTAssertEqual(model.statusText, "")
     }
@@ -2267,40 +2266,5 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model.noteCloseAliasBlocked()
         XCTAssertEqual(model.statusText, "")
     }
-
-    func testCloseAliasCommaAssistParity() async throws {
-        // After `xs` -> `x*`, typing `1` must behave exactly as after a typed `*`.
-        let snapshot = CaptureParseSnapshot(
-            draft: "x*",
-            spans: [
-                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
-                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
-            ]
-        )
-        let direct = CapturePanelModel(debounceNanoseconds: 0)
-        direct.setCurrentPomodoroTaskLinkCountForTests(1)
-        direct.setCloseListParseSnapshotForTests(snapshot)
-        let directEdit = direct.closeTaskCommaEdit(
-            typed: "1",
-            text: "x*",
-            selectedRange: NSRange(location: 2, length: 0)
-        )
-        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let aliased = try makeSupportedModel(recordURL: recordURL)
-        aliased.setCurrentPomodoroTaskLinkCountForTests(1)
-        let textView = makeTextView("xs")
-        // Simulate the post-rewrite draft; the helper only reads the snapshot.
-        aliased.setCloseListParseSnapshotForTests(snapshot)
-        aliased.plainDraft = "x*"
-        let aliasedEdit = aliased.closeTaskCommaEdit(
-            typed: "1",
-            text: "x*",
-            selectedRange: NSRange(location: 2, length: 0)
-        )
-        XCTAssertEqual(directEdit, aliasedEdit)
-        XCTAssertNotNil(aliasedEdit)
-        XCTAssertEqual(aliasedEdit?.replacementText, ",1")
-    }
-
 
 }

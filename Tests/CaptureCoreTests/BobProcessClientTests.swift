@@ -15,6 +15,43 @@ private struct DecodeReportStub: Decodable, SchemaVersioned {
 }
 
 final class BobProcessClientTests: XCTestCase {
+    func testCloseAliasProbeDoesNotCancelAnEditorRewrite() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let release = directory.appendingPathComponent("release")
+        let record = directory.appendingPathComponent("calls")
+        defer { try? Data().write(to: release) }
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp", "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": record.path,
+                "FAKE_BOB_REWRITE_RELEASE_PATH": release.path,
+            ]
+        )
+        let probe = Task {
+            try await client.captureRewrite("xx", cursor: 2, lane: "close-alias-probe")
+        }
+        let edit = Task { try await client.captureRewrite("xs", cursor: 2) }
+        let deadline = Date().addingTimeInterval(4)
+        var sawBoth = false
+        while Date() < deadline {
+            let calls = (try? String(contentsOf: record)) ?? ""
+            if calls.contains("-- xx"), calls.contains("-- xs") {
+                sawBoth = true
+                break
+            }
+            await Task.yield()
+        }
+        XCTAssertTrue(sawBoth, "Both subprocesses must start before either reply is released")
+        try Data().write(to: release)
+        let probeReply = try await probe.value
+        let editReply = try await edit.value
+        XCTAssertEqual(probeReply.text, "x!")
+        XCTAssertEqual(editReply.text, "x*")
+    }
+
     func testCaptureParseRunsDirectArgvAndDecodesJSON() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

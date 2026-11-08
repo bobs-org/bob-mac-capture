@@ -26,6 +26,16 @@ fi
 
 fixtures="$repo_root/Tests/Fixtures"
 
+# UTF-8 offsets are byte offsets even when the host locale counts characters.
+record_rewrite() {
+  local name="$1" draft="$2"
+  local cursor
+  cursor="$(printf '%s' "$draft" | wc -c | tr -d ' ')"
+  "$bob_bin" capture-rewrite --cursor "$cursor" --format json -- "$draft" > "$fixtures/capture-rewrite-sigil-alias-close-$name.json"
+}
+record_rewrite emoji $'Hi 🧪\n\nxx'
+record_rewrite chained 'x1*2x'
+
 "$bob_bin" capture-rewrite --cursor 2 --format json -- "xx" > "$fixtures/capture-rewrite-sigil-alias-close-whole.json"
 "$bob_bin" capture-rewrite --cursor 2 --format json -- "xs" > "$fixtures/capture-rewrite-sigil-alias-close-park.json"
 "$bob_bin" capture-rewrite --cursor 5 --format json -- "x=1=s" > "$fixtures/capture-rewrite-sigil-alias-close-past.json"

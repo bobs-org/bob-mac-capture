@@ -456,9 +456,11 @@ public final class BobProcessClient: @unchecked Sendable {
         stderr.contains("unexpected argument") && stderr.contains(option)
     }
 
+    /// Capability probes use their own lane so they cannot cancel editor edits.
     public func captureRewrite(
         _ draft: String,
-        cursor: Int
+        cursor: Int,
+        lane: String = "rewrite"
     ) async throws -> CaptureRewriteResponse {
         let response: CaptureRewriteResponse = try await decode(
             arguments: [
@@ -471,7 +473,7 @@ public final class BobProcessClient: @unchecked Sendable {
                 draft,
             ],
             expectedSchema: 1,
-            lane: "rewrite"
+            lane: lane
         )
         return response
     }

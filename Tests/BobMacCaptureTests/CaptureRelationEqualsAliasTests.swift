@@ -530,9 +530,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         await waitUntil {
             let record = (try? String(contentsOf: recordURL)) ?? ""
             return textView.string == "x=2~\\"
-                && record.split(separator: "\n").filter {
-                    $0.hasPrefix("argv=capture-rewrite")
-                }.count == 2
+                && nonCloseAliasRewriteCalls(in: record).count == 2
         }
         XCTAssertEqual(controller.replayedKeyRouteCountForTesting, 1)
         XCTAssertEqual(controller.replayedKeyTimestampsForTesting, [42.75])

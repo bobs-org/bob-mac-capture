@@ -5370,7 +5370,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertFalse(record.contains("capture-rewrite"))
+        XCTAssertTrue(nonCloseAliasRewriteCalls(in: record).isEmpty)
     }
 
     func testAcceptedCompletionStaysDismissedUntilNextUserEdit() async throws {
@@ -5966,7 +5966,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         await waitUntil { model.completionResponse?.context == "task" }
         let record = try String(contentsOf: recordURL)
-        XCTAssertFalse(record.contains("capture-rewrite"))
+        XCTAssertTrue(nonCloseAliasRewriteCalls(in: record).isEmpty)
         XCTAssertTrue(
             record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash+")
         )

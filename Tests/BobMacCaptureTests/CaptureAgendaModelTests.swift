@@ -483,9 +483,11 @@ final class CaptureAgendaModelTests: XCTestCase {
         )
         typeDraft(model, "=")
         await waitUntil {
-            (try? String(contentsOf: recordURL))?.components(separatedBy: "argv=")
-                .dropFirst()
-                .contains { !$0.hasPrefix("capture-templates") } == true
+            // The startup capability probe is independent of this draft;
+            // clearing it must cancel the actual preview subprocess.
+            (try? String(contentsOf: recordURL))?.contains(
+                "argv=capture --dry-run --no-clip --format json -- =\n"
+            ) == true
         }
 
         typeDraft(model, "")

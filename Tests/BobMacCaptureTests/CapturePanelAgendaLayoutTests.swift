@@ -431,7 +431,7 @@ final class CapturePanelAgendaLayoutTests: XCTestCase {
         await waitUntil {
             (try? String(contentsOf: recordURL))?.components(separatedBy: "argv=")
                 .dropFirst()
-                .contains { !$0.hasPrefix("capture-templates") } == true
+                .contains { $0.hasPrefix("capture-parse") || $0.hasPrefix("capture --") } == true
         }
         // Clear before the preview settles: request retirement must win.
         typeDraft(model, "")

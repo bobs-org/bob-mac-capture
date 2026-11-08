@@ -740,8 +740,15 @@ final class CapturePanelModel: ObservableObject {
     var processClient: BobProcessClient? {
         didSet {
             guard oldValue !== processClient else {
+                startCloseAliasProbeIfNeeded()
                 return
             }
+            // A replacement can have the same executable identity while the
+            // previous client's probe is still pending. Retire that task first.
+            closeAliasProbeTask?.cancel()
+            closeAliasProbeTask = nil
+            closeAliasProbeInFlightIdentity = nil
+            invalidateRewrite()
             invalidateAnalysis()
             stopClipboardPolling()
             lastAppliedParseDraft = nil
@@ -769,10 +776,6 @@ final class CapturePanelModel: ObservableObject {
             savedTemplateShelf.refresh(reason: .recheck)
             if processClient != nil {
                 startCloseAliasProbeIfNeeded()
-            } else {
-                closeAliasProbeTask?.cancel()
-                closeAliasProbeTask = nil
-                closeAliasProbeInFlightIdentity = nil
             }
         }
     }
@@ -1465,6 +1468,7 @@ final class CapturePanelModel: ObservableObject {
     /// draft that key produces. The view-supplied caret can lag one edit
     /// behind, so the caret must not gate the request.
     private var closeListAssistParsePending = false
+    private var closeListAssistParseTask: Task<Void, Never>?
 
     /// Guards in-flight close-list assist parses across client replacement:
     /// only parses belonging to the active client publish their snapshot.
@@ -1546,9 +1550,12 @@ final class CapturePanelModel: ObservableObject {
             self.objectWillChange.send()
             self.clampTemplateSelection(templates: self.visibleTemplateEntries(from: templates))
         }
+        startCloseAliasProbeIfNeeded()
     }
 
     deinit {
+        closeAliasProbeTask?.cancel()
+        closeListAssistParseTask?.cancel()
         analysisTask?.cancel()
         pendingExplicitSubmitTask?.cancel()
         livePreviewTask?.cancel()
@@ -2554,6 +2561,8 @@ final class CapturePanelModel: ObservableObject {
             // after Bob becomes unavailable or the executable/vault changes.
             // The agenda store owns recounting; it clears and repopulates
             // the count through the subscription above.
+            closeListAssistParseTask?.cancel()
+            closeListAssistParseTask = nil
             closeAssistParseGeneration &+= 1
             currentPomodoroTaskLinkCount = nil
             maxTaskLinkCount = nil
@@ -2655,14 +2664,17 @@ final class CapturePanelModel: ObservableObject {
         closeAliasProbeInFlightIdentity = identity
         closeAliasProbeTask = Task { [weak self, client] in
             do {
+                try Task.checkCancellation()
                 let response = try await client.captureRewrite(
                     Self.closeAliasProbeDraft,
-                    cursor: Self.closeAliasProbeCursor
+                    cursor: Self.closeAliasProbeCursor,
+                    lane: "close-alias-probe"
                 )
+                try Task.checkCancellation()
                 await MainActor.run {
-                    guard let self,
-                          self.processClient === client,
-                          self.processClient?.identityToken == identity
+                    guard !Task.isCancelled, let self,
+                        self.processClient === client,
+                        self.processClient?.identityToken == identity
                     else {
                         return
                     }
@@ -2675,8 +2687,8 @@ final class CapturePanelModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    guard let self,
-                          self.processClient === client
+                    guard !Task.isCancelled, let self,
+                        self.processClient === client
                     else {
                         return
                     }
@@ -2698,6 +2710,9 @@ final class CapturePanelModel: ObservableObject {
         guard let client = processClient else {
             return
         }
+        closeAliasProbeTask?.cancel()
+        closeAliasProbeTask = nil
+        closeAliasProbeInFlightIdentity = nil
         let identity = client.identityToken
         if supported {
             closeAliasSupportedIdentities.insert(identity)
@@ -3121,7 +3136,8 @@ final class CapturePanelModel: ObservableObject {
         }
         closeAssistParseGeneration &+= 1
         let generation = closeAssistParseGeneration
-        Task { [weak self, processClient] in
+        closeListAssistParseTask?.cancel()
+        closeListAssistParseTask = Task { [weak self, processClient] in
             do {
                 let parse = try await processClient.captureParse(
                     draft,
@@ -3142,6 +3158,12 @@ final class CapturePanelModel: ObservableObject {
             } catch {
             }
         }
+    }
+
+    /// Replayed digits need Bob's spans for the preceding digit before
+    /// attempting the comma assist. The subprocess has its normal timeout.
+    func waitForCloseListAssistBeforeTypeAheadReplay() async {
+        await closeListAssistParseTask?.value
     }
 
     func editorSelectionDidChange() {

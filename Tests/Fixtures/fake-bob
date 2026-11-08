@@ -1862,6 +1862,24 @@ JSON
         cursor="${args[$((i + 1))]:-0}"
       fi
     done
+    # Tests release a reply explicitly after queueing keys. The deadline also
+    # bounds a failed test, so no subprocess or continuation can wait forever.
+    if [[ -n "${FAKE_BOB_REWRITE_RELEASE_PATH:-}" ]]; then
+      python3 - "${FAKE_BOB_REWRITE_RELEASE_PATH}" <<'PY_GATE'
+from pathlib import Path
+import sys, time
+release = Path(sys.argv[1])
+deadline = time.monotonic() + 5
+while not release.exists():
+    if time.monotonic() >= deadline:
+        sys.exit("rewrite test gate was not released")
+    time.sleep(0.005)
+PY_GATE
+    fi
+    if [[ -n "${FAKE_BOB_REWRITE_FAILURE_PATH:-}" && -e "${FAKE_BOB_REWRITE_FAILURE_PATH}" ]]; then
+      printf 'controlled rewrite failure\n' >&2
+      exit 1
+    fi
     if [[ -n "${FAKE_BOB_REWRITE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_REWRITE_DELAY_SECONDS}" &
       wait $!
@@ -1987,6 +2005,10 @@ JSON
       else
         cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-numbered.json"
       fi
+    elif [[ "${draft}" == $'Hi 🧪\n\nxx' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-emoji.json"
+    elif [[ "${draft}" == "x1*2x" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-chained.json"
     elif [[ "${draft}" == "Plan xs" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-prose.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then

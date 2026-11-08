@@ -2670,16 +2670,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 droppedSubmit = true
                 continue
             }
-            if typeAheadHold.isActive {
-                switch typeAheadHold.append(event, at: typeAheadNow()) {
-                case .inactive:
-                    dispatchReplayedKey(event)
-                case .buffered:
-                    continue
-                case .expired(let snapshot), .overflow(let snapshot):
-                    finishFlushedTypeAheadHold(snapshot, cancelRewrite: true)
-                }
-            } else {
+            if !holdOrFlushTypeAheadKey(event) {
                 dispatchReplayedKey(event)
             }
         }
@@ -2698,6 +2689,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             // draft. A cooperative task yield can run before that transaction.
             do {
                 try await Task.sleep(nanoseconds: 16_000_000)
+                await self?.model.waitForCloseListAssistBeforeTypeAheadReplay()
+                try Task.checkCancellation()
             } catch {
                 return
             }
@@ -2717,6 +2710,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         let event = typeAheadReplayQueue.removeFirst()
         dispatchReplayedKey(event)
+        if typeAheadHold.isActive {
+            // A replayed alias started a new request. Transfer the tail without
+            // routing it yet, so every key runs once and timeout/flush still
+            // sees (and drops) any Return waiting behind this second alias.
+            let remaining = typeAheadReplayQueue
+            typeAheadReplayQueue.removeAll()
+            isReplayingTypeAheadKeys = false
+            replayTypeAheadKeysImmediately(remaining, dropSubmitKeys: false)
+            return
+        }
         if typeAheadReplayQueue.isEmpty {
             isReplayingTypeAheadKeys = false
             announceDroppedTypeAheadSubmitIfNeeded()
