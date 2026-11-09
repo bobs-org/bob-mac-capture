@@ -2277,6 +2277,9 @@ JSON
         closed_tasks="true"
       fi
     done
+    if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS}"
+    fi
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
       exit 0

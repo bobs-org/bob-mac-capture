@@ -119,6 +119,15 @@ as Command-Y L does.
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
 | Command-1…5 | Focus that similar-tasks row and open its strip; pressing the same key again unfocuses it | Close completion, then focus that row | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 
+### Record cards
+
+Tab accepts a suggestion or requests the first missing field; Shift-Tab
+requests the previous and stays at the first. Clicking asks Bob for a field. Edit
+applies Bob's exact text as one undoable change. Return accepts a selected suggestion
+or waits for Bob's readiness before submitting; otherwise it focuses the first missing
+field and says `Needs <field>`. Escape closes suggestions, then dismisses the card for
+the unchanged draft. Next Escape behaves normally.
+
 ## Capture picker keys
 
 Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =`. If `=` opens Links To, Space restores `= ` and Escape restores `=` on an empty filter. In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips; Control-Return inserts the token and opens its label card. `|` after a relation token opens that card with or without spaces; Return removes an empty-label pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).

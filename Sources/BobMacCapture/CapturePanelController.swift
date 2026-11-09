@@ -1987,6 +1987,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model.submit(openAfterCapture: true)
             }
             return true
+        case .recordReturn(let openAfterCapture):
+            model.recordReturn(openAfterCapture: openAfterCapture)
+            return true
+        case .recordTab:
+            model.recordTab()
+            return true
+        case .recordShiftTab:
+            model.recordShiftTab()
+            return true
         case .acceptCompletionThenSubmitAndOpen:
             model.acceptSelectedCompletionThenSubmitAndOpen()
             return true
@@ -2081,6 +2090,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model.unfocusSimilarRow()
             } else if model.completionVisible {
                 model.dismissCompletion()
+            } else if model.recordCardActive {
+                model.dismissRecordCard()
             } else if model.pickerChipVisible {
                 model.dismissPickerChip()
             } else {
@@ -3064,6 +3075,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 similarRowsVisible: model.similarRowsVisibleForKeys,
                 similarRowFocused: model.isSimilarRowFocused,
                 completionVisible: model.completionVisible,
+                recordCardActive: model.recordCardActive,
+                recordAssistAvailable: model.recordAssistAvailable,
+                recordCompletionListVisible: model.recordCompletionListVisible,
                 completionHasSelection: model.selectedCompletionIndex != nil,
                 completionHasSelectedHistoryTheme: model.completionHasSelectedHistoryTheme,
                 completionThemeVisibilityWriteInFlight: model.completionThemeVisibilityWriteInFlight,

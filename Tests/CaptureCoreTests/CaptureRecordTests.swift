@@ -97,6 +97,15 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertTrue(parse.items.contains(where: { $0.record != nil }))
     }
 
+    func testMixedIncompleteFixtureKeepsEachRecordScopedToItsItem() throws {
+        let parse = try decodeParse("record-parse-mixed-incomplete.json")
+        XCTAssertEqual(parse.input.utf8.count, 89)
+        XCTAssertEqual(parse.items.count, 2)
+        XCTAssertEqual(parse.items[0].record?.missing, [])
+        XCTAssertEqual(parse.items[1].range.start, 73)
+        XCTAssertEqual(parse.items[1].record?.missing, ["status", "category", "location"])
+    }
+
     func testParseOldBobDecodesWithoutRecord() throws {
         let parse = try decodeParse("record-parse-old-bob.json")
         XCTAssertNil(parse.record)
@@ -393,6 +402,49 @@ final class CaptureRecordTests: XCTestCase {
                 clientIdentity: "bob"
             ))
         XCTAssertNotEqual(refreshed.fieldKey, "gone")
+    }
+
+    func testFocusDoesNotCarryAcrossItemsOfTheSameRecordType() throws {
+        let parse = try decodeParse("record-parse-incomplete.json")
+        let base = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: parse, cursor: parse.input.utf8.count))
+        let firstItem = CaptureRecordPresentation(
+            record: base.record,
+            itemIndex: 0,
+            rows: base.rows,
+            activeFieldKey: "category",
+            selectedRowKey: "category"
+        )
+        let secondItem = CaptureRecordPresentation(
+            record: base.record,
+            itemIndex: 1,
+            rows: base.rows,
+            activeFieldKey: "status",
+            selectedRowKey: "status"
+        )
+        let state = CaptureRecordFocusState(
+            draft: "two restaurant items",
+            generation: 1,
+            sequence: 1,
+            clientIdentity: "bob",
+            itemIndex: firstItem.itemIndex,
+            fieldKey: "category",
+            showsMore: true,
+            selectedRowKey: "category"
+        )
+
+        let refreshed = try XCTUnwrap(
+            state.refreshed(
+                with: secondItem,
+                draft: "two restaurant items",
+                generation: 2,
+                sequence: 2,
+                clientIdentity: "bob"
+            ))
+
+        XCTAssertEqual(refreshed.fieldKey, "status")
+        XCTAssertEqual(refreshed.selectedRowKey, "status")
+        XCTAssertFalse(refreshed.showsMore)
     }
 
     func testFocusRejectsStaleSequence() throws {

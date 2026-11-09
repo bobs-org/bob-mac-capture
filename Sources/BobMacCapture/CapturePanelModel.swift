@@ -503,6 +503,35 @@ private struct PendingExplicitSubmitIntent: Equatable {
     let openAfterCapture: Bool
 }
 
+private struct CaptureRecordAnalysisRequest: Equatable {
+    let draft: String
+    let generation: UInt64
+    let sequence: UInt64
+    let processClientIdentity: String
+    let cursor: Int?
+    let itemIndex: Int?
+    let fieldKey: String?
+    let nextMissingField: Bool
+}
+
+private struct CaptureRecordCompletionSnapshot: Equatable {
+    let draft: String
+    let generation: UInt64
+    let sequence: UInt64
+    let processClientIdentity: String
+    let cursor: Int
+    let itemIndex: Int?
+    let recordType: String
+    let fieldKey: String?
+}
+
+private struct CaptureRecordReturnBlocker {
+    let cursor: Int
+    let fieldKey: String?
+    let fieldLabel: String?
+    let message: String?
+}
+
 /// Bob's read-only pending merge result, scoped to the exact parse/preview
 /// revision that produced it. The next draft or executable cannot inherit it.
 struct CaptureMergeInPendingRevision: Equatable {
@@ -545,6 +574,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var parsedTemplate: CaptureParseTemplate?
     @Published var completionResponse: CaptureCompletionResponse?
     @Published var selectedCompletionIndex: Int?
+    /// Fresh Bob-authored record metadata for the caret's item. The surface
+    /// renders this state; only Bob supplies edits and value candidates.
+    @Published private(set) var recordPresentation: CaptureRecordPresentation?
     /// True while the visible inline completion list is the File-under
     /// parent picker for a bare-URL reference draft (a synthesized route
     /// list, not a server completion). The view headers it `File under`;
@@ -752,6 +784,7 @@ final class CapturePanelModel: ObservableObject {
             closeAliasProbeTask?.cancel()
             closeAliasProbeTask = nil
             closeAliasProbeInFlightIdentity = nil
+            invalidateRecordInteraction(clearPresentation: true)
             invalidateRewrite()
             invalidateAnalysis()
             stopClipboardPolling()
@@ -896,6 +929,14 @@ final class CapturePanelModel: ObservableObject {
     private var closeAliasProbeTask: Task<Void, Never>?
     private var closeAliasProbeInFlightIdentity: String?
     private var analysisGeneration: UInt64 = 0
+    private var recordRequestSequence: UInt64 = 0
+    private var recordAnalysisRequest: CaptureRecordAnalysisRequest?
+    private var recordCompletionSnapshot: CaptureRecordCompletionSnapshot?
+    private var recordFocusState: CaptureRecordFocusState?
+    private var recordAssistVersion: Int?
+    private var recordCardDismissedDraft: String?
+    private var recordInteractionPending = false
+    private var recordReturnTask: Task<Void, Never>?
     /// Pasteboard-counter poll refreshes `%c` previews while the panel is
     /// key and the current compatible parse reports a clip directive. The
     /// counter reads no content; a change re-runs the debounced preview.
@@ -1614,6 +1655,24 @@ final class CapturePanelModel: ObservableObject {
             && !isTemplateShelfPresented
             && !inlinePromptVisible
             && completionResponse?.candidates.isEmpty == false
+            && (completionResponse.map(Self.isRecordCompletion) != true
+                || recordCompletionSnapshotIsCurrent)
+    }
+
+    var recordCardActive: Bool {
+        recordPresentation != nil || recordInteractionPending
+    }
+
+    var recordAssistAvailable: Bool {
+        recordAssistVersion == 1 && recordCardActive
+    }
+
+    var recordCompletionListVisible: Bool {
+        recordCompletionSnapshotIsCurrent && completionResponse?.candidates.isEmpty == false
+    }
+
+    var recordEditAvailable: Bool {
+        recordCompletionSnapshotIsCurrent && completionResponse?.record?.edit != nil
     }
 
     var inlinePromptVisible: Bool {
@@ -2998,6 +3057,9 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if recordCardDismissedDraft != draft {
+            recordCardDismissedDraft = nil
+        }
         let deferredRewriteInputEcho = rewriteTask != nil
             && deferredRewriteInputDraft == draft
         if deferredRewriteInputEcho {
@@ -5105,6 +5167,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         panelVisible = false
+        invalidateRecordInteraction(clearPresentation: true)
         cancelPendingExplicitSubmit()
         stopClipboardPolling()
         cancelSimilarTasks(clear: false)
@@ -5726,6 +5789,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        invalidateRecordInteraction(clearPresentation: true)
         cancelPendingExplicitSubmit()
         stopClipboardPolling()
         cancelPastBoundaryRefresh()
@@ -5825,6 +5889,13 @@ final class CapturePanelModel: ObservableObject {
         similarTasksFolded = false
         completionResponse = nil
         completionDraftSnapshot = nil
+        recordPresentation = nil
+        recordFocusState = nil
+        recordAnalysisRequest = nil
+        recordCompletionSnapshot = nil
+        recordInteractionPending = false
+        recordAssistVersion = nil
+        recordCardDismissedDraft = nil
         fileUnderActive = false
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
@@ -5932,6 +6003,11 @@ final class CapturePanelModel: ObservableObject {
         completionDraftSnapshot = nil
         selectedCompletionIndex = nil
         fileUnderActive = false
+        recordRequestSequence &+= 1
+        recordAnalysisRequest = nil
+        recordCompletionSnapshot = nil
+        recordReturnTask?.cancel()
+        recordReturnTask = nil
     }
 
     // MARK: - Capture picker
@@ -6319,6 +6395,98 @@ final class CapturePanelModel: ObservableObject {
     /// `task_goto`, `task_dependency`, and block-ID responses feed the
     /// picker or the reopen chip and never populate the inline list; every
     /// other context keeps the inline list and clears the chip.
+    private static func isRecordCandidate(_ candidate: CaptureCompletionCandidate) -> Bool {
+        candidate.recordType != nil
+            || candidate.recordContinuation != nil
+            || candidate.kind == "record"
+            || candidate.kind == "record_create"
+    }
+
+    private static func isRecordCompletion(_ completion: CaptureCompletionResponse) -> Bool {
+        completion.context == "record_field"
+            || completion.context == "record_value"
+            || completion.record != nil
+            || completion.candidates.contains(where: isRecordCandidate)
+    }
+
+    private func recordCompletionDidArrive(
+        _ completion: CaptureCompletionResponse,
+        parse: CaptureParseResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient
+    ) -> Bool {
+        guard Self.isRecordCompletion(completion) else {
+            return true
+        }
+        guard let request = recordAnalysisRequest,
+              request.draft == draft,
+              request.generation == generation,
+              request.sequence == recordRequestSequence,
+              request.processClientIdentity == processClient.identityToken,
+              request.cursor == cursor,
+              completion.cursor == cursor,
+              plainDraft == draft,
+              self.processClient === processClient
+        else {
+            return false
+        }
+        let itemIndex = Self.recordItemIndex(in: parse, cursor: cursor)
+        if let requestedItem = request.itemIndex, requestedItem != itemIndex {
+            return false
+        }
+        if let requestedField = request.fieldKey,
+           let returnedField = completion.record?.field,
+           returnedField != requestedField
+        {
+            return false
+        }
+        let presentation = CaptureRecordPresentation.make(parse: parse, cursor: cursor)
+        let recordType = completion.record?.recordType
+            ?? completion.candidates.compactMap(\.recordType).first
+            ?? presentation?.record.recordType
+            ?? ""
+        recordCompletionSnapshot = CaptureRecordCompletionSnapshot(
+            draft: draft,
+            generation: generation,
+            sequence: request.sequence,
+            processClientIdentity: processClient.identityToken,
+            cursor: cursor,
+            itemIndex: itemIndex,
+            recordType: recordType,
+            fieldKey: completion.record?.field ?? request.fieldKey
+        )
+        if let fieldKey = completion.record?.field,
+           let presentation,
+           presentation.rows.contains(where: { $0.key == fieldKey })
+        {
+            let sameItemFocus = recordFocusState?.draft == draft
+                && recordFocusState?.itemIndex == presentation.itemIndex
+            recordFocusState = CaptureRecordFocusState(
+                draft: draft,
+                generation: generation,
+                sequence: request.sequence,
+                clientIdentity: processClient.identityToken,
+                itemIndex: presentation.itemIndex,
+                fieldKey: fieldKey,
+                showsMore: sameItemFocus
+                    ? recordFocusState?.showsMore ?? presentation.showsMore
+                    : presentation.showsMore,
+                selectedRowKey: fieldKey
+            )
+            recordPresentation = CaptureRecordPresentation(
+                record: presentation.record,
+                itemIndex: presentation.itemIndex,
+                rows: presentation.rows,
+                activeFieldKey: fieldKey,
+                selectedRowKey: fieldKey,
+                showsMore: recordFocusState?.showsMore ?? presentation.showsMore
+            )
+        }
+        return true
+    }
+
     private func handleCompletionResponse(
         _ completion: CaptureCompletionResponse,
         parse: CaptureParseResponse,
@@ -6330,6 +6498,16 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient
     ) async {
         guard isCurrentAnalysis(generation) else {
+            return
+        }
+        guard recordCompletionDidArrive(
+            completion,
+            parse: parse,
+            draft: draft,
+            cursor: cursor,
+            generation: generation,
+            processClient: processClient
+        ) else {
             return
         }
         // While the picker is open, analysis results never modify picker or
@@ -6354,8 +6532,12 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if picker != nil {
-            dismissCompletion()
-            return
+            if Self.isRecordCompletion(completion) {
+                closePickerForAccept()
+            } else {
+                dismissCompletion()
+                return
+            }
         }
         if let context = completion.context, context == "task_link" || context == "task_goto" {
             await handleTaskLinkCompletion(
@@ -6738,8 +6920,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         clearPickerInterruption(trigger: trigger)
-        completionResponse = completion.candidates.isEmpty ? nil : completion
-        completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
+        let keepsRecordEdit = Self.isRecordCompletion(completion)
+            && completion.record?.edit != nil
+        completionResponse = completion.candidates.isEmpty && !keepsRecordEdit ? nil : completion
+        completionDraftSnapshot = completionResponse == nil ? nil : draft
         selectedCompletionIndex = CaptureCompletionMenu.initialSelectedIndex(
             for: completion,
             queryIsEmpty: completionQueryText().isEmpty
@@ -10366,6 +10550,435 @@ final class CapturePanelModel: ObservableObject {
         submitAfterCurrentAnalysis(openAfterCapture: true)
     }
 
+    func setRecordMoreExpanded(_ expanded: Bool) {
+        guard let presentation = currentRecordPresentation() else {
+            return
+        }
+        let key = recordFocusState?.fieldKey ?? presentation.activeFieldKey
+        let selected = recordFocusState?.selectedRowKey ?? presentation.selectedRowKey
+        recordFocusState = CaptureRecordFocusState(
+            draft: plainDraft,
+            generation: analysisGeneration,
+            sequence: recordRequestSequence,
+            clientIdentity: processClient?.identityToken ?? "",
+            itemIndex: presentation.itemIndex,
+            fieldKey: key,
+            showsMore: expanded,
+            selectedRowKey: selected
+        )
+        recordPresentation = CaptureRecordPresentation(
+            record: presentation.record,
+            itemIndex: presentation.itemIndex,
+            rows: presentation.rows,
+            activeFieldKey: key,
+            selectedRowKey: selected,
+            showsMore: expanded
+        )
+    }
+
+    @discardableResult
+    func requestRecordField(_ key: String) -> Bool {
+        guard let presentation = currentRecordPresentation(),
+              let cursor = collapsedSelectionUTF8Offset()
+        else {
+            return false
+        }
+        return requestRecordField(key, cursor: cursor, itemIndex: presentation.itemIndex)
+    }
+
+    private func requestRecordField(
+        _ key: String,
+        cursor: Int,
+        itemIndex: Int?
+    ) -> Bool {
+        guard let processClient,
+              let parse = latestParse,
+              parse.input == plainDraft,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              let presentation = CaptureRecordPresentation.make(parse: parse, cursor: cursor),
+              presentation.itemIndex == itemIndex,
+              presentation.record.assistVersion == 1,
+              presentation.rows.contains(where: { $0.key == key })
+        else {
+            return false
+        }
+
+        recordFocusState = CaptureRecordFocusState(
+            draft: plainDraft,
+            generation: analysisGeneration,
+            sequence: recordRequestSequence,
+            clientIdentity: processClient.identityToken,
+            itemIndex: itemIndex,
+            fieldKey: key,
+            showsMore: recordFocusState?.showsMore ?? presentation.showsMore,
+            selectedRowKey: key
+        )
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: true,
+            trigger: .selection,
+            recordField: key,
+            recordItemIndex: itemIndex
+        )
+        return true
+    }
+
+    func recordTab() {
+        guard recordAssistAvailable,
+              let presentation = currentRecordPresentation()
+        else {
+            return
+        }
+        if recordCompletionListVisible {
+            _ = acceptSelectedCompletion()
+            return
+        }
+        guard let key = presentation.firstMissingFieldKey,
+              let cursor = collapsedSelectionUTF8Offset()
+        else {
+            requestFocus(.editor)
+            return
+        }
+        recordFocusState = CaptureRecordFocusState(
+            draft: plainDraft,
+            generation: analysisGeneration,
+            sequence: recordRequestSequence,
+            clientIdentity: processClient?.identityToken ?? "",
+            itemIndex: presentation.itemIndex,
+            fieldKey: key,
+            showsMore: presentation.showsMore,
+            selectedRowKey: key
+        )
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: true,
+            trigger: .selection,
+            nextMissingRecordField: true,
+            recordItemIndex: presentation.itemIndex
+        )
+    }
+
+    func recordShiftTab() {
+        guard recordAssistAvailable,
+              let presentation = currentRecordPresentation()
+        else {
+            return
+        }
+        guard !presentation.record.missing.isEmpty else {
+            requestFocus(.editor)
+            return
+        }
+        let missing = presentation.record.missing
+        let currentKey = recordFocusState?.fieldKey ?? presentation.activeFieldKey
+        let currentPosition = currentKey.flatMap { missing.firstIndex(of: $0) } ?? 0
+        let previousKey = missing[max(0, currentPosition - 1)]
+        guard let cursor = collapsedSelectionUTF8Offset() else {
+            return
+        }
+        _ = requestRecordField(previousKey, cursor: cursor, itemIndex: presentation.itemIndex)
+    }
+
+    func recordReturn(openAfterCapture: Bool = false) {
+        if recordCompletionListVisible, selectedCompletionIndex != nil {
+            _ = acceptSelectedCompletion()
+            return
+        }
+        guard let processClient, let analysisTask, hasDraft else {
+            return
+        }
+        recordReturnTask?.cancel()
+        let draft = plainDraft
+        let generation = analysisGeneration
+        let sequence = recordRequestSequence
+        let clientIdentity = processClient.identityToken
+        recordReturnTask = Task { [weak self, processClient, analysisTask] in
+            await analysisTask.value
+            guard !Task.isCancelled, let self,
+                  self.analysisGeneration == generation,
+                  self.recordRequestSequence == sequence,
+                  self.plainDraft == draft,
+                  self.processClient === processClient,
+                  processClient.identityToken == clientIdentity
+            else {
+                return
+            }
+            self.recordReturnTask = nil
+            self.finishRecordReturn(
+                draft: draft,
+                generation: generation,
+                clientIdentity: clientIdentity,
+                openAfterCapture: openAfterCapture
+            )
+        }
+    }
+
+    private func finishRecordReturn(
+        draft: String,
+        generation: UInt64,
+        clientIdentity: String,
+        openAfterCapture: Bool
+    ) {
+        guard let parse = latestParse,
+              parse.input == draft,
+              lastAppliedParseDraft == draft,
+              lastAppliedParseGeneration == generation,
+              lastAppliedParseClientIdentity == clientIdentity
+        else {
+            return
+        }
+        if recordCompletionListVisible, selectedCompletionIndex != nil {
+            _ = acceptSelectedCompletion()
+            return
+        }
+        if let blocker = recordReturnBlocker(in: parse) {
+            if let fieldKey = blocker.fieldKey,
+               let presentation = CaptureRecordPresentation.make(
+                   parse: parse,
+                   cursor: blocker.cursor
+               ),
+               presentation.record.assistVersion == 1
+            {
+                if let fieldLabel = blocker.fieldLabel {
+                    statusText = blocker.message ?? "Needs \(fieldLabel)"
+                }
+                _ = requestRecordField(
+                    fieldKey,
+                    cursor: blocker.cursor,
+                    itemIndex: presentation.itemIndex
+                )
+            } else {
+                if let message = blocker.message {
+                    statusText = message
+                }
+                requestFocus(.editor)
+                restoreSelection(cursorUTF8Offset: blocker.cursor, suppressEditorCallbacks: true)
+            }
+            return
+        }
+        if case .failed(let message) = previewState {
+            statusText = errorMessage ?? message
+            requestFocus(.editor)
+            return
+        }
+        submit(openAfterCapture: openAfterCapture)
+    }
+
+    private func recordReturnBlocker(
+        in parse: CaptureParseResponse
+    ) -> CaptureRecordReturnBlocker? {
+        var blockers: [CaptureRecordReturnBlocker] = []
+        let scopes: [(record: CaptureRecord, start: Int)]
+        if parse.items.isEmpty {
+            scopes = parse.record.map { [($0, 0)] } ?? []
+        } else {
+            scopes = parse.items.compactMap { item in
+                item.record.map { ($0, item.range.start) }
+            }
+        }
+
+        for (record, itemStart) in scopes {
+            if let field = record.fields.first(where: { $0.state == "invalid" }) {
+                let message = parse.diagnostics.first(where: { diagnostic in
+                    guard diagnostic.severity == "error", let range = diagnostic.range else {
+                        return false
+                    }
+                    return field.range.map { range.start <= $0.end && range.end >= $0.start }
+                        ?? field.valueRanges.contains {
+                            range.start <= $0.end && range.end >= $0.start
+                        }
+                })?.message
+                blockers.append(CaptureRecordReturnBlocker(
+                    cursor: itemStart,
+                    fieldKey: field.key,
+                    fieldLabel: field.label,
+                    message: message ?? "Fix \(field.label)"
+                ))
+            } else if let key = record.missing.first,
+                      let field = record.fields.first(where: { $0.key == key })
+            {
+                blockers.append(CaptureRecordReturnBlocker(
+                    cursor: itemStart,
+                    fieldKey: key,
+                    fieldLabel: field.label,
+                    message: "Needs \(field.label)"
+                ))
+            }
+        }
+
+        let recordNeeds: Set<String> = ["record_field", "record_value", "record_create"]
+        let allNeeds = Set(parse.needs + parse.items.flatMap(\.needs))
+        if !allNeeds.subtracting(recordNeeds).isEmpty {
+            blockers.append(CaptureRecordReturnBlocker(
+                cursor: 0,
+                fieldKey: nil,
+                fieldLabel: nil,
+                message: Self.pickerNeed(in: parse)?.statusText
+            ))
+        }
+
+        for diagnostic in parse.diagnostics where diagnostic.severity == "error" {
+            blockers.append(CaptureRecordReturnBlocker(
+                cursor: diagnostic.range?.start ?? 0,
+                fieldKey: nil,
+                fieldLabel: nil,
+                message: diagnostic.message
+            ))
+        }
+        return blockers.min(by: { $0.cursor < $1.cursor })
+    }
+
+    func dismissRecordCard() {
+        recordCardDismissedDraft = plainDraft
+        invalidateRecordInteraction(clearPresentation: true)
+        dismissCompletion()
+        requestFocus(.editor)
+    }
+
+    @discardableResult
+    func editRecordField() -> Bool {
+        guard recordCompletionSnapshotIsCurrent,
+              let response = completionResponse,
+              let edit = response.record?.edit,
+              let range = stringRange(in: plainDraft, byteRange: edit.replacementRange)
+        else {
+            return false
+        }
+        let continuation = edit.continuation
+        let cursor = continuation.cursor
+        let itemIndex = recordCompletionSnapshot?.itemIndex
+        var text = plainDraft
+        text.replaceSubrange(range, with: edit.replacement)
+        guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+            statusText = "Completion cursor is stale"
+            dismissCompletion()
+            return false
+        }
+        return applyRecordDraftEdit(
+            text: text,
+            cursor: cursor,
+            continuation: continuation,
+            itemIndex: itemIndex,
+            replacementRange: edit.replacementRange,
+            replacementText: edit.replacement
+        )
+    }
+
+    @discardableResult
+    func acceptRecordCandidate(_ candidate: CaptureCompletionCandidate) -> Bool {
+        guard recordCompletionSnapshotIsCurrent,
+              let response = completionResponse,
+              response.candidates.contains(candidate),
+              let range = stringRange(in: plainDraft, byteRange: response.replacement)
+        else {
+            return false
+        }
+        let continuation = candidate.recordContinuation
+        let itemIndex = recordCompletionSnapshot?.itemIndex
+        let cursor = continuation?.cursor
+            ?? candidate.cursorAfter
+            ?? response.replacement.start + candidate.replacement.utf8.count
+        var text = plainDraft
+        text.replaceSubrange(range, with: candidate.replacement)
+        guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+            statusText = "Completion cursor is stale"
+            dismissCompletion()
+            return false
+        }
+        return applyRecordDraftEdit(
+            text: text,
+            cursor: cursor,
+            continuation: continuation,
+            itemIndex: itemIndex,
+            replacementRange: response.replacement,
+            replacementText: candidate.replacement
+        )
+    }
+
+    private func applyRecordDraftEdit(
+        text: String,
+        cursor: Int,
+        continuation: CaptureRecordContinuation?,
+        itemIndex: Int? = nil,
+        replacementRange: CaptureRange? = nil,
+        replacementText: String
+    ) -> Bool {
+        let nativeEdit: CaptureNativeRewriteEdit?
+        if let replacementRange,
+           let utf16Replacement = utf16Range(in: plainDraft, byteRange: replacementRange),
+           let cursorUTF16 = utf16Range(in: text, start: cursor, end: cursor)?.location
+        {
+            nativeEdit = CaptureNativeRewriteEdit(
+                replacementRange: utf16Replacement,
+                replacementText: replacementText,
+                resultingSelection: NSRange(location: cursorUTF16, length: 0),
+                expectedDraft: plainDraft,
+                resultingDraft: text
+            )
+        } else {
+            nativeEdit = nil
+        }
+        dismissCompletion()
+        if plainDraft != text {
+            recordCardDismissedDraft = nil
+        }
+        suppressedCompletionAcceptanceDraft = text
+        if let nativeEdit, applyNativeRewriteEdit?(nativeEdit) == true {
+            if plainDraft != text {
+                isApplyingProgrammaticDraft = true
+                attributedDraft = AttributedString(text)
+                isApplyingProgrammaticDraft = false
+            }
+            restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
+        } else {
+            suppressedCompletionAcceptanceDraft = nil
+            setPlainDraft(text, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
+        }
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: continuation != nil,
+            trigger: .edit,
+            nextMissingRecordField: continuation?.nextMissingField ?? false,
+            recordItemIndex: itemIndex
+        )
+        requestFocus(.editor)
+        return true
+    }
+
+    private func currentRecordPresentation() -> CaptureRecordPresentation? {
+        guard let parse = latestParse,
+              parse.input == plainDraft,
+              let processClient,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken,
+              let cursor = collapsedSelectionUTF8Offset()
+        else {
+            return nil
+        }
+        return CaptureRecordPresentation.make(
+            parse: parse,
+            cursor: cursor,
+            showsMore: recordFocusState?.showsMore ?? false,
+            selectedRowKey: recordFocusState?.selectedRowKey
+        )
+    }
+
+    private func invalidateRecordInteraction(clearPresentation: Bool) {
+        recordRequestSequence &+= 1
+        recordAnalysisRequest = nil
+        recordCompletionSnapshot = nil
+        recordReturnTask?.cancel()
+        recordReturnTask = nil
+        recordInteractionPending = false
+        if clearPresentation {
+            recordPresentation = nil
+            recordFocusState = nil
+            recordAssistVersion = nil
+        }
+    }
+
     @discardableResult
     func acceptSelectedCompletion() -> Bool {
         guard let completionResponse else {
@@ -10386,6 +10999,10 @@ final class CapturePanelModel: ObservableObject {
 
         if CaptureCompletionMenu.isDisabled(candidate) {
             return true
+        }
+
+        if Self.isRecordCompletion(completionResponse) || Self.isRecordCandidate(candidate) {
+            return acceptRecordCandidate(candidate)
         }
 
         if completionResponse.context == "task", candidate.requiresBlockID {
@@ -10469,7 +11086,11 @@ final class CapturePanelModel: ObservableObject {
     ) -> Bool {
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
-        let cursor = candidate.cursorAfter ?? completionResponse.replacement.start + candidate.replacement.utf8.count
+        let continuation = candidate.recordContinuation
+        let itemIndex = recordCompletionSnapshot?.itemIndex
+        let cursor = continuation?.cursor
+            ?? candidate.cursorAfter
+            ?? completionResponse.replacement.start + candidate.replacement.utf8.count
         guard stringRange(in: text, start: cursor, end: cursor) != nil else {
             statusText = "Completion cursor is stale"
             dismissCompletion()
@@ -10484,13 +11105,22 @@ final class CapturePanelModel: ObservableObject {
         if wasFileUnder {
             fileUnderDismissedURL = nil
         }
+        if plainDraft != text {
+            recordCardDismissedDraft = nil
+        }
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(
             text,
             cursorUTF8Offset: cursor,
             suppressSelectionCallbacks: true
         )
-        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: continuation != nil,
+            trigger: .edit,
+            nextMissingRecordField: continuation?.nextMissingField ?? false,
+            recordItemIndex: continuation == nil ? nil : itemIndex
+        )
         return true
     }
 
@@ -15891,7 +16521,10 @@ final class CapturePanelModel: ObservableObject {
         requestCompletion: Bool,
         trigger: CompletionTrigger,
         completionGate: Task<Void, Never>? = nil,
-        writtenRange rewriteWrittenRange: CaptureRange? = nil
+        writtenRange rewriteWrittenRange: CaptureRange? = nil,
+        recordField: String? = nil,
+        nextMissingRecordField: Bool = false,
+        recordItemIndex: Int? = nil
     ) {
         if pullInChoice != nil {
             cancelPullInChoiceFromKeyboard()
@@ -15928,6 +16561,26 @@ final class CapturePanelModel: ObservableObject {
 
         analysisGeneration &+= 1
         let generation = analysisGeneration
+        recordReturnTask?.cancel()
+        recordReturnTask = nil
+        recordRequestSequence &+= 1
+        let recordSequence = recordRequestSequence
+        recordAnalysisRequest = CaptureRecordAnalysisRequest(
+            draft: draft,
+            generation: generation,
+            sequence: recordSequence,
+            processClientIdentity: processClient.identityToken,
+            cursor: cursorUTF8Offset,
+            itemIndex: recordItemIndex,
+            fieldKey: recordField,
+            nextMissingField: nextMissingRecordField
+        )
+        recordCompletionSnapshot = nil
+        recordInteractionPending = recordInteractionPending
+            || recordPresentation != nil
+            || recordField != nil
+            || nextMissingRecordField
+        recordPresentation = nil
         let debounceNanoseconds = self.debounceNanoseconds
         analysisTask?.cancel()
         mergeInPendingRevision = nil
@@ -16008,14 +16661,35 @@ final class CapturePanelModel: ObservableObject {
                     }
                 }
 
-                if let cursorUTF8Offset,
-                   requestCompletion,
-                   await self?.shouldRequestCompletion(
-                       parse: parse,
-                       cursor: cursorUTF8Offset,
-                       draft: draft
-                   ) == true
+                let explicitRecordRequest = recordField != nil || nextMissingRecordField
+                let shouldRequestCompletion: Bool
+                if explicitRecordRequest {
+                    shouldRequestCompletion = true
+                } else if let cursorUTF8Offset, requestCompletion {
+                    shouldRequestCompletion = await self?.shouldRequestCompletion(
+                        parse: parse,
+                        cursor: cursorUTF8Offset,
+                        draft: draft
+                    ) == true
+                } else {
+                    shouldRequestCompletion = false
+                }
+                if let cursorUTF8Offset, requestCompletion, shouldRequestCompletion
                 {
+                    if explicitRecordRequest,
+                       CaptureRecordPresentation.make(parse: parse, cursor: cursorUTF8Offset)?
+                           .record.assistVersion != 1
+                    {
+                        await MainActor.run {
+                            guard self?.isCurrentAnalysis(generation) == true else {
+                                return
+                            }
+                            self?.handleMissingCompletion(trigger: trigger)
+                            self?.editAnalysisBaseline = draft
+                        }
+                        await previewTask?.value
+                        return
+                    }
                     if let cached = await self?.cachedRouteCompletion(
                         parse: parse,
                         cursor: cursorUTF8Offset,
@@ -16023,6 +16697,16 @@ final class CapturePanelModel: ObservableObject {
                     ) {
                         await MainActor.run {
                             guard self?.isCurrentAnalysis(generation) == true else {
+                                return
+                            }
+                            guard self?.recordCompletionDidArrive(
+                                cached,
+                                parse: parse,
+                                draft: draft,
+                                cursor: cursorUTF8Offset,
+                                generation: generation,
+                                processClient: processClient
+                            ) == true else {
                                 return
                             }
                             self?.applyNonActiveTaskCompletion(
@@ -16037,7 +16721,9 @@ final class CapturePanelModel: ObservableObject {
                             let completion = try await CaptureSignpost.measure("completion") {
                                 try await processClient.captureComplete(
                                     draft,
-                                    cursor: cursorUTF8Offset
+                                    cursor: cursorUTF8Offset,
+                                    nextMissingField: nextMissingRecordField,
+                                    recordField: recordField
                                 )
                             }
                             await self?.handleCompletionResponse(
@@ -18725,6 +19411,102 @@ final class CapturePanelModel: ObservableObject {
         return seed
     }
 
+    private var recordCompletionSnapshotIsCurrent: Bool {
+        guard let snapshot = recordCompletionSnapshot,
+              let response = completionResponse,
+              let parse = latestParse,
+              let processClient,
+              snapshot.draft == plainDraft,
+              completionDraftSnapshot == plainDraft,
+              snapshot.generation == analysisGeneration,
+              snapshot.sequence == recordRequestSequence,
+              snapshot.processClientIdentity == processClient.identityToken,
+              recordAnalysisRequest?.sequence == snapshot.sequence,
+              response.cursor == snapshot.cursor,
+              parse.input == plainDraft,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken
+        else {
+            return false
+        }
+
+        let itemIndex = Self.recordItemIndex(in: parse, cursor: snapshot.cursor)
+        guard itemIndex == snapshot.itemIndex else {
+            return false
+        }
+        if let presentation = CaptureRecordPresentation.make(
+            parse: parse,
+            cursor: snapshot.cursor
+        ) {
+            return presentation.record.recordType == snapshot.recordType
+        }
+        return response.candidates.contains { candidate in
+            candidate.recordType == snapshot.recordType
+                || candidate.recordContinuation != nil
+                || candidate.kind == "record_create"
+                || candidate.kind == "record"
+        }
+    }
+
+    private func updateRecordPresentation(
+        parse: CaptureParseResponse,
+        draft: String,
+        generation: UInt64,
+        cursor: Int?,
+        clientIdentity: String
+    ) {
+        recordInteractionPending = false
+        guard recordCardDismissedDraft != draft,
+              parse.input == draft,
+              let cursor,
+              let base = CaptureRecordPresentation.make(
+                  parse: parse,
+                  cursor: cursor,
+                  showsMore: false
+              )
+        else {
+            recordPresentation = nil
+            recordFocusState = nil
+            recordAssistVersion = nil
+            return
+        }
+
+        recordAssistVersion = base.record.assistVersion
+        let focus = recordFocusState?.refreshed(
+            with: base,
+            draft: draft,
+            generation: generation,
+            sequence: recordRequestSequence,
+            clientIdentity: clientIdentity
+        ) ?? CaptureRecordFocusState(
+            draft: draft,
+            generation: generation,
+            sequence: recordRequestSequence,
+            clientIdentity: clientIdentity,
+            itemIndex: base.itemIndex,
+            fieldKey: base.activeFieldKey,
+            showsMore: base.showsMore,
+            selectedRowKey: base.selectedRowKey
+        )
+        recordFocusState = focus
+        recordPresentation = CaptureRecordPresentation(
+            record: base.record,
+            itemIndex: base.itemIndex,
+            rows: base.rows,
+            activeFieldKey: focus.fieldKey,
+            selectedRowKey: focus.selectedRowKey,
+            showsMore: focus.showsMore
+        )
+    }
+
+    private static func recordItemIndex(in parse: CaptureParseResponse, cursor: Int) -> Int? {
+        guard !parse.items.isEmpty else {
+            return nil
+        }
+        return parse.items.firstIndex { cursor >= $0.range.start && cursor <= $0.range.end }
+    }
+
     private func applyParse(
         _ parse: CaptureParseResponse,
         draft: String,
@@ -18742,6 +19524,13 @@ final class CapturePanelModel: ObservableObject {
         lastAppliedParseGeneration = generation
         lastAppliedParseGrammar = parse.grammar
         lastAppliedParseClientIdentity = processClient?.identityToken
+        updateRecordPresentation(
+            parse: parse,
+            draft: draft,
+            generation: generation,
+            cursor: cursorUTF8 ?? collapsedSelectionUTF8Offset(),
+            clientIdentity: processClient?.identityToken ?? ""
+        )
         lastAppliedParseItemCount = parse.items.isEmpty
           ? (draft.isEmpty ? 0 : 1)
           : parse.items.count
@@ -19001,7 +19790,7 @@ final class CapturePanelModel: ObservableObject {
             "relation_target", "relation_to", "relation_from", "relation_label",
             "dependency_target", "task_complete", "wikilink_task", "block_id", "project_task_move",
             "transfer_destination", "task_type",
-            "directive",
+            "directive", "record_field", "record_value", "record_create",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -19026,6 +19815,7 @@ final class CapturePanelModel: ObservableObject {
         // context with no candidates.
         let completionSpanKinds = Set([
             "route",
+            "record_route",
             "section",
             "task_block_id_route",
             "task_block_id",
@@ -19252,6 +20042,7 @@ final class CapturePanelModel: ObservableObject {
     ) -> CaptureRange? {
         let routeSpanKinds = Set([
             "route",
+            "record_route",
             "task_block_id_route",
             "pomodoro_route",
             "sub_bullet_route",

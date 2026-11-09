@@ -682,7 +682,10 @@ public struct CaptureRecordFocusState: Equatable, Sendable {
                 clientIdentity: clientIdentity
             )
         else { return nil }
-        let stillExists = presentation.rows.contains(where: { $0.key == fieldKey })
+        let sameItem = itemIndex == presentation.itemIndex
+        let sameDraft = draft == self.draft
+        let stillExists = sameItem && sameDraft
+            && presentation.rows.contains(where: { $0.key == fieldKey })
         let nextKey: String? =
             if let fieldKey, stillExists {
                 fieldKey
@@ -690,15 +693,15 @@ public struct CaptureRecordFocusState: Equatable, Sendable {
                 presentation.activeFieldKey
             }
         let nextSelected: String? =
-            if let selectedRowKey,
+            if sameItem, sameDraft, let selectedRowKey,
                 presentation.rows.contains(where: { $0.key == selectedRowKey })
             {
                 selectedRowKey
             } else {
                 nextKey
             }
-        // Preserve More disclosure only when the hidden set is unchanged;
-        // a newly optional-hidden field keeps the current disclosure.
+        // Keep the disclosure state with this item; a different item starts
+        // from its presentation default even when it shares the record type.
         return CaptureRecordFocusState(
             draft: draft,
             generation: generation,
@@ -706,7 +709,7 @@ public struct CaptureRecordFocusState: Equatable, Sendable {
             clientIdentity: clientIdentity,
             itemIndex: presentation.itemIndex,
             fieldKey: nextKey,
-            showsMore: showsMore,
+            showsMore: sameItem && sameDraft ? showsMore : presentation.showsMore,
             selectedRowKey: nextSelected
         )
     }

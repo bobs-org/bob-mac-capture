@@ -42,6 +42,9 @@ enum CaptureKeyCommand: Equatable {
     case switchTemplateShelfToStash
     case saveTemplate
     case consumeKey
+    case recordTab
+    case recordShiftTab
+    case recordReturn(openAfterCapture: Bool)
     case acceptCompletion
     case toggleCompletionThemeVisibility
     case acceptCompletionThenSubmitAndOpen
@@ -134,6 +137,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var similarRowsVisible = false
     var similarRowFocused = false
     var completionVisible = false
+    var recordCardActive = false
+    var recordAssistAvailable = false
+    var recordCompletionListVisible = false
     /// Defaults true so omitted flags keep selected-row Return/Tab behavior.
     var completionHasSelection = true
     var completionHasSelectedHistoryTheme = false
@@ -527,6 +533,19 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             let keys = Self.strippedReturnModifiers(modifiers)
+            if context.recordCardActive,
+               !keys.contains(.shift), !keys.contains(.option)
+            {
+                if context.recordCompletionListVisible, context.completionHasSelection {
+                    return .acceptCompletion
+                }
+                if keys.contains(.command) || keys == .control {
+                    return .recordReturn(openAfterCapture: true)
+                }
+                if keys.isEmpty {
+                    return .recordReturn(openAfterCapture: false)
+                }
+            }
             if keys.contains(.command) {
                 if context.completionVisible, context.completionHasSelection {
                     return .acceptCompletionThenSubmitAndOpen
@@ -587,10 +606,19 @@ struct CaptureKeyCommandRouter {
             // stays AppKit's. While the reopen chip is visible, plain Tab reopens
             // the picker instead.
             if modifiers.isEmpty {
+                if context.recordCardActive, context.recordAssistAvailable {
+                    if context.recordCompletionListVisible {
+                        return .acceptCompletion
+                    }
+                    return .recordTab
+                }
                 if context.completionVisible {
                     return .acceptCompletion
                 }
                 return context.pickerChipVisible ? .openPickerFromChip : .tabEditorAssist
+            }
+            if modifiers == .shift, context.recordCardActive, context.recordAssistAvailable {
+                return .recordShiftTab
             }
             return modifiers == .shift ? .decreaseBulletIndentation : nil
         case KeyCode.arrowDown:
