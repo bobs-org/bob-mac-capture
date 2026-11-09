@@ -17923,7 +17923,7 @@ final class CapturePanelModel: ObservableObject {
         if let openPicker = picker {
             return modifierAliasArm(arm, owns: openPicker) && openPicker.filterText.isEmpty
         }
-        return modifierAliasPickerSource(for: arm.sigil) == nil && !editorInputLocked
+        return !editorInputLocked
     }
 
     /// Restores a live opener through the native editor so Undo returns

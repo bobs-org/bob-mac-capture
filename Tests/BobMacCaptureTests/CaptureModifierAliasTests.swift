@@ -45,6 +45,20 @@ final class CaptureModifierAliasTests: XCTestCase {
         keyEvent(keyCode: 41, characters: ";", modifiers: modifiers, timestamp: timestamp, isRepeat: isRepeat)
     }
 
+    private func equalsEvent(
+        modifiers: NSEvent.ModifierFlags = [],
+        timestamp: TimeInterval = 0,
+        isRepeat: Bool = false
+    ) -> NSEvent {
+        keyEvent(
+            keyCode: 24,
+            characters: "=",
+            modifiers: modifiers,
+            timestamp: timestamp,
+            isRepeat: isRepeat
+        )
+    }
+
     private func spaceEvent() -> NSEvent {
         keyEvent(keyCode: 49, characters: " ")
     }
@@ -191,15 +205,22 @@ final class CaptureModifierAliasTests: XCTestCase {
     func testDependencyPickerStillOpensWhenSelectionAnalysisWinsTheRace() async throws {
         let (model, controller, textView, panel) = makeHostedEditor(text: "@home ")
         defer { panel.orderOut(nil) }
+        let delayMarker = makeRecordURL()
+        defer { try? FileManager.default.removeItem(at: delayMarker) }
         model.processClient = try processClient(
             recordURL: makeRecordURL(),
-            extra: ["FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS": "0.4"]
+            extra: [
+                "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS": "0.4",
+                "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_MARKER": delayMarker.path,
+            ]
         )
         XCTAssertNotNil(typeKey(dotEvent(), into: textView, model: model, controller: controller))
         await waitUntil {
-            textView.string == "@home &" && model.equalsGestureArm?.isOpener == true
-                && model.picker == nil
+            textView.string == "@home &"
+                && model.equalsGestureArm?.isOpener == true
+                && FileManager.default.fileExists(atPath: delayMarker.path)
         }
+        XCTAssertNil(model.picker)
 
         model.editorSelectionDidChange(cursorUTF8Offset: 7)
         await waitUntil { model.picker?.source == .dependency }
@@ -275,6 +296,80 @@ final class CaptureModifierAliasTests: XCTestCase {
         XCTAssertEqual(filtered.2.string, "Buy milk *")
         XCTAssertNil(filtered.0.equalsGestureArm)
         filtered.3.orderOut(nil)
+    }
+
+    func testSpaceAndEscapeRestoreBeforeDelayedPickerForAllModifierAliases() async throws {
+        let cases:
+            [(
+                draft: String,
+                key: String,
+                rewritten: String,
+                trigger: NSEvent,
+                delayKey: String
+            )] = [
+                (
+                    "@home ",
+                    ".",
+                    "@home &",
+                    dotEvent(),
+                    "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS"
+                ),
+                (
+                    "Buy milk ",
+                    ";",
+                    "Buy milk *",
+                    semicolonEvent(),
+                    "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS"
+                ),
+                (
+                    "Fix it ",
+                    "=",
+                    "Fix it ~",
+                    equalsEvent(),
+                    "FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS"
+                ),
+            ]
+
+        for restoreWithSpace in [true, false] {
+            for item in cases {
+                let (model, controller, textView, panel) = makeHostedEditor(text: item.draft)
+                let delayMarker = makeRecordURL()
+                var extra = [item.delayKey: "0.4"]
+                let markerKey =
+                    item.delayKey == "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS"
+                    ? "FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_MARKER"
+                    : "FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_MARKER"
+                extra[markerKey] = delayMarker.path
+                model.processClient = try processClient(recordURL: makeRecordURL(), extra: extra)
+
+                XCTAssertNotNil(
+                    typeKey(item.trigger, into: textView, model: model, controller: controller)
+                )
+                await waitUntil {
+                    textView.string == item.rewritten
+                        && model.equalsGestureArm?.isOpener == true
+                        && FileManager.default.fileExists(atPath: delayMarker.path)
+                }
+                XCTAssertNil(model.picker)
+                XCTAssertTrue(model.relationEqualsOpenerRestorable)
+
+                let restoreEvent = restoreWithSpace ? spaceEvent() : escapeEvent()
+                XCTAssertNil(controller.routeKeyDown(restoreEvent))
+                let restored = item.draft + item.key + (restoreWithSpace ? " " : "")
+                XCTAssertEqual(textView.string, restored)
+                XCTAssertNil(model.picker)
+                XCTAssertNil(model.equalsGestureArm)
+
+                // Let the delayed completion attempt to return after restoration.
+                try await Task.sleep(nanoseconds: 600_000_000)
+                XCTAssertEqual(textView.string, restored)
+                XCTAssertEqual(model.plainDraft, restored)
+                XCTAssertNil(model.picker)
+                XCTAssertFalse(model.completionVisible)
+                panel.orderOut(nil)
+                try? FileManager.default.removeItem(at: delayMarker)
+            }
+        }
     }
 
     func testPreReplyDoubleKeysCollapseOnBobAliasAndUnchangedReplyLeavesBoth() async throws {

@@ -2113,7 +2113,9 @@ private struct TaskIDPromptCard: View {
                 return "Inserts *\(route):\(typed) · the ID is written now, before Return"
             case .relate:
                 return "Inserts ~\(route):\(typed) · the ID is written now, before Return"
-            case .addTo, .open, .discard, .unknown:
+            case .addTo:
+                return "Updates record text"
+            case .open, .discard, .unknown:
                 return ""
             }
         }
@@ -2168,7 +2170,9 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts *").foregroundStyle(CaptureEditorPalette.color(for: .blockedTaskSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
         case .relate:
             return Text("\(Text("Inserts ~").foregroundStyle(CaptureEditorPalette.color(for: .relationSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
-        case .addTo, .open, .discard, .unknown:
+        case .addTo:
+            return Text("Updates record text")
+        case .open, .discard, .unknown:
             return Text("")
         }
     }

@@ -238,9 +238,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `.` → `@`/`&` and `;` → `*` aliases, fast `..`/`;;` (350 ms) restores one
   literal key; Space/Escape restores on the empty route list or its own empty
   picker. Caret moves, navigation, modifiers, and other keys clear either arm.
-  Thus `...` after body text takes four presses (as `===` gives `==`); line
-  starts stay literal under `after_text`, and item-start `.bashrc` or `.5`
-  needs `..`.
+  Thus `...` after body text takes four presses (as `===` gives `==`); item-start
+  `.bashrc` and `.5` stay literal.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal
