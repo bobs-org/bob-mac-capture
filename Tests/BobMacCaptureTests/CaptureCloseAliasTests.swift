@@ -15,6 +15,7 @@ final class CaptureCloseAliasTests: XCTestCase {
         let directory: URL
         var recordURL: URL { directory.appendingPathComponent("calls") }
         var releaseURL: URL { directory.appendingPathComponent("release") }
+        var pendingReplay: (@MainActor () -> Void)?
 
         init(_ text: String, extra: [String: String] = [:], supported: Bool = true) throws {
             directory = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -80,6 +81,10 @@ final class CaptureCloseAliasTests: XCTestCase {
             case "x": keyCode = 7
             case "s": keyCode = 1
             case "-": keyCode = 27
+            case ".": keyCode = 47
+            case "=": keyCode = 24
+            case "z": keyCode = 6
+            case "a": keyCode = 0
             case "2": keyCode = 19
             case "3": keyCode = 20
             default: keyCode = 18
@@ -97,6 +102,62 @@ final class CaptureCloseAliasTests: XCTestCase {
                 sync()
             }
             return routed
+        }
+
+        func pauseReplay() {
+            controller.scheduleTypeAheadReplay = { [weak self] dispatch in
+                self?.pendingReplay = dispatch
+            }
+        }
+
+        func stepReplay() {
+            let dispatch = pendingReplay
+            pendingReplay = nil
+            dispatch?()
+        }
+
+        func focusOtherField() -> NSTextView {
+            let other = NSTextView()
+            other.isEditable = true
+            other.string = ""
+            textView.addSubview(other)
+            XCTAssertTrue(panel.makeFirstResponder(other))
+            return other
+        }
+
+        func interrupt(_ action: String) throws -> NSTextView? {
+            switch action {
+            case "caret":
+                let arrow = NSEvent.keyEvent(
+                    with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                    windowNumber: 0, context: nil, characters: "",
+                    charactersIgnoringModifiers: "", isARepeat: false, keyCode: 123
+                )!
+                _ = controller.routeKeyDown(arrow)
+                return nil
+            case "focus":
+                return focusOtherField()
+            case "click":
+                controller.noteMouseDownInPanel(windowNumber: panel.windowNumber)
+                return nil
+            case "resign":
+                controller.windowDidResignKey(
+                    Notification(name: NSWindow.didResignKeyNotification, object: panel)
+                )
+                return nil
+            case "client":
+                model.setProcessClient(try client())
+                return nil
+            case "direct-client":
+                model.processClient = try client()
+                return nil
+            case "hide":
+                model.panelDismisser()
+                return nil
+            default:
+                _ = controller.windowShouldClose(panel)
+                return nil
+            }
         }
 
         func release() throws { try Data().write(to: releaseURL) }
@@ -251,6 +312,148 @@ final class CaptureCloseAliasTests: XCTestCase {
             XCTAssertTrue(editor.writes.isEmpty, action)
             XCTAssertFalse(editor.model.isSubmitting, action)
         }
+    }
+
+    func testReplayInterruptionAfterReplyDrainsEditsAndDropsSubmit() async throws {
+        let actions = [
+            "caret", "focus", "click", "resign", "client", "direct-client", "dismiss",
+            "hide",
+        ]
+        for submitModifiers in [NSEvent.ModifierFlags(), .command] {
+            for action in actions {
+                let editor = try Editor("x")
+                defer { editor.cleanup() }
+                editor.pauseReplay()
+                editor.type("s")
+                XCTAssertNil(editor.type("1"))
+                XCTAssertNil(editor.type("\r", modifiers: submitModifiers))
+                try editor.release()
+                await waitUntil {
+                    editor.pendingReplay != nil && editor.textView.string.hasPrefix("x*")
+                }
+                XCTAssertEqual(editor.textView.string, "x*", "\(action) \(submitModifiers)")
+                let other = try editor.interrupt(action)
+                XCTAssertEqual(editor.textView.string, "x*1", "\(action) \(submitModifiers)")
+                XCTAssertTrue(editor.writes.isEmpty, "\(action) \(submitModifiers)")
+                XCTAssertFalse(editor.model.isSubmitting, "\(action) \(submitModifiers)")
+                if action == "dismiss" {
+                    XCTAssertEqual(
+                        editor.model.statusText, "Draft retained",
+                        "\(action) \(submitModifiers)")
+                } else {
+                    XCTAssertEqual(
+                        editor.model.statusText,
+                        "Bob did not answer; press Return again",
+                        "\(action) \(submitModifiers)")
+                }
+                XCTAssertEqual(other?.string ?? "", "", "\(action) \(submitModifiers)")
+                editor.stepReplay()
+                XCTAssertEqual(editor.textView.string, "x*1", "\(action) \(submitModifiers)")
+                XCTAssertTrue(editor.writes.isEmpty, "\(action) \(submitModifiers)")
+                XCTAssertFalse(editor.model.isSubmitting, "\(action) \(submitModifiers)")
+                XCTAssertEqual(other?.string ?? "", "", "\(action) \(submitModifiers)")
+                if action != "hide" {
+                    _ = editor.panel.makeFirstResponder(editor.textView)
+                    XCTAssertNotNil(editor.type("a"))
+                    XCTAssertEqual(
+                        editor.textView.string, "x*1a", "\(action) \(submitModifiers)")
+                }
+            }
+        }
+    }
+
+    func testReplayInterruptionAfterOneDeliveredEditDropsRemainingSubmit() async throws {
+        for action in ["caret", "focus", "client", "dismiss"] {
+            let editor = try Editor("x")
+            defer { editor.cleanup() }
+            editor.pauseReplay()
+            editor.type("s")
+            XCTAssertNil(editor.type("1"))
+            XCTAssertNil(editor.type("\r"))
+            try editor.release()
+            await waitUntil {
+                editor.pendingReplay != nil && editor.textView.string.hasPrefix("x*")
+            }
+            editor.stepReplay()
+            await waitUntil { editor.pendingReplay != nil }
+            XCTAssertEqual(editor.textView.string, "x*1", action)
+            let other = try editor.interrupt(action)
+            XCTAssertEqual(editor.textView.string, "x*1", action)
+            XCTAssertTrue(editor.writes.isEmpty, action)
+            XCTAssertFalse(editor.model.isSubmitting, action)
+            if action == "dismiss" {
+                XCTAssertEqual(editor.model.statusText, "Draft retained", action)
+            } else {
+                XCTAssertEqual(
+                    editor.model.statusText,
+                    "Bob did not answer; press Return again",
+                    action
+                )
+            }
+            XCTAssertEqual(other?.string ?? "", "", action)
+            editor.stepReplay()
+            XCTAssertEqual(editor.textView.string, "x*1", action)
+            XCTAssertTrue(editor.writes.isEmpty, action)
+            XCTAssertFalse(editor.model.isSubmitting, action)
+            XCTAssertEqual(other?.string ?? "", "", action)
+        }
+    }
+
+    func testCommandFlushWhileReplaySuspendedDropsSubmit() async throws {
+        let editor = try Editor("x")
+        defer { editor.cleanup() }
+        editor.pauseReplay()
+        editor.type("s")
+        XCTAssertNil(editor.type("1"))
+        XCTAssertNil(editor.type("\r"))
+        try editor.release()
+        await waitUntil {
+            editor.pendingReplay != nil && editor.textView.string.hasPrefix("x*")
+        }
+        let undo = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: 0, context: nil, characters: "z", charactersIgnoringModifiers: "z",
+            isARepeat: false, keyCode: 6
+        )!
+        _ = editor.controller.routeKeyDown(undo)
+        XCTAssertEqual(editor.textView.string, "x*1")
+        XCTAssertTrue(editor.writes.isEmpty)
+        XCTAssertFalse(editor.model.isSubmitting)
+        XCTAssertEqual(editor.model.statusText, "Bob did not answer; press Return again")
+        editor.stepReplay()
+        XCTAssertEqual(editor.textView.string, "x*1")
+        XCTAssertTrue(editor.writes.isEmpty)
+        XCTAssertFalse(editor.model.isSubmitting)
+    }
+
+    func testSameObjectRecheckDoesNotFlushReplayTail() async throws {
+        let editor = try Editor("x")
+        defer { editor.cleanup() }
+        editor.pauseReplay()
+        editor.type("s")
+        XCTAssertNil(editor.type("1"))
+        try editor.release()
+        await waitUntil {
+            editor.pendingReplay != nil && editor.textView.string.hasPrefix("x*")
+        }
+        editor.model.setProcessClient(editor.model.processClient)
+        XCTAssertNotNil(editor.pendingReplay)
+        XCTAssertEqual(editor.textView.string, "x*")
+        editor.stepReplay()
+        XCTAssertEqual(editor.textView.string, "x*1")
+        XCTAssertTrue(editor.writes.isEmpty)
+    }
+
+    func testReplayedDotAndEqualsKeepSharedGestureOrder() async throws {
+        let editor = try Editor("x")
+        defer { editor.cleanup() }
+        editor.type("s")
+        XCTAssertNil(editor.type(".", timestamp: 1))
+        XCTAssertNil(editor.type("=", timestamp: 2))
+        try editor.release()
+        await waitUntil { editor.textView.string == "x*.=" }
+        XCTAssertEqual(editor.controller.replayedKeyTimestampsForTesting, [1, 2])
+        XCTAssertEqual(editor.controller.replayedKeyRouteCountForTesting, 2)
     }
 
     func testOldBobProbeWarnsOnceAndReturnFilesLiteral() async throws {

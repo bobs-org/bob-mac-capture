@@ -777,6 +777,7 @@ final class CapturePanelModel: ObservableObject {
             if processClient != nil {
                 startCloseAliasProbeIfNeeded()
             }
+            processClientDidReplace?()
         }
     }
     var notificationService: NotificationService?
@@ -820,6 +821,10 @@ final class CapturePanelModel: ObservableObject {
     /// `didReceiveReply` distinguishes a Bob verdict from a cancelled or
     /// failed request; only a verdict may replay a buffered submit.
     var meaningChangingRewriteHoldDidEnd: ((UInt64, Bool) -> Void)?
+    /// Fired after an actual client replacement (`!==`), never a same-object
+    /// Recheck. The controller uses this to retire a replay tail after the
+    /// rewrite hold has already ended.
+    var processClientDidReplace: (() -> Void)?
     /// Narrow controller bridge: insert a saved template through the
     /// focused `NSTextView` so Undo stays native. Nil in tests that do
     /// not wire a text view; those apply `setPlainDraft` as a fallback.

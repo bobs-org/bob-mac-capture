@@ -286,8 +286,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var isDispatchingReplayedKey = false
     private var typeAheadReplayQueue: [NSEvent] = []
     private var typeAheadReplayTask: Task<Void, Never>?
+    private var typeAheadReplayGeneration: UInt64 = 0
     private var isReplayingTypeAheadKeys = false
+    private var isFlushingTypeAhead = false
     private var typeAheadReplayDroppedSubmit = false
+    private weak var typeAheadOriginalEditor: NSTextView?
+    /// Test seam: schedule the next delayed replay key. The default waits
+    /// 16 ms then for comma-assist parse. Tests replace this to pause
+    /// between keys without sleeping.
+    var scheduleTypeAheadReplay: ((@escaping @MainActor () -> Void) -> Void)?
     var typeAheadNow: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Hosted editor tests use the same key routing, then simulate AppKit's
     /// native insertion without depending on an active GUI application.
@@ -366,6 +373,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 generation: generation,
                 didReceiveReply: didReceiveReply
             )
+        }
+        model.processClientDidReplace = { [weak self] in
+            self?.flushTypeAheadHoldBeforeFocusOrDismissal()
         }
     }
 
@@ -2437,9 +2447,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 || event.type == .rightMouseDown
                 || event.type == .otherMouseDown
             {
-                if event.windowNumber == self.panel?.windowNumber {
-                    self.flushTypeAheadHoldBeforeFocusOrDismissal()
-                }
+                self.noteMouseDownInPanel(windowNumber: event.windowNumber)
                 return event
             }
             if event.type == .flagsChanged {
@@ -2455,8 +2463,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case submit
     }
 
+    func noteMouseDownInPanel(windowNumber: Int) {
+        guard windowNumber == panel?.windowNumber else {
+            return
+        }
+        flushTypeAheadHoldBeforeFocusOrDismissal()
+    }
+
     private func beginTypeAheadHold(generation: UInt64) -> Bool {
-        guard isDraftEditorResponder(panel?.firstResponder),
+        guard !isFlushingTypeAhead,
+            isDraftEditorResponder(panel?.firstResponder),
             let textView = Self.editableTextView(panel?.firstResponder),
             !textView.hasMarkedText(),
             !isModalCaptureFieldActive,
@@ -2465,6 +2481,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return false
         }
 
+        typeAheadOriginalEditor = textView
         scheduleTypeAheadDeadline(generation: generation)
         return true
     }
@@ -2569,6 +2586,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         else {
             return
         }
+        if typeAheadOriginalEditor == nil {
+            typeAheadOriginalEditor = Self.editableTextView(panel?.firstResponder)
+        }
         typeAheadDeadlineTask?.cancel()
         typeAheadDeadlineTask = nil
         recordTypeAheadHold(snapshot)
@@ -2604,12 +2624,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     private func flushTypeAheadHoldBeforeFocusOrDismissal() {
+        guard !isFlushingTypeAhead else {
+            return
+        }
+        isFlushingTypeAhead = true
+        defer { isFlushingTypeAhead = false }
+        invalidateScheduledTypeAheadReplay()
         while let snapshot = typeAheadHold.end(at: typeAheadNow()) {
             finishFlushedTypeAheadHold(
                 snapshot,
                 cancelRewrite: !snapshot.keys.isEmpty
             )
         }
+        drainTypeAheadReplayQueue()
+        clearTypeAheadOriginalEditorIfIdle()
+    }
+
+    private func invalidateScheduledTypeAheadReplay() {
+        typeAheadReplayGeneration &+= 1
+        typeAheadReplayTask?.cancel()
+        typeAheadReplayTask = nil
     }
 
     private func finishFlushedTypeAheadHold(
@@ -2683,6 +2717,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard typeAheadReplayTask == nil else {
             return
         }
+        let dispatch: @MainActor () -> Void = { [weak self] in
+            self?.dispatchNextTypeAheadReplayKey()
+        }
+        if let scheduleTypeAheadReplay {
+            scheduleTypeAheadReplay(dispatch)
+            return
+        }
+        let generation = typeAheadReplayGeneration
         typeAheadReplayTask = Task { @MainActor [weak self] in
             // Let AppKit and SwiftUI finish the preceding editor transaction
             // before routing a later key such as Return against the updated
@@ -2694,11 +2736,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             } catch {
                 return
             }
-            guard let self else {
+            guard let self, self.typeAheadReplayGeneration == generation else {
                 return
             }
             self.typeAheadReplayTask = nil
-            self.dispatchNextTypeAheadReplayKey()
+            dispatch()
         }
     }
 
@@ -2706,6 +2748,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard !typeAheadReplayQueue.isEmpty else {
             isReplayingTypeAheadKeys = false
             announceDroppedTypeAheadSubmitIfNeeded()
+            clearTypeAheadOriginalEditorIfIdle()
             return
         }
         let event = typeAheadReplayQueue.removeFirst()
@@ -2723,6 +2766,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if typeAheadReplayQueue.isEmpty {
             isReplayingTypeAheadKeys = false
             announceDroppedTypeAheadSubmitIfNeeded()
+            clearTypeAheadOriginalEditorIfIdle()
         } else {
             scheduleNextTypeAheadReplayKey()
         }
@@ -2736,7 +2780,70 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.announceTypeAheadSubmitDropped()
     }
 
+    private func drainTypeAheadReplayQueue() {
+        let keys = typeAheadReplayQueue
+        typeAheadReplayQueue.removeAll()
+        isReplayingTypeAheadKeys = false
+        var droppedSubmit = typeAheadReplayDroppedSubmit
+        typeAheadReplayDroppedSubmit = false
+        for event in keys {
+            if Self.typeAheadKeyKind(for: event) == .submit {
+                droppedSubmit = true
+                continue
+            }
+            applyFlushedReplayEdit(event)
+        }
+        if droppedSubmit {
+            model.announceTypeAheadSubmitDropped()
+        }
+    }
+
+    /// Inserts a flushed edit into the original draft without routing through
+    /// the current first responder, so a focus or client change cannot deliver
+    /// the tail into another field.
+    private func applyFlushedReplayEdit(_ event: NSEvent) {
+        guard Self.typeAheadKeyKind(for: event) == .edit else {
+            return
+        }
+        let original = typeAheadOriginalEditor
+            ?? Self.editableTextView(panel?.firstResponder)
+        guard let original, original.window === panel else {
+            return
+        }
+        if let replayedKeyForTesting {
+            replayedKeyForTesting(event)
+            return
+        }
+        original.insertText(
+            event.characters ?? "",
+            replacementRange: original.selectedRange()
+        )
+        model.attributedDraft = AttributedString(original.string)
+        model.editorTextDidChange(
+            cursorUTF8Offset: utf8Offset(
+                in: original.string,
+                utf16Offset: original.selectedRange().location
+            )
+        )
+    }
+
+    private func clearTypeAheadOriginalEditorIfIdle() {
+        if !typeAheadHold.isActive,
+            !isReplayingTypeAheadKeys,
+            typeAheadReplayQueue.isEmpty
+        {
+            typeAheadOriginalEditor = nil
+        }
+    }
+
     private func dispatchReplayedKey(_ event: NSEvent) {
+        let original = typeAheadOriginalEditor
+            ?? (isDraftEditorResponder(panel?.firstResponder)
+                ? Self.editableTextView(panel?.firstResponder)
+                : nil)
+        guard let original, panel?.firstResponder === original else {
+            return
+        }
         isDispatchingReplayedKey = true
         #if DEBUG
             isRoutingReplayedKeyForTesting = true
@@ -2770,10 +2877,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             }
         #endif
         if isReplayingTypeAheadKeys, !isDispatchingReplayedKey {
-            // Keep physical keys behind the already-buffered replay sequence.
-            typeAheadReplayQueue.append(event)
-            scheduleNextTypeAheadReplayKey()
-            return nil
+            if Self.typeAheadKeyKind(for: event) != nil {
+                // Keep physical edit/submit keys behind the already-buffered
+                // replay sequence.
+                typeAheadReplayQueue.append(event)
+                scheduleNextTypeAheadReplayKey()
+                return nil
+            }
+            // Non-bufferable commands flush the pending tail first, then
+            // fall through to route against the drained draft.
+            flushTypeAheadHoldBeforeFocusOrDismissal()
         }
         if holdOrFlushTypeAheadKey(event) {
             return nil
