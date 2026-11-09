@@ -1339,16 +1339,7 @@ struct CapturePickerKeyHints: View {
         HStack(spacing: 12) {
             ForEach(0..<items.count, id: \.self) { index in
                 HStack(spacing: 4) {
-                    Text(items[index].keys)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
+                    CaptureKeycap(keys: items[index].keys)
                     Text(items[index].action)
                         .font(.caption)
                         .foregroundStyle(.secondary)

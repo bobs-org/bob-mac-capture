@@ -38,6 +38,10 @@ enum CapturePanelLayout {
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
+    /// Pinned "Next time" row at the foot of the completion list or picker.
+    static let aliasTipRowHeight: CGFloat = 24
+    static let aliasTipHairlineHeight: CGFloat = 1
+    static let aliasTipHostHeight = aliasTipRowHeight + aliasTipHairlineHeight
     static let taskTypeVisibleRows = 8
     static let taskTypeRowHeight: CGFloat = 30
     static let taskTypeHeaderHeight: CGFloat = 22
@@ -492,18 +496,25 @@ struct CapturePanelView: View {
     @State private var measuredFooterHeight: CGFloat = 0
 
     private var completionViewportHeight: CGFloat {
+        let base: CGFloat
         if model.completionResponse?.context == "task_type" {
-            return CapturePanelLayout.taskTypeViewportHeight(
+            base = CapturePanelLayout.taskTypeViewportHeight(
                 rowCount: model.completionResponse?.candidates.count ?? 0
             )
-        }
-        if let drawer = model.drawerMenuPresentation() {
-            return CapturePanelLayout.drawerViewportHeight(
+        } else if let drawer = model.drawerMenuPresentation() {
+            base = CapturePanelLayout.drawerViewportHeight(
                 rowCount: drawer.rows.count,
                 groupHeaderCount: drawer.groups.filter { $0.title != nil }.count
             )
+        } else {
+            base = CapturePanelLayout.completionViewportHeight
         }
-        return CapturePanelLayout.completionViewportHeight
+        if model.presentedAliasTip != nil,
+            !model.recordShowsGenericCompletionFallback
+        {
+            return base + CapturePanelLayout.aliasTipHostHeight
+        }
+        return base
     }
 
     var body: some View {
@@ -2102,7 +2113,7 @@ private struct TaskIDPromptCard: View {
                 return "Inserts *\(route):\(typed) · the ID is written now, before Return"
             case .relate:
                 return "Inserts ~\(route):\(typed) · the ID is written now, before Return"
-            case .open, .discard, .unknown:
+            case .addTo, .open, .discard, .unknown:
                 return ""
             }
         }
@@ -2157,7 +2168,7 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts *").foregroundStyle(CaptureEditorPalette.color(for: .blockedTaskSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
         case .relate:
             return Text("\(Text("Inserts ~").foregroundStyle(CaptureEditorPalette.color(for: .relationSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
-        case .open, .discard, .unknown:
+        case .addTo, .open, .discard, .unknown:
             return Text("")
         }
     }
@@ -3395,6 +3406,24 @@ struct CompletionList: View {
     @ObservedObject var model: CapturePanelModel
 
     var body: some View {
+        VStack(spacing: 0) {
+            scrollBody
+            if let tip = model.presentedAliasTip, !model.recordShowsGenericCompletionFallback {
+                Divider()
+                CaptureAliasTipRow(
+                    presentation: CaptureAliasTipPresentation(tip: tip),
+                    sigilColor: model.aliasTipSigilColor(for: tip)
+                )
+            }
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(listAccessibilityLabel)
+    }
+
+    private var scrollBody: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 2) {
@@ -3473,11 +3502,6 @@ struct CompletionList: View {
                 }
             }
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(radius: 12, y: 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(listAccessibilityLabel)
     }
 
     private var completionFooter: some View {
@@ -3497,19 +3521,23 @@ struct CompletionList: View {
     }
 
     private var listAccessibilityLabel: String {
+        let base: String
         if let presentation = model.taskTypeMenuPresentation() {
-            return presentation.listAccessibilityLabel
+            base = presentation.listAccessibilityLabel
+        } else if let presentation = model.drawerMenuPresentation() {
+            base = presentation.listAccessibilityLabel
+        } else if let candidates = model.completionResponse?.candidates, !candidates.isEmpty {
+            let contextLabel = model.rowContent(for: candidates[0]).contextLabel
+            let noun = contextLabel.isEmpty ? "Completion" : contextLabel
+            let count = candidates.count
+            base = "\(noun) suggestions, \(count) result\(count == 1 ? "" : "s")"
+        } else {
+            base = "Completion suggestions"
         }
-        if let presentation = model.drawerMenuPresentation() {
-            return presentation.listAccessibilityLabel
+        if let tip = model.presentedAliasTip, !model.recordShowsGenericCompletionFallback {
+            return base + " " + CaptureAliasTipPresentation(tip: tip).accessibilityLabel
         }
-        guard let candidates = model.completionResponse?.candidates, !candidates.isEmpty else {
-            return "Completion suggestions"
-        }
-        let contextLabel = model.rowContent(for: candidates[0]).contextLabel
-        let noun = contextLabel.isEmpty ? "Completion" : contextLabel
-        let count = candidates.count
-        return "\(noun) suggestions, \(count) result\(count == 1 ? "" : "s")"
+        return base
     }
 
     private var indexedCandidates: [IndexedCompletionCandidate] {

@@ -3175,6 +3175,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model.disarmPullInDiscardForNativeKey()
             }
             noteSeparatorToggleIntentFromEvent(event)
+            noteTypedSigilIntentFromEvent(event)
             return event
         }
 
@@ -3205,6 +3206,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 return nil
             }
             noteSeparatorToggleIntentFromEvent(event)
+            noteTypedSigilIntentFromEvent(event)
             return event
         }
         if command == .typeKeyBeforeEqualsReply {
@@ -3373,6 +3375,56 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     private func noteSeparatorToggleIntentFromEvent(_ event: NSEvent) {
         Self.noteSeparatorToggleIntentIfEligible(
+            event: event,
+            firstResponder: panel?.firstResponder,
+            model: model,
+            modalFieldActive: model.pickerVisible
+                || model.taskIDPromptVisible
+                || model.pomodoroNamePromptVisible
+                || model.isStashPickerPresented
+                || model.isTemplateShelfPresented
+                || model.editorInputLocked
+        )
+    }
+
+    /// Records a physically Shift- or Option-typed `@` or `#` for the
+    /// alias-tip lane. Separate from the rewrite-lane separator intent.
+    static func noteTypedSigilIntentIfEligible(
+        event: NSEvent,
+        firstResponder: NSResponder?,
+        model: CapturePanelModel,
+        modalFieldActive: Bool
+    ) {
+        guard !modalFieldActive,
+            model.typingTipsEnabled,
+            let characters = event.characters,
+            CapturePanelModel.typedSigilTriggers.contains(characters),
+            let textView = editableTextView(firstResponder),
+            !textView.hasMarkedText(),
+            !event.isARepeat
+        else {
+            return
+        }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifiers.contains(.shift) || modifiers.contains(.option) else {
+            return
+        }
+        guard modifiers.intersection([.command, .control]).isEmpty else {
+            return
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else {
+            return
+        }
+        model.noteTypedSigilIntent(
+            sigil: characters,
+            text: textView.string,
+            selectedRange: selection
+        )
+    }
+
+    private func noteTypedSigilIntentFromEvent(_ event: NSEvent) {
+        Self.noteTypedSigilIntentIfEligible(
             event: event,
             firstResponder: panel?.firstResponder,
             model: model,

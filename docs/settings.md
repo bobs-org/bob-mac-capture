@@ -1,9 +1,9 @@
 ---
 title: "Mac Capture settings"
-description: "Settings window controls, defaults, and linked pages for Bob, hotkeys, Refs, agenda, similar tasks, stash, templates, launch, notifications, and diagnostics."
+description: "Settings window controls for Bob, hotkeys, Refs, agenda, similar tasks, typing tips, stash, templates, launch, notifications, and diagnostics."
 ---
 
-The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Similar Tasks, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
+The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Similar Tasks, Typing Tips, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
 
 Install identity and executable search are in [Install](install.md). Permission grants are in [Permissions](permissions.md). Panel keys are in [Keyboard](keyboard.md). Refs behavior is in [Bob Refs](refs.md).
 
@@ -63,6 +63,15 @@ Agenda facts come from `bob capture-pomodoros --tasks`. Layout and folding are i
 | Show similar tasks while capturing | on | Shows Bob's similar-task matches after a 350 ms pause. The band stays hidden when `bob` does not support `capture-related`; capture behavior is unchanged. |
 
 Matching and the JSON contract belong to `bob capture-related`; the Mac app owns the settle delay and row presentation. See [Protocol](protocol.md#optional-commands) and [Capture previews](capture-previews.md).
+
+## Typing Tips
+
+| Control | Default | Notes |
+| --- | --- | --- |
+| Show typing tips | on | A one-line tip when a key without Shift would have typed the same sigil. Off records no intents and shows no tips. |
+| Reset typing tips | — | Clears the per-host lesson ledger. |
+
+Behavior, fading, and `defaults read` are in [Typing tips](typing-tips.md).
 
 ## Canceled Draft Stash
 

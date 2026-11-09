@@ -2072,6 +2072,15 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-blocked-task.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
+    elif [[ "${draft}" == "Buy milk @" ]]; then
+      case "${FAKE_BOB_ALIAS_TIP:-}" in
+        old) cat "${fixtures_dir}/capture-rewrite-alias-tip-old.json" ;;
+        null) cat "${fixtures_dir}/capture-rewrite-alias-tip-null.json" ;;
+        unknown) cat "${fixtures_dir}/capture-rewrite-alias-tip-unknown.json" ;;
+        *) cat "${fixtures_dir}/capture-rewrite-alias-tip-route.json" ;;
+      esac
+    elif [[ "${draft}" == "jot idea #" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-alias-tip-hash.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then

@@ -460,7 +460,8 @@ public final class BobProcessClient: @unchecked Sendable {
     public func captureRewrite(
         _ draft: String,
         cursor: Int,
-        lane: String = "rewrite"
+        lane: String = "rewrite",
+        timeout: TimeInterval = BobProcessClient.defaultTimeout
     ) async throws -> CaptureRewriteResponse {
         let response: CaptureRewriteResponse = try await decode(
             arguments: [
@@ -473,7 +474,8 @@ public final class BobProcessClient: @unchecked Sendable {
                 draft,
             ],
             expectedSchema: 1,
-            lane: lane
+            lane: lane,
+            timeout: timeout
         )
         return response
     }

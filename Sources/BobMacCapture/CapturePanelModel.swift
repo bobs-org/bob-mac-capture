@@ -31,6 +31,27 @@ private struct SeparatorToggleIntent: Equatable {
     let expectsRelationDirectionToggle: Bool
 }
 
+/// One-shot expected buffer after a physically Shift- or Option-typed
+/// `@` or `#`. Separate from the rewrite-lane separator intent.
+private struct TypedSigilIntent: Equatable {
+    let sigil: String
+    let expectedDraft: String
+    let expectedCaretUTF8: Int
+}
+
+/// A bob-proved tip waiting for the completion list's first frame.
+private struct PendingAliasTip: Equatable {
+    let tip: CaptureSigilAliasTip
+    let draft: String
+}
+
+/// A surviving forward alias whose hit can still be withdrawn.
+private struct AliasTipHitRecord: Equatable {
+    let id: String
+    let preDraft: String
+    let postDraft: String
+}
+
 /// One-shot arm after Bob rewrites a `\` or `/` alias to `#`: the very
 /// next press of the same key replaces that `#` with one literal key and
 /// closes the menu. The UTF-16 caret and the `#` range are computed once
@@ -786,6 +807,7 @@ final class CapturePanelModel: ObservableObject {
             closeAliasProbeTask?.cancel()
             closeAliasProbeTask = nil
             closeAliasProbeInFlightIdentity = nil
+            cancelAliasTipLane()
             invalidateRecordInteraction(clearPresentation: true)
             invalidateRewrite()
             invalidateAnalysis()
@@ -890,6 +912,13 @@ final class CapturePanelModel: ObservableObject {
     private var similarTasksTask: Task<Void, Never>?
     private var gmailPeekTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
+    private var aliasTipTask: Task<Void, Never>?
+    private var aliasTipGeneration: UInt64 = 0
+    private var pendingTypedSigilIntent: TypedSigilIntent?
+    private var pendingAliasTip: PendingAliasTip?
+    private var aliasTipSession = AliasTipSession()
+    private var aliasTipIncapableIdentity: String?
+    private var lastAliasHit: AliasTipHitRecord?
     private var pendingRewriteSubmitIntent: PendingRewriteSubmitIntent?
     private var deferredRewriteInputDraft: String?
     private var completedDeferredRewriteDraft: String?
@@ -1005,6 +1034,10 @@ final class CapturePanelModel: ObservableObject {
     /// test can read this right after an edit to learn whether the key went
     /// to Bob's rewrite lane, and wait on it for Bob's reply.
     var rewriteInFlightForTesting: Bool { rewriteTask != nil }
+    /// True while the non-blocking alias-tip rewrite is in flight.
+    var aliasTipInFlightForTesting: Bool { aliasTipTask != nil }
+    var pendingAliasTipForTesting: CaptureSigilAliasTip? { pendingAliasTip?.tip }
+    var aliasTipSessionForTesting: AliasTipSession { aliasTipSession }
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.
@@ -1107,6 +1140,29 @@ final class CapturePanelModel: ObservableObject {
             }
         }
     }
+
+    /// Live Settings control for typing tips. Off records no intents, spawns
+    /// no alias-tip lane, and shows no tips. Hits still count.
+    @Published var typingTipsEnabled = true {
+        didSet {
+            guard typingTipsEnabled != oldValue else { return }
+            if !typingTipsEnabled {
+                cancelAliasTipLane()
+                dropPendingAliasTip()
+                presentedAliasTip = nil
+                pendingTypedSigilIntent = nil
+            }
+        }
+    }
+
+    /// Pinned completion-list tip. Nil while the list is closed.
+    @Published private(set) var presentedAliasTip: CaptureSigilAliasTip?
+
+    /// Test-injectable ledger. Production uses the standard defaults store.
+    var aliasTipLedgerStore = AliasTipLedgerStore()
+
+    /// Alias-tip rewrite timeout. Production is 500 ms; tests can lengthen it.
+    var aliasTipTimeout: TimeInterval = 0.5
 
     /// Fire-time gate for the settled related lane. True only while the
     /// panel is visible, the setting is on, and no picker, prompt, choice,
@@ -1616,6 +1672,7 @@ final class CapturePanelModel: ObservableObject {
         similarTasksTask?.cancel()
         gmailPeekTask?.cancel()
         rewriteTask?.cancel()
+        aliasTipTask?.cancel()
         todayPomodoroGotoTask?.cancel()
         pomodoroThemeSuggestionsTask?.cancel()
     }
@@ -3149,6 +3206,10 @@ final class CapturePanelModel: ObservableObject {
             deferredRewriteEchoDraft = nil
             deferredRewriteEchoCursorUTF8 = nil
         }
+        reconcileAliasTipHit(with: draft)
+        if let pending = pendingAliasTip, !aliasTipIsAdmissible(pending) {
+            dropPendingAliasTip()
+        }
         let acceptedDeferredRewriteEcho = deferredRewriteEchoDraft == draft
             && (pendingRewriteSubmitIntent != nil
                 || pendingExplicitSubmitIntent?.draft == draft
@@ -3219,10 +3280,21 @@ final class CapturePanelModel: ObservableObject {
 
         if commitRouteCompletionOnAcceptKey(draft: draft) {
             pendingSeparatorToggleIntent = nil
+            pendingTypedSigilIntent = nil
             return
         }
 
         let insertionOffset = cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
+        if let intent = consumeTypedSigilIntent(
+            draft: draft,
+            cursorUTF8Offset: insertionOffset
+        ) {
+            startAliasTipLane(
+                draft: draft,
+                cursorUTF8Offset: intent.expectedCaretUTF8,
+                sigil: intent.sigil
+            )
+        }
         var analysisCursor = insertionOffset
         let requestCompletion = insertionOffset != nil
         var completionGate: Task<Void, Never>?
@@ -5850,6 +5922,7 @@ final class CapturePanelModel: ObservableObject {
     // go stale while the panel is hidden, so the card must resolve them fresh.
     func prepareForPresentation() {
         panelVisible = true
+        aliasTipSession = AliasTipSession()
         dismissStashPicker()
         dismissTemplateShelf()
         guard !hasDraft else {
@@ -5886,6 +5959,11 @@ final class CapturePanelModel: ObservableObject {
         clearEditorLeader()
         clearBackslashLiteralArm()
         clearHashAliasLiteralArm()
+        cancelAliasTipLane()
+        dropPendingAliasTip()
+        presentedAliasTip = nil
+        pendingTypedSigilIntent = nil
+        lastAliasHit = nil
     }
 
     func armEditorLeader() {
@@ -5964,6 +6042,8 @@ final class CapturePanelModel: ObservableObject {
         captureGrammarWarning = nil
         similarTasksParseItems = []
         similarTasksFolded = false
+        dropPendingAliasTip()
+        presentedAliasTip = nil
         completionResponse = nil
         completionDraftSnapshot = nil
         recordPresentation = nil
@@ -6087,6 +6167,8 @@ final class CapturePanelModel: ObservableObject {
             recordReturnTask?.cancel()
             recordReturnTask = nil
         }
+        dropPendingAliasTip()
+        presentedAliasTip = nil
     }
 
     // MARK: - Capture picker
@@ -7015,6 +7097,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         clearPickerInterruption(trigger: trigger)
+        let listWasVisible = completionVisible
         let keepsRecordEdit = Self.isRecordCompletion(completion)
             && completion.record?.edit != nil
         completionResponse = completion.candidates.isEmpty && !keepsRecordEdit ? nil : completion
@@ -7037,6 +7120,10 @@ final class CapturePanelModel: ObservableObject {
             statusText = pomodoroStartPickerStatus(override: completion.overrideInfo)
         }
         applyCompletionWarnings(completion.warnings)
+        consumePendingAliasTipOnListUpdate(listWasVisible: listWasVisible)
+        if !completionVisible {
+            presentedAliasTip = nil
+        }
     }
 
     /// An analysis that ends with no completion at all (nothing requested, or
@@ -15618,7 +15705,7 @@ final class CapturePanelModel: ObservableObject {
             replacement = success.dependencyReplacement
         case .blocks:
             replacement = success.blockedTaskReplacement
-        case .open, .discard, .unknown:
+        case .addTo, .open, .discard, .unknown:
             replacement = nil
         }
         guard let replacement, !replacement.isEmpty else {
@@ -17602,6 +17689,11 @@ final class CapturePanelModel: ObservableObject {
             relationFlipAliasOpen = nil
             return
         }
+        recordAliasTipHit(
+            from: response,
+            preDraft: nativeEdit.expectedDraft,
+            postDraft: response.text
+        )
         if plainDraft != response.text {
             isApplyingProgrammaticDraft = true
             attributedDraft = AttributedString(response.text)
@@ -17790,6 +17882,7 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
             return false
         }
+        withdrawLastAliasHit()
         if plainDraft != newDraft {
             isApplyingProgrammaticDraft = true
             attributedDraft = AttributedString(newDraft)
@@ -17889,6 +17982,7 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
             return false
         }
+        withdrawLastAliasHit()
         if plainDraft != newDraft {
             isApplyingProgrammaticDraft = true
             attributedDraft = AttributedString(newDraft)
@@ -18118,6 +18212,7 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
             return false
         }
+        withdrawLastAliasHit()
         equalsGestureArm = nil
         pendingEqualsFirstKey = nil
         equalsProbe = nil
@@ -20539,5 +20634,299 @@ final class CapturePanelModel: ObservableObject {
         }
 
         return cursorUTF8Offset < 3 || bytes[cursorUTF8Offset - 3] != 64
+    }
+}
+
+extension CapturePanelModel {
+    static let typedSigilTriggers: Set<String> = ["@", "#"]
+
+    /// Records the expected post-key draft for a physically Shift- or
+    /// Option-typed `@` or `#`. `editorTextDidChange` consumes it only when
+    /// the resulting buffer matches.
+    func noteTypedSigilIntent(
+        sigil: String,
+        text: String,
+        selectedRange: NSRange
+    ) {
+        guard Self.typedSigilTriggers.contains(sigil),
+            typingTipsEnabled,
+            selectedRange.length == 0,
+            selectedRange.location >= 0
+        else {
+            pendingTypedSigilIntent = nil
+            return
+        }
+        let nsText = text as NSString
+        guard selectedRange.location <= nsText.length else {
+            pendingTypedSigilIntent = nil
+            return
+        }
+        let expectedDraft = nsText.replacingCharacters(in: selectedRange, with: sigil)
+        let expectedUTF16 = selectedRange.location + (sigil as NSString).length
+        guard let expectedCaretUTF8 = utf8Offset(in: expectedDraft, utf16Offset: expectedUTF16)
+        else {
+            pendingTypedSigilIntent = nil
+            return
+        }
+        pendingTypedSigilIntent = TypedSigilIntent(
+            sigil: sigil,
+            expectedDraft: expectedDraft,
+            expectedCaretUTF8: expectedCaretUTF8
+        )
+    }
+
+    func resetTypingTips() {
+        aliasTipLedgerStore.reset()
+        aliasTipSession = AliasTipSession()
+    }
+
+    func installPresentedAliasTipForPreviews(_ tip: CaptureSigilAliasTip?) {
+        presentedAliasTip = tip
+    }
+
+    func aliasTipSigilColor(for tip: CaptureSigilAliasTip) -> Color {
+        guard let parse = latestParse else {
+            return .primary
+        }
+        let start = tip.range.start
+        if let span = parse.spans.first(where: { start >= $0.start && start < $0.end })
+            ?? parse.spans.first(where: { start >= $0.start && start <= $0.end })
+        {
+            return CaptureEditorPalette.color(
+                for: captureSemanticCategory(forSpanKind: span.kind)
+            )
+        }
+        return .primary
+    }
+
+    var aliasTipFitsPanelBudget: Bool {
+        let screenLimit: CGFloat
+        if let available = availableScreenHeight {
+            screenLimit = max(1, available - 2 * CapturePanelLayout.panelScreenMargin)
+        } else {
+            return true
+        }
+        let listHeight =
+            CapturePanelLayout.completionViewportHeight
+            + CapturePanelLayout.aliasTipHostHeight
+        let chrome =
+            titlebarSafeAreaInset
+            + CapturePanelLayout.rootPadding * 2
+            + CapturePanelLayout.sectionSpacing
+            + (footerHeight > 0 ? footerHeight : 28)
+            + 44
+        return chrome + listHeight <= screenLimit
+    }
+
+    fileprivate func consumeTypedSigilIntent(
+        draft: String,
+        cursorUTF8Offset: Int?
+    ) -> TypedSigilIntent? {
+        guard let intent = pendingTypedSigilIntent else {
+            return nil
+        }
+        pendingTypedSigilIntent = nil
+        guard draft == intent.expectedDraft else {
+            return nil
+        }
+        if let cursorUTF8Offset {
+            if cursorUTF8Offset == intent.expectedCaretUTF8 {
+                return intent
+            }
+            if cursorUTF8Offset + 1 == intent.expectedCaretUTF8 {
+                return intent
+            }
+            return nil
+        }
+        return intent
+    }
+
+    fileprivate func startAliasTipLane(
+        draft: String,
+        cursorUTF8Offset: Int,
+        sigil: String
+    ) {
+        guard typingTipsEnabled, let processClient else {
+            return
+        }
+        if let identity = aliasTipIncapableIdentity,
+            identity == processClient.identityToken
+        {
+            return
+        }
+        dropPendingAliasTip()
+        aliasTipGeneration &+= 1
+        let generation = aliasTipGeneration
+        aliasTipTask?.cancel()
+        let timeout = aliasTipTimeout
+        aliasTipTask = Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.captureRewrite(
+                    draft,
+                    cursor: cursorUTF8Offset,
+                    lane: "alias-tip",
+                    timeout: timeout
+                )
+                try Task.checkCancellation()
+                await MainActor.run {
+                    self?.applyAliasTipRewrite(
+                        response,
+                        draft: draft,
+                        sigil: sigil,
+                        generation: generation,
+                        processClient: processClient
+                    )
+                }
+            } catch is CancellationError {
+            } catch {
+                await MainActor.run {
+                    if self?.aliasTipGeneration == generation {
+                        self?.aliasTipTask = nil
+                    }
+                }
+            }
+        }
+    }
+
+    fileprivate func applyAliasTipRewrite(
+        _ response: CaptureRewriteResponse,
+        draft: String,
+        sigil: String,
+        generation: UInt64,
+        processClient: BobProcessClient
+    ) {
+        guard aliasTipGeneration == generation else {
+            return
+        }
+        aliasTipTask = nil
+        if !response.reportsSigilAliasTips {
+            aliasTipIncapableIdentity = processClient.identityToken
+            return
+        }
+        aliasTipIncapableIdentity = nil
+        guard let tip = response.sigilAliasTip else {
+            aliasTipLedgerStore.recordIneligible(sigil: sigil)
+            return
+        }
+        guard CaptureAliasLesson.isKnown(id: tip.id) else {
+            return
+        }
+        let pending = PendingAliasTip(tip: tip, draft: draft)
+        guard aliasTipIsAdmissible(pending) else {
+            aliasTipLedgerStore.recordMiss(id: tip.id, shown: false)
+            return
+        }
+        if completionVisible {
+            aliasTipLedgerStore.recordMiss(id: tip.id, shown: false)
+            return
+        }
+        let due = aliasTipLedgerStore.isDue(id: tip.id)
+        guard due, aliasTipSession.canShow(lessonId: tip.id) else {
+            aliasTipLedgerStore.recordMiss(id: tip.id, shown: false)
+            return
+        }
+        pendingAliasTip = pending
+    }
+
+    fileprivate func consumePendingAliasTipOnListUpdate(listWasVisible: Bool) {
+        guard let pending = pendingAliasTip else {
+            return
+        }
+        pendingAliasTip = nil
+        let canAdmit =
+            !listWasVisible
+            && completionVisible
+            && !recordShowsGenericCompletionFallback
+            && aliasTipIsAdmissible(pending)
+            && aliasTipFitsPanelBudget
+            && CaptureAliasLesson.host(for: pending.tip.id) == .completionList
+        if canAdmit {
+            presentedAliasTip = pending.tip
+            aliasTipSession.markShown()
+            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: true)
+        } else {
+            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
+        }
+    }
+
+    fileprivate func dropPendingAliasTip() {
+        guard let pending = pendingAliasTip else {
+            return
+        }
+        pendingAliasTip = nil
+        aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
+    }
+
+    fileprivate func cancelAliasTipLane() {
+        aliasTipGeneration &+= 1
+        aliasTipTask?.cancel()
+        aliasTipTask = nil
+    }
+
+    fileprivate func aliasTipIsAdmissible(_ pending: PendingAliasTip) -> Bool {
+        guard
+            aliasTipPrefix(of: plainDraft, through: pending.tip.range.end)
+                == aliasTipPrefix(of: pending.draft, through: pending.tip.range.end)
+        else {
+            return false
+        }
+        guard
+            let range = stringRange(
+                in: plainDraft,
+                start: pending.tip.range.start,
+                end: pending.tip.range.end)
+        else {
+            return false
+        }
+        return String(plainDraft[range]) == pending.tip.sigil
+    }
+
+    private func aliasTipPrefix(of draft: String, through end: Int) -> String? {
+        guard let range = stringRange(in: draft, start: 0, end: end) else {
+            return nil
+        }
+        return String(draft[range])
+    }
+
+    fileprivate func recordAliasTipHit(
+        from response: CaptureRewriteResponse,
+        preDraft: String,
+        postDraft: String
+    ) {
+        guard response.rule == "expand_sigil_alias",
+            let alias = response.alias,
+            CaptureAliasLesson.isKnown(id: alias.id)
+        else {
+            return
+        }
+        aliasTipLedgerStore.recordHit(id: alias.id)
+        lastAliasHit = AliasTipHitRecord(
+            id: alias.id,
+            preDraft: preDraft,
+            postDraft: postDraft
+        )
+    }
+
+    fileprivate func withdrawLastAliasHit() {
+        guard let hit = lastAliasHit else {
+            return
+        }
+        lastAliasHit = nil
+        aliasTipLedgerStore.withdrawHit(id: hit.id)
+        aliasTipSession.escape(lessonId: hit.id)
+    }
+
+    fileprivate func reconcileAliasTipHit(with draft: String) {
+        guard let hit = lastAliasHit else {
+            return
+        }
+        if draft == hit.postDraft {
+            return
+        }
+        if draft == hit.preDraft {
+            withdrawLastAliasHit()
+            return
+        }
+        lastAliasHit = nil
     }
 }

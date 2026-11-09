@@ -74,7 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 notificationService: notificationService,
                 canceledDraftStash: canceledDraftStash,
                 savedTemplateShelf: savedTemplateShelf,
-                onResetOpenHistory: { [weak self] in self?.refsLibrary?.resetOpenHistory() }
+                onResetOpenHistory: { [weak self] in self?.refsLibrary?.resetOpenHistory() },
+                onResetTypingTips: { [weak self] in
+                    if let model = self?.panelModel {
+                        model.resetTypingTips()
+                    } else {
+                        AliasTipLedgerStore().reset()
+                    }
+                }
             )
         }
 
@@ -123,6 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak model] enabled in
                 model?.similarTasksEnabled = enabled
+            }
+            .store(in: &agendaCancellables)
+        model.typingTipsEnabled = settings.typingTipsEnabled
+        settings.$typingTipsEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak model] enabled in
+                model?.typingTipsEnabled = enabled
             }
             .store(in: &agendaCancellables)
         // The Agenda diagnostic follows the store live, so Settings
@@ -1112,6 +1127,7 @@ private struct BobSettingsScene: Scene {
     let canceledDraftStash: CanceledDraftStash
     let savedTemplateShelf: SavedTemplateShelf
     let onResetOpenHistory: (() -> Void)?
+    let onResetTypingTips: (() -> Void)?
 
     var body: some Scene {
         Settings {
@@ -1120,7 +1136,8 @@ private struct BobSettingsScene: Scene {
                 notificationService: notificationService,
                 canceledDraftStash: canceledDraftStash,
                 savedTemplateShelf: savedTemplateShelf,
-                onResetOpenHistory: onResetOpenHistory
+                onResetOpenHistory: onResetOpenHistory,
+                onResetTypingTips: onResetTypingTips
             )
         }
     }

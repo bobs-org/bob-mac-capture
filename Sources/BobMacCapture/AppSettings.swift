@@ -68,6 +68,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(similarTasksEnabled, forKey: Keys.similarTasksEnabled) }
     }
 
+    @Published var typingTipsEnabled: Bool {
+        didSet { defaults.set(typingTipsEnabled, forKey: Keys.typingTipsEnabled) }
+    }
+
     @Published var refsNotifyOpenPDFUpdates: Bool {
         didSet { defaults.set(refsNotifyOpenPDFUpdates, forKey: Keys.refsNotifyOpenPDFUpdates) }
     }
@@ -195,6 +199,9 @@ final class AppSettings: ObservableObject {
         similarTasksEnabled = defaults.object(forKey: Keys.similarTasksEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.similarTasksEnabled)
+        typingTipsEnabled = defaults.object(forKey: Keys.typingTipsEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.typingTipsEnabled)
         refsNotifyOpenPDFUpdates =
             defaults.object(forKey: Keys.refsNotifyOpenPDFUpdates) == nil
             ? true
@@ -273,6 +280,7 @@ private enum Keys {
     static let refsInspectorNotesPageSize = "refsInspectorNotesPageSize"
     static let agendaEnabled = "agendaEnabled"
     static let similarTasksEnabled = "similarTasksEnabled"
+    static let typingTipsEnabled = "typingTipsEnabled"
     static let refsNotifyOpenPDFUpdates = "refsNotifyOpenPDFUpdates"
     static let refsScanOnHighlightsSave = "refsScanOnHighlightsSave"
 }

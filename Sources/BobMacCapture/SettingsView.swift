@@ -11,6 +11,7 @@ struct SettingsView: View {
     @ObservedObject var canceledDraftStash: CanceledDraftStash
     @ObservedObject var savedTemplateShelf: SavedTemplateShelf
     var onResetOpenHistory: (() -> Void)? = nil
+    var onResetTypingTips: (() -> Void)? = nil
     @State private var launchStatus = LaunchAtLoginController().state()
     @State private var testNotificationStatus = ""
     @State private var isConfirmingStashClear = false
@@ -199,6 +200,19 @@ struct SettingsView: View {
                     "Show similar tasks while capturing",
                     isOn: $settings.similarTasksEnabled
                 )
+            }
+
+            Section("Typing Tips") {
+                Toggle("Show typing tips", isOn: $settings.typingTipsEnabled)
+                Text(
+                    "A one-line tip when a key without Shift would have typed the same sigil."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Button("Reset typing tips") {
+                    onResetTypingTips?()
+                }
+                .disabled(onResetTypingTips == nil)
             }
 
             Section("Canceled Draft Stash") {
