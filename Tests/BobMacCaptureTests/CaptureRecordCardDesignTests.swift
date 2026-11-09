@@ -214,6 +214,202 @@ final class CaptureRecordCardDesignTests: XCTestCase {
             width: CapturePanelLayout.panelMinimumContentWidth,
             appearance: .darkAqua
         )
+
+        let productionCard = RecordCardView(
+            model: moreModel,
+            presentation: morePresentation,
+            previewMode: false
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            productionCard,
+            name: "capture-record-card-more-production",
+            width: CapturePanelLayout.panelMinimumContentWidth,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            productionCard,
+            name: "capture-record-card-more-production",
+            width: CapturePanelLayout.panelMinimumContentWidth,
+            appearance: .darkAqua
+        )
+    }
+
+    func testRecordCardHeightPolicyUsesFieldCandidateCount() throws {
+        let fields = try decodeComplete("record-complete-field.json")
+        XCTAssertEqual(fields.candidates.count, 6)
+        let policy = RecordCardHeightPolicy(
+            rowCount: fields.candidates.count,
+            showsMoreControl: false,
+            displayScale: 1
+        )
+        XCTAssertFalse(policy.showsMoreControl)
+        XCTAssertEqual(policy.clampedRows, 6)
+        XCTAssertEqual(policy.listViewportHeight, 192)
+    }
+
+    func testRenderRecordCardSelectedOverflowFieldListReadyFooterAndOverlay() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("Record Card rendering requires macOS 26.")
+        }
+        let incomplete = try decodeParse("record-parse-incomplete.json")
+        let presentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(
+                parse: incomplete,
+                cursor: incomplete.input.utf8.count
+            )
+        )
+
+        let many = try decodeComplete("record-complete-category-many.json")
+        let manyModel = CapturePanelModel()
+        manyModel.installRecordCardForPreviews(
+            presentation: presentation,
+            parse: incomplete,
+            completion: many,
+            statusText: "Ready"
+        )
+        manyModel.selectedCompletionIndex = 6
+        let manyCard = RecordCardView(
+            model: manyModel,
+            presentation: presentation,
+            previewMode: true
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            manyCard,
+            name: "capture-record-card-values-overflow",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            manyCard,
+            name: "capture-record-card-values-overflow",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let fields = try decodeComplete("record-complete-field.json")
+        let fieldModel = CapturePanelModel()
+        fieldModel.installRecordCardForPreviews(
+            presentation: presentation,
+            parse: incomplete,
+            completion: fields
+        )
+        let fieldCard = RecordCardView(
+            model: fieldModel,
+            presentation: presentation,
+            previewMode: true
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            fieldCard,
+            name: "capture-record-card-fields",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            fieldCard,
+            name: "capture-record-card-fields",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let readyModel = CapturePanelModel()
+        readyModel.installRecordCardForPreviews(
+            presentation: presentation,
+            parse: incomplete,
+            statusText: "Ready"
+        )
+        let readyCard = RecordCardView(
+            model: readyModel,
+            presentation: presentation,
+            previewMode: true
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            readyCard,
+            name: "capture-record-card-ready-footer",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            readyCard,
+            name: "capture-record-card-ready-footer",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let errorModel = CapturePanelModel()
+        errorModel.installRecordCardForPreviews(
+            presentation: presentation,
+            parse: incomplete,
+            statusText: "Needs Status"
+        )
+        let errorCard = RecordCardView(
+            model: errorModel,
+            presentation: presentation,
+            previewMode: true
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            errorCard,
+            name: "capture-record-card-error-footer",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            errorCard,
+            name: "capture-record-card-error-footer",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let target = try decodeComplete("record-complete-target-create.json")
+        let targetModel = CapturePanelModel()
+        targetModel.installRecordCardForPreviews(
+            presentation: presentation,
+            parse: incomplete,
+            completion: target
+        )
+        let fallback = CompletionList(model: targetModel)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+            .padding(18)
+        try RenderFixtureWriter.write(
+            fallback,
+            name: "capture-record-target-fallback",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            fallback,
+            name: "capture-record-target-fallback",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let two = try decodeParse("record-parse-two-records.json")
+        let overlay = RecordRouteEmojiOverlay(
+            draft: two.input,
+            adornments: CaptureRecordRouteAdornment.all(in: two),
+            wrapWidth: 760,
+            monoCharWidth: 8,
+            lineHeight: 18
+        )
+        .frame(width: 760, height: 48, alignment: .topLeading)
+        .padding(18)
+        try RenderFixtureWriter.write(
+            overlay,
+            name: "capture-record-route-emoji",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            overlay,
+            name: "capture-record-route-emoji",
+            width: 760,
+            appearance: .darkAqua
+        )
     }
 
     private func decodeParse(_ name: String) throws -> CaptureParseResponse {

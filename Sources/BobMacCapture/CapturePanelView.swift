@@ -786,6 +786,16 @@ struct CapturePanelView: View {
                 } action: { height in
                     updateMeasuredAuxiliaryContentHeight(height)
                 }
+        } else if model.recordShowsGenericCompletionFallback {
+            CompletionList(model: model)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+                .layoutPriority(0)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
         } else if let presentation = model.recordPresentation {
             RecordCardView(model: model, presentation: presentation)
                 .layoutPriority(0)
@@ -1157,11 +1167,33 @@ struct CapturePanelView: View {
             )
         }
 
+        if model.recordShowsGenericCompletionFallback {
+            let height = CapturePanelLayout.completionViewportHeight
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(height, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: height
+            )
+        }
+
         if let presentation = model.recordPresentation {
-            let explicit = RecordCardHeightPolicy(
-                presentation: presentation,
-                displayScale: displayScale
-            ).auxiliaryHeight
+            let fieldListVisible = model.recordCompletionListVisible
+                && model.completionResponse?.context == "record_field"
+            let fieldCount = fieldListVisible
+                ? (model.completionResponse?.candidates.count ?? 0)
+                : 0
+            let explicit: CapturePanelAuxiliaryHeight
+            if fieldCount > 0 {
+                explicit = RecordCardHeightPolicy(
+                    rowCount: fieldCount,
+                    showsMoreControl: false,
+                    displayScale: displayScale
+                ).auxiliaryHeight
+            } else {
+                explicit = RecordCardHeightPolicy(
+                    presentation: presentation,
+                    displayScale: displayScale
+                ).auxiliaryHeight
+            }
             return CapturePanelAuxiliaryHeight(
                 idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
                 minimumVisibleHeight: explicit.minimumVisibleHeight
@@ -1514,6 +1546,25 @@ private struct AutosizingCaptureEditor: View {
                     .accessibilityHidden(true)
                 }
 
+                let routeAdornments = model.isSubmitting || model.editorInputLocked
+                    ? [] : model.recordRouteAdornments()
+                if !routeAdornments.isEmpty, monoCharWidth > 0 {
+                    RecordRouteEmojiOverlay(
+                        draft: String(model.attributedDraft.characters),
+                        adornments: routeAdornments,
+                        wrapWidth: wrapWidth,
+                        monoCharWidth: monoCharWidth,
+                        lineHeight: heightPolicy.lineHeight
+                    )
+                    .padding(
+                        .leading,
+                        textInset + CapturePanelLayout.editorLineFragmentPadding
+                    )
+                    .padding(.top, textInset + 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+
                 // Hidden probe measuring one monospaced advance, so ghost
                 // truncation divides the wrap width by the real rendered
                 // character width instead of guessing it.
@@ -1661,6 +1712,41 @@ private struct AutosizingCaptureEditor: View {
             index = draft.index(after: index)
         }
         return remaining == 0 ? index : nil
+    }
+}
+
+/// Presentation-only type emoji at each `record_route` start. Positions
+/// badges with wrapping monospace math so the overlay never mutates draft
+/// bytes or copy/selection offsets.
+@available(macOS 26.0, *)
+struct RecordRouteEmojiOverlay: View {
+    let draft: String
+    let adornments: [CaptureRecordRouteAdornment]
+    let wrapWidth: CGFloat
+    let monoCharWidth: CGFloat
+    let lineHeight: CGFloat
+
+    var body: some View {
+        let charsPerLine = max(8, Int(wrapWidth / max(monoCharWidth, 1)))
+        ZStack(alignment: .topLeading) {
+            ForEach(adornments) { adornment in
+                if let origin = CaptureMonospaceGlyphOrigin.wrappingOrigin(
+                    utf8Offset: adornment.start,
+                    in: draft,
+                    charsPerLine: charsPerLine
+                ) {
+                    Text(adornment.emoji)
+                        .font(.system(size: 11))
+                        .offset(
+                            x: CGFloat(origin.column) * monoCharWidth - 2,
+                            y: CGFloat(origin.line) * lineHeight - 1
+                        )
+                }
+            }
+        }
+        .frame(width: wrapWidth, alignment: .topLeading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -3305,7 +3391,7 @@ private struct TemplateShelfHintKeycap: View {
 }
 
 @available(macOS 26.0, *)
-private struct CompletionList: View {
+struct CompletionList: View {
     @ObservedObject var model: CapturePanelModel
 
     var body: some View {

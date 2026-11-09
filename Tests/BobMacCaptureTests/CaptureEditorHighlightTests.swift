@@ -728,6 +728,27 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testTwoRecordTypesKeepCopyOffsetsAndPaintBothRouteWashes() throws {
+        let parse = try Self.fixtureParse("record-parse-two-records.json")
+        let draft = parse.input
+        XCTAssertEqual(draft, "Ramen Nagi @eat/\n\nTalk Python @podcasts/")
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }),
+            ["@eat/", "@podcasts/"]
+        )
+        let adornments = CaptureRecordRouteAdornment.all(in: parse)
+        XCTAssertEqual(adornments.map(\.emoji), ["🍽️", "🎙️"])
+        XCTAssertFalse(draft.contains("🍽️"))
+        XCTAssertFalse(draft.contains("🎙️"))
+    }
+
     func testRecordUnicodeOffsetsPaintTheRouteNotASlicedGrapheme() throws {
         let parse = try Self.fixtureParse("record-parse-unicode.json")
         let draft = parse.input

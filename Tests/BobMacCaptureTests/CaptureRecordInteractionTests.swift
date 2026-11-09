@@ -114,4 +114,27 @@ final class CaptureRecordInteractionTests: XCTestCase {
             .decreaseBulletIndentation
         )
     }
+
+    func testGenericFallbackTabRequestsFirstMissingAndReturnAcceptsVisibleTarget() {
+        let router = CaptureKeyCommandRouter()
+        var fallback = CaptureKeyRoutingContext(
+            completionVisible: true,
+            recordCardActive: true,
+            recordAssistAvailable: true,
+            recordCompletionListVisible: false,
+            recordShowsGenericCompletionFallback: true,
+            completionHasSelection: true
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: fallback), .recordTab)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, characters: "\r"), context: fallback),
+            .acceptCompletion
+        )
+
+        fallback.completionHasSelection = false
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, characters: "\r"), context: fallback),
+            .recordReturn(openAfterCapture: false)
+        )
+    }
 }

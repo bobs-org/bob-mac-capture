@@ -3,9 +3,9 @@ title: "Mac Capture previews"
 description: "Preview cards, Pomodoro blocks, transfers, dependencies, completions, successor offers, and Record Cards."
 ---
 
-Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard unless parse reports `%c`; Preview and Capture read it. See [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
+Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard unless parse reports `%c`; Preview and Capture read it.
 
-Transfer cards are covered in [Task transfers](capture-transfers.md).
+Transfer cards: [Task transfers](capture-transfers.md).
 
 [![Task completion card](images/task-completion.png#only-light)](images/task-completion.png)
 [![Task completion card](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
@@ -37,15 +37,13 @@ Both cards show `pomodoro_clock_mixed` in orange and VoiceOver.
 
   Template fields decode tolerantly: an older Bob omits them and keeps ordinary drafts
   working. A new Bob with an older app exposes unknown template span kinds as neutral
-  text. An older Bob refuses `%t` drafts before writing anything, so upgrade Bob before
-  submitting a template draft.
+  text. An older Bob refuses `%t` drafts before writing; upgrade Bob first.
 
-Template drafts live in the [Saved templates](saved-templates.md) shelf.
+Templates: [Saved templates](saved-templates.md).
 
 ## Live preview
 
-Live preview calls `bob capture --dry-run [--no-clip] --format json -- <draft>` through
-  a dedicated process-client API. `--no-clip` is omitted only when the same draft's
+Live preview calls `bob capture --dry-run [--no-clip] --format json -- <draft>`. `--no-clip` is omitted only when the same draft's
   accepted `capture-parse` reported a `directive` span with `directive: "clip"` on a
   compatible grammar: a bare `%`, escaped or literal `%c`, a previous draft's span, or
   a missing/lower grammar keeps `--no-clip`, and opening the `%` menu never reads the
@@ -78,15 +76,18 @@ Each `%c` item renders its own Clip card beneath its preview card, built only fr
   and dividers. A missing or unreadable image source
   keeps its summary row. A `clip` Bob did not read (`status: "not_read"`) shows a quiet
   placeholder. Clip lines never enter
-  a task block: the task-block dedup keeps matching
-  them through the item's verbatim `previewBlockLines`.
+  a task block; dedup matches them through the item's
+  verbatim `previewBlockLines`.
 
 ## Record Card
 
 A record draft occupies the picker-card slot. Header: Bob's emoji, title,
-path, note count. Rows keep labels and Bob's state; capsules accept
-completion candidates; optionals hide under More. Type emoji never enters the draft. See
-[Record cards](keyboard.md#record-cards).
+path, note count. Rows keep labels and Bob's state; capsules and value
+lists accept candidates and keep the selected row visible. Optionals hide
+under More. Unrendered contexts, including create-route `record_target`,
+use the generic completion list in that slot. Type emoji overlays
+the card and editor route chip; it never enters the draft. Ready keeps
+the footer hint. See [Record cards](keyboard.md#record-cards).
 
 ## Drawer captures
 
@@ -94,8 +95,7 @@ A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the hea
 `Sub-bullet under ^bar › REQUIREMENTS` above the task card showing where it landed. When
 Bob's per-item `drawer` object reports `created`, the header adds a dashed **new drawer**
 capsule. A separate `#type` on the same item retypes the task in the same transaction, so
-Bob's `Type` row renders beneath the header beside the capsule. An older Bob response
-without a `drawer` object leaves out the drawer-specific header detail and capsule.
+Bob's `Type` row renders beneath the header beside the capsule. An older Bob without `drawer` omits that header and capsule.
 
 ## Batch drafts and authored children
 

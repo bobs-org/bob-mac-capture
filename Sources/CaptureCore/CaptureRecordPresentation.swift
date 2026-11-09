@@ -854,3 +854,157 @@ public enum CaptureRecordRouteCache {
         )
     }
 }
+
+// MARK: - Completion surface and editor route adornments
+
+/// Where a current record completion may be accepted. Card value/field
+/// lists render on the Record Card; every other current record context
+/// (especially `record_target`) uses the generic completion list so Tab
+/// cannot silently accept a hidden existing-record row.
+public enum CaptureRecordCompletionSurface: Equatable, Sendable {
+    case none
+    case cardValue
+    case cardField
+    case genericFallback
+
+    public static func make(
+        context: String?,
+        candidateCount: Int,
+        snapshotCurrent: Bool,
+        isRecordCompletion: Bool
+    ) -> CaptureRecordCompletionSurface {
+        guard snapshotCurrent, candidateCount > 0, isRecordCompletion else {
+            return .none
+        }
+        switch context {
+        case "record_value":
+            return .cardValue
+        case "record_field":
+            return .cardField
+        default:
+            return .genericFallback
+        }
+    }
+
+    public var listVisibleOnCard: Bool {
+        self == .cardValue || self == .cardField
+    }
+
+    public var showsGenericFallback: Bool {
+        self == .genericFallback
+    }
+}
+
+/// Ordinary panel status that must not replace the Record Card footer hint
+/// or paint as a refusal. Bob diagnostics and other nonempty status stay
+/// blocking.
+public enum CaptureRecordFooterMessage: Equatable, Sendable {
+    public static func isOrdinaryStatus(_ text: String) -> Bool {
+        if text.isEmpty { return true }
+        if text == "Ready" { return true }
+        if text == "Target cache stale" { return true }
+        if text.hasSuffix("\u{2026}") { return true }
+        return false
+    }
+
+    public static func isSupersedable(_ text: String) -> Bool {
+        if isOrdinaryStatus(text) { return true }
+        if text.hasPrefix("Needs ") { return true }
+        if text.hasSuffix(" is stale") { return true }
+        return false
+    }
+
+    public static func copy(
+        statusText: String,
+        errorDiagnostic: String?,
+        footerHint: String
+    ) -> (text: String, isRefusal: Bool) {
+        if !isOrdinaryStatus(statusText) {
+            return (statusText, true)
+        }
+        if let errorDiagnostic {
+            return (errorDiagnostic, true)
+        }
+        return (footerHint, false)
+    }
+}
+
+/// Presentation-only type emoji for a `record_route` span. Never inserted
+/// into the draft; the editor overlays it at the route-start glyph.
+public struct CaptureRecordRouteAdornment: Equatable, Sendable, Identifiable {
+    public let start: Int
+    public let end: Int
+    public let emoji: String
+
+    public var id: Int { start }
+
+    public init(start: Int, end: Int, emoji: String) {
+        self.start = start
+        self.end = end
+        self.emoji = emoji
+    }
+
+    /// One adornment per `record_route` whose owning item reports an emoji.
+    /// Absent metadata yields no overlay. Two record types in one draft
+    /// yield two adornments.
+    public static func all(in parse: CaptureParseResponse) -> [CaptureRecordRouteAdornment] {
+        parse.spans.compactMap { span in
+            guard span.kind == "record_route" else {
+                return nil
+            }
+            guard let emoji = CaptureRecordPresentation.record(matching: span, in: parse)?.emoji,
+                !emoji.isEmpty
+            else {
+                return nil
+            }
+            return CaptureRecordRouteAdornment(start: span.start, end: span.end, emoji: emoji)
+        }
+    }
+}
+
+/// Wrapping monospace (line, column) for a UTF-8 byte offset, used to
+/// place route-emoji overlays without mutating the draft.
+public struct CaptureMonospaceGlyphOrigin: Equatable, Sendable {
+    public let line: Int
+    public let column: Int
+
+    public init(line: Int, column: Int) {
+        self.line = line
+        self.column = column
+    }
+
+    /// Walks whole characters so a mid-character offset returns nil.
+    public static func wrappingOrigin(
+        utf8Offset: Int,
+        in draft: String,
+        charsPerLine: Int
+    ) -> CaptureMonospaceGlyphOrigin? {
+        guard utf8Offset >= 0, charsPerLine > 0 else {
+            return nil
+        }
+        var remaining = utf8Offset
+        var line = 0
+        var column = 0
+        var index = draft.startIndex
+        while remaining > 0, index < draft.endIndex {
+            let character = draft[index]
+            let width = String(character).utf8.count
+            guard width <= remaining else {
+                return nil
+            }
+            remaining -= width
+            if character == "\n" {
+                line += 1
+                column = 0
+            } else {
+                column += 1
+                if column >= charsPerLine {
+                    line += 1
+                    column = 0
+                }
+            }
+            index = draft.index(after: index)
+        }
+        return remaining == 0 ? CaptureMonospaceGlyphOrigin(line: line, column: column) : nil
+    }
+}

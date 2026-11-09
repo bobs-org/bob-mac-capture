@@ -45,8 +45,8 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroStartDrop
     case link
     /// The `@eat/` route token of a record item. Accent chip; the type
-    /// emoji is a presentation adornment on the Record Card, never draft
-    /// bytes.
+    /// emoji is a presentation overlay on the route chip and Record Card,
+    /// never draft bytes.
     case recordRoute
     /// An explicit `@eat/^stem` filename span. Block-ID family.
     case recordStem
@@ -327,6 +327,9 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case wikilinkTask
     case projectTaskMove
     case directive
+    case recordField
+    case recordValue
+    case recordTarget
 
     public init?(rawContext: String?) {
         switch rawContext {
@@ -362,6 +365,9 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "wikilink_task": self = .wikilinkTask
         case "project_task_move": self = .projectTaskMove
         case "directive": self = .directive
+        case "record_field": self = .recordField
+        case "record_value": self = .recordValue
+        case "record_target": self = .recordTarget
         default: return nil
         }
     }
@@ -1120,6 +1126,43 @@ public func completionRowContent(
             badges = [reason]
         }
         accessibilityHint = candidate.summary ?? "Inserts this directive."
+
+    case .recordField:
+        category = .recordFieldKey
+        symbolName = "list.bullet"
+        contextLabel = "Record field"
+        primaryText = candidate.label ?? candidate.key ?? candidate.replacement
+        var fieldBadges: [String] = []
+        if candidate.recordRequired {
+            fieldBadges.append("required")
+        }
+        if candidate.recordDefaulted {
+            fieldBadges.append("default")
+        }
+        if candidate.recordList {
+            fieldBadges.append("list")
+        }
+        badges = fieldBadges
+        accessibilityHint = "Inserts this field into the record draft."
+
+    case .recordValue:
+        category = .recordFieldValue
+        symbolName = "text.alignleft"
+        contextLabel = "Record value"
+        primaryText =
+            candidate.display ?? candidate.label ?? candidate.recordValue ?? candidate.replacement
+        accessibilityHint = "Sets this field value."
+
+    case .recordTarget:
+        category = .recordRoute
+        symbolName = "doc"
+        contextLabel = "Existing record"
+        primaryText = candidate.title ?? candidate.label ?? candidate.replacement
+        secondaryText = candidate.status
+        if let route = candidate.route, !route.isEmpty, route != primaryText {
+            badges = [route]
+        }
+        accessibilityHint = "Updates this existing record."
 
     case nil:
         category = .neutral

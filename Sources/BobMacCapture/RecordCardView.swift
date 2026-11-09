@@ -101,7 +101,15 @@ struct RecordCardView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     private var policy: RecordCardHeightPolicy {
-        RecordCardHeightPolicy(presentation: presentation, displayScale: displayScale)
+        let fields = fieldCandidates
+        if !fields.isEmpty {
+            return RecordCardHeightPolicy(
+                rowCount: fields.count,
+                showsMoreControl: false,
+                displayScale: displayScale
+            )
+        }
+        return RecordCardHeightPolicy(presentation: presentation, displayScale: displayScale)
     }
 
     private var increaseContrast: Bool {
@@ -177,49 +185,119 @@ struct RecordCardView: View {
 
     @ViewBuilder
     private var rowList: some View {
-        let rows = presentation.displayedRows
-        if previewMode {
+        let fields = fieldCandidates
+        if !fields.isEmpty {
+            candidateList(fields)
+        } else if previewMode {
             VStack(spacing: 0) {
-                ForEach(rows, id: \.key) { row in
-                    RecordCardRowView(
-                        row: row,
-                        isActive: row.key == presentation.activeFieldKey
-                            || row.key == presentation.selectedRowKey,
-                        candidates: candidates(for: row),
-                        editAvailable: editAvailable(for: row),
-                        diagnostic: diagnostic(for: row),
-                        increaseContrast: increaseContrast,
-                        onSelectField: { selectField(row) },
-                        onAccept: acceptCandidate,
-                        onEdit: { _ = model.editRecordField() }
-                    )
-                    .frame(height: CapturePanelLayout.recordCardRowHeight)
+                ForEach(presentation.displayedRows, id: \.key) { row in
+                    schemaRow(row)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: CapturePanelLayout.recordCardRowHeight,
+                            alignment: .leading
+                        )
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: policy.listViewportHeight, alignment: .top)
             .clipped()
         } else {
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(rows, id: \.key) { row in
-                        RecordCardRowView(
-                            row: row,
-                            isActive: row.key == presentation.activeFieldKey
-                                || row.key == presentation.selectedRowKey,
-                            candidates: candidates(for: row),
-                            editAvailable: editAvailable(for: row),
-                            diagnostic: diagnostic(for: row),
-                            increaseContrast: increaseContrast,
-                            onSelectField: { selectField(row) },
-                            onAccept: acceptCandidate,
-                            onEdit: { _ = model.editRecordField() }
-                        )
-                        .frame(minHeight: CapturePanelLayout.recordCardRowHeight)
-                        .id(row.key)
+                    ForEach(presentation.displayedRows, id: \.key) { row in
+                        schemaRow(row)
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: CapturePanelLayout.recordCardRowHeight,
+                                alignment: .leading
+                            )
+                            .id(row.key)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: policy.listViewportHeight)
+        }
+    }
+
+    private func schemaRow(_ row: CaptureRecordRow) -> some View {
+        RecordCardRowView(
+            row: row,
+            isActive: row.key == presentation.activeFieldKey
+                || row.key == presentation.selectedRowKey,
+            candidates: candidates(for: row),
+            selectedCandidateIndex: model.selectedCompletionIndex,
+            editAvailable: editAvailable(for: row),
+            diagnostic: diagnostic(for: row),
+            increaseContrast: increaseContrast,
+            onSelectField: { selectField(row) },
+            onAccept: acceptCandidate,
+            onEdit: { _ = model.editRecordField() }
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func candidateList(_ candidates: [CaptureCompletionCandidate]) -> some View {
+        let selected = model.selectedCompletionIndex
+        if previewMode {
+            VStack(spacing: 0) {
+                ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+                    RecordCardFieldCandidateRow(
+                        candidate: candidate,
+                        isSelected: index == selected,
+                        increaseContrast: increaseContrast,
+                        onAccept: { acceptCandidate(candidate) }
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: CapturePanelLayout.recordCardRowHeight,
+                        alignment: .leading
+                    )
+                    .id(index)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: policy.listViewportHeight, alignment: .top)
+            .clipped()
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(candidates.enumerated()), id: \.element.id) {
+                            index,
+                            candidate in
+                            RecordCardFieldCandidateRow(
+                                candidate: candidate,
+                                isSelected: index == selected,
+                                increaseContrast: increaseContrast,
+                                onAccept: { acceptCandidate(candidate) }
+                            )
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: CapturePanelLayout.recordCardRowHeight,
+                                alignment: .leading
+                            )
+                            .id(index)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: policy.listViewportHeight)
+                .onAppear {
+                    if let selected {
+                        proxy.scrollTo(selected, anchor: .center)
+                    }
+                }
+                .onChange(of: selected) { _, index in
+                    if let index {
+                        proxy.scrollTo(index, anchor: .center)
                     }
                 }
             }
-            .frame(height: policy.listViewportHeight)
         }
     }
 
@@ -260,26 +338,39 @@ struct RecordCardView: View {
         .accessibilityLabel(footerCopy)
     }
 
+    private var footerResolved: (text: String, isRefusal: Bool) {
+        CaptureRecordFooterMessage.copy(
+            statusText: model.statusText,
+            errorDiagnostic: model.latestParse?.diagnostics.first {
+                $0.severity == "error"
+            }?.message,
+            footerHint: presentation.footerHint
+        )
+    }
+
     private var footerIsRefusal: Bool {
-        if !model.statusText.isEmpty { return true }
-        return (model.latestParse?.diagnostics.contains { $0.severity == "error" }) == true
+        footerResolved.isRefusal
     }
 
     private var footerCopy: String {
-        if !model.statusText.isEmpty {
-            return model.statusText
+        footerResolved.text
+    }
+
+    private var fieldCandidates: [CaptureCompletionCandidate] {
+        let live = previewMode || model.recordCompletionListVisible
+        guard live,
+            let response = model.completionResponse,
+            response.context == "record_field",
+            !response.candidates.isEmpty
+        else {
+            return []
         }
-        if let diagnostic = model.latestParse?.diagnostics.first(where: { $0.severity == "error" })
-        {
-            return diagnostic.message
-        }
-        return presentation.footerHint
+        return response.candidates
     }
 
     private func candidates(for row: CaptureRecordRow) -> [CaptureCompletionCandidate] {
-        let response = model.completionResponse
         let live = previewMode || model.recordCompletionListVisible
-        guard live, let response else {
+        guard live, let response = model.completionResponse else {
             return []
         }
         let field = response.record?.field ?? presentation.activeFieldKey
@@ -329,6 +420,7 @@ private struct RecordCardRowView: View {
     let row: CaptureRecordRow
     let isActive: Bool
     let candidates: [CaptureCompletionCandidate]
+    let selectedCandidateIndex: Int?
     let editAvailable: Bool
     let diagnostic: String?
     let increaseContrast: Bool
@@ -355,6 +447,7 @@ private struct RecordCardRowView: View {
             .accessibilityAddTraits(isActive ? .isSelected : [])
 
             valueContent
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if row.source == "default" {
                 Text("default")
@@ -373,7 +466,9 @@ private struct RecordCardRowView: View {
                     .accessibilityLabel("Edit \(row.label)")
                     .accessibilityHint("Edits the value in the draft")
             }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 2)
         .background(isActive ? Color.primary.opacity(increaseContrast ? 0.12 : 0.06) : Color.clear)
         .contentShape(Rectangle())
@@ -391,22 +486,31 @@ private struct RecordCardRowView: View {
         } else if row.kind == "choices", !row.choices.isEmpty {
             schemaChoiceCapsules
         } else if let display = row.display, !display.isEmpty {
-            Text(display)
-                .font(.callout)
-                .foregroundStyle(stateColor)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if row.state == "missing" {
-                fillHint
+            HStack(spacing: 6) {
+                Text(display)
+                    .font(.callout)
+                    .foregroundStyle(stateColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if row.state == "missing" {
+                    fillHint
+                }
+                Spacer(minLength: 0)
             }
         } else if let diagnostic {
-            Text(diagnostic)
-                .font(.caption)
-                .foregroundStyle(Color(nsColor: .systemRed))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            HStack(spacing: 6) {
+                Text(diagnostic)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
         } else if row.state == "missing" {
-            fillHint
+            HStack(spacing: 6) {
+                fillHint
+                Spacer(minLength: 0)
+            }
         } else {
             Spacer(minLength: 0)
         }
@@ -437,44 +541,60 @@ private struct RecordCardRowView: View {
     }
 
     private func choiceCapsules(_ candidates: [CaptureCompletionCandidate]) -> some View {
-        HStack(spacing: 6) {
-            ForEach(candidates) { candidate in
-                let title = candidate.display ?? candidate.label ?? candidate.recordValue
-                    ?? candidate.replacement
-                Button(title) { onAccept(candidate) }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier(
-                        "record-choice-\(candidate.recordValue ?? candidate.replacement)"
-                    )
-                    .accessibilityLabel(title)
-                    .accessibilityHint("Accepts this \(row.label) value")
-            }
-        }
-        .lineLimit(1)
+        valueScroller(candidates, capsule: true)
     }
 
     private func inlineValues(_ candidates: [CaptureCompletionCandidate]) -> some View {
-        HStack(spacing: 6) {
-            ForEach(candidates.prefix(6)) { candidate in
-                let title = candidate.display ?? candidate.label ?? candidate.recordValue
-                    ?? candidate.replacement
-                Button(title) { onAccept(candidate) }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(title)
-                    .accessibilityHint("Accepts this \(row.label) value")
+        valueScroller(candidates, capsule: false)
+    }
+
+    private func valueScroller(
+        _ candidates: [CaptureCompletionCandidate],
+        capsule: Bool
+    ) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(
+                        Array(candidates.enumerated()),
+                        id: \.element.id
+                    ) { index, candidate in
+                        let title = candidate.display ?? candidate.label ?? candidate.recordValue
+                            ?? candidate.replacement
+                        let selected = index == selectedCandidateIndex
+                        Button(title) { onAccept(candidate) }
+                            .font(capsule ? .caption.weight(.semibold) : .caption)
+                            .padding(.horizontal, capsule ? 7 : 4)
+                            .padding(.vertical, capsule ? 3 : 1)
+                            .background(
+                                selected
+                                    ? Color.primary.opacity(increaseContrast ? 0.18 : 0.10)
+                                    : (capsule ? Color.primary.opacity(0.06) : Color.clear),
+                                in: Capsule()
+                            )
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier(
+                                "record-choice-\(candidate.recordValue ?? candidate.replacement)"
+                            )
+                            .accessibilityLabel(title)
+                            .accessibilityHint("Accepts this \(row.label) value")
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                            .id(index)
+                    }
+                }
+                .lineLimit(1)
             }
-            if candidates.count > 6 {
-                Text("…")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+            .onAppear {
+                if let selectedCandidateIndex {
+                    proxy.scrollTo(selectedCandidateIndex, anchor: .center)
+                }
+            }
+            .onChange(of: selectedCandidateIndex) { _, index in
+                if let index {
+                    proxy.scrollTo(index, anchor: .center)
+                }
             }
         }
-        .lineLimit(1)
     }
 
     private var stateColor: Color {
@@ -482,5 +602,45 @@ private struct RecordCardRowView: View {
             state: row.state,
             increaseContrast: increaseContrast
         )
+    }
+}
+
+@available(macOS 26.0, *)
+private struct RecordCardFieldCandidateRow: View {
+    let candidate: CaptureCompletionCandidate
+    let isSelected: Bool
+    let increaseContrast: Bool
+    let onAccept: () -> Void
+
+    var body: some View {
+        Button(action: onAccept) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "list.bullet")
+                    .frame(width: 14)
+                    .accessibilityHidden(true)
+                Text(candidate.label ?? candidate.key ?? candidate.replacement)
+                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                    .lineLimit(1)
+                    .frame(width: 92, alignment: .leading)
+                Text(candidate.replacement)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 2)
+        .background(
+            isSelected ? Color.primary.opacity(increaseContrast ? 0.12 : 0.06) : Color.clear
+        )
+        .accessibilityIdentifier("record-field-candidate-\(candidate.key ?? candidate.replacement)")
+        .accessibilityLabel(candidate.label ?? candidate.key ?? candidate.replacement)
+        .accessibilityHint("Inserts this field")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

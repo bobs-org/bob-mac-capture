@@ -3,7 +3,7 @@ title: "Mac Capture keyboard"
 description: "Every Bob Mac Capture key binding: editor, completion, prompts, stash, shelf, and today's Pomodoro."
 ---
 
-Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash in [Capture panel](capture-panel.md); template shelf in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+Successor choice cards are described in [Capture previews](capture-previews.md); stash in [Capture panel](capture-panel.md); template shelf in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## Switching panels
 
@@ -35,7 +35,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 
 ## Copy card keys
 
-Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or the focused Highlights PDF when it is frontmost. Command-B starts in the code picker; Command-L starts in the link picker. While the card is open:
+While the Copy card is open:
 
 | Key | Action |
 | --- | --- |
@@ -121,12 +121,15 @@ as Command-Y L does.
 
 ### Record cards
 
-Tab accepts a suggestion or requests the first missing field; Shift-Tab
-requests the previous and stays at the first. Clicking asks Bob for a field. Edit
-applies Bob's exact text as one undoable change. Return accepts a selected suggestion
-or waits for Bob's readiness before submitting; otherwise it focuses the first missing
-field and says `Needs <field>`. Escape closes suggestions, then dismisses the card for
-the unchanged draft. Next Escape behaves normally.
+Tab accepts a visible field or value, or requests the first missing field.
+At a create route the existing-record list stays visible; Tab still
+requests the first missing field, and Return or a click accepts the
+selected record. Shift-Tab requests the previous and stays at the first.
+Clicking asks Bob for a field. Edit applies Bob's exact text as one
+undoable change. Return accepts a selected suggestion or waits for
+readiness; otherwise it focuses the first missing field and says
+`Needs <field>`. Escape closes suggestions, then the card. Next Escape
+behaves normally.
 
 ## Capture picker keys
 

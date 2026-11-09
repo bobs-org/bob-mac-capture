@@ -140,6 +140,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var recordCardActive = false
     var recordAssistAvailable = false
     var recordCompletionListVisible = false
+    var recordShowsGenericCompletionFallback = false
     /// Defaults true so omitted flags keep selected-row Return/Tab behavior.
     var completionHasSelection = true
     var completionHasSelectedHistoryTheme = false
@@ -536,7 +537,10 @@ struct CaptureKeyCommandRouter {
             if context.recordCardActive,
                !keys.contains(.shift), !keys.contains(.option)
             {
-                if context.recordCompletionListVisible, context.completionHasSelection {
+                if context.completionHasSelection,
+                   context.recordCompletionListVisible
+                       || context.recordShowsGenericCompletionFallback
+                {
                     return .acceptCompletion
                 }
                 if keys.contains(.command) || keys == .control {

@@ -1628,6 +1628,13 @@ final class CapturePanelModel: ObservableObject {
     /// draft; any keystroke hides them until the next preview lands. The
     /// overlay draws these without touching the text storage, so the
     /// submitted draft is exactly what was typed.
+    func recordRouteAdornments() -> [CaptureRecordRouteAdornment] {
+        guard let parse = latestParse, parse.input == plainDraft else {
+            return []
+        }
+        return CaptureRecordRouteAdornment.all(in: parse)
+    }
+
     func moveGhostTitles() -> [CaptureProjectNoteMoveGhost] {
         guard let previewDraft = previewOutputsDraft,
               previewDraft == plainDraft
@@ -1667,8 +1674,21 @@ final class CapturePanelModel: ObservableObject {
         recordAssistVersion == 1 && recordCardActive
     }
 
+    var recordCompletionSurface: CaptureRecordCompletionSurface {
+        CaptureRecordCompletionSurface.make(
+            context: completionResponse?.context,
+            candidateCount: completionResponse?.candidates.count ?? 0,
+            snapshotCurrent: recordCompletionSnapshotIsCurrent,
+            isRecordCompletion: completionResponse.map(Self.isRecordCompletion) ?? false
+        )
+    }
+
     var recordCompletionListVisible: Bool {
-        recordCompletionSnapshotIsCurrent && completionResponse?.candidates.isEmpty == false
+        recordCompletionSurface.listVisibleOnCard
+    }
+
+    var recordShowsGenericCompletionFallback: Bool {
+        recordCompletionSurface.showsGenericFallback
     }
 
     var recordEditAvailable: Bool {
@@ -6420,6 +6440,7 @@ final class CapturePanelModel: ObservableObject {
     private static func isRecordCompletion(_ completion: CaptureCompletionResponse) -> Bool {
         completion.context == "record_field"
             || completion.context == "record_value"
+            || completion.context == "record_target"
             || completion.record != nil
             || completion.candidates.contains(where: isRecordCandidate)
     }
@@ -10696,7 +10717,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func recordReturn(openAfterCapture: Bool = false) {
-        if recordCompletionListVisible, selectedCompletionIndex != nil {
+        if selectedCompletionIndex != nil,
+           recordCompletionListVisible || recordShowsGenericCompletionFallback
+        {
             _ = acceptSelectedCompletion()
             return
         }
@@ -10743,7 +10766,9 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        if recordCompletionListVisible, selectedCompletionIndex != nil {
+        if selectedCompletionIndex != nil,
+           recordCompletionListVisible || recordShowsGenericCompletionFallback
+        {
             _ = acceptSelectedCompletion()
             return
         }
@@ -19585,7 +19610,7 @@ final class CapturePanelModel: ObservableObject {
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {
             statusText = diagnostic.message
-        } else if statusText == "Ready" || statusText.isEmpty || statusText == "Target cache stale" {
+        } else if CaptureRecordFooterMessage.isSupersedable(statusText) {
             statusText = "Ready"
         } else {
             consumeTransferOwnedStatus()
@@ -19714,9 +19739,9 @@ final class CapturePanelModel: ObservableObject {
             }
             text[lower..<upper].foregroundColor = color
             if item.span.kind == "record_route" {
-                // Chip wash only: the type emoji is a presentation adornment
-                // on the Record Card and must never enter the draft or shift
-                // copy/selection offsets.
+                // Chip wash only: the type emoji is a presentation overlay
+                // at the route-start glyph and must never enter the draft or
+                // shift copy/selection offsets.
                 text[lower..<upper].backgroundColor = CaptureEditorPalette.recordRouteWash(
                     increaseContrast: increaseContrast
                 )

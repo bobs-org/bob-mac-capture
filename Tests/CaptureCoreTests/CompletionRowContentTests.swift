@@ -9,6 +9,56 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_source"), .route)
     }
 
+    func testRecordFieldRowsSurfaceRequiredDefaultAndListBadges() throws {
+        let response = try decodeCompletionFixture("record-complete-field.json")
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "record_field"), .recordField)
+        let status = try XCTUnwrap(response.candidates.first { $0.key == "status" })
+        let statusContent = completionRowContent(
+            for: status,
+            context: "record_field",
+            query: ""
+        )
+        XCTAssertEqual(statusContent.category, .recordFieldKey)
+        XCTAssertEqual(statusContent.contextLabel, "Record field")
+        XCTAssertEqual(statusContent.primaryText, "Status")
+        XCTAssertEqual(statusContent.badges, ["required"])
+        XCTAssertEqual(statusContent.accessibilityHint, "Inserts this field into the record draft.")
+
+        let companions = try XCTUnwrap(response.candidates.first { $0.key == "companions" })
+        let companionContent = completionRowContent(
+            for: companions,
+            context: "record_field",
+            query: ""
+        )
+        XCTAssertEqual(companionContent.badges, ["default", "list"])
+    }
+
+    func testRecordValueRowsUseDisplayText() throws {
+        let response = try decodeCompletionFixture("record-complete-next-missing-first.json")
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "record_value"), .recordValue)
+        let liked = try XCTUnwrap(response.candidates.first { $0.recordValue == "liked" })
+        let content = completionRowContent(for: liked, context: "record_value", query: "")
+        XCTAssertEqual(content.category, .recordFieldValue)
+        XCTAssertEqual(content.contextLabel, "Record value")
+        XCTAssertEqual(content.primaryText, "Liked")
+        XCTAssertEqual(content.accessibilityHint, "Sets this field value.")
+    }
+
+    func testRecordTargetRowsShowTitleStatusAndRoute() throws {
+        let response = try decodeCompletionFixture("record-complete-target-create.json")
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "record_target"), .recordTarget)
+        let burger = try XCTUnwrap(
+            response.candidates.first { $0.title == "Burger Joint" }
+        )
+        let content = completionRowContent(for: burger, context: "record_target", query: "")
+        XCTAssertEqual(content.category, .recordRoute)
+        XCTAssertEqual(content.contextLabel, "Existing record")
+        XCTAssertEqual(content.primaryText, "Burger Joint")
+        XCTAssertEqual(content.secondaryText, "Liked")
+        XCTAssertEqual(content.badges, ["@eat/burger_joint"])
+        XCTAssertEqual(content.accessibilityHint, "Updates this existing record.")
+    }
+
     func testRecordSpansMapToRecordSemanticCategoriesAndUnknownStaysNeutral() {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_route"), .recordRoute)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_stem"), .recordStem)

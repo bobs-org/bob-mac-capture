@@ -269,7 +269,37 @@ case "${command}" in
         cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}" | inject_parse_grammar
       fi
       exit 0
-    elif [[ "${draft}" == "Follow up ((" ]]; then
+    fi
+    if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
+      record_parse_fixture=""
+      case "${draft}" in
+        "Ramen Nagi @eat/")
+          record_parse_fixture="record-parse-incomplete.json" ;;
+        $'Ramen Nagi @eat/\n- ')
+          record_parse_fixture="record-parse-field.json" ;;
+        $'Ramen Nagi @eat/\n- status:: ')
+          record_parse_fixture="record-parse-status-caret.json" ;;
+        $'Ramen Nagi @eat/\n- status:: to_try')
+          record_parse_fixture="record-parse-status-only.json" ;;
+        $'Ramen Nagi @eat/\n- status:: liked')
+          record_parse_fixture="record-parse-status-liked.json" ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: ')
+          record_parse_fixture="record-parse-category-caret.json" ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen')
+          record_parse_fixture="record-parse-status-category.json" ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark')
+          record_parse_fixture="record-parse-complete.json" ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark\n\nRamen Nagi @eat/')
+          record_parse_fixture="record-parse-mixed-incomplete.json" ;;
+        "Café Møø @eat/")
+          record_parse_fixture="record-parse-unicode.json" ;;
+      esac
+      if [[ -n "${record_parse_fixture}" ]]; then
+        cat "${fixtures_dir}/${record_parse_fixture}" | inject_parse_grammar
+        exit 0
+      fi
+    fi
+    if [[ "${draft}" == "Follow up ((" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-open.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up ((s" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-query.json" | inject_parse_grammar
@@ -2265,6 +2295,8 @@ JSON
     cursor="0"
     all_tasks="false"
     closed_tasks="false"
+    next_missing="false"
+    record_field=""
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
@@ -2276,9 +2308,63 @@ JSON
       if [[ "${args[$i]}" == "--closed-tasks" || "${args[$i]}" == "-C" ]]; then
         closed_tasks="true"
       fi
+      if [[ "${args[$i]}" == "--next-missing-field" || "${args[$i]}" == "-n" ]]; then
+        next_missing="true"
+      fi
+      if [[ "${args[$i]}" == "--record-field" || "${args[$i]}" == "-F" ]]; then
+        record_field="${args[$((i + 1))]:-}"
+      fi
     done
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS}"
+    fi
+    if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
+      record_complete_fixture=""
+      case "${draft}" in
+        "Ramen Nagi @eat/")
+          if [[ -n "${record_field}" ]]; then
+            if [[ "${record_field}" == "status" ]]; then
+              record_complete_fixture="record-complete-named-status.json"
+            elif [[ "${record_field}" == "visited" ]]; then
+              record_complete_fixture="record-complete-named-visited.json"
+            fi
+          elif [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-next-missing-first.json"
+          else
+            record_complete_fixture="record-complete-target-create.json"
+          fi
+          ;;
+        $'Ramen Nagi @eat/\n- ')
+          record_complete_fixture="record-complete-field.json"
+          ;;
+        $'Ramen Nagi @eat/\n- status:: ')
+          record_complete_fixture="record-complete-value-caret.json"
+          ;;
+        $'Ramen Nagi @eat/\n- status:: to_try'|$'Ramen Nagi @eat/\n- status:: liked')
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-next-missing-middle.json"
+          fi
+          ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: ')
+          record_complete_fixture="record-complete-category-many.json"
+          ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen')
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-next-missing-last.json"
+          fi
+          ;;
+        $'Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark')
+          if [[ "${record_field}" == "status" ]]; then
+            record_complete_fixture="record-complete-named-status-current.json"
+          else
+            record_complete_fixture="record-complete-empty-value.json"
+          fi
+          ;;
+      esac
+      if [[ -n "${record_complete_fixture}" ]]; then
+        cat "${fixtures_dir}/${record_complete_fixture}"
+        exit 0
+      fi
     fi
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"

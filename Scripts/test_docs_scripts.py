@@ -259,5 +259,19 @@ elif "fetch" not in args and "reset" not in args:
         self.assertNotIn("reset", log)
 
 
+    def test_generate_record_fixtures_requires_bob_bin(self):
+        env = dict(self.env)
+        env.pop("BOB_BIN", None)
+        result = subprocess.run(
+            ["bash", str(SCRIPTS / "generate-record-fixtures.sh")],
+            cwd=self.root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("BOB_BIN", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

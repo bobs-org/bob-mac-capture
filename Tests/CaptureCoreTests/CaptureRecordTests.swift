@@ -270,7 +270,7 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(eat.replacement, "eat/ ")
         XCTAssertEqual(eat.recordType, "restaurant")
         XCTAssertEqual(eat.emoji, "🍽️")
-        XCTAssertEqual(eat.count, 3)
+        XCTAssertEqual(eat.count, 8)
         let continuation = try XCTUnwrap(eat.recordContinuation)
         XCTAssertTrue(continuation.nextMissingField)
     }
@@ -584,7 +584,7 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(CaptureRecordRouteCache.insertion(for: eat), "eat/ ")
         XCTAssertEqual(
             CaptureRecordRouteCache.label(for: eat),
-            "🍽️ New restaurant · 3"
+            "🍽️ New restaurant · 8"
         )
         let continuation = try XCTUnwrap(
             CaptureRecordRouteCache.continuation(for: eat, replacementStart: 1))
@@ -736,5 +736,201 @@ final class CaptureRecordTests: XCTestCase {
             CaptureRecordPresentation.field(matching: unkeyed, in: record)?.key,
             "category"
         )
+    }
+
+    func testCompletionSurfaceAgreesWithRenderedContexts() throws {
+        let value = try decodeComplete("record-complete-next-missing-first.json")
+        XCTAssertEqual(
+            CaptureRecordCompletionSurface.make(
+                context: value.context,
+                candidateCount: value.candidates.count,
+                snapshotCurrent: true,
+                isRecordCompletion: true
+            ),
+            .cardValue
+        )
+        let field = try decodeComplete("record-complete-field.json")
+        XCTAssertEqual(
+            CaptureRecordCompletionSurface.make(
+                context: field.context,
+                candidateCount: field.candidates.count,
+                snapshotCurrent: true,
+                isRecordCompletion: true
+            ),
+            .cardField
+        )
+        let target = try decodeComplete("record-complete-target-create.json")
+        XCTAssertEqual(target.context, "record_target")
+        XCTAssertFalse(target.candidates.isEmpty)
+        XCTAssertEqual(
+            CaptureRecordCompletionSurface.make(
+                context: target.context,
+                candidateCount: target.candidates.count,
+                snapshotCurrent: true,
+                isRecordCompletion: true
+            ),
+            .genericFallback
+        )
+        XCTAssertEqual(
+            CaptureRecordCompletionSurface.make(
+                context: target.context,
+                candidateCount: target.candidates.count,
+                snapshotCurrent: false,
+                isRecordCompletion: true
+            ),
+            .none
+        )
+        XCTAssertTrue(
+            CaptureRecordCompletionSurface.make(
+                context: value.context,
+                candidateCount: value.candidates.count,
+                snapshotCurrent: true,
+                isRecordCompletion: true
+            ).listVisibleOnCard
+        )
+        XCTAssertTrue(
+            CaptureRecordCompletionSurface.make(
+                context: target.context,
+                candidateCount: target.candidates.count,
+                snapshotCurrent: true,
+                isRecordCompletion: true
+            ).showsGenericFallback
+        )
+    }
+
+    func testFooterMessageTreatsReadyAsOrdinaryHint() {
+        let hint = "⇥ next field · ⏎ Needs Status · Esc back to draft"
+        let ready = CaptureRecordFooterMessage.copy(
+            statusText: "Ready",
+            errorDiagnostic: nil,
+            footerHint: hint
+        )
+        XCTAssertEqual(ready.text, hint)
+        XCTAssertFalse(ready.isRefusal)
+        XCTAssertTrue(CaptureRecordFooterMessage.isOrdinaryStatus("Target cache stale"))
+        XCTAssertTrue(CaptureRecordFooterMessage.isOrdinaryStatus("Capturing\u{2026}"))
+        XCTAssertTrue(CaptureRecordFooterMessage.isSupersedable("Needs Status"))
+        let error = CaptureRecordFooterMessage.copy(
+            statusText: "Ready",
+            errorDiagnostic: "status is not a valid value",
+            footerHint: hint
+        )
+        XCTAssertEqual(error.text, "status is not a valid value")
+        XCTAssertTrue(error.isRefusal)
+        let needs = CaptureRecordFooterMessage.copy(
+            statusText: "Needs Status",
+            errorDiagnostic: nil,
+            footerHint: hint
+        )
+        XCTAssertEqual(needs.text, "Needs Status")
+        XCTAssertTrue(needs.isRefusal)
+    }
+
+    func testRouteAdornmentsUseOwningItemEmojiAndSkipMissingMetadata() throws {
+        let two = try decodeParse("record-parse-two-records.json")
+        let adornments = CaptureRecordRouteAdornment.all(in: two)
+        XCTAssertEqual(adornments.map(\.emoji), ["🍽️", "🎙️"])
+        XCTAssertEqual(adornments.count, 2)
+
+        let unicode = try decodeParse("record-parse-unicode.json")
+        let cafe = try XCTUnwrap(CaptureRecordRouteAdornment.all(in: unicode).first)
+        XCTAssertEqual(cafe.start, ("Café Møø " as String).utf8.count)
+        XCTAssertEqual(cafe.emoji, "🍽️")
+        let origin = try XCTUnwrap(
+            CaptureMonospaceGlyphOrigin.wrappingOrigin(
+                utf8Offset: cafe.start,
+                in: unicode.input,
+                charsPerLine: 80
+            )
+        )
+        XCTAssertEqual(origin.line, 0)
+        XCTAssertEqual(origin.column, ("Café Møø " as String).count)
+
+        var noEmoji = try decodeParse("record-parse-incomplete.json")
+        noEmoji = CaptureParseResponse(
+            ok: noEmoji.ok,
+            schemaVersion: noEmoji.schemaVersion,
+            input: noEmoji.input,
+            body: noEmoji.body,
+            mode: noEmoji.mode,
+            spans: noEmoji.spans,
+            record: CaptureRecord(
+                action: noEmoji.record?.action ?? "create",
+                recordType: noEmoji.record?.recordType ?? "",
+                label: noEmoji.record?.label ?? "",
+                emoji: nil,
+                dir: noEmoji.record?.dir ?? "",
+                fields: noEmoji.record?.fields ?? []
+            )
+        )
+        XCTAssertTrue(CaptureRecordRouteAdornment.all(in: noEmoji).isEmpty)
+    }
+
+    func testWrappingOriginRejectsMidCharacterAndWrapsLines() {
+        let cafe = "Café Møø @eat/"
+        // é occupies UTF-8 bytes 3-4; offset 4 is mid-character.
+        XCTAssertNil(
+            CaptureMonospaceGlyphOrigin.wrappingOrigin(
+                utf8Offset: 4,
+                in: cafe,
+                charsPerLine: 80
+            )
+        )
+        let origin = CaptureMonospaceGlyphOrigin.wrappingOrigin(
+            utf8Offset: 11,
+            in: "Ramen Nagi @eat/",
+            charsPerLine: 8
+        )
+        XCTAssertEqual(origin, CaptureMonospaceGlyphOrigin(line: 1, column: 3))
+        let newline = CaptureMonospaceGlyphOrigin.wrappingOrigin(
+            utf8Offset: 17,
+            in: "Ramen Nagi @eat/\n- ",
+            charsPerLine: 80
+        )
+        XCTAssertEqual(newline, CaptureMonospaceGlyphOrigin(line: 1, column: 0))
+    }
+
+    func testCurrentValueNamedEditKeepsTheTypedSpelling() throws {
+        let response = try decodeComplete("record-complete-named-status-current.json")
+        XCTAssertEqual(response.context, "record_value")
+        XCTAssertEqual(response.record?.field, "status")
+        let edit = try XCTUnwrap(response.record?.edit)
+        XCTAssertEqual(edit.replacement, "liked")
+        XCTAssertFalse(edit.continuation.nextMissingField)
+    }
+
+    func testCategoryManyHasAtLeastSevenValues() throws {
+        let response = try decodeComplete("record-complete-category-many.json")
+        XCTAssertEqual(response.context, "record_value")
+        XCTAssertGreaterThanOrEqual(response.candidates.count, 7)
+        XCTAssertEqual(response.record?.field, "category")
+    }
+
+    func testRecordAssistMapsCreateRouteWithoutNextMissingToTarget() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_ASSIST": "1",
+            ]
+        )
+        let draft = "Ramen Nagi @eat/"
+        let target = try await client.captureComplete(draft, cursor: draft.utf8.count)
+        XCTAssertEqual(target.context, "record_target")
+        XCTAssertFalse(target.candidates.isEmpty)
+        let firstMissing = try await client.captureComplete(
+            draft,
+            cursor: draft.utf8.count,
+            nextMissingField: true
+        )
+        XCTAssertEqual(firstMissing.context, "record_value")
+        XCTAssertEqual(firstMissing.record?.field, "status")
+        let fieldDraft = "Ramen Nagi @eat/\n- "
+        let fields = try await client.captureComplete(
+            fieldDraft,
+            cursor: fieldDraft.utf8.count
+        )
+        XCTAssertEqual(fields.context, "record_field")
     }
 }

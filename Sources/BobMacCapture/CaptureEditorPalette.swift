@@ -166,8 +166,8 @@ enum CaptureEditorPalette {
     }
 
     /// Soft chip wash behind a `record_route` span. The type emoji is a
-    /// presentation adornment on the Record Card and is never inserted into
-    /// the draft. Increase Contrast raises the alpha so the chip survives.
+    /// presentation overlay at the route-start glyph and is never inserted
+    /// into the draft. Increase Contrast raises the alpha so the chip survives.
     static func recordRouteWash(increaseContrast: Bool) -> Color {
         Color.accentColor.opacity(increaseContrast ? 0.28 : 0.16)
     }

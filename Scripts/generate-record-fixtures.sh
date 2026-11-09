@@ -17,7 +17,8 @@
 #       category: required suggest
 #   vault:
 #     eat/nagi.md (Ramen, Clark), eat/ramen_ya.md (Ramen, Westfield),
-#       eat/cafe_moo.md (Unicode title "Café Møø")
+#       eat/cafe_moo.md (Unicode title "Café Møø"), plus five more
+#       restaurants with unique categories so value lists exceed six rows
 #     podcasts/techmeme.md, mac_inbox.md, dev.md (area for mixed items)
 #     day note 2026/20261030.md, BOB_NOW=2026-10-30 09:00:00
 #
@@ -96,6 +97,7 @@ records:
   podcast:
     dir: podcasts
     label: Podcast
+    emoji: "🎙️"
     fields:
       status:
         required: true
@@ -159,6 +161,71 @@ category: "Cafe"
 location: "Clark"
 ---
 # Café Møø
+
+## Notes
+MD
+cat > "$vault/eat/pizza_roma.md" <<'MD'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Pizza Roma"
+status: liked
+category: "Pizza"
+location: "Clark"
+---
+# Pizza Roma
+
+## Notes
+MD
+cat > "$vault/eat/taco_luna.md" <<'MD'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Taco Luna"
+status: liked
+category: "Tacos"
+location: "Westfield"
+---
+# Taco Luna
+
+## Notes
+MD
+cat > "$vault/eat/thai_orchid.md" <<'MD'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Thai Orchid"
+status: liked
+category: "Thai"
+location: "Clark"
+---
+# Thai Orchid
+
+## Notes
+MD
+cat > "$vault/eat/burger_joint.md" <<'MD'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Burger Joint"
+status: liked
+category: "Burgers"
+location: "Clark"
+---
+# Burger Joint
+
+## Notes
+MD
+cat > "$vault/eat/sushi_den.md" <<'MD'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Sushi Den"
+status: liked
+category: "Sushi"
+location: "Westfield"
+---
+# Sushi Den
 
 ## Notes
 MD
@@ -273,6 +340,23 @@ run_parse "Ramen Nagi @eat/
 Fix parser @dev" record-parse-mixed.json
 run_parse "Ramen Nagi @eat/^custom-stem
 - status:: liked" record-parse-explicit-stem-partial.json
+run_parse "Ramen Nagi @eat/
+- status:: to_try" record-parse-status-only.json
+run_parse "Ramen Nagi @eat/
+- status:: liked" record-parse-status-liked.json
+run_parse "Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen" record-parse-status-category.json
+run_parse "Ramen Nagi @eat/
+
+Talk Python @podcasts/" record-parse-two-records.json
+run_parse "Ramen Nagi @eat/
+- " record-parse-field.json
+run_parse "Ramen Nagi @eat/
+- status:: " record-parse-status-caret.json
+run_parse "Ramen Nagi @eat/
+- status:: liked
+- category:: " record-parse-category-caret.json
 
 # Completion fixtures.
 run_complete "@" "$(cursor_of "@")" record-complete-route.json
@@ -294,6 +378,22 @@ run_complete "Ramen Nagi @eat/
 run_complete "Ramen Nagi @eat/" "$(cursor_of "Ramen Nagi @eat/")" record-complete-named-visited.json -F visited
 run_complete "Ramen Nagi @eat/" "$(cursor_of "Ramen Nagi @eat/")" record-complete-named-status.json -F status
 run_complete "@eat#" 5 record-complete-section-create.json
+# Ordinary caret-at-create-route complete (no -n): record_target rows.
+run_complete "Ramen Nagi @eat/" "$(cursor_of "Ramen Nagi @eat/")" record-complete-target-create.json
+# Seven or more category values from the extra restaurants.
+run_complete "Ramen Nagi @eat/
+- status:: liked
+- category:: " "$(cursor_of "Ramen Nagi @eat/
+- status:: liked
+- category:: ")" record-complete-category-many.json
+# Current-value named edit on a complete record.
+run_complete "Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark" "$(cursor_of "Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark")" record-complete-named-status-current.json -F status
 
 # Targets fixture (record rows with type/emoji/count).
 run_targets record-targets.json
@@ -306,9 +406,14 @@ Generated from a real Bob; never hand-edit the JSON.
 
 - bob: $bob_commit
 - config: restaurant (eat, 🍽️) + podcast (podcasts), companions default [[kelly]]
-- vault: eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md, podcasts/techmeme.md
+- vault: eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md, eat/pizza_roma.md,
+  eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md, eat/sushi_den.md,
+  podcasts/techmeme.md
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
-- command shapes: capture-parse, capture-complete (caret, -n, -F, route, section), capture-targets
+- command shapes: capture-parse (including field/value caret drafts),
+  capture-complete (caret, -n, -F, route, section, create-route
+  record_target, 7+ category values, current-value named edit),
+  capture-targets
 
 Older-Bob fixtures (no record keys) are checked in by hand:
 record-parse-old-bob.json, record-complete-old-bob.json,

@@ -3078,6 +3078,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 recordCardActive: model.recordCardActive,
                 recordAssistAvailable: model.recordAssistAvailable,
                 recordCompletionListVisible: model.recordCompletionListVisible,
+                recordShowsGenericCompletionFallback: model.recordShowsGenericCompletionFallback,
                 completionHasSelection: model.selectedCompletionIndex != nil,
                 completionHasSelectedHistoryTheme: model.completionHasSelectedHistoryTheme,
                 completionThemeVisibilityWriteInFlight: model.completionThemeVisibilityWriteInFlight,

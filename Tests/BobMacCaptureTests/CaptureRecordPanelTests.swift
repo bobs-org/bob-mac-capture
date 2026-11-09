@@ -235,4 +235,208 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertFalse(collapsed.displayedRows.contains(where: { $0.key == "url" }))
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }
+
+    private func makeAssistModel(draft: String, recordPath: URL) -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_ASSIST": "1",
+                "FAKE_BOB_RECORD_PATH": recordPath.path,
+            ]
+        )
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        return model
+    }
+
+    func testAssistChainAcceptsStatusCategoryLocationThenSubmitsOnce() async {
+        let logURL = recordURL()
+        let model = makeAssistModel(draft: incompleteDraft, recordPath: logURL)
+
+        await waitUntil { model.recordShowsGenericCompletionFallback }
+        XCTAssertFalse(model.recordCompletionListVisible)
+        XCTAssertEqual(model.plainDraft, incompleteDraft)
+
+        model.recordTab()
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.record?.field == "status"
+        }
+        XCTAssertEqual(model.plainDraft, incompleteDraft)
+        XCTAssertFalse(model.plainDraft.contains("burger_joint"))
+
+        model.selectNextCompletion()
+        XCTAssertEqual(model.selectedCompletion?.recordValue, "liked")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, "Ramen Nagi @eat/\n- status:: liked")
+
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.record?.field == "category"
+        }
+        XCTAssertEqual(model.selectedCompletion?.recordValue, "Ramen")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(
+            model.plainDraft,
+            "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen"
+        )
+
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.record?.field == "location"
+        }
+        XCTAssertEqual(model.selectedCompletion?.recordValue, "Clark")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, completeDraft)
+
+        await waitUntil {
+            model.latestParse?.record?.missing.isEmpty == true
+                && !model.recordCompletionListVisible
+        }
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+
+        model.recordReturn()
+        await waitUntil { model.lastSuccess != nil }
+        XCTAssertEqual(mutationCaptureCalls(in: recordLog(logURL)).count, 1)
+        XCTAssertEqual(model.plainDraft, "")
+    }
+
+    func testFieldNameMenuAcceptsBobsInsertionAndShiftTabStaysAtFirstMissing() async {
+        let logURL = recordURL()
+        let fieldDraft = "Ramen Nagi @eat/\n- "
+        let model = makeAssistModel(draft: fieldDraft, recordPath: logURL)
+
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.context == "record_field"
+        }
+        XCTAssertEqual(model.selectedCompletionIndex, 0)
+        XCTAssertEqual(model.selectedCompletion?.key, "status")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, "Ramen Nagi @eat/\n- status:: ")
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+
+        await waitUntil { model.recordAssistAvailable }
+        model.recordShiftTab()
+        await waitUntil {
+            model.completionResponse?.record?.field == "status"
+                || model.recordCompletionListVisible
+        }
+        XCTAssertTrue(model.plainDraft.hasPrefix("Ramen Nagi @eat/"))
+        XCTAssertFalse(model.plainDraft.contains("@eat/burger_joint"))
+    }
+
+    func testSevenValueSuggestionsKeepTheSelectedRowVisibleAndAccepted() async {
+        let logURL = recordURL()
+        let draft = "Ramen Nagi @eat/\n- status:: liked\n- category:: "
+        let model = makeAssistModel(draft: draft, recordPath: logURL)
+
+        await waitUntil {
+            model.recordCompletionListVisible
+                && (model.completionResponse?.candidates.count ?? 0) >= 7
+        }
+        XCTAssertEqual(model.completionResponse?.record?.field, "category")
+        for _ in 0..<6 {
+            model.selectNextCompletion()
+        }
+        XCTAssertEqual(model.selectedCompletionIndex, 6)
+        XCTAssertEqual(model.selectedCompletion?.recordValue, "Tacos")
+        XCTAssertEqual(model.selectedCompletion?.display, "Tacos")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(
+            model.plainDraft,
+            "Ramen Nagi @eat/\n- status:: liked\n- category:: Tacos"
+        )
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
+
+    func testCreateRouteTargetFallbackTabKeepsCreateIntentAndReturnUpdates() async {
+        let logURL = recordURL()
+        let model = makeAssistModel(draft: incompleteDraft, recordPath: logURL)
+
+        await waitUntil { model.recordShowsGenericCompletionFallback }
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertFalse(model.recordCompletionListVisible)
+        XCTAssertEqual(model.completionResponse?.context, "record_target")
+
+        model.recordTab()
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.context == "record_value"
+        }
+        XCTAssertEqual(model.plainDraft, incompleteDraft)
+        XCTAssertFalse(model.plainDraft.contains("burger_joint"))
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+
+        let acceptURL = recordURL()
+        let accepting = makeAssistModel(draft: incompleteDraft, recordPath: acceptURL)
+        await waitUntil { accepting.recordShowsGenericCompletionFallback }
+        XCTAssertEqual(accepting.selectedCompletion?.title, "Burger Joint")
+        XCTAssertTrue(accepting.acceptSelectedCompletion())
+        XCTAssertTrue(accepting.plainDraft.contains("@eat/burger_joint"))
+        XCTAssertNotEqual(accepting.plainDraft, incompleteDraft)
+    }
+
+    func testCurrentValueNamedEditKeepsTypedSpellingWithoutSubmitting() async {
+        let logURL = recordURL()
+        let (textView, window) = makeHostedTextView(completeDraft)
+        defer { window.close() }
+        let model = makeAssistModel(draft: completeDraft, recordPath: logURL)
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applyNativeRewriteToDraftEditor(
+                edit,
+                panel: window,
+                cachedEditor: textView
+            )
+        }
+
+        await waitUntil { model.recordAssistAvailable }
+        XCTAssertTrue(model.requestRecordField("status"))
+        await waitUntil { model.recordEditAvailable }
+        XCTAssertEqual(model.completionResponse?.record?.edit?.replacement, "liked")
+        XCTAssertTrue(model.editRecordField())
+        XCTAssertEqual(model.plainDraft, completeDraft)
+        XCTAssertEqual(textView.string, completeDraft)
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
+
+    func testEscapeDismissesCompletionThenRecordCard() async {
+        let logURL = recordURL()
+        let model = makeAssistModel(draft: incompleteDraft, recordPath: logURL)
+
+        await waitUntil { model.recordShowsGenericCompletionFallback }
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertTrue(model.recordCardActive)
+
+        model.dismissCompletion()
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+        XCTAssertTrue(model.recordCardActive)
+        XCTAssertEqual(model.plainDraft, incompleteDraft)
+
+        model.dismissRecordCard()
+        XCTAssertFalse(model.recordCardActive)
+        XCTAssertEqual(model.plainDraft, incompleteDraft)
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
+
+    func testOldBobWithoutAssistVersionLeavesTheRecordCardInactive() async {
+        let logURL = recordURL()
+        let model = makeModel(
+            parseFixture: "record-parse-old-bob.json",
+            completionFixture: "record-complete-old-bob.json",
+            draft: incompleteDraft,
+            recordPath: logURL
+        )
+
+        await waitUntil { model.latestParse != nil }
+        XCTAssertFalse(model.recordAssistAvailable)
+        XCTAssertFalse(model.recordCardActive)
+        XCTAssertFalse(model.recordCompletionListVisible)
+        XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+    }
 }
