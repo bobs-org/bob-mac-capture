@@ -2053,8 +2053,6 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-plan.json"
     elif [[ "${draft}" == "x made 2xx" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-made.json"
-    elif [[ "${draft}" == "2Xx" ]]; then
-      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-caps.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
     elif [[ "${draft}" == "Fix it =" ]]; then

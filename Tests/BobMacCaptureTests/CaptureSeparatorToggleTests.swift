@@ -2142,7 +2142,6 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         for (before, typed, expected, record) in [
             ("Plan 2x", "x", "Plan 2xx", "argv=capture-rewrite --cursor 8 --format json -- Plan 2xx"),
             ("x made 2x", "x", "x made 2xx", "argv=capture-rewrite --cursor 10 --format json -- x made 2xx"),
-            ("2X", "x", "2Xx", "argv=capture-rewrite --cursor 3 --format json -- 2Xx"),
         ] as [(String, String, String, String)] {
             let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let model = try makeSupportedModel(recordURL: recordURL)
@@ -2154,6 +2153,24 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             XCTAssertEqual(textView.string, expected, "before=\(before)")
             let logged = try String(contentsOf: recordURL)
             XCTAssertTrue(logged.contains(record), "missing \(record) in \(logged)")
+        }
+
+        // Uppercase `X` is not a close opener: the prefilter never spawns Bob.
+        do {
+            let recordURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView("2X")
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias("x", into: textView, model: model)
+            XCTAssertFalse(model.rewriteInFlightForTesting)
+            XCTAssertEqual(model.plainDraft, "2Xx")
+            XCTAssertEqual(textView.string, "2Xx")
+            let logged = (try? String(contentsOf: recordURL)) ?? ""
+            XCTAssertFalse(
+                logged.contains("capture-rewrite"),
+                "uppercase X must not reach Bob: \(logged)"
+            )
         }
     }
 

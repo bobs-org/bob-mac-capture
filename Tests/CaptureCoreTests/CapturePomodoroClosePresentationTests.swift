@@ -117,18 +117,10 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testSizedCloseEqualSizeKeepsDurationWithoutArrow() throws {
-        let raw = try fixtureText("pomodoro-close-sized-short.json")
-            .replacingOccurrences(of: "\"time_range\":\"0900-0910\"", with: "\"time_range\":\"0900-0925\"")
-            .replacingOccurrences(of: "\"duration_minutes\":10", with: "\"duration_minutes\":25")
-            .replacingOccurrences(of: "\"raw\":\"2\"", with: "\"raw\":\"5\"")
-            .replacingOccurrences(of: "\"blocks\":2", with: "\"blocks\":5")
-            .replacingOccurrences(of: "\"minutes\":10", with: "\"minutes\":25")
-            .replacingOccurrences(of: "\"delta_minutes\":-15", with: "\"delta_minutes\":0")
-            .replacingOccurrences(of: "\"closed_at\":\"0910\"", with: "\"closed_at\":\"0925\"")
-            .replacingOccurrences(of: "\"text\":\"2x\"", with: "\"text\":\"5x\"")
-            .replacingOccurrences(of: "\"raw\":\"2x\"", with: "\"raw\":\"5x\"")
         let presentation = try XCTUnwrap(
-            CapturePomodoroClosePresentation(capture: decodeSuccess(raw))
+            CapturePomodoroClosePresentation(
+                capture: decodeFixture("pomodoro-close-sized-equal.json")
+            )
         )
         XCTAssertEqual(presentation.sessionText, "0900-0925 · 25m")
         XCTAssertNil(presentation.sessionChangeText)
@@ -142,11 +134,13 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testSizedCloseRoundUpChipReadsClosedAt() throws {
-        let raw = try fixtureText("pomodoro-close-sized-short.json")
-            .replacingOccurrences(of: "\"closed_at\":\"0910\"", with: "\"closed_at\":\"0908\"")
-            .replacingOccurrences(of: "\"remaining_minutes\":0", with: "\"remaining_minutes\":2")
         let presentation = try XCTUnwrap(
-            CapturePomodoroClosePresentation(capture: decodeSuccess(raw))
+            CapturePomodoroClosePresentation(
+                capture: decodeFixtureVariant(
+                    "pomodoro-close-sized-short.json",
+                    settingClose: ["closed_at": "0908", "remaining_minutes": 2]
+                )
+            )
         )
         XCTAssertEqual(presentation.sizeChipText, "2x · as of 09:08")
         XCTAssertTrue(presentation.accessibilitySummary.contains("2x · as of 09:08"))
@@ -189,27 +183,13 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(worked.sessionText, "0920-0950 → 0920-0940 · 20m")
         XCTAssertEqual(worked.timingText, "13m early")
 
-        var oldPayload = try fixtureText("pomodoro-close-sized-short.json")
-        if let range = oldPayload.range(of: ",\"size\":{") {
-            var depth = 0
-            var end = oldPayload.index(range.lowerBound, offsetBy: 1)
-            var index = range.lowerBound
-            while index < oldPayload.endIndex {
-                let char = oldPayload[index]
-                if char == "{" { depth += 1 }
-                if char == "}" {
-                    depth -= 1
-                    if depth == 0 {
-                        end = oldPayload.index(after: index)
-                        break
-                    }
-                }
-                index = oldPayload.index(after: index)
-            }
-            oldPayload.removeSubrange(range.lowerBound..<end)
-        }
         let oldBob = try XCTUnwrap(
-            CapturePomodoroClosePresentation(capture: decodeSuccess(oldPayload))
+            CapturePomodoroClosePresentation(
+                capture: decodeFixtureVariant(
+                    "pomodoro-close-sized-short.json",
+                    removingClose: ["size"]
+                )
+            )
         )
         XCTAssertNil(oldBob.sizeChipText)
         XCTAssertFalse(oldBob.accessibilitySummary.contains("blocks"))
@@ -225,18 +205,6 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertTrue(failure.error.contains("`2x` asks for 10m"), "\(failure.error)")
         XCTAssertTrue(failure.error.contains("`1x` closes at 0905"), "\(failure.error)")
         XCTAssertTrue(failure.error.contains("\n"), "both refusal lines stay visible")
-    }
-
-    func testSizedEqualFixtureIsSameSizeSuccess() throws {
-        let success = try decodeFixture("pomodoro-close-sized-equal.json")
-        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
-        XCTAssertEqual(presentation.sessionText, "0900-0925 · 25m")
-        XCTAssertEqual(presentation.sizeChipText, "5x · as of 09:25")
-        XCTAssertTrue(
-            presentation.accessibilitySummary.contains(
-                "Close BUILD at 25 minutes, 5 blocks, as planned"
-            )
-        )
     }
 
     func testRealBobLinkCloseKeepsTitleAndTagsLinkedRow() throws {
@@ -2140,6 +2108,23 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
         try decodeSuccess(fixtureText(name))
+    }
+
+    /// Decodes a fixture after editing its `pomodoro_close` object as JSON, so a variant
+    /// never depends on the fixture's whitespace or key order.
+    private func decodeFixtureVariant(
+        _ name: String,
+        settingClose overrides: [String: Any] = [:],
+        removingClose removals: [String] = []
+    ) throws -> CaptureCommandSuccess {
+        let data = try XCTUnwrap(fixtureText(name).data(using: .utf8))
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var close = try XCTUnwrap(root["pomodoro_close"] as? [String: Any])
+        for (key, value) in overrides { close[key] = value }
+        for key in removals { close.removeValue(forKey: key) }
+        root["pomodoro_close"] = close
+        let edited = try JSONSerialization.data(withJSONObject: root)
+        return try decodeSuccess(String(decoding: edited, as: UTF8.self))
     }
 
     private func fixtureText(_ name: String) throws -> String {
