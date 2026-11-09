@@ -99,13 +99,18 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
         ])
         model.plainDraft = completeDraft
         model.preview()
-        await waitUntil { self.isPreviewReady(model) }
+        await waitUntil {
+            !model.isPreviewing && model.previewResults.first?.recordNote != nil
+        }
 
         let results = model.previewResults
         XCTAssertEqual(results.count, 1)
         let summary = try XCTUnwrap(results.first?.recordNote)
         XCTAssertEqual(summary.path, "eat/cafe_møø_ramen.md")
         XCTAssertNil(model.recordRefusalPresentation)
+        if case .failed = model.previewState {
+            XCTFail("explicit preview must not set a failed preview state")
+        }
     }
 
     func testLivePreviewOfCompleteDraftLandsReady() async throws {
@@ -209,7 +214,20 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
 
     func testDelayedStaleSuccessReplyNeverClobbersCurrentRefusal() async throws {
         let recordURL = temporaryURL()
-        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let sequenceURL = recordURL.path + ".dry-run-count"
+        let lockPath = sequenceURL + ".lock"
+        func settledDryRuns() -> Int {
+            if (try? FileManager.default.destinationOfSymbolicLink(atPath: lockPath)) != nil {
+                return 0
+            }
+            let text = (try? String(contentsOfFile: sequenceURL, encoding: .utf8)) ?? ""
+            return Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        }
+        defer {
+            try? FileManager.default.removeItem(at: recordURL)
+            try? FileManager.default.removeItem(atPath: sequenceURL)
+            try? FileManager.default.removeItem(atPath: lockPath)
+        }
         let model = try makeModel(
             recordURL: recordURL,
             environment: [
@@ -223,9 +241,11 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
         // reply stale, so only the current draft's refusal may land.
         model.plainDraft = completeDraft
         model.editorTextDidChange(cursorUTF8Offset: completeDraft.utf8.count)
+        await waitUntil(timeout: 10) { settledDryRuns() >= 1 }
         model.plainDraft = invalidDraft
         model.editorTextDidChange(cursorUTF8Offset: invalidDraft.utf8.count)
         await waitUntil(timeout: 15) { model.recordRefusalPresentation != nil }
+        XCTAssertGreaterThanOrEqual(settledDryRuns(), 2)
 
         XCTAssertEqual(model.plainDraft, invalidDraft)
         try? await Task.sleep(nanoseconds: 2_500_000_000)
