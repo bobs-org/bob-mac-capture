@@ -46,6 +46,56 @@ final class CaptureAliasTipDesignTests: XCTestCase {
         }
     }
 
+    func testRenderPickerWithTip() throws {
+        let model = CapturePanelModel()
+        model.installPickerForPreviews(
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "@sase:fix-parser",
+                    route: "sase",
+                    label: "sase.md",
+                    kind: "project",
+                    taskRef: "1:aaaa1111",
+                    statusSymbol: " ",
+                    statusName: "Todo",
+                    statusType: "TODO",
+                    text: "Fix the parser"
+                )
+            ]
+        )
+        model.installPresentedAliasTipForPreviews(
+            CaptureSigilAliasTip(
+                id: CaptureAliasLesson.blockIDAfterRoute,
+                sigil: "^",
+                keys: ["."],
+                range: CaptureRange(start: 0, end: 1),
+                positionPhrase: "right after a route"
+            )
+        )
+        let policy = CapturePickerHeightPolicy(
+            visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
+            tipRowHeight: CapturePanelLayout.aliasTipRowHeight
+        )
+
+        for width in [760, 620] as [CGFloat] {
+            let card = CapturePickerCard(model: model)
+                .frame(width: 430)
+                .frame(maxHeight: policy.idealHeight, alignment: .top)
+            try RenderFixtureWriter.write(
+                card,
+                name: "alias-tip-picker-\(Int(width))",
+                width: width,
+                appearance: .aqua
+            )
+            try RenderFixtureWriter.write(
+                card,
+                name: "alias-tip-picker-\(Int(width))",
+                width: width,
+                appearance: .darkAqua
+            )
+        }
+    }
+
     private func decodeCompletion(_ name: String) throws -> CaptureCompletionResponse {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

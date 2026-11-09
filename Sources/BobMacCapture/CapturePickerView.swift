@@ -33,6 +33,7 @@ extension CapturePanelLayout {
 /// up to three rows, detail strip) and the list scrolls.
 struct CapturePickerHeightPolicy: Equatable {
     var visibleRowBudget: Int
+    var tipRowHeight: CGFloat = 0
     var displayScale: CGFloat = 1
 
     /// The budget clamped to the card's row bounds.
@@ -46,7 +47,7 @@ struct CapturePickerHeightPolicy: Equatable {
     }
 
     private func listViewportHeight(forRowCount rows: Int) -> CGFloat {
-        roundedToPixel(
+        return roundedToPixel(
             CapturePanelLayout.pickerListPadding * 2
                 + CapturePanelLayout.pickerRowHeight * CGFloat(rows)
         )
@@ -57,16 +58,22 @@ struct CapturePickerHeightPolicy: Equatable {
     }
 
     var idealHeight: CGFloat {
-        roundedToPixel(
+        let tipHostHeight = tipRowHeight > 0
+            ? CapturePanelLayout.aliasTipHairlineHeight + tipRowHeight
+            : 0
+        return roundedToPixel(
             CapturePanelLayout.pickerFilterBarHeight
                 + 1
                 + listViewportHeight
                 + 1
                 + CapturePanelLayout.pickerDetailStripHeight
+                + tipHostHeight
         )
     }
 
     var minimumVisibleHeight: CGFloat {
+        // The optional tip is the last card row, so it yields before the
+        // minimum candidate-row viewport on a short screen.
         roundedToPixel(
             CapturePanelLayout.pickerFilterBarHeight
                 + 1
@@ -156,7 +163,13 @@ struct CapturePickerCard: View {
     }
 
     private var policy: CapturePickerHeightPolicy {
-        CapturePickerHeightPolicy(visibleRowBudget: budget, displayScale: displayScale)
+        CapturePickerHeightPolicy(
+            visibleRowBudget: budget,
+            tipRowHeight: model.presentedAliasTip == nil
+                ? 0
+                : CapturePanelLayout.aliasTipRowHeight,
+            displayScale: displayScale
+        )
     }
 
     private var presentation: CapturePickerPresentation? {
@@ -236,6 +249,14 @@ struct CapturePickerCard: View {
 
             CapturePickerDetailStrip(model: model)
                 .frame(height: CapturePanelLayout.pickerDetailStripHeight, alignment: .top)
+
+            if let tip = model.presentedAliasTip {
+                Divider()
+                CaptureAliasTipRow(
+                    presentation: CaptureAliasTipPresentation(tip: tip),
+                    sigilColor: model.aliasTipSigilColor(for: tip)
+                )
+            }
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: CapturePanelLayout.pickerCornerRadius))
@@ -245,7 +266,7 @@ struct CapturePickerCard: View {
         )
         .shadow(radius: 18, y: 8)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(source.cardAccessibilityLabel)
+        .accessibilityLabel(cardAccessibilityLabel)
         .accessibilityHint(source.cardAccessibilityHint)
         .onAppear {
             if let presentation {
@@ -450,14 +471,36 @@ struct CapturePickerCard: View {
         source: CapturePickerSource,
         presentation: CapturePickerPresentation
     ) -> String {
+        let announcement: String
         if case .blockID(let context) = source, context.isNewIDMode {
             let suggestions = presentation.sections
                 .filter { $0.kind == .suggestions }
                 .reduce(0) { $0 + $1.rows.count }
             let countText = suggestions == 1 ? "1 suggestion" : "\(suggestions) suggestions"
-            return "\(source.appearedAnnouncementPrefix), \(countText)"
+            announcement = "\(source.appearedAnnouncementPrefix), \(countText)"
+        } else {
+            announcement = "\(source.appearedAnnouncementPrefix), \(presentation.countText)"
         }
-        return "\(source.appearedAnnouncementPrefix), \(presentation.countText)"
+        guard let tip = pickerTipAccessibilitySentence else {
+            return announcement
+        }
+        return "\(announcement), \(tip)"
+    }
+
+    private var pickerTipAccessibilitySentence: String? {
+        guard let tip = model.presentedAliasTip,
+            CaptureAliasLesson.host(for: tip.id) == .picker
+        else {
+            return nil
+        }
+        return CaptureAliasTipPresentation(tip: tip).accessibilityLabel
+    }
+
+    private var cardAccessibilityLabel: String {
+        guard let tip = pickerTipAccessibilitySentence else {
+            return source.cardAccessibilityLabel
+        }
+        return "\(source.cardAccessibilityLabel), \(tip)"
     }
 }
 

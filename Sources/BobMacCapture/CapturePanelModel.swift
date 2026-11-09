@@ -1036,6 +1036,7 @@ final class CapturePanelModel: ObservableObject {
     var rewriteInFlightForTesting: Bool { rewriteTask != nil }
     /// True while the non-blocking alias-tip rewrite is in flight.
     var aliasTipInFlightForTesting: Bool { aliasTipTask != nil }
+    var aliasTipGenerationForTesting: UInt64 { aliasTipGeneration }
     var pendingAliasTipForTesting: CaptureSigilAliasTip? { pendingAliasTip?.tip }
     var aliasTipSessionForTesting: AliasTipSession { aliasTipSession }
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
@@ -6148,7 +6149,11 @@ final class CapturePanelModel: ObservableObject {
         selectedStashIndex = min(max(selectedStashIndex, 0), entries.count - 1)
     }
 
-    func dismissCompletion(cancelPendingRecordReturn: Bool = true) {
+    func dismissCompletion(
+        cancelPendingRecordReturn: Bool = true,
+        preservePendingAliasTip: Bool = false,
+        preservePresentedAliasTip: Bool = false
+    ) {
         // Esc on the File-under list keeps the default inbox parent: remember
         // the URL so the list does not reopen until the URL changes. Accept
         // paths clear the record after splicing (see
@@ -6167,8 +6172,12 @@ final class CapturePanelModel: ObservableObject {
             recordReturnTask?.cancel()
             recordReturnTask = nil
         }
-        dropPendingAliasTip()
-        presentedAliasTip = nil
+        if !preservePendingAliasTip {
+            dropPendingAliasTip()
+        }
+        if !preservePresentedAliasTip {
+            presentedAliasTip = nil
+        }
     }
 
     // MARK: - Capture picker
@@ -6934,7 +6943,12 @@ final class CapturePanelModel: ObservableObject {
         writtenRange: CaptureRange?
     ) async {
         // Block-ID responses never populate the inline list, even when empty.
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         guard Self.isUsableBlockIDCompletion(completion) else {
             clearPickerInterruption(trigger: trigger)
             return
@@ -7164,7 +7178,12 @@ final class CapturePanelModel: ObservableObject {
     ) async {
         // An `active_task` response never sets `completionResponse`, even when
         // `candidates` is empty.
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -7264,7 +7283,12 @@ final class CapturePanelModel: ObservableObject {
     ) async {
         // A catalog response never sets `completionResponse`, even when
         // `candidates` is empty.
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -7359,7 +7383,12 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient,
         trigger: CompletionTrigger
     ) async {
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         guard let baseContext = completion.picker?.parentTaskContext else {
             clearPickerInterruption(trigger: trigger)
             return
@@ -7516,7 +7545,12 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient,
         trigger: CompletionTrigger
     ) async {
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         guard let context = completion.picker?.projectTaskMoveContext else {
             clearPickerInterruption(trigger: trigger)
             return
@@ -7707,7 +7741,12 @@ final class CapturePanelModel: ObservableObject {
     ) async {
         // A `task_dependency` response never sets `completionResponse`, even
         // when `candidates` is empty.
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -7874,7 +7913,15 @@ final class CapturePanelModel: ObservableObject {
         keptFilter: String,
         restoreCursor: Int
     ) async {
-        dismissCompletion()
+        dismissCompletion(
+            preservePendingAliasTip: true,
+            preservePresentedAliasTip: true
+        )
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil else {
             return
@@ -7938,7 +7985,12 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient,
         trigger: CompletionTrigger
     ) async {
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -8028,7 +8080,12 @@ final class CapturePanelModel: ObservableObject {
         trigger: CompletionTrigger,
         writtenRange: CaptureRange?
     ) async {
-        dismissCompletion()
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                dropPendingAliasTip()
+            }
+        }
         let r = completion.replacement
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
@@ -8154,7 +8211,7 @@ final class CapturePanelModel: ObservableObject {
         return String(draft[queryRange])
     }
 
-    private func presentPicker(
+    func presentPicker(
         source: CapturePickerSource,
         index: CapturePickerIndex,
         candidates: [CaptureCompletionCandidate],
@@ -8170,6 +8227,7 @@ final class CapturePanelModel: ObservableObject {
         includesClosedTasks: Bool = false,
         gotoDesiredIncludesClosedTasks: Bool? = nil
     ) {
+        let pickerWasVisible = picker != nil
         if source == .taskGoto {
             var state = CaptureTaskGotoScopeState()
             state.beginSession(
@@ -8213,7 +8271,11 @@ final class CapturePanelModel: ObservableObject {
         )
         pickerMarkerHighlight = markerRange
         applyPickerMarkerHighlight()
-        dismissCompletion()
+        dismissCompletion(
+            preservePendingAliasTip: true,
+            preservePresentedAliasTip: pickerWasVisible
+        )
+        consumePendingAliasTipOnPickerOpen(visibleRowBudget: presentation.visibleRowBudget)
         relationFlipAliasOpen = nil
         pickerChip = nil
         editorInputLocked = true
@@ -9636,6 +9698,7 @@ final class CapturePanelModel: ObservableObject {
         let range = openPicker.replacementRange
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         picker = nil
+        presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
         clearEditorInputLockIfFree()
@@ -10617,6 +10680,7 @@ final class CapturePanelModel: ObservableObject {
             clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         }
         picker = nil
+        presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
@@ -10647,6 +10711,7 @@ final class CapturePanelModel: ObservableObject {
             clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         }
         picker = nil
+        presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
@@ -10669,6 +10734,7 @@ final class CapturePanelModel: ObservableObject {
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         editAnalysisBaseline = ""
         picker = nil
+        presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
@@ -10689,6 +10755,7 @@ final class CapturePanelModel: ObservableObject {
     private func clearPickerState() {
         clearPickerMarkerHighlight(draftSnapshot: plainDraft)
         picker = nil
+        presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
@@ -20640,11 +20707,11 @@ final class CapturePanelModel: ObservableObject {
 }
 
 extension CapturePanelModel {
-    static let typedSigilTriggers: Set<String> = ["@", "#"]
+    static let typedSigilTriggers: Set<String> = ["@", "#", "^", ":", "+", "~", "&", "*"]
 
     /// Records the expected post-key draft for a physically Shift- or
-    /// Option-typed `@` or `#`. `editorTextDidChange` consumes it only when
-    /// the resulting buffer matches.
+    /// Option-typed capture sigil. `editorTextDidChange` consumes it only
+    /// when the resulting buffer matches.
     func noteTypedSigilIntent(
         sigil: String,
         text: String,
@@ -20686,6 +20753,14 @@ extension CapturePanelModel {
         presentedAliasTip = tip
     }
 
+    /// Test support: installs a reply waiting for its first surface.
+    func installPendingAliasTipForPreviews(
+        _ tip: CaptureSigilAliasTip?,
+        draft: String? = nil
+    ) {
+        pendingAliasTip = tip.map { PendingAliasTip(tip: $0, draft: draft ?? plainDraft) }
+    }
+
     func aliasTipSigilColor(for tip: CaptureSigilAliasTip) -> Color {
         guard let parse = latestParse else {
             return .primary
@@ -20718,6 +20793,24 @@ extension CapturePanelModel {
             + (footerHeight > 0 ? footerHeight : 28)
             + 44
         return chrome + listHeight <= screenLimit
+    }
+
+    func aliasTipFitsPickerPanelBudget(visibleRowBudget: Int) -> Bool {
+        guard let available = availableScreenHeight else {
+            return true
+        }
+        let screenLimit = max(1, available - 2 * CapturePanelLayout.panelScreenMargin)
+        let pickerHeight = CapturePickerHeightPolicy(
+            visibleRowBudget: visibleRowBudget,
+            tipRowHeight: CapturePanelLayout.aliasTipRowHeight
+        ).idealHeight
+        let chrome =
+            titlebarSafeAreaInset
+            + CapturePanelLayout.rootPadding * 2
+            + CapturePanelLayout.sectionSpacing
+            + (footerHeight > 0 ? footerHeight : 28)
+            + 44
+        return chrome + pickerHeight <= screenLimit
     }
 
     fileprivate func consumeTypedSigilIntent(
@@ -20790,7 +20883,7 @@ extension CapturePanelModel {
         }
     }
 
-    fileprivate func applyAliasTipRewrite(
+    func applyAliasTipRewrite(
         _ response: CaptureRewriteResponse,
         draft: String,
         sigil: String,
@@ -20818,7 +20911,7 @@ extension CapturePanelModel {
             aliasTipLedgerStore.recordMiss(id: tip.id, shown: false)
             return
         }
-        if completionVisible {
+        if completionVisible || pickerVisible {
             aliasTipLedgerStore.recordMiss(id: tip.id, shown: false)
             return
         }
@@ -20843,6 +20936,23 @@ extension CapturePanelModel {
             && aliasTipFitsPanelBudget
             && CaptureAliasLesson.host(for: pending.tip.id) == .completionList
         if canAdmit {
+            presentedAliasTip = pending.tip
+            aliasTipSession.markShown()
+            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: true)
+        } else {
+            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
+        }
+    }
+
+    func consumePendingAliasTipOnPickerOpen(visibleRowBudget: Int) {
+        guard let pending = pendingAliasTip else {
+            return
+        }
+        pendingAliasTip = nil
+        if CaptureAliasLesson.host(for: pending.tip.id) == .picker,
+            aliasTipIsAdmissible(pending),
+            aliasTipFitsPickerPanelBudget(visibleRowBudget: visibleRowBudget)
+        {
             presentedAliasTip = pending.tip
             aliasTipSession.markShown()
             aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: true)

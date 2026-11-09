@@ -3387,7 +3387,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
     }
 
-    /// Records a physically Shift- or Option-typed `@` or `#` for the
+    /// Records a physically Shift- or Option-typed capture sigil for the
     /// alias-tip lane. Separate from the rewrite-lane separator intent.
     static func noteTypedSigilIntentIfEligible(
         event: NSEvent,

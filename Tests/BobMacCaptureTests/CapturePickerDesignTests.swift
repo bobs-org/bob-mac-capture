@@ -40,6 +40,21 @@ final class CapturePickerDesignTests: XCTestCase {
         XCTAssertEqual(empty.minimumVisibleHeight, empty.idealHeight)
     }
 
+    func testPickerTipAddsItsFootRowToIdealHeightAndYieldsAtMinimum() {
+        let base = CapturePickerHeightPolicy(visibleRowBudget: 4, displayScale: 1)
+        let withTip = CapturePickerHeightPolicy(
+            visibleRowBudget: 4,
+            tipRowHeight: CapturePanelLayout.aliasTipRowHeight,
+            displayScale: 1
+        )
+
+        XCTAssertEqual(
+            withTip.idealHeight,
+            base.idealHeight + CapturePanelLayout.aliasTipHostHeight
+        )
+        XCTAssertEqual(withTip.minimumVisibleHeight, base.minimumVisibleHeight)
+    }
+
     func testPickerHeightPolicyPixelRounds() {
         let integral = CapturePickerHeightPolicy(visibleRowBudget: 7, displayScale: 2)
         // 2·6 + 34·7 = 250; 46 + 1 + 250 + 1 + 80 = 378

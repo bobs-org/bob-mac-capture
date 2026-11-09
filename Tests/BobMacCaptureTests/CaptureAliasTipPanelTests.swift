@@ -289,6 +289,129 @@ final class CaptureAliasTipPanelTests: XCTestCase {
         XCTAssertEqual(model.presentedAliasTip?.id, CaptureAliasLesson.hashMenu)
     }
 
+    func testTypedSigilTriggersIncludeThePickerLessons() {
+        XCTAssertEqual(
+            CapturePanelModel.typedSigilTriggers,
+            Set(["@", "#", "^", ":", "+", "~", "&", "*"])
+        )
+    }
+
+    func testPickerLessonsAreAdmittedOnOpenAndLateRepliesDrop() throws {
+        let pickerLessons = CaptureAliasLesson.all.filter { $0.host == .picker }
+        XCTAssertEqual(pickerLessons.count, 9)
+
+        for lesson in pickerLessons {
+            defaults.removePersistentDomain(forName: suiteName)
+            let tip = pickerTip(for: lesson)
+            let draft = tip.sigil
+            let earlyRecord = makeRecordURL()
+            let (early, _) = try makeModel(recordURL: earlyRecord, text: draft)
+            let earlyClient = try processClient(recordURL: earlyRecord)
+            early.applyAliasTipRewrite(
+                tipResponse(tip, draft: draft),
+                draft: draft,
+                sigil: tip.sigil,
+                generation: early.aliasTipGenerationForTesting,
+                processClient: earlyClient
+            )
+            XCTAssertEqual(early.pendingAliasTipForTesting?.id, lesson.id)
+            early.dismissCompletion(preservePendingAliasTip: true)
+            openPicker(early, draft: draft)
+            XCTAssertEqual(early.presentedAliasTip?.id, lesson.id)
+            XCTAssertNil(early.pendingAliasTipForTesting)
+            XCTAssertTrue(early.aliasTipSessionForTesting.didShowTip)
+            XCTAssertEqual(
+                early.aliasTipLedgerStore.load().lessons[lesson.id]?.tipsShown,
+                1
+            )
+
+            defaults.removePersistentDomain(forName: suiteName)
+            let lateRecord = makeRecordURL()
+            let (late, _) = try makeModel(recordURL: lateRecord, text: draft)
+            let lateClient = try processClient(recordURL: lateRecord)
+            openPicker(late, draft: draft)
+            late.applyAliasTipRewrite(
+                tipResponse(tip, draft: draft),
+                draft: draft,
+                sigil: tip.sigil,
+                generation: late.aliasTipGenerationForTesting,
+                processClient: lateClient
+            )
+            XCTAssertNil(late.presentedAliasTip)
+            XCTAssertNil(late.pendingAliasTipForTesting)
+            XCTAssertEqual(
+                late.aliasTipLedgerStore.load().lessons[lesson.id]?.recent,
+                [.miss]
+            )
+        }
+    }
+
+    func testListThenPickerSequenceShowsAtMostOneTip() async throws {
+        let recordURL = makeRecordURL()
+        let (model, textView) = try makeModel(
+            recordURL: recordURL,
+            debounceNanoseconds: 200_000_000
+        )
+        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        await waitUntil {
+            model.completionVisible
+                && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
+        }
+        model.dismissCompletion()
+
+        let pickerTip = pickerTip(
+            id: CaptureAliasLesson.blockIDAfterRoute,
+            sigil: "^",
+            key: "."
+        )
+        restorePrefix(pickerTip.sigil, into: textView, model: model)
+        let pickerClient = try processClient(recordURL: recordURL)
+        model.applyAliasTipRewrite(
+            tipResponse(pickerTip, draft: pickerTip.sigil),
+            draft: pickerTip.sigil,
+            sigil: pickerTip.sigil,
+            generation: model.aliasTipGenerationForTesting,
+            processClient: pickerClient
+        )
+        openPicker(model, draft: pickerTip.sigil)
+
+        XCTAssertNil(model.presentedAliasTip)
+        XCTAssertTrue(model.aliasTipSessionForTesting.didShowTip)
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.blockIDAfterRoute]?
+                .tipsShown,
+            0
+        )
+    }
+
+    func testPickerTipYieldsBeforeRowsOnShortScreen() throws {
+        let draft = "^"
+        let tip = pickerTip(
+            id: CaptureAliasLesson.blockIDAfterRoute,
+            sigil: draft,
+            key: "."
+        )
+        let (model, _) = try makeModel(recordURL: makeRecordURL(), text: draft)
+        model.availableScreenHeight = 450
+        let chrome: CGFloat = 120
+        let screenLimit = 450 - 2 * CapturePanelLayout.panelScreenMargin
+        XCTAssertLessThanOrEqual(
+            chrome + CapturePickerHeightPolicy(visibleRowBudget: 4).idealHeight,
+            screenLimit
+        )
+        XCTAssertFalse(model.aliasTipFitsPickerPanelBudget(visibleRowBudget: 4))
+        model.installPendingAliasTipForPreviews(tip, draft: draft)
+
+        openPicker(model, draft: draft)
+
+        XCTAssertNil(model.presentedAliasTip)
+        XCTAssertEqual(model.picker?.visibleRowBudget, 4)
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[tip.id]?.recent,
+            [.miss]
+        )
+    }
+
     private func makeModel(
         recordURL: URL,
         extra: [String: String] = [:],
@@ -302,6 +425,74 @@ final class CaptureAliasTipPanelTests: XCTestCase {
         let textView = makeTextView(text)
         model.plainDraft = text
         return (model, textView)
+    }
+
+    private func pickerTip(for lesson: CaptureAliasLesson) -> CaptureSigilAliasTip {
+        let sigilAndKey: (sigil: String, key: String)
+        switch lesson.id {
+        case CaptureAliasLesson.blockIDAfterRoute, CaptureAliasLesson.moveBulletCaret:
+            sigilAndKey = ("^", ".")
+        case CaptureAliasLesson.linkAfterRoute, CaptureAliasLesson.taskLinkItem,
+             CaptureAliasLesson.moveBulletColon:
+            sigilAndKey = (":", ";")
+        case CaptureAliasLesson.parentTask:
+            sigilAndKey = ("+", ",")
+        case CaptureAliasLesson.relation:
+            sigilAndKey = ("~", "=")
+        case CaptureAliasLesson.dependency:
+            sigilAndKey = ("&", ".")
+        case CaptureAliasLesson.blockedTask:
+            sigilAndKey = ("*", ";")
+        default:
+            XCTFail("Expected a picker lesson: \(lesson.id)")
+            sigilAndKey = ("^", ".")
+        }
+        return pickerTip(id: lesson.id, sigil: sigilAndKey.sigil, key: sigilAndKey.key)
+    }
+
+    private func pickerTip(
+        id: String,
+        sigil: String,
+        key: String
+    ) -> CaptureSigilAliasTip {
+        CaptureSigilAliasTip(
+            id: id,
+            sigil: sigil,
+            keys: [key],
+            range: CaptureRange(start: 0, end: sigil.utf8.count),
+            positionPhrase: "after a word"
+        )
+    }
+
+    private func tipResponse(
+        _ tip: CaptureSigilAliasTip,
+        draft: String
+    ) -> CaptureRewriteResponse {
+        CaptureRewriteResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            text: draft,
+            changed: false,
+            cursor: draft.utf8.count,
+            sigilAliasTip: tip,
+            reportsSigilAliasTips: true
+        )
+    }
+
+    private func openPicker(_ model: CapturePanelModel, draft: String) {
+        let candidates: [CaptureCompletionCandidate] = []
+        model.presentPicker(
+            source: .activeTask,
+            index: .activeTask(ActiveTaskPickerIndex(candidates: candidates)),
+            candidates: candidates,
+            warnings: [],
+            draft: draft,
+            range: CaptureRange(start: 0, end: draft.utf8.count),
+            restoreCursor: draft.utf8.count,
+            query: "",
+            snapshotIsPartial: false
+        )
     }
 
     private func makeHostedModel(

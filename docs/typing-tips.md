@@ -11,13 +11,18 @@ the draft from a tip, and never delays completion, preview, Similar Tasks, or Re
 ## Where and when
 
 The row sits at the foot of the completion-list card, under a hairline, pinned so it
-does not scroll away. It appears only in that list's first frame. Filtering the query
-leaves it in place. Closing the list, accepting a row, submitting, or hiding the panel
-clears it. A tip that arrives after the list is already open is dropped.
+does not scroll away. Picker tips use the same row at the foot of the picker card,
+under a divider and below its detail strip. A tip appears only in the first frame of the
+list or picker the sigil opened. The first surface consumes it; it never jumps between
+surfaces. Filtering leaves the row in place. Closing the surface, accepting a row,
+submitting, or hiding the panel clears it. A tip that arrives after the surface is
+already open is dropped.
 
-This page covers the `@` and `#` lessons that open a completion list. Picker lessons
-(`^`, `:`, `+`, `~`, `&`, `*`) use the same row at the foot of the picker card once that
-host ships.
+The picker includes the row only when its full height at the open row budget fits the
+panel's screen space. A cramped panel drops the tip before it trims the candidate rows.
+
+The trigger set is `@`, `#`, `^`, `:`, `+`, `~`, `&`, and `*`. Each lesson is shown only
+on the surface Bob's rewrite opens for that sigil.
 
 ## Lessons
 
@@ -25,26 +30,27 @@ host ships.
 | --- | --- | --- | --- | --- |
 | `route_after_text` | `.` | `@` | after a word | Completion list |
 | `hash_menu` | `/` (then `\`) | `#` | after a word, or right after a route | Completion list |
-| `block_id_after_route` | `.` | `^` | right after a route | Picker (coming) |
-| `link_after_route` | `;` | `:` | right after a route | Picker (coming) |
-| `task_link_item` | `;` | `:` | at an item start | Picker (coming) |
-| `move_bullet_caret` | `.` | `^` | on a move bullet | Picker (coming) |
-| `move_bullet_colon` | `;` | `:` | on a move bullet | Picker (coming) |
-| `parent_task` | `,` | `+` | right after a route, or after a word | Picker (coming) |
-| `relation` | `=` | `~` | after a word | Picker (coming) |
-| `dependency` | `.` | `&` | once routed | Picker (coming) |
-| `blocked_task` | `;` | `*` | after a word | Picker (coming) |
+| `block_id_after_route` | `.` | `^` | right after a route | Picker |
+| `link_after_route` | `;` | `:` | right after a route | Picker |
+| `task_link_item` | `;` | `:` | at an item start | Picker |
+| `move_bullet_caret` | `.` | `^` | on a move bullet | Picker |
+| `move_bullet_colon` | `;` | `:` | on a move bullet | Picker |
+| `parent_task` | `,` | `+` | right after a route, or after a word | Picker |
+| `relation` | `=` | `~` | after a word | Picker |
+| `dependency` | `.` | `&` | once routed | Picker |
+| `blocked_task` | `;` | `*` | after a word | Picker |
 
-A physical Shift or Option press of `@` or `#` is what asks Bob. Paste, Undo, Redo,
-repeats, marked text, and the app's own alias output never ask.
+A physical Shift or Option press of one of the trigger sigils is what asks Bob. Paste,
+Undo, Redo, repeats, marked text, and the app's own alias output never ask.
 
 ## Fading
 
 Each physically typed sigil that Bob would have aliased is a miss. Each surviving
 forward alias (`. ` → `@`, `/` → `#`, and the rest) is a hit. Hits count even with tips
-off. Escaping an alias — Undo of the rewrite, a fast second `.`, Space or Escape on the
-empty route list, or a second `/` or `\` that puts the literal back — withdraws that
-hit and silences the lesson for the rest of the panel session.
+off. Escaping an alias — Undo of the rewrite, a fast second alias key (`.`, `;`, or
+`=`), Space or Escape on the empty surface it opened, or a second `/` or `\` that puts
+the literal back — withdraws that hit and silences the lesson for the rest of the panel
+session.
 
 At most one tip shows per panel session. After three learning tips, further tips wait
 for a growing gap of misses (2, then 4, then 8). Four recent chances at a 75% hit rate

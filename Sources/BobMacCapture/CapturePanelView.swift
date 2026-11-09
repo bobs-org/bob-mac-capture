@@ -1214,6 +1214,9 @@ struct CapturePanelView: View {
         if model.pickerVisible {
             let explicit = CapturePickerHeightPolicy(
                 visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
+                tipRowHeight: model.presentedAliasTip == nil
+                    ? 0
+                    : CapturePanelLayout.aliasTipRowHeight,
                 displayScale: displayScale
             ).auxiliaryHeight
             return CapturePanelAuxiliaryHeight(
