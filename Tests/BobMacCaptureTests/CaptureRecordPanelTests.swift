@@ -89,7 +89,9 @@ final class CaptureRecordPanelTests: XCTestCase {
     }
 
     private func mutationCaptureCalls(in log: String) -> [String] {
-        log.split(separator: "\n").map(String.init).filter { $0.hasPrefix("argv=capture --") }
+        log.split(separator: "\n").map(String.init).filter { line in
+            line.hasPrefix("argv=capture --") && !line.contains("--dry-run")
+        }
     }
 
     func testTabAcceptsBobSuggestionAndRunsItsNextMissingContinuation() async {
@@ -159,9 +161,9 @@ final class CaptureRecordPanelTests: XCTestCase {
 
         await waitUntil { model.recordAssistAvailable }
         model.recordReturn()
-        await waitUntil { model.statusText == "Needs Status" }
+        await waitUntil { self.recordLog(logURL).contains("--record-field status") }
 
-        XCTAssertTrue(recordLog(logURL).contains("--record-field status"))
+        XCTAssertEqual(model.statusText, "Needs Status")
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }
 

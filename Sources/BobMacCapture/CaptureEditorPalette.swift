@@ -183,7 +183,9 @@ enum CaptureEditorPalette {
         case "default":
             return .teal
         case "set":
-            return .accentColor
+            // Done-status family. Accent is the record-route chip, so set
+            // values must stay a distinct hue or they paint as route text.
+            return .green
         default:
             return .primary
         }

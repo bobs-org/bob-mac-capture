@@ -702,6 +702,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
             CaptureEditorPalette.recordFieldValueColor(state: "set")
         )
         let wash = CaptureEditorPalette.recordRouteWash(increaseContrast: false)
+        XCTAssertNotEqual(routeColor, setColor)
 
         XCTAssertEqual(
             Self.strings(in: text, where: { run in
@@ -807,14 +808,14 @@ final class CaptureEditorHighlightTests: XCTestCase {
     func testRecordFieldValueUsesTheOwningItemsStateNotTheFirstRecord() throws {
         let draft = "One @eat/\n- status:: liked\n\nTwo @eat/\n- status:: nope"
         let firstValue = CaptureSpan(
-            start: 22,
-            end: 27,
+            start: 21,
+            end: 26,
             kind: "record_field_value",
             key: "status"
         )
         let secondValue = CaptureSpan(
-            start: 51,
-            end: 55,
+            start: 49,
+            end: 53,
             kind: "record_field_value",
             key: "status"
         )
@@ -830,7 +831,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
                     required: true,
                     state: "set",
                     display: "Liked",
-                    range: CaptureRange(start: 22, end: 27)
+                    range: CaptureRange(start: 21, end: 26)
                 )
             ]
         )
@@ -845,7 +846,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
                     kind: "choices",
                     required: true,
                     state: "invalid",
-                    range: CaptureRange(start: 51, end: 55)
+                    range: CaptureRange(start: 49, end: 53)
                 )
             ]
         )
@@ -859,7 +860,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
             items: [
                 CaptureParseItem(
                     index: 1,
-                    range: CaptureRange(start: 0, end: 27),
+                    range: CaptureRange(start: 0, end: 26),
                     lineStart: 1,
                     lineEnd: 2,
                     body: "One",
@@ -868,7 +869,7 @@ final class CaptureEditorHighlightTests: XCTestCase {
                 ),
                 CaptureParseItem(
                     index: 2,
-                    range: CaptureRange(start: 29, end: 55),
+                    range: CaptureRange(start: 28, end: 53),
                     lineStart: 4,
                     lineEnd: 5,
                     body: "Two",
