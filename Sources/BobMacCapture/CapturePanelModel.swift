@@ -627,6 +627,10 @@ final class CapturePanelModel: ObservableObject {
     /// Designed refusal content for a failed live merge-in preview, with
     /// explicit rewrite buttons. Return never rewrites; only a button does.
     @Published var mergeInRefusalPresentation: CaptureMergeInRefusalPresentation?
+    /// Inline record refusal from Bob's structured failure payload: the
+    /// message, missing/invalid field details, and the ready-to-copy
+    /// draft. The draft is never applied; the user keeps the original.
+    @Published var recordRefusalPresentation: CaptureRecordRefusalPresentation?
     /// Revision-bound Bob context while a `<` source is being completed.
     @Published private(set) var mergeInPendingRevision: CaptureMergeInPendingRevision?
     /// The exact draft string the current preview outputs were computed
@@ -2527,6 +2531,7 @@ final class CapturePanelModel: ObservableObject {
         transferPendingPresentation = nil
         transferRefusalPresentation = nil
         mergeInRefusalPresentation = nil
+        recordRefusalPresentation = nil
         previewResult = captures.first
         previewResults = captures
         previewGlobalDestination = globalDestination
@@ -2553,6 +2558,7 @@ final class CapturePanelModel: ObservableObject {
         transferPendingPresentation = nil
         transferRefusalPresentation = nil
         mergeInRefusalPresentation = nil
+        recordRefusalPresentation = nil
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
@@ -15863,6 +15869,10 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleRefPresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let summary = Self.soleRecordNoteSummary(for: captures) {
+                let headline = CaptureRecordPreviewPresentation.headline(for: summary)
+                let detail = CaptureRecordPreviewPresentation.detail(for: summary)
+                statusText = "\(headline) · \(detail)"
             } else {
                 statusText = captureStatus(
                     prefix: "Captured",
@@ -15896,6 +15906,9 @@ final class CapturePanelModel: ObservableObject {
             }
             panelDismisser()
         case .failure(let failure):
+            if showRecordRefusal(failure) {
+                return
+            }
             if showEmptyNotePull(failure) {
                 return
             }
@@ -16191,6 +16204,9 @@ final class CapturePanelModel: ObservableObject {
             if showTransferFailure(failure, parseMode: latestParse?.mode) {
                 return
             }
+            if showRecordRefusal(failure) {
+                return
+            }
             if showEmptyNotePull(failure) {
                 return
             }
@@ -16342,6 +16358,20 @@ final class CapturePanelModel: ObservableObject {
         return CaptureRefPresentation(capture: captures[0])
     }
 
+    /// The committed per-item `record_note` summary for a lone record
+    /// capture, built from Bob's metadata rather than the cleared editor.
+    /// Older Bob falls back to the generic capture status.
+    private static func soleRecordNoteSummary(
+        for captures: [CaptureCommandSuccess]
+    ) -> CaptureRecordNoteSummary? {
+        guard captures.count == 1,
+              captures[0].kind == "record_note" || captures[0].kind == "record_update"
+        else {
+            return nil
+        }
+        return captures[0].recordNote
+    }
+
     private static func soleClosePresentation(
         for captures: [CaptureCommandSuccess]
     ) -> CapturePomodoroClosePresentation? {
@@ -16425,6 +16455,38 @@ final class CapturePanelModel: ObservableObject {
         errorMessage = nil
         errorCode = nil
         statusText = presentation.title
+        return true
+    }
+
+    /// Incomplete record drafts that Bob refuses get an inline card with
+    /// the message, missing/invalid field details, and the ready-to-copy
+    /// draft. The draft is never applied, and the user keeps the entire
+    /// original draft, including the other items in a mixed capture. An
+    /// obsolete successful note preview is cleared beside the card.
+    @discardableResult
+    private func showRecordRefusal(_ failure: CaptureCommandFailure) -> Bool {
+        let labels = (latestParse?.record?.fields ?? []).reduce(
+            into: [String: String]()
+        ) { partial, field in
+            partial[field.key] = field.label
+        }
+        guard
+            let presentation = CaptureRecordRefusalPresentation(
+                failure: failure,
+                fieldLabels: labels
+            )
+        else {
+            return false
+        }
+        clearPreviewOutputs()
+        previewPullInSnapshot = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+        recordRefusalPresentation = presentation
+        previewState = .failed(failure.error)
+        errorMessage = nil
+        errorCode = nil
+        statusText = failure.error
         return true
     }
 
@@ -18259,7 +18321,9 @@ final class CapturePanelModel: ObservableObject {
                         if self?.showTransferFailure(
                             failure,
                             parseMode: self?.latestParse?.mode
-                        ) != true, self?.showEmptyNotePull(failure) != true {
+                        ) != true, self?.showRecordRefusal(failure) != true,
+                            self?.showEmptyNotePull(failure) != true
+                        {
                             self?.previewState = .failed(failure.error)
                             // Like `failPreview`: a failed live dry run must never
                             // leave a stale card beside the red error.

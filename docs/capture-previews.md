@@ -89,6 +89,21 @@ use the generic completion list in that slot. Type emoji overlays
 the card and editor route chip; it never enters the draft. Ready keeps
 the footer hint. See [Record cards](keyboard.md#record-cards).
 
+A committed new record reports Bob's per-item `record_note` summary, not
+the cleared editor: headline `emoji new label  path` (for example
+`🍽️ new restaurant  eat/ramen_nagi.md`) with the detail line from Bob's
+ordered nonempty property displays (`with` prefixes the `companions`
+list) plus the note count (`no notes`, `1 note`, `N notes`). Default
+values carry a `default` badge; values without a display fall back to
+their canonical form, and absent optional values stay out. The exact
+Markdown comes from the matching `note_files` entry (paired to record
+items in order by path/action identity, each consumed once), byte for
+byte including YAML, indentation, Unicode, blank lines, and the trailing
+newline. An incomplete record refuses inline: Bob's message, the
+missing/invalid field details, and the selectable ready-to-copy draft,
+which is never applied silently. The user keeps the original draft,
+including the other items in a mixed capture.
+
 ## Drawer captures
 
 A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the header

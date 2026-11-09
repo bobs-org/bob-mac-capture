@@ -5302,6 +5302,14 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive note-pull result. Older Bob binaries omit it; malformed
     /// values degrade to nil so the rest of capture still previews.
     public let notePull: CaptureNotePull?
+    /// Additive planned record files, in item order. Older Bob omits the
+    /// key; malformed rows are dropped independently so the rest still
+    /// previews.
+    public let noteFiles: [CaptureNoteFile]
+    /// Additive per-item committed record metadata, without the full
+    /// Markdown. Ordinary items and older Bob omit it; malformed values
+    /// degrade to nil so the rest of capture still previews.
+    public let recordNote: CaptureRecordNoteSummary?
     // Additive `ref` object on a `ref` capture. Older Bob binaries omit it
     // entirely; decode as nil, and a malformed value decodes as nil so it
     // can never fail the capture decode.
@@ -5451,6 +5459,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         mergeOffers: [TaskCompleteUnblocked] = [],
         repairedFiles: [CaptureTransferRepairedFile] = [],
         notePull: CaptureNotePull? = nil,
+        noteFiles: [CaptureNoteFile] = [],
+        recordNote: CaptureRecordNoteSummary? = nil,
         ref: CaptureRef? = nil,
         gmail: [CaptureGmailPreview] = [],
         planBudget: CapturePlanBudget? = nil,
@@ -5548,6 +5558,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.mergeOffers = mergeOffers
         self.repairedFiles = repairedFiles
         self.notePull = notePull
+        self.noteFiles = noteFiles
+        self.recordNote = recordNote
         self.ref = ref
         self.gmail = gmail
         self.planBudget = planBudget
@@ -5748,6 +5760,16 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         repairedFiles =
             (try? container.decode([CaptureTransferRepairedFile].self, forKey: .repairedFiles)) ?? []
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
+        noteFiles =
+            (try? container.decode(
+                CaptureLossyArray<CaptureNoteFile>.self,
+                forKey: .noteFiles
+            ))?.values ?? []
+        recordNote =
+            (try? container.decodeIfPresent(
+                CaptureRecordNoteSummary.self,
+                forKey: .recordNote
+            )) ?? nil
         ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
         gmail =
             (try? container.decodeIfPresent([CaptureGmailPreview].self, forKey: .gmail)) ?? []
@@ -5902,6 +5924,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case mergeOffers = "merge_offers"
         case repairedFiles = "repaired_files"
         case notePull = "note_pull"
+        case noteFiles = "note_files"
+        case recordNote = "record_note"
         case ref
         case gmail
         case planBudget = "plan_budget"
@@ -8050,6 +8074,14 @@ public struct CaptureCommandFailure: Codable, Equatable {
     /// `destination`, `message`). Older Bob omits it; malformed decodes as
     /// nil.
     public let refused: CaptureInboxRouteRefused?
+    /// Additive record refusal details: the ready-to-copy draft, missing
+    /// required field keys, and invalid field entries. Top-level JSON keys
+    /// on incomplete record drafts. Missing-field refusals may carry no
+    /// `code`; other failures and older Bob omit all three, and malformed
+    /// values degrade to empty so they can never fail the failure decode.
+    public let recordDraft: String?
+    public let recordMissing: [String]
+    public let recordInvalid: [CaptureRecordInvalidField]
     /// Refused offer-close row, when this failure's code is
     /// `offer_close_refused`.
     public var offerCloseRefused: CaptureOfferCloseRefused? {
@@ -8064,6 +8096,17 @@ public struct CaptureCommandFailure: Codable, Equatable {
         )
     }
 
+    /// Structured record refusal, when Bob returned the ready-to-copy
+    /// payload. Nil for unrelated failures and older Bob.
+    public var recordRefusal: CaptureRecordRefusal? {
+        let refusal = CaptureRecordRefusal(
+            draft: recordDraft,
+            missing: recordMissing,
+            invalid: recordInvalid
+        )
+        return refusal.hasStructuredPayload ? refusal : nil
+    }
+
     public init(
         ok: Bool = false,
         error: String,
@@ -8075,7 +8118,10 @@ public struct CaptureCommandFailure: Codable, Equatable {
         offers: [TaskCompleteUnblocked] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
-        refused: CaptureInboxRouteRefused? = nil
+        refused: CaptureInboxRouteRefused? = nil,
+        recordDraft: String? = nil,
+        recordMissing: [String] = [],
+        recordInvalid: [CaptureRecordInvalidField] = []
     ) {
         self.ok = ok
         self.error = error
@@ -8088,6 +8134,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
         self.refused = refused
+        self.recordDraft = recordDraft
+        self.recordMissing = recordMissing
+        self.recordInvalid = recordInvalid
     }
 
     public init(from decoder: Decoder) throws {
@@ -8110,6 +8159,15 @@ public struct CaptureCommandFailure: Codable, Equatable {
             (try? container.decodeIfPresent(CaptureMoveChoice.self, forKey: .moveChoice)) ?? nil
         refused =
             (try? container.decodeIfPresent(CaptureInboxRouteRefused.self, forKey: .refused)) ?? nil
+        recordDraft =
+            (try? container.decodeIfPresent(String.self, forKey: .recordDraft)) ?? nil
+        recordMissing =
+            (try? container.decodeIfPresent([String].self, forKey: .recordMissing)) ?? []
+        recordInvalid =
+            (try? container.decode(
+                CaptureLossyArray<CaptureRecordInvalidField>.self,
+                forKey: .recordInvalid
+            ))?.values ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8124,6 +8182,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"
         case refused
+        case recordDraft = "draft"
+        case recordMissing = "missing"
+        case recordInvalid = "invalid"
     }
 }
 

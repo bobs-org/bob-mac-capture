@@ -311,6 +311,39 @@ run_targets() {
   assert_json "$out"
 }
 
+run_capture_dry() {
+  local draft="$1"
+  local out="$2"
+  bob capture -b "$vault" --format json --dry-run -- "$draft" \
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+  assert_json "$out"
+}
+
+run_capture_commit() {
+  local draft="$1"
+  local out="$2"
+  bob capture -b "$vault" --format json -- "$draft" > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+  assert_json "$out"
+}
+
+run_capture_refusal() {
+  local draft="$1"
+  local out="$2"
+  local expected="$3"
+  local status=0
+  bob capture -b "$vault" --format json --dry-run -- "$draft" \
+    > "$scratch_root/raw.json" || status=$?
+  if [[ "$status" != "$expected" ]]; then
+    echo "capture refusal for $out exited $status (expected $expected):" >&2
+    cat "$scratch_root/raw.json" >&2
+    exit 1
+  fi
+  persist "$scratch_root/raw.json" "$out"
+  assert_json "$out"
+}
+
 cursor_of() {
   printf '%s' "$1" | wc -c
 }
@@ -395,6 +428,49 @@ run_complete "Ramen Nagi @eat/
 - category:: Ramen
 - location:: Clark")" record-complete-named-status-current.json -F status
 
+# Capture fixtures (dry-run previews, one commit, and refusals). The
+# commit runs last so its scratch-vault write cannot affect earlier
+# fixtures; commit operations affect only the scratch vault.
+RICH_RESTAURANT="Café \"Møø\": Ramen! @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark: Downtown
+- companions:: [[kelly|Kel]]
+- visited:: 2026-10-29
+- First visit was great.
+  - Extra chili oil on the side.
+- Second note."
+run_capture_dry "$RICH_RESTAURANT" record-capture-restaurant.json
+run_capture_dry "Talk Python @podcasts/
+- status:: subscribed
+- category:: Tech" record-capture-podcast.json
+run_capture_dry "Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark
+
+Talk Python @podcasts/
+- status:: subscribed
+- category:: Tech" record-capture-two-records.json
+run_capture_dry "Fix parser @dev
+
+Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark" record-capture-mixed.json
+run_capture_refusal "Ramen Nagi @eat/
+- status:: liked" record-capture-missing.json 2
+run_capture_refusal "Ramen Nagi @eat/
+- status:: nope
+- category:: Ramen
+- location:: Clark" record-capture-invalid.json 2
+run_capture_dry "Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark
+- companions::" record-capture-optional-empty.json
+run_capture_commit "$RICH_RESTAURANT" record-capture-restaurant-commit.json
+
 # Targets fixture (record rows with type/emoji/count).
 run_targets record-targets.json
 
@@ -413,7 +489,10 @@ Generated from a real Bob; never hand-edit the JSON.
 - command shapes: capture-parse (including field/value caret drafts),
   capture-complete (caret, -n, -F, route, section, create-route
   record_target, 7+ category values, current-value named edit),
-  capture-targets
+  capture --dry-run (restaurant with choice glyphs, aliased link,
+  Unicode/quotes/colons, nested notes; podcast with no notes; two
+  records; mixed task/record; missing and invalid refusals; explicit
+  empty optional), one capture commit, capture-targets
 
 Older-Bob fixtures (no record keys) are checked in by hand:
 record-parse-old-bob.json, record-complete-old-bob.json,

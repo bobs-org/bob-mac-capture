@@ -728,6 +728,21 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let summary = capture.recordNote,
+               capture.kind == "record_note" || capture.kind == "record_update"
+            {
+                return singlePresentation(
+                    title: CaptureRecordPreviewPresentation.notificationTitle(
+                        for: summary
+                    ),
+                    subtitle: displayLabel(for: capture),
+                    body: CaptureRecordPreviewPresentation.notificationBody(
+                        for: summary
+                    ),
+                    capture: capture,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return singlePresentation(
                 title: "\(kind) captured",
@@ -1079,6 +1094,11 @@ final class NotificationService: NSObject, ObservableObject {
     // the raw post-image task line, which a `pomodoro_link` capture leaves empty
     // or Markdown-formatted. Every other kind keeps the semantic text.
     nonisolated private static func batchLineText(_ capture: CaptureCommandSuccess) -> String {
+        if let summary = capture.recordNote,
+           capture.kind == "record_note" || capture.kind == "record_update"
+        {
+            return CaptureRecordPreviewPresentation.recordBatchLine(for: summary)
+        }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.transitionText
         }
@@ -1136,6 +1156,10 @@ final class NotificationService: NSObject, ObservableObject {
             return "Pull from note"
         case "ref":
             return "Reference"
+        case "record-note", "record_note":
+            return "Record"
+        case "record-update", "record_update":
+            return "Record update"
         default:
             return kind
                 .split { $0 == "-" || $0 == "_" || $0 == " " }

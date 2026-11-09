@@ -3815,6 +3815,8 @@ struct PreviewPane: View {
                     CaptureMergeInRefusalCardView(presentation: refusal) { rewrite in
                         _ = model.applyDiagnosticRewrite(rewrite)
                     }
+                } else if let refusal = model.recordRefusalPresentation {
+                    RecordRefusalCardView(presentation: refusal)
                 } else if let emptyPull = model.emptyNotePullPresentation {
                     CaptureNotePullEmptyCard(presentation: emptyPull)
                 } else {
@@ -3974,6 +3976,13 @@ struct PreviewPane: View {
             flush()
             return runs
         }()
+        // New-record files pair to record items in order by Bob's
+        // path/action identity, each consumed once; mixed task/record
+        // drafts keep their item order and task previews.
+        let recordFilesByIndex = CaptureRecordPreviewPresentation.pairIndexed(
+            files: success.noteFiles,
+            items: captures
+        )
         let pastStartIndices = Set(pastRuns.compactMap(\.first?.index))
         let pastCoveredIndices = Set(pastRuns.flatMap { $0.map(\.index) })
         let pastGroupByStart: [Int: CapturePomodoroPastPresentation.Group] = {
@@ -4019,7 +4028,8 @@ struct PreviewPane: View {
                         taskBlocks: orderedTaskBlocks,
                         planBudget: success.planBudget,
                         pullIn: success.pullIn,
-                        moveChoice: success.moveChoice
+                        moveChoice: success.moveChoice,
+                        recordFile: recordFilesByIndex[index]
                     )
                 }
             }
@@ -4135,7 +4145,8 @@ struct PreviewPane: View {
         taskBlocks: [CaptureTaskBlock] = [],
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
-        moveChoice: CaptureMoveChoice? = nil
+        moveChoice: CaptureMoveChoice? = nil,
+        recordFile: CaptureNoteFile? = nil
     ) -> some View {
         let isLocalOverride =
             globalDestination.map {
@@ -4265,6 +4276,26 @@ struct PreviewPane: View {
                     total: total,
                     isLocalOverride: isLocalOverride
                 )
+            } else if success.kind == "record_note",
+                      let summary = success.recordNote,
+                      summary.action == "create"
+            {
+                // New records preview the note Bob will write. Update
+                // items and absent/unusable metadata keep the generic
+                // fallback for phase 12.
+                if let recordFile, recordFile.isUsable {
+                    RecordNotePreviewView(item: success, file: recordFile)
+                        .id("record-note-\(success.relativeTarget)-\(recordFile.action)")
+                } else {
+                    standardPreviewItem(
+                        success,
+                        index: index,
+                        total: total,
+                        isLocalOverride: isLocalOverride,
+                        blocks: blocks,
+                        taskBlocks: taskBlocks
+                    )
+                }
             } else {
                 standardPreviewItem(
                     success,

@@ -46,6 +46,70 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.contains("Already Next"), content.body)
     }
 
+    func testRecordNotificationUsesCommittedSummary() throws {
+        let success = try recordFixture("record-capture-restaurant-commit.json")
+        let summary = try XCTUnwrap(success.recordNote)
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertEqual(
+            content.title,
+            CaptureRecordPreviewPresentation.headline(for: summary))
+        XCTAssertEqual(
+            content.body,
+            CaptureRecordPreviewPresentation.detail(for: summary))
+        XCTAssertTrue(content.body.contains("2 notes"), content.body)
+    }
+
+    func testMixedRecordAndTaskNotificationListsEachRecordOnce() throws {
+        let success = try recordFixture("record-capture-mixed.json")
+        let items = success.normalizedCaptures
+        XCTAssertEqual(items.count, 2)
+        let content = NotificationService.successContent(captures: items)
+
+        XCTAssertEqual(content.title, "2 items captured")
+        let recordLines = content.body.components(separatedBy: "\n").filter {
+            $0.contains("eat/ramen_nagi.md")
+        }
+        XCTAssertEqual(recordLines.count, 1, content.body)
+        XCTAssertTrue(content.body.contains("Fix parser"), content.body)
+    }
+
+    func testRecordNotificationWithoutEmojiFallsBackToPlainHeadline() {
+        let summary = CaptureRecordNoteSummary(
+            action: "create",
+            label: "Restaurant",
+            path: "eat/ramen_nagi.md",
+            notes: 1,
+            properties: []
+        )
+        let capture = self.capture(
+            kind: "record_note",
+            routeLabel: "eat",
+            target: "/vault/eat/ramen_nagi.md",
+            text: "Ramen Nagi",
+            relativeTarget: "eat/ramen_nagi.md",
+            recordNote: summary
+        )
+        let content = NotificationService.successContent(captures: [capture])
+
+        XCTAssertEqual(content.title, "new restaurant  eat/ramen_nagi.md")
+        XCTAssertEqual(content.body, "1 note")
+    }
+
+    func testLegacyRecordWithoutSummaryKeepsGenericCopy() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "record_note",
+                routeLabel: "eat",
+                target: "/vault/eat/ramen_nagi.md",
+                text: "Ramen Nagi",
+                relativeTarget: "eat/ramen_nagi.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Record captured")
+    }
+
     func testTransferNotificationsUseMoveAndMergeCopy() throws {
         let move = try committedTransferFixture("capture-transfer-move.json")
         let moved = NotificationService.successContent(captures: [move])
@@ -2253,6 +2317,7 @@ final class NotificationServiceTests: XCTestCase {
         relativeTarget: String? = nil,
         dayFile: String? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
+        recordNote: CaptureRecordNoteSummary? = nil,
         taskTheme: CaptureTaskThemeChange? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
@@ -2275,8 +2340,23 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroAdjust: pomodoroAdjust,
             pomodoroShift: pomodoroShift,
             projectNote: projectNote,
+            recordNote: recordNote,
             taskTheme: taskTheme
         )
+    }
+
+    private func recordFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful record fixture")
+            throw NSError(domain: "NotificationServiceTests", code: 1)
+        }
+        return success
     }
 
     private func closeSuccessFixture(_ name: String) throws -> CaptureCommandSuccess {

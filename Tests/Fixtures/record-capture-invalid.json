@@ -1,0 +1,1 @@
+{"code":"record_invalid_value","draft":"Ramen Nagi @eat/\n- status:: nope\n- category:: Ramen\n- location:: Clark","error":"capture item 1 starting on line 1: the Restaurant note has invalid field values","invalid":[{"code":"record_invalid_value","field":"status","message":"expected one of to_try, liked"}],"missing":[],"ok":false}
