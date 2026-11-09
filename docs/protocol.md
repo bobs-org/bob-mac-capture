@@ -83,10 +83,9 @@ Capabilities are response-driven: unknown spans render neutral, unknown contexts
   version that shipped `obsidian://bob-goto-task`). Control-Return landing via
   `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,
   deployed to the vault with `bob plugins sync`.
-  Older Bob may reject or omit these; the compatibility table records each fallback.
   Missing `pomodoro_start`/`pomodoro_close` omits its card; missing summary arrays
   decode empty, booleans false, and unknown close roles neutral. A close without
-  selectors stays unnumbered. Upgrade Bob before using unsupported syntax. Whole-item
+  selectors stays unnumbered. Whole-item
   `x` (including the `x*` and `x!` selection forms) reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "x"}` parse spec (`raw` preserves the exact token, `x*` parks
   all numbered links and `x!` completes them); link items keep `pomodoro_link`/`pomodoro_task`
@@ -280,8 +279,8 @@ Template saves send `--template-origin` only after a successful template-list re
 
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
-- `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`; record drafts add `record`)
-- `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates and replacements; record rows add `record` and per-row `continuation`)
+- `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`; records add `record`)
+- `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates; records add `record` and `continuation`)
 - `capture-rewrite --cursor BYTE --format json` (marker and separator rewrites, relation-label attachment, sigil aliases including spaced `.` → `@`/`&` and `;` → `:`/`*`, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound on new builds and supplies the running count for older-bob fallback
@@ -417,7 +416,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination`, `continuation`, `action_continuation_aliases`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, sections, Bob consequence footer, Shift-Return chaining, Add ID, calm Escape status, new span colours | Older Bob omits the need, so behaviour is unchanged; without aliases, `.` filters | Upgrade `bob` for move bullets |
 | `moved_tasks[]` / `move_summary` / `move_hint` on `project_note`, `moved_from` on offers | Moves band with repair footer, ghost titles, move hint, `moved from` label, `Created` notification | Band, ghosts, hint, and labels stay hidden; legacy copy remains | Upgrade `bob` for move previews |
 | `record`, `--next-missing-field` / `--record-field` | Record drafts and `eat/` rows; old Bob omits or rejects | Stays a literal task | Upgrade `bob` |
-| `note_files[]`, per-item `record_note`, refusal `draft` / `missing[]` / `invalid[]` on `bob capture --format json` | Committed record summary lines derived from Bob's metadata, exact Markdown from the matching `note_files` entry, and inline refusals from the structured payload; malformed additive rows degrade to the generic preview | Generic preview and result copy; no per-record summary or inline refusal | Upgrade `bob` for record result details |
+| `note_files[]`, per-item `record_note`, refusal `draft` / `missing[]` / `invalid[]` | Record commit summary, exact `note_files` Markdown, and inline refusals; malformed rows degrade to generic preview | Generic preview and result copy | Upgrade `bob` for record result details |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
 that rejects the command is remembered for that executable identity, so the app keeps
