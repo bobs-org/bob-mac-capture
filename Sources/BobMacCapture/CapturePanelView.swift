@@ -4808,22 +4808,23 @@ struct PreviewPane: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
-                Text(close.timingText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(closeTimingChipColor(close.timingTone))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
                 if let sizeChipText = close.sizeChipText {
                     Text(sizeChipText)
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(sessionTint)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                         .accessibilityHidden(true)
+                } else {
+                    Text(close.timingText)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(closeTimingChipColor(close.timingTone))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
                 }
             }
 

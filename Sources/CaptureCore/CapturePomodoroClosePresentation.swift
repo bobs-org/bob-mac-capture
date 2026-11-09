@@ -263,11 +263,13 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                     "\(originalRange) → \(plannedRange) · \(summary.planned.durationMinutes)m"
                 sessionChangeText =
                     "→ \(plannedRange) · \(summary.planned.durationMinutes)m"
+                sessionPlannedText = originalRange
             } else {
                 sessionText = "\(plannedRange) · \(summary.planned.durationMinutes)m"
                 sessionChangeText = nil
+                sessionPlannedText =
+                    "\(originalRange) · \(summary.planned.durationMinutes)m"
             }
-            sessionPlannedText = originalRange
             if let clock = Self.clockText(summary.closedAt) {
                 sizeChipText = "\(size.raw)x · as of \(clock)"
             } else {
@@ -465,7 +467,26 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         notificationBody = bodyLines.joined(separator: "\n")
         batchSuffix = " (closed \(pomodoroName))"
 
-        var summaryParts = [title, sessionText, timingText, destinationText]
+        let sizedName = summary.pomodoroName ?? "session"
+        let sizedAccessibility: String? = {
+            guard let size = summary.size else { return nil }
+            let phrase: String
+            if size.deltaMinutes < 0 {
+                phrase = "\(abs(size.deltaMinutes)) minutes shorter than planned"
+            } else if size.deltaMinutes > 0 {
+                phrase = "\(size.deltaMinutes) minutes longer than planned"
+            } else {
+                phrase = "as planned"
+            }
+            return
+                "Close \(sizedName) at \(size.minutes) minutes, \(size.blocks) blocks, \(phrase)"
+        }()
+        var summaryParts: [String]
+        if let sizedAccessibility {
+            summaryParts = [title, sessionText, sizedAccessibility, destinationText]
+        } else {
+            summaryParts = [title, sessionText, timingText, destinationText]
+        }
         if let sizeChipText {
             summaryParts.append(sizeChipText)
         }

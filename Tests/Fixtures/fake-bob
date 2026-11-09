@@ -2041,6 +2041,20 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-chained.json"
     elif [[ "${draft}" == "Plan xs" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-prose.json"
+    elif [[ "${draft}" == "2xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-whole.json"
+    elif [[ "${draft}" == "12xs" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-numbered.json"
+    elif [[ "${draft}" == "--1 2xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-lead.json"
+    elif [[ "${draft}" == "^r:id=2xs" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-link.json"
+    elif [[ "${draft}" == "Plan 2xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-plan.json"
+    elif [[ "${draft}" == "x made 2xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-made.json"
+    elif [[ "${draft}" == "2Xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-caps.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
@@ -4620,6 +4634,13 @@ MOVE_PY
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-project.json"
     elif [[ "${draft}" == "x" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
+    elif [[ "${draft}" == "2x" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-sized-short.json"
+    elif [[ "${draft}" == "5x" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-sized-equal.json"
+    elif [[ "${draft}" == "7x" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-sized-refusal.json"
+      exit 1
     elif [[ "${draft}" == "${close_log_trimmed_draft}" ]]; then
       # A dangling Work Log bullet trims to a `-` placeholder row, which real
       # bob skips: the trimmed draft previews exactly the plain `x` close.

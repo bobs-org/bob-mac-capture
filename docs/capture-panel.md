@@ -88,9 +88,15 @@ Canceling or completing the prompt restores focus to the capture editor. The edi
   line it lands on in the close card; it is not a completion span kind.
   The editor also auto-inserts `,` between close task numbers: typing `1`–`9`
   right after a task number in a close list inserts the separator itself
-  (`x1` + `2` → `x1,2`, or `x==1` + `2` → `x==1,2`). `x` and link close
+  (`x1` + `2` → `x1,2`, or `x==1` + `2` → `x==1,2`, and `2x1` + `2` →
+  `2x1,2` for a sized close). Typing `2` right after the `x` in `12x` never
+  inserts a comma (`12x` stays one size, per Bob's `pomodoro_close` span);
+  selection digits after its `x` keep normal comma assistance. `x` and link close
   lists use the running Pomodoro's numbered Task Link count; `x=` lists use
-  the largest lineup among today's open entries. Backspace immediately after
+  the largest lineup among today's open entries. Sized closes render on the
+  [close card](capture-previews.md#close-card) with one session-tinted
+  `Nx · as of HH:MM` chip; see
+  [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size). Backspace immediately after
   an auto-inserted `,<digit>` removes both characters together (`x1,2` →
   `x1`); a manually typed or pasted comma stays native. The in-memory agenda store runs
   `bob capture-pomodoros --format json --tasks` on one shared lane: a

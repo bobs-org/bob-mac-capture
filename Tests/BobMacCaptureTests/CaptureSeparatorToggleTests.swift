@@ -2066,6 +2066,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             "xx", "xs", "x1x", "x1s", "x!s", "x*x", "x*1x", "x@1s", "x1~2s",
             "x=1=s", "x=1=x", "x==s", "x=fix=s", "x=1!=x", "x=1=1s", "+2 xs",
             "@r:id=xx", "^r:id=x1s", "Fix it @r:id=xs", "Plan\n\nxx", "Hi 🧪\n\nxx",
+            "2xx", "12xs", "--1 2xx", "^r:id=2xs", "Plan 2xx", "x made 2xx",
         ]
         for draft in fires {
             let before = String(draft.dropLast())
@@ -2106,6 +2107,10 @@ final class CaptureSeparatorToggleTests: XCTestCase {
             ("@r:id=x", "x", "@r:id=x!", "Typed ! for x", "argv=capture-rewrite --cursor 8 --format json -- @r:id=xx"),
             ("+2 x", "s", "+2 x*", "Typed * for s", "argv=capture-rewrite --cursor 5 --format json -- +2 xs"),
             ("x1", "s", "x1*", "Typed * for s", "argv=capture-rewrite --cursor 3 --format json -- x1s"),
+            ("2x", "x", "2x!", "Typed ! for x", "argv=capture-rewrite --cursor 3 --format json -- 2xx"),
+            ("12x", "s", "12x*", "Typed * for s", "argv=capture-rewrite --cursor 4 --format json -- 12xs"),
+            ("--1 2x", "x", "--1 2x!", "Typed ! for x", "argv=capture-rewrite --cursor 7 --format json -- --1 2xx"),
+            ("^r:id=2x", "s", "^r:id=2x*", "Typed * for s", "argv=capture-rewrite --cursor 9 --format json -- ^r:id=2xs"),
         ]
         for (before, typed, expected, summary, record) in cases {
             let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -2131,6 +2136,25 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(textView.string, "Plan xs")
         let logged = try String(contentsOf: recordURL)
         XCTAssertTrue(logged.contains("argv=capture-rewrite --cursor 7 --format json -- Plan xs"))
+    }
+
+    func testSizedCloseAliasLeavesProseLiteral() async throws {
+        for (before, typed, expected, record) in [
+            ("Plan 2x", "x", "Plan 2xx", "argv=capture-rewrite --cursor 8 --format json -- Plan 2xx"),
+            ("x made 2x", "x", "x made 2xx", "argv=capture-rewrite --cursor 10 --format json -- x made 2xx"),
+            ("2X", "x", "2Xx", "argv=capture-rewrite --cursor 3 --format json -- 2Xx"),
+        ] as [(String, String, String, String)] {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = try makeSupportedModel(recordURL: recordURL)
+            let textView = makeTextView(before)
+            wireNativeApply(model, textView: textView)
+            typeCloseAlias(typed, into: textView, model: model)
+            await waitUntil { !model.rewriteInFlightForTesting }
+            XCTAssertEqual(model.plainDraft, expected, "before=\(before)")
+            XCTAssertEqual(textView.string, expected, "before=\(before)")
+            let logged = try String(contentsOf: recordURL)
+            XCTAssertTrue(logged.contains(record), "missing \(record) in \(logged)")
+        }
     }
 
     func testCloseAliasDeclinesRepeatsModifiersUppercaseAndIME() async throws {

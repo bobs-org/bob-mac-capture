@@ -1,0 +1,1 @@
+{"close_size":{"blocks":2,"elapsed_minutes":3,"fits_blocks":1,"minutes":10,"raw":"2"},"code":"pomodoro_close_size_not_elapsed","error":"capture item 1 starting on line 1: `2x` asks for 10m, but BUILD has run 3m since 0900; nothing was written\n  `1x` closes at 0905 · `x` closes now","ok":false}

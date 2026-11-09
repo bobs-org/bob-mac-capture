@@ -263,6 +263,24 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
         expectNil(typed: "", text: "x1", spans: spans, count: 3)
     }
 
+    func testSizedCloseNeverSplitsSizeDigitsButKeepsSelectionAssist() {
+        // Typing `2` to make `12x` never inserts `1,2x`: the size digits live
+        // inside the `pomodoro_close` span, not a list span.
+        expectNil(
+            typed: "2",
+            text: "12x",
+            spans: [(0, 3, "pomodoro_close")],
+            count: 3
+        )
+        // Selection digits after the sized `x` keep normal comma assistance.
+        expectEdit(
+            typed: "2",
+            text: "2x1",
+            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            count: 3
+        )
+    }
+
     func testDeclinesFirstDigitOfGroup() {
         // The byte before the caret is a sigil or `x`, not a digit.
         expectNil(

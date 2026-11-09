@@ -192,7 +192,9 @@ A Pomodoro close instead shows its own card whenever
   `pomodoro_close` is present: a `stop.circle.fill` header with the `Close NAME`
   title and the monospaced session range (the shortened half tinted with the
   Pomodoro-session colour), the day-file destination plus a timing chip that is
-  orange when early, green when on time, and secondary when over, a `link` via
+  orange when early, green when on time, and secondary when over — or, when
+  Bob reports a sized close (`pomodoro_close.size`), one `Nx · as of HH:MM`
+  chip in the session-operator tint that replaces the timing chip — a `link` via
   row for link closes (`Linked bob.md · ^ready into CAPTURE`, `Moved from SASE`)
   or a `plus.circle` row for new-task closes, up to six task rows with per-role
   glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
@@ -215,7 +217,21 @@ A Pomodoro close instead shows its own card whenever
   wrote the tests logs work to 2`, tinted like the editor spans, with the `2`
   in the cyan log tint) and shows the outcome summary after (`In progress 1, 3
   · Complete 2 · Deferred 4`, or `In progress none` for `x0`); numbered rows
-  never hide under `+N more`. The accessibility label includes the typed
+  never hide under `+N more`. A sized close reads its session line from
+  Bob's `size.from.time_range` to the closed range with the recorded minutes
+  (`0900-0925 → 0900-0910 · 10m` for a shrink, `0900-0910 → 0900-0915 · 15m`
+  for a lengthen, `0900-0925 · 25m` with no arrow for an equal size), keeps the
+  duration visible at compact widths, and announces
+  `Close BUILD at 10 minutes, 2 blocks, 15 minutes shorter than planned`
+  (`longer than planned` / `as planned` for the other cases) from Bob's
+  `minutes`, `blocks`, and `delta_minutes` — never recomputed from clocks, and
+  the chip reads Bob's `closed_at` (so a rounded-up `2x` at 09:08 reads
+  `as of 09:08`). Time before `x` is the size in five-minute blocks; task
+  numbers after `x` are the selection (`2xx` becomes `2x!`, `12xs` becomes
+  `12x*`, `--1 2xx` and `^r:id=2xs` chain the same way, while `Plan 2xx`,
+  `x made 2xx`, and `2Xx` stay literal prose). See
+  [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size).
+  The accessibility label includes the typed
   entries with their details after each entry. The footer's primary action becomes **Close**,
   the live-preview, preview, and submit status read `Would close …` / `Closed …`
   with started, completed (only when nonzero), and Work Log counts, and a failed
