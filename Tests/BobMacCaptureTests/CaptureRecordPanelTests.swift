@@ -162,8 +162,10 @@ final class CaptureRecordPanelTests: XCTestCase {
         await waitUntil { model.recordAssistAvailable }
         model.recordReturn()
         await waitUntil { self.recordLog(logURL).contains("--record-field status") }
+        await waitUntil {
+            model.recordPresentation?.footerHint.contains("Needs Status") == true
+        }
 
-        XCTAssertEqual(model.statusText, "Needs Status")
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }
 
@@ -329,7 +331,7 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertFalse(model.plainDraft.contains("@eat/burger_joint"))
     }
 
-    func testSevenValueSuggestionsKeepTheSelectedRowVisibleAndAccepted() async {
+    func testSevenValueSuggestionsKeepTheSelectedRowVisibleAndAccepted() async throws {
         let logURL = recordURL()
         let draft = "Ramen Nagi @eat/\n- status:: liked\n- category:: "
         let model = makeAssistModel(draft: draft, recordPath: logURL)
@@ -339,16 +341,19 @@ final class CaptureRecordPanelTests: XCTestCase {
                 && (model.completionResponse?.candidates.count ?? 0) >= 7
         }
         XCTAssertEqual(model.completionResponse?.record?.field, "category")
-        for _ in 0..<6 {
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        let lastIndex = candidates.count - 1
+        let overflow = candidates[lastIndex]
+        for _ in 0..<lastIndex {
             model.selectNextCompletion()
         }
-        XCTAssertEqual(model.selectedCompletionIndex, 6)
-        XCTAssertEqual(model.selectedCompletion?.recordValue, "Tacos")
-        XCTAssertEqual(model.selectedCompletion?.display, "Tacos")
+        XCTAssertEqual(model.selectedCompletionIndex, lastIndex)
+        XCTAssertEqual(model.selectedCompletion?.recordValue, overflow.recordValue)
+        XCTAssertEqual(model.selectedCompletion?.display, overflow.display)
         XCTAssertTrue(model.acceptSelectedCompletion())
         XCTAssertEqual(
             model.plainDraft,
-            "Ramen Nagi @eat/\n- status:: liked\n- category:: Tacos"
+            "Ramen Nagi @eat/\n- status:: liked\n- category:: \(overflow.replacement)"
         )
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }

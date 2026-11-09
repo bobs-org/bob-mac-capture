@@ -6011,7 +6011,7 @@ final class CapturePanelModel: ObservableObject {
         selectedStashIndex = min(max(selectedStashIndex, 0), entries.count - 1)
     }
 
-    func dismissCompletion() {
+    func dismissCompletion(cancelPendingRecordReturn: Bool = true) {
         // Esc on the File-under list keeps the default inbox parent: remember
         // the URL so the list does not reopen until the URL changes. Accept
         // paths clear the record after splicing (see
@@ -6023,11 +6023,13 @@ final class CapturePanelModel: ObservableObject {
         completionDraftSnapshot = nil
         selectedCompletionIndex = nil
         fileUnderActive = false
-        recordRequestSequence &+= 1
         recordAnalysisRequest = nil
         recordCompletionSnapshot = nil
-        recordReturnTask?.cancel()
-        recordReturnTask = nil
+        if cancelPendingRecordReturn {
+            recordRequestSequence &+= 1
+            recordReturnTask?.cancel()
+            recordReturnTask = nil
+        }
     }
 
     // MARK: - Capture picker
@@ -6984,11 +6986,13 @@ final class CapturePanelModel: ObservableObject {
     /// nothing offered) still retires the `^` affordances per trigger.
     private func handleMissingCompletion(trigger: CompletionTrigger) {
         if picker != nil {
-            dismissCompletion()
+            dismissCompletion(cancelPendingRecordReturn: false)
             return
         }
         clearPickerInterruption(trigger: trigger)
-        dismissCompletion()
+        // This is the analysis Return is waiting on. Clearing the empty
+        // completion list must not cancel that submit.
+        dismissCompletion(cancelPendingRecordReturn: false)
     }
 
     /// An `.edit` analysis without an `active_task` result leaves the token:
@@ -10723,14 +10727,23 @@ final class CapturePanelModel: ObservableObject {
             _ = acceptSelectedCompletion()
             return
         }
-        guard let processClient, let analysisTask, hasDraft else {
+        guard let processClient, hasDraft else {
             return
         }
-        recordReturnTask?.cancel()
         let draft = plainDraft
         let generation = analysisGeneration
         let sequence = recordRequestSequence
         let clientIdentity = processClient.identityToken
+        guard let analysisTask else {
+            finishRecordReturn(
+                draft: draft,
+                generation: generation,
+                clientIdentity: clientIdentity,
+                openAfterCapture: openAfterCapture
+            )
+            return
+        }
+        recordReturnTask?.cancel()
         recordReturnTask = Task { [weak self, processClient, analysisTask] in
             await analysisTask.value
             guard !Task.isCancelled, let self,

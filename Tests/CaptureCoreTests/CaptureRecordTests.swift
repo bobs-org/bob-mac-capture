@@ -904,6 +904,8 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(response.context, "record_value")
         XCTAssertGreaterThanOrEqual(response.candidates.count, 7)
         XCTAssertEqual(response.record?.field, "category")
+        XCTAssertEqual(response.candidates[6].recordValue, "Cafe")
+        XCTAssertEqual(response.candidates[6].display, "Cafe")
     }
 
     func testRecordAssistMapsCreateRouteWithoutNextMissingToTarget() async throws {
