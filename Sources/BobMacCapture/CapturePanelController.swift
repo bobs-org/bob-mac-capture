@@ -1166,9 +1166,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Lexical send filter for close-outcome `x`/`s`: a strict superset of
-    /// Bob's slots. It decides only when not to ask Bob; Bob still decides
-    /// every alias.
+    /// Lexical send filter for close-outcome `x`/`s`, including sized prefixes:
+    /// a strict superset of Bob's slots. Bob still decides every alias.
     static func closeAliasPrefilterAllows(text: String, caretUTF8: Int) -> Bool {
         guard caretUTF8 > 0, caretUTF8 <= text.utf8.count else {
             return false
@@ -1198,6 +1197,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return lineBeforeCaret.contains(" x")
             || lineBeforeCaret.contains("\tx")
             || lineBeforeCaret.contains("=x")
+            || lineBeforeCaret.range(
+                of: "(^|[ \\t=])[0-9]{1,2}x",
+                options: .regularExpression
+            ) != nil
     }
 
     /// Records a one-shot rewrite-lane separator gesture or sigil alias

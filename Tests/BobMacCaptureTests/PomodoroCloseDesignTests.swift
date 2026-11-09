@@ -13,10 +13,10 @@ import XCTest
 /// and badge alignment. Follows `TaskCompleteDesignTests`.
 ///
 /// Fixtures (`Tests/Fixtures/pomodoro-close-successors.json`,
-/// `pomodoro-close-carried.json`) are real `bob capture --dry-run -f json`
-/// responses from bob-cli master with the successor-link capture phases,
-/// against sandbox vaults (see `Tests/Fixtures/fake-bob` routes `x!1` and
-/// `x!2` for the true drafts).
+/// `pomodoro-close-carried.json`, and the sized-close fixtures) are real
+/// `bob capture --dry-run -f json` responses from bob-cli against sandbox
+/// vaults (see `Tests/Fixtures/fake-bob` routes `x!1` and `x!2` for the true
+/// drafts).
 final class PomodoroCloseDesignTests: XCTestCase {
     @MainActor
     func testRenderCloseSuccessorStatesToPNG() throws {
@@ -31,6 +31,8 @@ final class PomodoroCloseDesignTests: XCTestCase {
         let fixtures = [
             "pomodoro-close-successors.json",
             "pomodoro-close-carried.json",
+            "pomodoro-close-sized-short.json",
+            "pomodoro-close-sized-long.json",
         ]
         for fixture in fixtures {
             let success = try closeFixture(fixture)

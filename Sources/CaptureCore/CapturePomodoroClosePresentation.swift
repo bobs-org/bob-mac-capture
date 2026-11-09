@@ -168,14 +168,15 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// Link and new-task closes keep the same title; their "via" data lives
     /// in `viaText` and the tagged row instead.
     public let title: String
-    /// `"0920-0950 → 0920-0940 · 20m"`, or `"0920-0950 · 30m"` when the close
-    /// did not decrement the session.
+    /// `"0920-0950 → 0920-0940 · 20m"` for an adjusted or sized range, or
+    /// `"0920-0950 · 30m"` when the recorded range is unchanged.
     public let sessionText: String
-    /// The planned range alone (`"0920-0950"`); the card tints the decrement
-    /// half separately.
+    /// The original range alone; the card tints the changed range separately.
     public let sessionPlannedText: String
-    /// `"→ 0920-0940 · 20m"` when decremented, else nil.
-    public let sessionDecrementText: String?
+    /// `"→ 0920-0940 · 20m"` when the range changes, else nil.
+    public let sessionChangeText: String?
+    /// `"2x · as of 09:10"` for a sized close; nil for older or unsized Bob.
+    public let sizeChipText: String?
     /// `"13m early"`, `"on time"`, or `"7m over"`, from `remaining_minutes`.
     public let timingText: String
     public let timingTone: TimingTone
@@ -255,15 +256,35 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let plannedRange = summary.planned.timeRange
         let closedRange = summary.closed.timeRange
         let decremented = summary.decrementedMinutes > 0
-        if decremented {
+        if let size = summary.size {
+            let originalRange = size.from.timeRange
+            if originalRange != plannedRange {
+                sessionText =
+                    "\(originalRange) → \(plannedRange) · \(summary.planned.durationMinutes)m"
+                sessionChangeText =
+                    "→ \(plannedRange) · \(summary.planned.durationMinutes)m"
+            } else {
+                sessionText = "\(plannedRange) · \(summary.planned.durationMinutes)m"
+                sessionChangeText = nil
+            }
+            sessionPlannedText = originalRange
+            if let clock = Self.clockText(summary.closedAt) {
+                sizeChipText = "\(size.raw)x · as of \(clock)"
+            } else {
+                sizeChipText = "\(size.raw)x"
+            }
+        } else if decremented {
             sessionText =
                 "\(plannedRange) → \(closedRange) · \(summary.closed.durationMinutes)m"
-            sessionDecrementText = "→ \(closedRange) · \(summary.closed.durationMinutes)m"
+            sessionChangeText = "→ \(closedRange) · \(summary.closed.durationMinutes)m"
+            sessionPlannedText = plannedRange
+            sizeChipText = nil
         } else {
             sessionText = "\(plannedRange) · \(summary.planned.durationMinutes)m"
-            sessionDecrementText = nil
+            sessionChangeText = nil
+            sessionPlannedText = plannedRange
+            sizeChipText = nil
         }
-        sessionPlannedText = plannedRange
 
         let remaining = summary.remainingMinutes
         if remaining > 0 {
@@ -445,6 +466,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         batchSuffix = " (closed \(pomodoroName))"
 
         var summaryParts = [title, sessionText, timingText, destinationText]
+        if let sizeChipText {
+            summaryParts.append(sizeChipText)
+        }
         if let closedNameText {
             summaryParts.append(closedNameText)
         }
@@ -898,5 +922,15 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let stem = rawStem.hasSuffix(".md") ? String(rawStem.dropLast(3)) : rawStem
         let upper = stem.uppercased()
         return upper.isEmpty ? "previous session" : upper
+    }
+
+    private static func clockText(_ value: String) -> String? {
+        guard value.utf8.count == 4,
+              value.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 })
+        else {
+            return nil
+        }
+        let split = value.index(value.startIndex, offsetBy: 2)
+        return "\(value[..<split]):\(value[split...])"
     }
 }

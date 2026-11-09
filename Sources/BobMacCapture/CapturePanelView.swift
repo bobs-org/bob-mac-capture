@@ -4793,8 +4793,8 @@ struct PreviewPane: View {
                     Text(close.sessionPlannedText)
                         .font(.system(.callout, design: .monospaced))
                         .fontWeight(.semibold)
-                    if let decrement = close.sessionDecrementText {
-                        Text(" \(decrement)")
+                    if let change = close.sessionChangeText {
+                        Text(" \(change)")
                             .font(.system(.callout, design: .monospaced))
                             .fontWeight(.semibold)
                             .foregroundStyle(sessionTint)
@@ -4815,6 +4815,16 @@ struct PreviewPane: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
+                if let sizeChipText = close.sizeChipText {
+                    Text(sizeChipText)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                        .accessibilityHidden(true)
+                }
             }
 
             if let closedNameText = close.closedNameText {

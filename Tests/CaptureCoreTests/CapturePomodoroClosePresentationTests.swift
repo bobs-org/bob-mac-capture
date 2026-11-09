@@ -25,7 +25,8 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Close CAPTURE")
         XCTAssertEqual(presentation.sessionText, "0920-0950 → 0920-0940 · 20m")
         XCTAssertEqual(presentation.sessionPlannedText, "0920-0950")
-        XCTAssertEqual(presentation.sessionDecrementText, "→ 0920-0940 · 20m")
+        XCTAssertEqual(presentation.sessionChangeText, "→ 0920-0940 · 20m")
+        XCTAssertNil(presentation.sizeChipText)
         XCTAssertEqual(presentation.timingText, "13m early")
         XCTAssertEqual(presentation.timingTone, .early)
         XCTAssertEqual(presentation.destinationText, "2026/20260928.md · line 5")
@@ -80,6 +81,29 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
         XCTAssertEqual(presentation.batchSuffix, " (closed CAPTURE)")
         XCTAssertTrue(presentation.accessibilitySummary.contains("Close CAPTURE"))
+    }
+
+    func testRealBobSizedCloseShowsShorterAndLongerRanges() throws {
+        let shorter = try XCTUnwrap(
+            CapturePomodoroClosePresentation(
+                capture: decodeFixture("pomodoro-close-sized-short.json")
+            )
+        )
+        XCTAssertEqual(shorter.sessionText, "0900-0925 → 0900-0910 · 10m")
+        XCTAssertEqual(shorter.sessionPlannedText, "0900-0925")
+        XCTAssertEqual(shorter.sessionChangeText, "→ 0900-0910 · 10m")
+        XCTAssertEqual(shorter.sizeChipText, "2x · as of 09:10")
+        XCTAssertTrue(shorter.accessibilitySummary.contains("2x · as of 09:10"))
+
+        let longer = try XCTUnwrap(
+            CapturePomodoroClosePresentation(
+                capture: decodeFixture("pomodoro-close-sized-long.json")
+            )
+        )
+        XCTAssertEqual(longer.sessionText, "0900-0910 → 0900-0915 · 15m")
+        XCTAssertEqual(longer.sessionPlannedText, "0900-0910")
+        XCTAssertEqual(longer.sessionChangeText, "→ 0900-0915 · 15m")
+        XCTAssertEqual(longer.sizeChipText, "3x · as of 09:15")
     }
 
     func testRealBobLinkCloseKeepsTitleAndTagsLinkedRow() throws {
@@ -173,7 +197,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         // The `-2` adjust already shortened the session, so the close itself
         // shows a single range with no decrement half.
         XCTAssertEqual(decremented.sessionText, "0920-0940 · 20m")
-        XCTAssertNil(decremented.sessionDecrementText)
+        XCTAssertNil(decremented.sessionChangeText)
 
         let onTime = try presentationReplacingRemainingMinutes(in: "pomodoro-close-worked.json", with: 0)
         XCTAssertEqual(onTime.timingText, "on time")

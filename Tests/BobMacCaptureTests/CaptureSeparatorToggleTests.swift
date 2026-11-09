@@ -2076,6 +2076,18 @@ final class CaptureSeparatorToggleTests: XCTestCase {
                 "prefilter should allow \(draft.debugDescription)"
             )
         }
+        for prefix in ["2x", "02x", "@r:id=2x", "+2 2x"] {
+            XCTAssertTrue(
+                CapturePanelController.closeAliasPrefilterAllows(
+                    text: prefix, caretUTF8: prefix.utf8.count
+                ),
+                "sized close prefix should reach Bob: \(prefix)"
+            )
+        }
+        XCTAssertFalse(
+            CapturePanelController.closeAliasPrefilterAllows(text: "100x", caretUTF8: 4),
+            "three-digit prose remains outside the sized-close prefilter"
+        )
         // Clear non-slots are blocked without spawning Bob.
         XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "ta", caretUTF8: 2))
         XCTAssertFalse(CapturePanelController.closeAliasPrefilterAllows(text: "X", caretUTF8: 1))

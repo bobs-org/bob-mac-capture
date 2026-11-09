@@ -2713,6 +2713,54 @@ public struct PomodoroCloseTiming: Codable, Equatable, Sendable {
     }
 }
 
+/// The original timed range that Bob sized before closing a Pomodoro.
+public struct PomodoroCloseSizeFrom: Codable, Equatable, Sendable {
+    public let timeRange: String
+    public let durationMinutes: Int
+
+    public init(timeRange: String, durationMinutes: Int) {
+        self.timeRange = timeRange
+        self.durationMinutes = durationMinutes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timeRange = "time_range"
+        case durationMinutes = "duration_minutes"
+    }
+}
+
+/// Bob's additive sized-close report. The app presents these values as
+/// reported and never recomputes the range or the adjustment.
+public struct PomodoroCloseSize: Codable, Equatable, Sendable {
+    public let raw: String
+    public let blocks: Int
+    public let minutes: Int
+    public let from: PomodoroCloseSizeFrom
+    public let deltaMinutes: Int
+
+    public init(
+        raw: String,
+        blocks: Int,
+        minutes: Int,
+        from: PomodoroCloseSizeFrom,
+        deltaMinutes: Int
+    ) {
+        self.raw = raw
+        self.blocks = blocks
+        self.minutes = minutes
+        self.from = from
+        self.deltaMinutes = deltaMinutes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case blocks
+        case minutes
+        case from
+        case deltaMinutes = "delta_minutes"
+    }
+}
+
 /// One numbered Task Link in Bob's `pomodoro_close.task_links` lineup: the
 /// 1-based `index` shown as the row badge, the pre-image `ledgerLine`, the
 /// link's pre-selection `marker` (`plain`, `deferred`, `embedded`), the
@@ -3192,6 +3240,8 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let entryLine: String
     public let planned: PomodoroCloseTiming
     public let closed: PomodoroCloseTiming
+    /// Present for the additive `[N]x` close contract; older Bob omits it.
+    public let size: PomodoroCloseSize?
     public let closedAt: String
     public let remainingMinutes: Int
     public let decrementedMinutes: Int
@@ -3234,6 +3284,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
             durationMinutes: 0,
             timeRange: ""
         ),
+        size: PomodoroCloseSize? = nil,
         closedAt: String = "",
         remainingMinutes: Int = 0,
         decrementedMinutes: Int = 0,
@@ -3265,6 +3316,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.entryLine = entryLine
         self.planned = planned
         self.closed = closed
+        self.size = size
         self.closedAt = closedAt
         self.remainingMinutes = remainingMinutes
         self.decrementedMinutes = decrementedMinutes
@@ -3307,6 +3359,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
                 PomodoroCloseTiming.self,
                 forKey: .closed
             ) ?? PomodoroCloseTiming(start: "", end: "", durationMinutes: 0, timeRange: "")
+        size = try? container.decodeIfPresent(PomodoroCloseSize.self, forKey: .size)
         closedAt = try container.decodeIfPresent(String.self, forKey: .closedAt) ?? ""
         remainingMinutes =
             try container.decodeIfPresent(
@@ -3387,6 +3440,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case entryLine = "entry_line"
         case planned
         case closed
+        case size
         case closedAt = "closed_at"
         case remainingMinutes = "remaining_minutes"
         case decrementedMinutes = "decremented_minutes"
