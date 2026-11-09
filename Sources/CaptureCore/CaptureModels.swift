@@ -3533,6 +3533,61 @@ public struct PomodoroResetSummary: Codable, Equatable, Sendable {
     }
 }
 
+/// Bob's proof that an unshifted alias key would have typed the sigil ending
+/// at the cursor. Present only when a cursor was given and nothing changed;
+/// an explicit null marks a tip-capable bob with no tip for this sigil.
+public struct CaptureSigilAliasTip: Codable, Equatable, Sendable {
+    public let id: String
+    public let sigil: String
+    public let keys: [String]
+    public let range: CaptureRange
+    public let positionPhrase: String?
+
+    public init(
+        id: String,
+        sigil: String,
+        keys: [String],
+        range: CaptureRange,
+        positionPhrase: String? = nil
+    ) {
+        self.id = id
+        self.sigil = sigil
+        self.keys = keys
+        self.range = range
+        self.positionPhrase = positionPhrase
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        sigil = try container.decode(String.self, forKey: .sigil)
+        keys = try container.decodeIfPresent([String].self, forKey: .keys) ?? []
+        range = try container.decode(CaptureRange.self, forKey: .range)
+        positionPhrase = try container.decodeIfPresent(String.self, forKey: .positionPhrase)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case sigil
+        case keys
+        case range
+        case positionPhrase = "where"
+    }
+}
+
+/// The alias stamp on a surviving forward `expand_sigil_alias` rewrite.
+public struct CaptureRewriteAlias: Codable, Equatable, Sendable {
+    public let id: String
+    public let key: String
+    public let sigil: String
+
+    public init(id: String, key: String, sigil: String) {
+        self.id = id
+        self.key = key
+        self.sigil = sigil
+    }
+}
+
 public struct CaptureRewriteResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -3544,6 +3599,9 @@ public struct CaptureRewriteResponse: Codable, Equatable {
     public let edits: [CaptureRewriteEdit]
     public let summary: String?
     public let notices: [String]
+    public let sigilAliasTip: CaptureSigilAliasTip?
+    public let reportsSigilAliasTips: Bool
+    public let alias: CaptureRewriteAlias?
 
     public init(
         ok: Bool,
@@ -3555,7 +3613,10 @@ public struct CaptureRewriteResponse: Codable, Equatable {
         rule: String? = nil,
         edits: [CaptureRewriteEdit] = [],
         summary: String? = nil,
-        notices: [String] = []
+        notices: [String] = [],
+        sigilAliasTip: CaptureSigilAliasTip? = nil,
+        reportsSigilAliasTips: Bool? = nil,
+        alias: CaptureRewriteAlias? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -3567,6 +3628,9 @@ public struct CaptureRewriteResponse: Codable, Equatable {
         self.edits = edits
         self.summary = summary
         self.notices = notices
+        self.sigilAliasTip = sigilAliasTip
+        self.reportsSigilAliasTips = reportsSigilAliasTips ?? (sigilAliasTip != nil)
+        self.alias = alias
     }
 
     /// Combines Bob's sorted edits into one replacement suitable for a native
@@ -3653,6 +3717,27 @@ public struct CaptureRewriteResponse: Codable, Equatable {
         edits = try container.decodeIfPresent([CaptureRewriteEdit].self, forKey: .edits) ?? []
         summary = try container.decodeIfPresent(String.self, forKey: .summary)
         notices = try container.decodeIfPresent([String].self, forKey: .notices) ?? []
+        reportsSigilAliasTips = container.contains(.sigilAliasTip)
+        sigilAliasTip = try container.decodeIfPresent(CaptureSigilAliasTip.self, forKey: .sigilAliasTip)
+        alias = try container.decodeIfPresent(CaptureRewriteAlias.self, forKey: .alias)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ok, forKey: .ok)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(input, forKey: .input)
+        try container.encode(text, forKey: .text)
+        try container.encode(changed, forKey: .changed)
+        try container.encodeIfPresent(cursor, forKey: .cursor)
+        try container.encodeIfPresent(rule, forKey: .rule)
+        try container.encode(edits, forKey: .edits)
+        try container.encodeIfPresent(summary, forKey: .summary)
+        try container.encode(notices, forKey: .notices)
+        try container.encodeIfPresent(alias, forKey: .alias)
+        if reportsSigilAliasTips {
+            try container.encode(sigilAliasTip, forKey: .sigilAliasTip)
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3666,6 +3751,8 @@ public struct CaptureRewriteResponse: Codable, Equatable {
         case edits
         case summary
         case notices
+        case sigilAliasTip = "sigil_alias_tip"
+        case alias
     }
 }
 
