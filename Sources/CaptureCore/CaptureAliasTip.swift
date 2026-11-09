@@ -296,6 +296,21 @@ public struct AliasTipWeekEntry: Codable, Equatable, Sendable {
     }
 }
 
+/// In-memory identity for one alias adoption. The token is never serialized;
+/// it lets Undo withdraw this exact hit once, even when another gesture used
+/// the same lesson in the same week.
+public struct AliasTipHitCredit: Equatable, Sendable {
+    fileprivate let token: UUID
+    fileprivate let lessonID: String
+    fileprivate let weekKey: String
+
+    fileprivate init(token: UUID = UUID(), lessonID: String, weekKey: String) {
+        self.token = token
+        self.lessonID = lessonID
+        self.weekKey = weekKey
+    }
+}
+
 /// The persisted typing-tips ledger. It never stores draft text, target
 /// names, or keystroke history.
 public struct AliasTipLedger: Codable, Equatable, Sendable {
@@ -305,6 +320,7 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
     public var lessons: [String: AliasTipLessonState]
     public var ineligible: [String: Int]
     public var weeks: [String: [String: AliasTipWeekEntry]]
+    private var liveHitCredits: Set<UUID> = []
 
     public init(
         version: Int = currentVersion,
@@ -369,21 +385,47 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
         storeWeekEntry(entry, id: id, date: date)
     }
 
-    public mutating func recordHit(id: String, date: Date) {
+    @discardableResult
+    public mutating func recordHit(id: String, date: Date) -> AliasTipHitCredit {
+        let weekKey = Self.weekKey(for: date)
+        let credit = AliasTipHitCredit(lessonID: id, weekKey: weekKey)
+        liveHitCredits.insert(credit.token)
         var lesson = lessons[id] ?? AliasTipLessonState()
         lesson.recordHit()
         lessons[id] = lesson
-        var entry = weeks[Self.weekKey(for: date)]?[id] ?? AliasTipWeekEntry()
+        var entry = weeks[weekKey]?[id] ?? AliasTipWeekEntry()
         entry.hits += 1
         storeWeekEntry(entry, id: id, date: date)
+        return credit
     }
 
-    public mutating func withdrawHit(id: String) {
-        guard var lesson = lessons[id] else {
+    public mutating func withdrawHit(_ credit: AliasTipHitCredit) {
+        guard liveHitCredits.remove(credit.token) != nil else {
             return
         }
-        lesson.withdrawHit()
-        lessons[id] = lesson
+        withdrawHit(id: credit.lessonID, weekKey: credit.weekKey)
+    }
+
+    fileprivate mutating func withdrawHit(id: String, weekKey: String) {
+        if var lesson = lessons[id] {
+            lesson.withdrawHit()
+            lessons[id] = lesson
+        }
+
+        guard var bucket = weeks[weekKey], var entry = bucket[id], entry.hits > 0 else {
+            return
+        }
+        entry.hits -= 1
+        if entry.hits == 0 && entry.misses == 0 && entry.shown == 0 {
+            bucket.removeValue(forKey: id)
+        } else {
+            bucket[id] = entry
+        }
+        if bucket.isEmpty {
+            weeks.removeValue(forKey: weekKey)
+        } else {
+            weeks[weekKey] = bucket
+        }
     }
 
     public mutating func recordIneligible(sigil: String) {
@@ -415,6 +457,7 @@ public struct AliasTipLedgerStore: @unchecked Sendable {
 
     private let defaults: UserDefaults
     private let now: @Sendable () -> Date
+    private let hitCredits = AliasTipLedgerHitCreditRegistry()
 
     public init(
         defaults: UserDefaults = .standard,
@@ -455,6 +498,7 @@ public struct AliasTipLedgerStore: @unchecked Sendable {
 
     public func reset() {
         defaults.removeObject(forKey: Self.defaultsKey)
+        hitCredits.reset()
     }
 
     public func recordMiss(id: String, shown: Bool) {
@@ -463,15 +507,22 @@ public struct AliasTipLedgerStore: @unchecked Sendable {
         save(ledger)
     }
 
-    public func recordHit(id: String) {
+    @discardableResult
+    public func recordHit(id: String) -> AliasTipHitCredit {
+        let date = now()
         var ledger = load()
-        ledger.recordHit(id: id, date: now())
+        let credit = ledger.recordHit(id: id, date: date)
         save(ledger)
+        hitCredits.register(credit)
+        return credit
     }
 
-    public func withdrawHit(id: String) {
+    public func withdrawHit(_ credit: AliasTipHitCredit) {
+        guard hitCredits.consume(credit) else {
+            return
+        }
         var ledger = load()
-        ledger.withdrawHit(id: id)
+        ledger.withdrawHit(id: credit.lessonID, weekKey: credit.weekKey)
         save(ledger)
     }
 
@@ -487,6 +538,41 @@ public struct AliasTipLedgerStore: @unchecked Sendable {
 
     public func isFluent(id: String) -> Bool {
         load().isFluent(id: id)
+    }
+}
+
+/// Process-local hit identities are bounded and never enter the ledger JSON.
+private final class AliasTipLedgerHitCreditRegistry: @unchecked Sendable {
+    private static let capacity = 256
+
+    private let lock = NSLock()
+    private var order: [UUID] = []
+    private var active: Set<UUID> = []
+
+    func register(_ credit: AliasTipHitCredit) {
+        lock.lock()
+        defer { lock.unlock() }
+        order.append(credit.token)
+        active.insert(credit.token)
+        if order.count > Self.capacity {
+            let expiredCount = order.count - Self.capacity
+            let expired = Array(order.prefix(expiredCount))
+            order.removeFirst(expiredCount)
+            active.subtract(expired)
+        }
+    }
+
+    func consume(_ credit: AliasTipHitCredit) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active.remove(credit.token) != nil
+    }
+
+    func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        order.removeAll()
+        active.removeAll()
     }
 }
 

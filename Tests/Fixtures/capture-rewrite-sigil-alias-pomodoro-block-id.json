@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":"@file;","text":"@file:","changed":true,"cursor":6,"rule":"expand_sigil_alias","edits":[{"range":{"start":5,"end":6},"replacement":":"}],"summary":"Typed : for ;"}
+{"ok":true,"schema_version":1,"input":"@file;","text":"@file:","changed":true,"cursor":6,"rule":"expand_sigil_alias","edits":[{"range":{"start":5,"end":6},"replacement":":"}],"summary":"Typed : for ;","alias":{"id":"link_after_route","key":";","sigil":":"}}

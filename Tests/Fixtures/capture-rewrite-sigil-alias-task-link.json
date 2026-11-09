@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":";","text":":","changed":true,"cursor":1,"rule":"expand_sigil_alias","edits":[{"range":{"start":0,"end":1},"replacement":":"}],"summary":"Typed : for ;"}
+{"ok":true,"schema_version":1,"input":";","text":":","changed":true,"cursor":1,"rule":"expand_sigil_alias","edits":[{"range":{"start":0,"end":1},"replacement":":"}],"summary":"Typed : for ;","alias":{"id":"task_link_item","key":";","sigil":":"}}

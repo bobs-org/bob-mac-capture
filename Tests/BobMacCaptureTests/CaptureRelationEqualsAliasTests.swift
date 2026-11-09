@@ -6,6 +6,16 @@ import XCTest
 
 @MainActor
 final class CaptureRelationEqualsAliasTests: XCTestCase {
+    private var ledgerSuites: [String] = []
+
+    override func tearDown() {
+        for suite in ledgerSuites {
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        ledgerSuites.removeAll()
+        super.tearDown()
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         characters: String,
@@ -73,6 +83,9 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
         let model = CapturePanelModel(debounceNanoseconds: 0)
+        let suite = "org.bobs.bob-mac-capture.tests.relation-tip.\(UUID().uuidString)"
+        ledgerSuites.append(suite)
+        model.aliasTipLedgerStore = AliasTipLedgerStore(defaults: UserDefaults(suiteName: suite)!)
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         let textView = NSTextView()
@@ -186,6 +199,12 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
 
     private func makeRecordURL() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    }
+
+    private func weeklyHitCount(_ model: CapturePanelModel, id: String) -> Int {
+        model.aliasTipLedgerStore.load().weeks.values
+            .compactMap { $0[id]?.hits }
+            .reduce(0, +)
     }
 
     private func openAlias() async throws -> (
@@ -701,9 +720,11 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         )
         defer { panel.orderOut(nil) }
         XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
+        XCTAssertEqual(weeklyHitCount(model, id: CaptureAliasLesson.relation), 1)
 
         XCTAssertNil(controller.routeKeyDown(equalsEvent(timestamp: 1.350)))
         XCTAssertEqual(textView.string, "Fix it =")
+        XCTAssertEqual(weeklyHitCount(model, id: CaptureAliasLesson.relation), 0)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertNil(model.picker)
         XCTAssertNil(model.equalsGestureArm)

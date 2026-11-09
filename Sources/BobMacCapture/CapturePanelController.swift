@@ -1338,6 +1338,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // Redo replays exactly this replacement.
         textView.breakUndoCoalescing()
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.breakUndoCoalescing()
         textView.setSelectedRange(edit.resultingSelection)
         textView.scrollRangeToVisible(edit.resultingSelection)
         return textView.string == edit.resultingDraft

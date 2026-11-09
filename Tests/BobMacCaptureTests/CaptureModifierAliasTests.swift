@@ -8,6 +8,16 @@ import XCTest
 /// and `;` → `*` sigil aliases.
 @MainActor
 final class CaptureModifierAliasTests: XCTestCase {
+    private var ledgerSuites: [String] = []
+
+    override func tearDown() {
+        for suite in ledgerSuites {
+            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        }
+        ledgerSuites.removeAll()
+        super.tearDown()
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         characters: String,
@@ -75,6 +85,9 @@ final class CaptureModifierAliasTests: XCTestCase {
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
         let model = CapturePanelModel(debounceNanoseconds: 0)
+        let suite = "org.bobs.bob-mac-capture.tests.modifier-tips.\(UUID().uuidString)"
+        ledgerSuites.append(suite)
+        model.aliasTipLedgerStore = AliasTipLedgerStore(defaults: UserDefaults(suiteName: suite)!)
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         let textView = NSTextView()
@@ -167,14 +180,22 @@ final class CaptureModifierAliasTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     }
 
+    private func weeklyHitCount(_ model: CapturePanelModel, id: String) -> Int {
+        model.aliasTipLedgerStore.load().weeks.values
+            .compactMap { $0[id]?.hits }
+            .reduce(0, +)
+    }
+
     private func openAlias(
         draft: String,
         key: String,
         rewrittenDraft: String,
         pickerSource: CapturePickerSource,
+        typingTipsEnabled: Bool = true,
         timestamp: TimeInterval = 1
     ) async throws -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
         let (model, controller, textView, panel) = makeHostedEditor(text: draft)
+        model.typingTipsEnabled = typingTipsEnabled
         model.processClient = try processClient(recordURL: makeRecordURL())
         let event = key == "." ? dotEvent(timestamp: timestamp) : semicolonEvent(timestamp: timestamp)
         XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
@@ -200,6 +221,30 @@ final class CaptureModifierAliasTests: XCTestCase {
         semicolon.3.orderOut(nil)
         XCTAssertEqual(semicolon.0.equalsGestureArm?.sigil, "*")
         XCTAssertEqual(semicolon.0.equalsGestureArm?.key, ";")
+    }
+
+    func testPickerAliasAdoptionsCountWithTipsOnAndOff() async throws {
+        for tipsEnabled in [true, false] {
+            let dependency = try await openAlias(
+                draft: "@home ",
+                key: ".",
+                rewrittenDraft: "@home &",
+                pickerSource: .dependency,
+                typingTipsEnabled: tipsEnabled
+            )
+            XCTAssertEqual(weeklyHitCount(dependency.0, id: CaptureAliasLesson.dependency), 1)
+            dependency.3.orderOut(nil)
+
+            let blockedTask = try await openAlias(
+                draft: "Buy milk ",
+                key: ";",
+                rewrittenDraft: "Buy milk *",
+                pickerSource: .blockedTask,
+                typingTipsEnabled: tipsEnabled
+            )
+            XCTAssertEqual(weeklyHitCount(blockedTask.0, id: CaptureAliasLesson.blockedTask), 1)
+            blockedTask.3.orderOut(nil)
+        }
     }
 
     func testDependencyPickerStillOpensWhenSelectionAnalysisWinsTheRace() async throws {
@@ -244,8 +289,13 @@ final class CaptureModifierAliasTests: XCTestCase {
             )
             panels.append(panel)
             let second = item.key == "." ? dotEvent(timestamp: 1.2) : semicolonEvent(timestamp: 1.2)
+            let lesson = item.key == "."
+                ? CaptureAliasLesson.dependency
+                : CaptureAliasLesson.blockedTask
+            XCTAssertEqual(weeklyHitCount(model, id: lesson), 1)
             XCTAssertNil(controller.routeKeyDown(second))
             XCTAssertEqual(textView.string, item.literal)
+            XCTAssertEqual(weeklyHitCount(model, id: lesson), 0)
             XCTAssertNil(model.picker)
             XCTAssertFalse(model.pickerVisible)
             XCTAssertNil(model.equalsGestureArm)
@@ -276,6 +326,7 @@ final class CaptureModifierAliasTests: XCTestCase {
         XCTAssertNil(space.1.routeKeyDown(spaceEvent()))
         XCTAssertEqual(space.2.string, "@home . ")
         XCTAssertNil(space.0.picker)
+        XCTAssertEqual(weeklyHitCount(space.0, id: CaptureAliasLesson.dependency), 0)
         space.3.orderOut(nil)
 
         let escape = try await openAlias(
@@ -284,6 +335,7 @@ final class CaptureModifierAliasTests: XCTestCase {
         XCTAssertNil(escape.1.routeKeyDown(escapeEvent()))
         XCTAssertEqual(escape.2.string, "Buy milk ;")
         XCTAssertNil(escape.0.picker)
+        XCTAssertEqual(weeklyHitCount(escape.0, id: CaptureAliasLesson.blockedTask), 0)
         escape.3.orderOut(nil)
 
         let filtered = try await openAlias(
@@ -294,6 +346,7 @@ final class CaptureModifierAliasTests: XCTestCase {
         XCTAssertFalse(filtered.0.restoreRelationEqualsOpener(key: " "))
         XCTAssertNotNil(filtered.1.routeKeyDown(spaceEvent()))
         XCTAssertEqual(filtered.2.string, "Buy milk *")
+        XCTAssertEqual(weeklyHitCount(filtered.0, id: CaptureAliasLesson.blockedTask), 1)
         XCTAssertNil(filtered.0.equalsGestureArm)
         filtered.3.orderOut(nil)
     }
@@ -357,6 +410,16 @@ final class CaptureModifierAliasTests: XCTestCase {
                 XCTAssertNil(controller.routeKeyDown(restoreEvent))
                 let restored = item.draft + item.key + (restoreWithSpace ? " " : "")
                 XCTAssertEqual(textView.string, restored)
+                let lesson: String
+                switch item.key {
+                case ".":
+                    lesson = CaptureAliasLesson.dependency
+                case ";":
+                    lesson = CaptureAliasLesson.blockedTask
+                default:
+                    lesson = CaptureAliasLesson.relation
+                }
+                XCTAssertEqual(weeklyHitCount(model, id: lesson), 0)
                 XCTAssertNil(model.picker)
                 XCTAssertNil(model.equalsGestureArm)
 

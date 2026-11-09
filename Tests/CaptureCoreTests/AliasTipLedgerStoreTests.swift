@@ -88,9 +88,32 @@ final class AliasTipLedgerStoreTests: XCTestCase {
 
     func testStoreWithdrawsHits() {
         let store = store()
-        store.recordHit(id: "route_after_text")
-        store.withdrawHit(id: "route_after_text")
+        let credit = store.recordHit(id: "route_after_text")
+        store.withdrawHit(credit)
         XCTAssertEqual(store.load().lessons["route_after_text"]?.recent, [])
+        XCTAssertEqual(
+            store.load().weeks.values.first?["route_after_text"]?.hits ?? 0,
+            0
+        )
+    }
+
+    func testStoreWithdrawalIsIdempotentForOneCredit() {
+        let store = store()
+        let first = store.recordHit(id: "route_after_text")
+        let second = store.recordHit(id: "route_after_text")
+
+        store.withdrawHit(first)
+        store.withdrawHit(first)
+
+        XCTAssertEqual(
+            store.load().weeks.values.first?["route_after_text"]?.hits,
+            1
+        )
+        store.withdrawHit(second)
+        XCTAssertEqual(
+            store.load().weeks.values.first?["route_after_text"]?.hits ?? 0,
+            0
+        )
     }
 
     func testWeekRolloverKeepsTwelveNewestWeeks() {

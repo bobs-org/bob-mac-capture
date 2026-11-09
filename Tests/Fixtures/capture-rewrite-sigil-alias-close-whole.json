@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":"xx","text":"x!","changed":true,"cursor":2,"rule":"expand_sigil_alias","edits":[{"range":{"start":1,"end":2},"replacement":"!"}],"summary":"Typed ! for x"}
+{"ok":true,"schema_version":1,"input":"xx","text":"x!","changed":true,"cursor":2,"rule":"expand_sigil_alias","edits":[{"range":{"start":1,"end":2},"replacement":"!"}],"summary":"Typed ! for x","alias":{"id":"close_complete","key":"x","sigil":"!"}}

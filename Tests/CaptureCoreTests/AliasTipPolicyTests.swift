@@ -113,26 +113,78 @@ final class AliasTipPolicyTests: XCTestCase {
 
     func testHitWithdrawalRemovesNewestHit() {
         var ledger = AliasTipLedger.empty
-        ledger.recordHit(id: id, date: date)
-        ledger.recordHit(id: id, date: date)
+        _ = ledger.recordHit(id: id, date: date)
+        let last = ledger.recordHit(id: id, date: date)
         ledger.recordMiss(id: id, shown: false, date: date)
-        ledger.withdrawHit(id: id)
+        ledger.withdrawHit(last)
         XCTAssertEqual(ledger.lessons[id]?.recent, [.hit, .miss])
+        XCTAssertEqual(ledger.weeks[AliasTipLedger.weekKey(for: date)]?[id]?.hits, 1)
     }
 
     func testHitWithdrawalCanDropBelowFluency() {
         var ledger = AliasTipLedger.empty
+        var credits: [AliasTipHitCredit] = []
         for _ in 0..<6 {
-            ledger.recordHit(id: id, date: date)
+            credits.append(ledger.recordHit(id: id, date: date))
         }
         ledger.recordMiss(id: id, shown: false, date: date)
         ledger.recordMiss(id: id, shown: false, date: date)
         XCTAssertTrue(ledger.isFluent(id: id))
-        for _ in 0..<5 {
-            ledger.withdrawHit(id: id)
+        for credit in credits.prefix(5) {
+            ledger.withdrawHit(credit)
         }
         XCTAssertEqual(ledger.lessons[id]?.recent, [.hit, .miss, .miss])
         XCTAssertFalse(ledger.isFluent(id: id))
+    }
+
+    func testHitWithdrawalUsesTheCreditedISOWeek() {
+        let monday = ISO8601DateFormatter().date(from: "2026-11-09T12:00:00Z")!
+        let followingWeek = monday.addingTimeInterval(7 * 24 * 60 * 60)
+        var ledger = AliasTipLedger.empty
+        let oldWeekCredit = ledger.recordHit(id: id, date: monday)
+        _ = ledger.recordHit(id: id, date: followingWeek)
+
+        ledger.withdrawHit(oldWeekCredit)
+
+        XCTAssertNil(ledger.weeks[AliasTipLedger.weekKey(for: monday)])
+        XCTAssertEqual(ledger.weeks[AliasTipLedger.weekKey(for: followingWeek)]?[id]?.hits, 1)
+    }
+
+    func testRepeatedHitWithdrawalDoesNotSubtractAnotherCredit() {
+        var ledger = AliasTipLedger.empty
+        let withdrawn = ledger.recordHit(id: id, date: date)
+        let surviving = ledger.recordHit(id: id, date: date)
+        let week = AliasTipLedger.weekKey(for: date)
+
+        ledger.withdrawHit(withdrawn)
+        ledger.withdrawHit(withdrawn)
+
+        XCTAssertEqual(ledger.weeks[week]?[id]?.hits, 1)
+        XCTAssertEqual(ledger.lessons[id]?.recent, [.hit])
+        ledger.withdrawHit(surviving)
+        XCTAssertEqual(ledger.weeks[week]?[id]?.hits ?? 0, 0)
+    }
+
+    func testWithdrawalDoesNotRecreatePrunedWeekHistory() {
+        var ledger = AliasTipLedger.empty
+        let oldDate = ISO8601DateFormatter().date(from: "2026-01-05T12:00:00Z")!
+        let oldCredit = ledger.recordHit(id: id, date: oldDate)
+        for week in 1...AliasTipPolicy.maxWeeks {
+            ledger.recordHit(
+                id: id,
+                date: oldDate.addingTimeInterval(Double(week * 7 * 24 * 60 * 60))
+            )
+        }
+        let oldWeek = AliasTipLedger.weekKey(for: oldDate)
+        let latestWeek = AliasTipLedger.weekKey(
+            for: oldDate.addingTimeInterval(Double(AliasTipPolicy.maxWeeks * 7 * 24 * 60 * 60))
+        )
+        XCTAssertNil(ledger.weeks[oldWeek])
+
+        ledger.withdrawHit(oldCredit)
+
+        XCTAssertNil(ledger.weeks[oldWeek])
+        XCTAssertEqual(ledger.weeks[latestWeek]?[id]?.hits, 1)
     }
 
     func testSessionAllowsOneTipPerSession() {

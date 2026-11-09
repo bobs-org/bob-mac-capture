@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":"New task ~~=","text":"New task ~","changed":true,"cursor":10,"rule":"expand_sigil_alias","edits":[{"range":{"start":10,"end":12},"replacement":""}],"summary":"Typed ~ for ~~="}
+{"ok":true,"schema_version":1,"input":"New task ~~=","text":"New task ~","changed":true,"cursor":10,"rule":"expand_sigil_alias","edits":[{"range":{"start":10,"end":12},"replacement":""}],"summary":"Typed ~ for ~~=","alias":{"id":"relation_flip","key":"=","sigil":"~"}}

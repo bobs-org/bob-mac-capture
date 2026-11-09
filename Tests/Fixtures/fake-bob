@@ -1959,6 +1959,8 @@ JSON
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "@cash:task^" && "${FAKE_BOB_SEPARATOR_TOGGLE_REPLY:-}" == "1" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-separator-toggle-tip-race.json"
     elif [[ "${draft}" == "New task ~=" && "${FAKE_BOB_REWRITE_RELATION_FLIP_UNCHANGED:-}" == "1" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"

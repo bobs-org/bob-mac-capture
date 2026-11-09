@@ -1,1 +1,1 @@
-{"ok":true,"schema_version":1,"input":"12xs","text":"12x*","changed":true,"cursor":4,"rule":"expand_sigil_alias","edits":[{"range":{"start":3,"end":4},"replacement":"*"}],"summary":"Typed * for s"}
+{"ok":true,"schema_version":1,"input":"12xs","text":"12x*","changed":true,"cursor":4,"rule":"expand_sigil_alias","edits":[{"range":{"start":3,"end":4},"replacement":"*"}],"summary":"Typed * for s","alias":{"id":"close_park","key":"s","sigil":"*"}}

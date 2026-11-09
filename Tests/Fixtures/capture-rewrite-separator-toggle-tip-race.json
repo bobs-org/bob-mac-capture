@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@cash:task^","text":"@cash^task","changed":true,"cursor":10,"rule":"switch_block_id_separator","edits":[{"range":{"start":5,"end":6},"replacement":"^"},{"range":{"start":10,"end":11},"replacement":""}],"summary":"Switched block-ID separator"}
