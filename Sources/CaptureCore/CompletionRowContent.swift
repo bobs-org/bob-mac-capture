@@ -1158,7 +1158,14 @@ public func completionRowContent(
         symbolName = "doc"
         contextLabel = "Existing record"
         primaryText = candidate.title ?? candidate.label ?? candidate.replacement
-        secondaryText = candidate.status
+        var recordParts: [String] = []
+        if let status = candidate.status, !status.isEmpty {
+            recordParts.append(status)
+        }
+        for field in candidate.recordFields.prefix(2) where !field.value.isEmpty {
+            recordParts.append(field.value)
+        }
+        secondaryText = recordParts.isEmpty ? nil : recordParts.joined(separator: " · ")
         if let route = candidate.route, !route.isEmpty, route != primaryText {
             badges = [route]
         }

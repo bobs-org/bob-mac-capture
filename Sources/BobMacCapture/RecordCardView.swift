@@ -483,6 +483,28 @@ private struct RecordCardRowView: View {
             } else {
                 inlineValues(candidates)
             }
+        } else if row.isChanged {
+            HStack(spacing: 6) {
+                Text(row.beforeDisplay ?? "")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .strikethrough()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityHidden(true)
+                Text("→")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(row.display ?? "")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(stateColor)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.accessibilityLabel)
         } else if row.kind == "choices", !row.choices.isEmpty {
             schemaChoiceCapsules
         } else if let display = row.display, !display.isEmpty {

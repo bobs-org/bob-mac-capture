@@ -133,10 +133,12 @@ extension CaptureRelatedBand: Decodable {
 }
 
 /// Bob-verified draft edits. Unknown actions are retained for forward-safe
-/// decoding and omitted by the current UI.
+/// decoding and omitted by the current UI. `addTo` is the record-only
+/// "Add to it" rewrite Bob authors for `scope: "record"` rows.
 public enum CaptureRelatedAction: Equatable, Sendable {
     case relate
     case note
+    case addTo
     case needs
     case blocks
     case open
@@ -147,6 +149,7 @@ public enum CaptureRelatedAction: Equatable, Sendable {
         switch value {
         case "relate": self = .relate
         case "note": self = .note
+        case "add_to": self = .addTo
         case "needs": self = .needs
         case "blocks": self = .blocks
         case "open": self = .open
@@ -159,6 +162,7 @@ public enum CaptureRelatedAction: Equatable, Sendable {
         switch self {
         case .relate: "relate"
         case .note: "note"
+        case .addTo: "add_to"
         case .needs: "needs"
         case .blocks: "blocks"
         case .open: "open"
@@ -294,6 +298,59 @@ public struct CaptureRelatedReplacements: Decodable, Equatable, Sendable {
     }
 }
 
+/// One suggest-field display on a `scope: "record"` row, in schema order.
+public struct CaptureRecordRelatedField: Decodable, Equatable, Sendable {
+    public let key: String
+    public let label: String
+    public let value: String
+
+    public init(key: String = "", label: String = "", value: String = "") {
+        self.key = key
+        self.label = label
+        self.value = value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? key
+        value = (try? container.decodeIfPresent(String.self, forKey: .value)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case label
+        case value
+    }
+}
+
+/// Bob-authored create-to-update rewrite for a record row's `add_to`
+/// action. Byte offsets refer to the submitted draft.
+public struct CaptureRecordAddTo: Decodable, Equatable, Sendable {
+    public let start: Int
+    public let end: Int
+    public let replacement: String
+
+    public init(start: Int = 0, end: Int = 0, replacement: String = "") {
+        self.start = start
+        self.end = end
+        self.replacement = replacement
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        start = (try? container.decodeIfPresent(Int.self, forKey: .start)) ?? 0
+        end = (try? container.decodeIfPresent(Int.self, forKey: .end)) ?? 0
+        replacement = (try? container.decodeIfPresent(String.self, forKey: .replacement)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case replacement
+    }
+}
+
 public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
     public let key: String
     public let band: CaptureRelatedBand
@@ -316,6 +373,12 @@ public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
     public let replacements: CaptureRelatedReplacements?
     public let actions: [CaptureRelatedAction]
     public let defaultAction: CaptureRelatedAction?
+    public let scope: String?
+    public let recordType: String?
+    public let stem: String?
+    public let recordStatus: String?
+    public let recordFields: [CaptureRecordRelatedField]
+    public let addTo: CaptureRecordAddTo?
 
     public init(
         key: String = "",
@@ -338,7 +401,13 @@ public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
         blockIDSuggestions: [String] = [],
         replacements: CaptureRelatedReplacements? = nil,
         actions: [CaptureRelatedAction] = [],
-        defaultAction: CaptureRelatedAction? = nil
+        defaultAction: CaptureRelatedAction? = nil,
+        scope: String? = nil,
+        recordType: String? = nil,
+        stem: String? = nil,
+        recordStatus: String? = nil,
+        recordFields: [CaptureRecordRelatedField] = [],
+        addTo: CaptureRecordAddTo? = nil
     ) {
         self.key = key
         self.band = band
@@ -361,6 +430,12 @@ public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
         self.replacements = replacements
         self.actions = actions
         self.defaultAction = defaultAction
+        self.scope = scope
+        self.recordType = recordType
+        self.stem = stem
+        self.recordStatus = recordStatus
+        self.recordFields = recordFields
+        self.addTo = addTo
     }
 
     public init(from decoder: Decoder) throws {
@@ -394,6 +469,39 @@ public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
         actions = (try? container.decodeIfPresent([CaptureRelatedAction].self, forKey: .actions)) ?? []
         defaultAction =
             (try? container.decodeIfPresent(CaptureRelatedAction.self, forKey: .defaultAction)) ?? nil
+        scope = (try? container.decodeIfPresent(String.self, forKey: .scope)) ?? nil
+        recordType = (try? container.decodeIfPresent(String.self, forKey: .recordType)) ?? nil
+        stem = (try? container.decodeIfPresent(String.self, forKey: .stem)) ?? nil
+        recordStatus = (try? container.decodeIfPresent(String.self, forKey: .recordStatus)) ?? nil
+        recordFields =
+            (try? container.decodeIfPresent(
+                [CaptureRecordRelatedField].self,
+                forKey: .recordFields
+            )) ?? []
+        addTo =
+            (try? container.decodeIfPresent(CaptureRecordAddTo.self, forKey: .addTo)) ?? nil
+    }
+
+    /// True for same-folder near-title record rows Bob reports with
+    /// `scope: "record"`. Task rows omit the scope.
+    public var isRecord: Bool {
+        scope == "record"
+    }
+
+    /// Human detail for a record row: status plus up to two suggest-field
+    /// values, mirroring Bob's `capture-related` human output.
+    public var recordDetail: String? {
+        guard isRecord else {
+            return nil
+        }
+        var parts: [String] = []
+        if let status = recordStatus, !status.isEmpty {
+            parts.append(status)
+        }
+        for field in recordFields.prefix(2) where !field.value.isEmpty {
+            parts.append(field.value)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -418,5 +526,11 @@ public struct CaptureRelatedMatch: Decodable, Equatable, Sendable {
         case replacements
         case actions
         case defaultAction = "default_action"
+        case scope
+        case recordType = "record_type"
+        case stem
+        case recordStatus = "status"
+        case recordFields = "fields"
+        case addTo = "add_to"
     }
 }

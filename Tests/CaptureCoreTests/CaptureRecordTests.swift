@@ -696,7 +696,7 @@ final class CaptureRecordTests: XCTestCase {
         let update = CaptureRecordPresentation(record: untitled)
         XCTAssertEqual(update.headerTitle, "Restaurant")
         XCTAssertNil(update.headerPath)
-        XCTAssertEqual(update.notesLabel, "1 note")
+        XCTAssertEqual(update.notesLabel, "+1 note")
         XCTAssertEqual(update.moreLabel, "More")
         XCTAssertEqual(update.footerHint, "⇥ next field · ⏎ accept · Esc back to draft")
     }

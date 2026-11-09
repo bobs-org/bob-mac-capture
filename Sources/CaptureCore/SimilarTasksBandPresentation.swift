@@ -108,7 +108,31 @@ public enum SimilarTasksBandPresentation {
         return "⌘\(first)–\(last)"
     }
 
+    /// True when every visible row in the item is a record row. The band
+    /// keeps its order and settle timing; only the copy changes.
+    public static func isRecordItem(_ item: SimilarTasksBandItem) -> Bool {
+        !item.rows.isEmpty && item.rows.allSatisfy { $0.match.isRecord }
+    }
+
+    public static func headerText(for item: SimilarTasksBandItem) -> String {
+        isRecordItem(item) ? "SIMILAR RECORDS" : "SIMILAR TASKS"
+    }
+
     public static func locatorText(for row: SimilarTasksBandRow) -> String {
+        if row.match.isRecord {
+            var parts: [String] = []
+            let place = row.match.locator.isEmpty ? row.match.route : row.match.locator
+            if !place.isEmpty {
+                parts.append(place)
+            }
+            if let detail = row.match.recordDetail, !detail.isEmpty {
+                parts.append(detail)
+            }
+            if parts.isEmpty {
+                return row.match.title
+            }
+            return parts.joined(separator: " · ")
+        }
         let place = row.match.locator.isEmpty ? row.match.route : row.match.locator
         if row.match.closed != nil {
             return place
@@ -128,6 +152,8 @@ public enum SimilarTasksBandPresentation {
             return "folder"
         case "reading":
             return "book"
+        case "record":
+            return "doc.text"
         default:
             return nil
         }
@@ -139,6 +165,8 @@ public enum SimilarTasksBandPresentation {
             return "Project task"
         case "reading":
             return "Reading task"
+        case "record":
+            return "Record"
         default:
             return nil
         }
@@ -157,7 +185,11 @@ public enum SimilarTasksBandPresentation {
         if !route.isEmpty {
             parts.append(route)
         }
-        if let closed = row.match.closed {
+        if row.match.isRecord {
+            if let detail = row.match.recordDetail {
+                parts.append(detail)
+            }
+        } else if let closed = row.match.closed {
             parts.append(closedStatusName(closed))
         } else if !row.match.statusName.isEmpty {
             parts.append(row.match.statusName)
@@ -170,7 +202,13 @@ public enum SimilarTasksBandPresentation {
 
     public static func foldedLine(item: SimilarTasksBandItem) -> String {
         let count = item.rows.count + item.overflowCount
-        let noun = count == 1 ? "similar task" : "similar tasks"
+        let record = isRecordItem(item)
+        let noun: String
+        if record {
+            noun = count == 1 ? "similar record" : "similar records"
+        } else {
+            noun = count == 1 ? "similar task" : "similar tasks"
+        }
         let hint = commandHint(rows: item.rows)
         guard let row = item.rows.first else {
             return "⧉ \(count) \(noun)"
@@ -184,7 +222,13 @@ public enum SimilarTasksBandPresentation {
 
     public static func foldedAccessibilityLabel(item: SimilarTasksBandItem) -> String {
         let count = item.rows.count + item.overflowCount
-        let noun = count == 1 ? "similar task" : "similar tasks"
+        let record = isRecordItem(item)
+        let noun: String
+        if record {
+            noun = count == 1 ? "similar record" : "similar records"
+        } else {
+            noun = count == 1 ? "similar task" : "similar tasks"
+        }
         guard let row = item.rows.first else {
             return "\(count) \(noun)"
         }
@@ -209,10 +253,11 @@ public enum SimilarTasksBandPresentation {
     public static func settledAnnouncement(items: [SimilarTasksBandItem]) -> String? {
         let rows = items.flatMap(\.rows)
         guard !rows.isEmpty else { return nil }
+        let record = rows.allSatisfy { $0.match.isRecord }
         if rows.count == 1, let row = rows.first {
-            return "Similar task: \(row.match.title)"
+            return record ? "Similar record: \(row.match.title)" : "Similar task: \(row.match.title)"
         }
-        return "\(rows.count) similar tasks"
+        return record ? "\(rows.count) similar records" : "\(rows.count) similar tasks"
     }
 
     /// Footer hint while a row is focused. Names the default action so the

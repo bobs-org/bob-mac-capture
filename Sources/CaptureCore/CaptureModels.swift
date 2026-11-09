@@ -10588,6 +10588,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let recordRequired: Bool
     public let recordList: Bool
     public let recordDefaulted: Bool
+    /// Additive `record_target` suggest-field displays Bob reports per
+    /// existing record. Older Bob and every other context omit it.
+    public let recordFields: [CaptureRecordTargetField]
     /// Additive follow-up request Bob authors on an accepted record row.
     /// Distinct from the generic picker `continuation` string.
     public let recordContinuation: CaptureRecordContinuation?
@@ -10712,6 +10715,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         recordRequired: Bool = false,
         recordList: Bool = false,
         recordDefaulted: Bool = false,
+        recordFields: [CaptureRecordTargetField] = [],
         recordContinuation: CaptureRecordContinuation? = nil
     ) {
         self.replacement = replacement
@@ -10809,6 +10813,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.recordRequired = recordRequired
         self.recordList = recordList
         self.recordDefaulted = recordDefaulted
+        self.recordFields = recordFields
         self.recordContinuation = recordContinuation
     }
 
@@ -10915,6 +10920,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         recordList = (try? container.decodeIfPresent(Bool.self, forKey: .recordList)) ?? false
         recordDefaulted =
             (try? container.decodeIfPresent(Bool.self, forKey: .recordDefaulted)) ?? false
+        recordFields =
+            (try? container.decodeIfPresent(
+                [CaptureRecordTargetField].self,
+                forKey: .recordFields
+            )) ?? []
         recordContinuation =
             (try? container.decodeIfPresent(
                 CaptureRecordContinuation.self,
@@ -11018,7 +11028,35 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case recordRequired = "required"
         case recordList = "list"
         case recordDefaulted = "defaulted"
+        case recordFields = "fields"
         case recordContinuation = "continuation"
+    }
+}
+
+/// One suggest-field display on a `record_target` completion row.
+/// Bob reports key, label, and the display value.
+public struct CaptureRecordTargetField: Codable, Equatable, Sendable {
+    public let key: String
+    public let label: String
+    public let value: String
+
+    public init(key: String = "", label: String = "", value: String = "") {
+        self.key = key
+        self.label = label
+        self.value = value
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? key
+        value = (try? container.decodeIfPresent(String.self, forKey: .value)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case label
+        case value
     }
 }
 

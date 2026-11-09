@@ -5,9 +5,10 @@ import Foundation
 /// submitted draft so the model, the bridge, and the tests share one splice.
 public enum SimilarTasksBandEdits {
     /// Fixed strip order. Bob lists only the valid subset; the UI paints them
-    /// in this order and ignores anything else.
+    /// in this order and ignores anything else. Record rows carry only
+    /// `add_to`, `open`, and `discard`; the task `note` keeps its own `+`.
     public static let orderedActions: [CaptureRelatedAction] = [
-        .relate, .note, .needs, .blocks, .open, .discard,
+        .relate, .note, .addTo, .needs, .blocks, .open, .discard,
     ]
 
     /// Bob's valid actions in strip order.
@@ -21,6 +22,7 @@ public enum SimilarTasksBandEdits {
         switch action {
         case .relate: return "~"
         case .note: return "+"
+        case .addTo: return "+"
         case .needs: return "&"
         case .blocks: return "*"
         case .open: return "/"
@@ -33,6 +35,7 @@ public enum SimilarTasksBandEdits {
         switch action {
         case .relate: return "Relate"
         case .note: return "Add as note"
+        case .addTo: return "Add to it"
         case .needs: return "Needs it"
         case .blocks: return "Blocks it"
         case .open: return "Open"
@@ -44,6 +47,7 @@ public enum SimilarTasksBandEdits {
     /// Applies one strip action to `draft`. Returns the edited draft and the
     /// UTF-8 cursor offset after the edit, or nil when the anchors are stale.
     /// `open` never edits and returns nil; the caller dispatches the URL.
+    /// `add_to` splices Bob's explicit byte range with the update spelling.
     public static func editedDraft(
         _ draft: String,
         item: CaptureRelatedItem,
@@ -54,6 +58,13 @@ public enum SimilarTasksBandEdits {
         if action == .discard {
             guard let range = item.discardRange else { return nil }
             return deleted(draft, range: range)
+        }
+        if action == .addTo {
+            guard let addTo = match.addTo, !addTo.replacement.isEmpty else {
+                return nil
+            }
+            let range = CaptureRange(start: addTo.start, end: addTo.end)
+            return replaced(draft, range: range, with: addTo.replacement)
         }
         guard let replacement = replacementString(match: match, action: action) else { return nil }
         return editedDraftWithReplacement(draft, item: item, replacement: replacement, action: action)
@@ -74,6 +85,11 @@ public enum SimilarTasksBandEdits {
             return itemReplacement(match, keyPath: \.blockedTask)
         case .note:
             return itemReplacement(match, keyPath: \.parent)
+        case .addTo:
+            guard let addTo = match.addTo, !addTo.replacement.isEmpty else {
+                return nil
+            }
+            return addTo.replacement
         case .discard, .open, .unknown:
             return nil
         }
@@ -93,6 +109,12 @@ public enum SimilarTasksBandEdits {
         case .discard:
             guard let range = item.discardRange else { return nil }
             return deleted(draft, range: range)
+        case .addTo:
+            // Add-to-it carries its own explicit range; the caller passes
+            // Bob's replacement through `editedDraft` instead.
+            guard !replacement.isEmpty else { return nil }
+            guard let at = item.markerAt else { return nil }
+            return inserted(draft, text: " " + replacement, at: at)
         case .relate, .needs, .blocks, .note:
             guard !replacement.isEmpty else { return nil }
             if action == .note, let range = item.routeRange {
@@ -115,6 +137,8 @@ public enum SimilarTasksBandEdits {
             return title.isEmpty ? "Related" : "Related to \(title)"
         case .note:
             return title.isEmpty ? "Added as a note" : "Added as a note under \(title)"
+        case .addTo:
+            return title.isEmpty ? "Added to record" : "Added to \(title)"
         case .needs:
             return title.isEmpty ? "Added dependency" : "Depends on \(title)"
         case .blocks:

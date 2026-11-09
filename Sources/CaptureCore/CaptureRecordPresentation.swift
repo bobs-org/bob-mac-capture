@@ -109,6 +109,8 @@ extension CaptureRecordValue: Codable {
 }
 
 /// One declared record field from `capture-parse`.
+/// Update items carry Bob's snapshot `before`/`before_display` alongside
+/// the planned `value`/`display`; create items omit them.
 public struct CaptureRecordField: Codable, Equatable, Sendable {
     public let key: String
     public let label: String
@@ -118,6 +120,8 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
     public let state: String
     public let value: CaptureRecordValue?
     public let display: String?
+    public let before: CaptureRecordValue?
+    public let beforeDisplay: String?
     public let source: String?
     public let range: CaptureRange?
     public let valueRanges: [CaptureRange]
@@ -132,6 +136,8 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
         state: String = "",
         value: CaptureRecordValue? = nil,
         display: String? = nil,
+        before: CaptureRecordValue? = nil,
+        beforeDisplay: String? = nil,
         source: String? = nil,
         range: CaptureRange? = nil,
         valueRanges: [CaptureRange] = [],
@@ -145,6 +151,8 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
         self.state = state
         self.value = value
         self.display = display
+        self.before = before
+        self.beforeDisplay = beforeDisplay
         self.source = source
         self.range = range
         self.valueRanges = valueRanges
@@ -161,6 +169,10 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
         state = (try? container.decodeIfPresent(String.self, forKey: .state)) ?? ""
         value = (try? container.decodeIfPresent(CaptureRecordValue.self, forKey: .value)) ?? nil
         display = (try? container.decodeIfPresent(String.self, forKey: .display)) ?? nil
+        before =
+            (try? container.decodeIfPresent(CaptureRecordValue.self, forKey: .before)) ?? nil
+        beforeDisplay =
+            (try? container.decodeIfPresent(String.self, forKey: .beforeDisplay)) ?? nil
         source = (try? container.decodeIfPresent(String.self, forKey: .source)) ?? nil
         range = (try? container.decodeIfPresent(CaptureRange.self, forKey: .range)) ?? nil
         valueRanges =
@@ -184,10 +196,24 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
         case state
         case value
         case display
+        case before
+        case beforeDisplay = "before_display"
         case source
         case range
         case valueRanges = "value_ranges"
         case choices
+    }
+
+    /// Resolved current value for an update row. Bob's `before_display`
+    /// wins; otherwise the canonical value. Nil when Bob sent neither.
+    public var resolvedBeforeDisplay: String? {
+        if let beforeDisplay, !beforeDisplay.isEmpty {
+            return beforeDisplay
+        }
+        if let before, let text = before.displayString, !text.isEmpty {
+            return text
+        }
+        return nil
     }
 }
 
@@ -396,6 +422,8 @@ public struct CaptureRecordCompletionMeta: Codable, Equatable, Sendable {
 // MARK: - Portable Record Card presentation and focus reducer
 
 /// One projected card row in Bob's schema order.
+/// Update rows keep Bob's snapshot `beforeDisplay` so the card can show
+/// `before → after` for changed fields and the current value otherwise.
 public struct CaptureRecordRow: Equatable, Sendable {
     public let key: String
     public let label: String
@@ -404,6 +432,7 @@ public struct CaptureRecordRow: Equatable, Sendable {
     public let list: Bool
     public let state: String
     public let display: String?
+    public let beforeDisplay: String?
     public let source: String?
     public let choices: [CaptureRecordChoice]
 
@@ -415,6 +444,7 @@ public struct CaptureRecordRow: Equatable, Sendable {
         list = field.list
         state = field.state
         display = field.display
+        beforeDisplay = field.resolvedBeforeDisplay
         source = field.source
         choices = field.choices
     }
@@ -427,6 +457,7 @@ public struct CaptureRecordRow: Equatable, Sendable {
         list: Bool = false,
         state: String = "",
         display: String? = nil,
+        beforeDisplay: String? = nil,
         source: String? = nil,
         choices: [CaptureRecordChoice] = []
     ) {
@@ -437,8 +468,28 @@ public struct CaptureRecordRow: Equatable, Sendable {
         self.list = list
         self.state = state
         self.display = display
+        self.beforeDisplay = beforeDisplay
         self.source = source
         self.choices = choices
+    }
+
+    /// True when Bob sent both sides and they differ. Unchanged update
+    /// rows and create rows keep the single-value presentation.
+    public var isChanged: Bool {
+        guard let before = beforeDisplay, !before.isEmpty,
+            let after = display, !after.isEmpty
+        else {
+            return false
+        }
+        return before != after
+    }
+
+    /// `before → after` for changed rows, else the single display value.
+    public var changeText: String? {
+        if isChanged {
+            return "\(beforeDisplay ?? "") → \(display ?? "")"
+        }
+        return display
     }
 
     public var stateLabel: String {
@@ -455,10 +506,16 @@ public struct CaptureRecordRow: Equatable, Sendable {
         !required && state == "none"
     }
 
-    /// VoiceOver identity, for example `Status, required, missing`. State is
-    /// never color alone.
+    /// VoiceOver identity, for example `Status, required, missing` or
+    /// `Status, Liked to Not liked`. State is never color alone.
     public var accessibilityLabel: String {
         let requirement = required ? "required" : "optional"
+        if isChanged {
+            return "\(label), \(beforeDisplay ?? "") to \(display ?? "")"
+        }
+        if let display, !display.isEmpty {
+            return "\(label), \(display), \(requirement), \(stateLabel)"
+        }
         return "\(label), \(requirement), \(stateLabel)"
     }
 
@@ -643,8 +700,30 @@ public struct CaptureRecordPresentation: Equatable, Sendable {
         return path
     }
 
+    /// True for `@dir/stem` updates. Bob's `notes` counts the new dated
+    /// notes this draft appends.
+    public var isUpdate: Bool {
+        record.action == "update"
+    }
+
+    /// Changed rows in schema order. Unchanged update rows keep their
+    /// single-value presentation.
+    public var changedRows: [CaptureRecordRow] {
+        rows.filter(\.isChanged)
+    }
+
     public var notesLabel: String {
-        record.notes == 1 ? "1 note" : "\(record.notes) notes"
+        if isUpdate {
+            switch record.notes {
+            case 0:
+                return "no new notes"
+            case 1:
+                return "+1 note"
+            default:
+                return "+\(record.notes) notes"
+            }
+        }
+        return record.notes == 1 ? "1 note" : "\(record.notes) notes"
     }
 
     /// More disclosure, listing hidden optional keys.

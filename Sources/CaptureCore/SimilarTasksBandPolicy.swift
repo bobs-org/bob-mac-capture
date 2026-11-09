@@ -114,6 +114,7 @@ public enum SimilarTasksBandPolicy {
         "pomodoro_task",
         "project_note",
         "pomodoro_project_note",
+        "record_note",
     ]
 
     public static func markPending(_ state: SimilarTasksBandState) -> SimilarTasksBandState {

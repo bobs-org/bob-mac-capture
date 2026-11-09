@@ -82,12 +82,15 @@ Each `%c` item renders its own Clip card beneath its preview card, built only fr
 ## Record Card
 
 A record draft occupies the picker-card slot. Header: Bob's emoji, title,
-path, note count. Rows keep labels and Bob's state; capsules and value
-lists accept candidates and keep the selected row visible. Optionals hide
-under More. Unrendered contexts, including create-route `record_target`,
-use the generic completion list in that slot. Type emoji overlays
-the card and editor route chip; it never enters the draft. Ready keeps
-the footer hint. See [Record cards](keyboard.md#record-cards).
+path, note count (`+N notes` on an `@dir/stem` update). Rows keep labels
+and Bob's state; capsules and value lists accept candidates and keep the
+selected row visible. Optionals hide under More. An update card shows
+Bob's current values and renders each changed field as a `before → after`
+row with the same VoiceOver text. Existing-record `record_target` rows
+render in the generic completion list with the status plus up to two
+field values (for example `Ninja Sushi — Liked · Sushi · Clark`).
+Type emoji overlays the card and editor route chip; it never enters the
+draft. Ready keeps the footer hint. See [Record cards](keyboard.md#record-cards).
 
 A committed new record reports Bob's per-item `record_note` summary, not
 the cleared editor: headline `emoji new label  path` (for example
@@ -580,15 +583,18 @@ and empty states are never shown. Held rows stay put while you type and swap
 only when the settled result changed, with a 120 ms cross-fade (instant with
 Reduce Motion) and no height animation.
 
-A single-item card shows a hairline, a `SIMILAR TASKS` header with an optional
-`+N` capsule and a trailing `⌘1–2` hint, then at most two rows. Each row is one
-line: a `⌘N` keycap, the status glyph, the title with matched words semibold
-and tail-truncated, an optional project `folder` or reading `book` glyph, at
-most one capsule, then `route · Status`. The locator truncates first, then the
-title; capsules never wrap or shrink. Capsules are **Same title** and
-**Possible duplicate** (warning tint), **Done 8d ago** / **Canceled 8d ago**
-(secondary on quaternary), or **Related** / **Prerequisite** / **Blocked by
-this** after you act. Closed titles are secondary and never struck through.
+A single-item card shows a hairline, a `SIMILAR TASKS` header (or
+`SIMILAR RECORDS` when every row is a record) with an optional `+N` capsule
+and a trailing `⌘1–2` hint, then at most two rows. Each row is one line: a
+`⌘N` keycap, the status glyph, the title with matched words semibold and
+tail-truncated, an optional project `folder`, reading `book`, or record
+`doc.text` glyph, at most one capsule, then `route · Status` (records show
+`dir · Status · field · field`, for example `eat · Liked · Sushi`). The
+locator truncates first, then the title; capsules never wrap or shrink.
+Capsules are **Same title** and **Possible duplicate** (warning tint),
+**Done 8d ago** / **Canceled 8d ago** (secondary on quaternary), or
+**Related** / **Prerequisite** / **Blocked by this** after you act.
+Closed titles are secondary and never struck through.
 
 A bulk draft puts at most one row on each task-creating card, with a leading
 `⧉` mark and no header; numbering continues down the stack. If the band would
@@ -613,20 +619,23 @@ meaning of Return stays visible.
 | --- | --- | --- |
 | Relate | `~` | Appends Bob's `relation_to` at the item anchor |
 | Add as note | `+` | Replaces the item's route with Bob's `parent`, or appends it when there is no route |
+| Add to it | `+` | Rewrites the record create item into Bob's `@dir/stem` update spelling |
 | Needs it | `&` | Appends Bob's `dependency` at the item anchor |
 | Blocks it | `*` | Appends Bob's `blocked_task` at the item anchor |
 | Open | `/` | Opens the task in Obsidian, keeping the draft |
 | Discard mine | `⌫` | Deletes the item's range |
 
-Defaults come from Bob: `similar` rows default to Relate, closed rows default
-to Open, `possible_duplicate` rows default to Add as note, and `same_title`
-rows default to Discard mine (or Add as note when the item has authored
-children). Every splice is undoable through the native text view, then runs
-the live preview again; `⌘Z` restores a discarded item. Focusing a held row
-after more typing fires the related lane at once and applies the chosen action
-against the fresh anchors. When the task is gone, the band announces "Similar
-tasks changed" and unfocuses. Open keeps the draft and hides the panel. Return
-is never intercepted: with no row focused it captures as today.
+Record rows offer only Add to it, Open, and Discard mine. Defaults come
+from Bob: `similar` rows default to Relate, closed rows default to Open,
+`possible_duplicate` rows default to Add as note (or Add to it on records),
+and `same_title` rows default to Discard mine (or Add as note when the item
+has authored children). Every splice is undoable through the native text
+view, then runs the live preview again; `⌘Z` restores a discarded item.
+Focusing a held row after more typing fires the related lane at once and
+applies the chosen action against the fresh anchors. When the task is gone,
+the band announces "Similar tasks changed" (or "Similar records changed")
+and unfocuses. Open keeps the draft and hides the panel. Return is never
+intercepted: with no row focused it captures as today.
 
 Each focused row exposes one VoiceOver custom action per offered strip
 action; the strip itself is labelled with the row, the default, and the

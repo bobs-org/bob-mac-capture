@@ -54,7 +54,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.category, .recordRoute)
         XCTAssertEqual(content.contextLabel, "Existing record")
         XCTAssertEqual(content.primaryText, "Burger Joint")
-        XCTAssertEqual(content.secondaryText, "Liked")
+        XCTAssertEqual(content.secondaryText, "Liked · Burgers · Clark")
         XCTAssertEqual(content.badges, ["@eat/burger_joint"])
         XCTAssertEqual(content.accessibilityHint, "Updates this existing record.")
     }

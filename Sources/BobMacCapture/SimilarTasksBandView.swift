@@ -113,7 +113,7 @@ struct SimilarTasksBandView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
-            Text("SIMILAR TASKS")
+            Text(SimilarTasksBandPresentation.headerText(for: item))
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(.secondary)

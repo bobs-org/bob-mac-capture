@@ -196,9 +196,20 @@ private struct RecordNotePropertyRow: View {
         .accessibilityLabel(rowAccessibilityLabel)
     }
 
+    private var isChanged: Bool {
+        guard let before = property.beforeDisplay, !before.isEmpty,
+            let after = property.resolvedDisplay, !after.isEmpty
+        else {
+            return false
+        }
+        return before != after
+    }
+
     private var rowAccessibilityLabel: String {
         var parts = [property.label]
-        if let display = property.resolvedDisplay {
+        if isChanged {
+            parts.append("\(property.beforeDisplay ?? "") to \(property.resolvedDisplay ?? "")")
+        } else if let display = property.resolvedDisplay {
             parts.append(display)
         }
         if property.isDefault {
@@ -209,7 +220,33 @@ private struct RecordNotePropertyRow: View {
 
     @ViewBuilder
     private var valueContent: some View {
-        if let values = linkValues, !values.isEmpty {
+        if isChanged {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(property.beforeDisplay ?? "")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .strikethrough()
+                    .accessibilityHidden(true)
+                Text("→")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                if let display = property.resolvedDisplay {
+                    let parsed = TaskDisplayText(parsing: display)
+                    Text(
+                        CapturePickerRichText.displayText(
+                            parsed.text,
+                            segments: parsed.segments,
+                            matches: []
+                        )
+                    )
+                    .font(.callout.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel)
+        } else if let values = linkValues, !values.isEmpty {
             FlowChips(values: values)
         } else if let display = property.resolvedDisplay {
             let parsed = TaskDisplayText(parsing: display)
