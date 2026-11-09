@@ -46,11 +46,9 @@ struct CaptureHashAliasArm: Equatable {
     let hashUTF16Range: NSRange
 }
 
-/// One-shot arm after Bob rewrites a space-prefixed `=` to `~`: Space or
-/// One-shot probe for a second `=`/`~`/`.` that lands before Bob answers
-/// the first key: re-asks Bob about `firstDraft` and collapses the pair only
-/// when Bob says the first key was an alias (`==` to one `=`, `=~` to `~~`,
-/// `..` to one `.`).
+/// One-shot probe for a second `=`, `~`, `.`, or `;` typed before Bob
+/// answers the first key. It re-asks Bob about `firstDraft` and collapses
+/// the pair only when Bob confirms the first key was an alias.
 struct CaptureEqualsProbe: Equatable {
     let secondKey: String
     let firstDraft: String
@@ -80,10 +78,10 @@ struct HashAliasProbe: Equatable {
     let secondCaretUTF8: Int
 }
 
-/// One shared equals-gesture record: after an `=` opener reply, a `~=` /
+/// One shared modifier-gesture record: after an `=` opener reply, a `~=` /
 /// `~~=` flip, a `toggle_relation_direction` reply triggered by `=`, a picker
-/// `=` flip, or a card `=` flip, a fast second `=` undoes whatever the first
-/// `=` did and types one literal `=`. Only an opener (`isOpener`) arms the
+/// `=` flip, or a card `=` flip, a fast second key undoes whatever the first
+/// key did and types one literal key. Only an opener (`isOpener`) arms the
 /// Space/Escape restores.
 struct CaptureEqualsGestureArm: Equatable {
     enum Surface: Equatable {
@@ -106,9 +104,9 @@ struct CaptureEqualsGestureArm: Equatable {
     var postCaretUTF8: Int
     /// Pre-flip picker session for `surface == .picker`.
     var pickerSnapshot: CapturePickerState?
-    /// The first key that armed this record (`=` or `.`).
+    /// The first key that armed this record (`=`, `.`, or `;`).
     var key: String = "="
-    /// Bob's replacement sigil (`~` or `@`).
+    /// Bob's replacement sigil (`~`, `@`, `&`, or `*`).
     var sigil: String = "~"
 }
 
@@ -752,16 +750,16 @@ final class CapturePanelModel: ObservableObject {
     /// `=` flip, or a card `=` flip. A fast second `=` undoes the first and
     /// types one literal `=`.
     var equalsGestureArm: CaptureEqualsGestureArm?
-    /// First `=`/`.` keystroke awaiting Bob's reply: key, draft, caret, and
-    /// key-down timestamp from `noteSeparatorToggleIntent`. Feeds the
-    /// before-reply `==` / `=~` / `..` probe; cleared when the reply lands.
+    /// First `=`, `.`, or `;` keystroke awaiting Bob's reply: key, draft,
+    /// caret, and key-down timestamp from `noteSeparatorToggleIntent`.
+    /// Feeds the before-reply double-key probe; cleared when the reply lands.
     var pendingEqualsFirstKey: (
         key: String, draft: String, caretUTF8: Int, timestamp: TimeInterval
     )?
-    /// A pending dot-route rewrite whose fast escape/restore eligibility was
-    /// interrupted before Bob replied. Keep its identity long enough to apply
-    /// Bob's ordinary rewrite without arming stale gesture state.
-    var interruptedDotAliasReply: (draft: String, timestamp: TimeInterval)?
+    /// A pending dot/semicolon alias rewrite whose fast escape/restore
+    /// eligibility was interrupted before Bob replied. Keep its identity long
+    /// enough to apply Bob's ordinary rewrite without arming stale state.
+    var interruptedModifierAliasReply: (draft: String, timestamp: TimeInterval)?
     /// One-shot probe for a second `=`/`~`/`.` typed before Bob answers the
     /// first key. Re-asks Bob about `firstDraft`; see `CaptureEqualsProbe`.
     var equalsProbe: CaptureEqualsProbe?
@@ -1848,6 +1846,48 @@ final class CapturePanelModel: ObservableObject {
         picker?.source.isRelation == true
     }
 
+    /// Picker opened by Bob's sigil reply. `@` opens route completion and
+    /// therefore has no picker source.
+    private func modifierAliasPickerSource(for sigil: String) -> CapturePickerSource? {
+        switch sigil {
+        case "@":
+            return nil
+        case "~":
+            return .linksTo
+        case "&":
+            return .dependency
+        case "*":
+            return .blockedTask
+        default:
+            return nil
+        }
+    }
+
+    private func modifierAliasArm(
+        _ arm: CaptureEqualsGestureArm,
+        owns openPicker: CapturePickerState
+    ) -> Bool {
+        guard let source = modifierAliasPickerSource(for: arm.sigil) else {
+            return false
+        }
+        return openPicker.source == source
+            && openPicker.draftSnapshot == arm.postDraft
+            && openPicker.replacementRange.start == arm.preCaretUTF8
+    }
+
+    /// True only when the active opener's own picker is visible with an
+    /// empty filter. Routed to the key router for Space/Escape restoration.
+    var modifierAliasOpenerOwnPickerIsEmpty: Bool {
+        guard let arm = equalsGestureArm,
+              arm.isOpener,
+              let openPicker = picker,
+              modifierAliasArm(arm, owns: openPicker)
+        else {
+            return false
+        }
+        return openPicker.filterText.isEmpty
+    }
+
     func pickerActionLine(for row: CapturePickerRow) -> String? {
         guard let line = pickerIndex?.actionLine(for: row) else {
             return nil
@@ -1864,6 +1904,18 @@ final class CapturePanelModel: ObservableObject {
             return line.replacingOccurrences(
                 of: "~ or = flips direction",
                 with: "== types = · ~ flips"
+            )
+        }
+        if let arm = equalsGestureArm,
+           arm.isOpener,
+           arm.surface == .editor,
+           (arm.sigil == "&" || arm.sigil == "*"),
+           let openPicker = picker,
+           modifierAliasArm(arm, owns: openPicker)
+        {
+            return line.replacingOccurrences(
+                of: "space adds another \(arm.sigil)",
+                with: "\(arm.key)\(arm.key) types \(arm.key)"
             )
         }
         return line
@@ -2931,11 +2983,11 @@ final class CapturePanelModel: ObservableObject {
                 timestamp: timestamp
             )
         }
-        if typed == "." {
-            interruptedDotAliasReply = nil
-            // Mirror the `=` space/tab prefilter for the probe only: the
-            // rewrite intent above is always recorded, but the fast `..`
-            // probe only matters where the dot-route alias can fire.
+        if typed == "." || typed == ";" {
+            interruptedModifierAliasReply = nil
+            // Mirror the alias's space/tab prefilter for the probe only: the
+            // rewrite intent above is always recorded, but a fast double-key
+            // probe matters only where Bob can replace the first key.
             let caretBytes = Array(text.utf8)
             let caretUTF8Count = utf8Offset(in: text, utf16Offset: selectedRange.location) ?? 0
             let previousIsBlank: Bool = {
@@ -2945,7 +2997,7 @@ final class CapturePanelModel: ObservableObject {
             }()
             if previousIsBlank {
                 pendingEqualsFirstKey = (
-                    key: ".",
+                    key: typed,
                     draft: expectedDraft,
                     caretUTF8: expectedCursorUTF8,
                     timestamp: timestamp
@@ -3031,10 +3083,9 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// True when a second `=`/`~`/`.` before Bob's reply should re-ask Bob
-    /// about the first key: a pending first key still showing in the live
-    /// editor, typed fast, unmodified, and without marked text. A `.` second
-    /// key only follows a pending first `.`.
+    /// True when a second `=`, `~`, `.`, or `;` before Bob's reply should
+    /// re-ask Bob about the first key: a pending first key still showing in
+    /// the live editor, typed fast, unmodified, and without marked text.
     func equalsProbeReplyPending(
         liveString: String,
         liveCaretUTF16: Int,
@@ -3043,10 +3094,10 @@ final class CapturePanelModel: ObservableObject {
         timestamp: TimeInterval
     ) -> Bool {
         guard !hasMarkedText,
-              typedKey == "=" || typedKey == "~" || typedKey == ".",
+              typedKey == "=" || typedKey == "~" || typedKey == "." || typedKey == ";",
               let pending = pendingEqualsFirstKey,
               (pending.key == "=" && (typedKey == "=" || typedKey == "~"))
-                  || (pending.key == "." && typedKey == "."),
+                  || ((pending.key == "." || pending.key == ";") && typedKey == pending.key),
               liveString == pending.draft,
               CaptureEqualsGesture.isFastSecond(
                   first: pending.timestamp,
@@ -7577,24 +7628,20 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let source = Self.pickerSource(for: direction)
-        // The `=` alias replaces its sigil through the native editor before
+        // A sigil alias replaces its key through the native editor before
         // requesting completion. AppKit can deliver a caret-selection
         // analysis for that splice, so let the still-matching one-shot arm
-        // open its empty Links To picker even when that analysis wins the
-        // race with the edit-triggered request.
-        // Bob replaces the typed `=` in place, so the opener's `~` sits
-        // exactly where the trigger was inserted.
-        let openedByRelationEqualsAlias =
-            direction == .linksTo
-            && equalsGestureArm.map {
-                $0.isOpener
-                    && $0.key == "="
-                    && $0.surface == .editor
-                    && $0.postDraft == draft
-                    && $0.preCaretUTF8 == r.start
-                    && $0.postCaretUTF8 == cursor
-                    && cursor == r.end
-            } == true
+        // open its picker even when that analysis wins the race with the
+        // edit-triggered request.
+        let openedBySigilAlias = equalsGestureArm.map {
+            $0.isOpener
+                && $0.surface == .editor
+                && $0.sigil == direction.leadingSigil
+                && $0.postDraft == draft
+                && $0.preCaretUTF8 == r.start
+                && $0.postCaretUTF8 == cursor
+                && cursor == r.end
+        } == true
         // `~=` and `~~=` replace their trailing sigil through the native
         // editor before requesting completion. Their output direction comes
         // from Bob's parse, so the matching arm allows either relation picker.
@@ -7604,7 +7651,7 @@ final class CapturePanelModel: ObservableObject {
                     && $0.caretUTF8 == cursor
                     && cursor == r.end
             } == true
-        guard trigger == .edit || openedByRelationEqualsAlias || openedByRelationFlipAlias,
+        guard trigger == .edit || openedBySigilAlias || openedByRelationFlipAlias,
             pickerAutoOpenSuppressedStart != r.start
         else {
             var chip = CapturePickerChipState(
@@ -13438,21 +13485,20 @@ final class CapturePanelModel: ObservableObject {
         equalsGestureArm = nil
     }
 
-    /// Clears a live `.` arm for any key that is neither its fast second
-    /// `.` nor a Space/Escape restore. Mirrors the hash arm's
-    /// take-on-every-key-down pattern: the `=` arm stays until consumed,
-    /// but the dot-route arm must not survive Down, Up, Ctrl-N, Ctrl-P, or
-    /// a non-restoring Escape.
-    func clearDotGestureArmForInterveningKey() {
-        let hasDotArm = equalsGestureArm?.key == "."
-        let pendingDot = pendingEqualsFirstKey?.key == "."
-        guard hasDotArm || pendingDot else {
+    /// Clears a live `.` / `;` arm for any key that is neither its fast
+    /// second key nor a Space/Escape restore. The arm must not survive
+    /// navigation, a modifier, or a non-restoring Escape.
+    func clearModifierAliasArmForInterveningKey() {
+        let aliasKeys: Set<String> = [".", ";"]
+        let hasAliasArm = equalsGestureArm.map { aliasKeys.contains($0.key) } == true
+        let pendingAlias = pendingEqualsFirstKey.map { aliasKeys.contains($0.key) } == true
+        guard hasAliasArm || pendingAlias else {
             return
         }
-        if pendingDot, let pending = pendingEqualsFirstKey {
-            interruptedDotAliasReply = (pending.draft, pending.timestamp)
+        if pendingAlias, let pending = pendingEqualsFirstKey {
+            interruptedModifierAliasReply = (pending.draft, pending.timestamp)
         }
-        if hasDotArm {
+        if hasAliasArm {
             equalsGestureArm = nil
         }
         pendingEqualsFirstKey = nil
@@ -17273,11 +17319,21 @@ final class CapturePanelModel: ObservableObject {
                 equalsProbe = nil
             }
         }
-        let expectedSigil = probe.firstKey == "." ? "@" : "~"
+        let expectedSigils: Set<String>
+        switch probe.firstKey {
+        case "=":
+            expectedSigils = ["~"]
+        case ".":
+            expectedSigils = ["@", "&"]
+        case ";":
+            expectedSigils = ["*"]
+        default:
+            expectedSigils = []
+        }
         guard response.rule == "expand_sigil_alias",
               response.edits.count == 1,
               let edit = response.edits.first,
-              edit.replacement == expectedSigil,
+              expectedSigils.contains(edit.replacement),
               edit.range.start == probe.firstCaretUTF8 - 1,
               edit.range.end == probe.firstCaretUTF8,
               let inputRange = stringRange(
@@ -17293,7 +17349,8 @@ final class CapturePanelModel: ObservableObject {
               ),
               String(probe.secondDraft[secondRange]) == probe.secondKey,
               (probe.firstKey == "=" && (probe.secondKey == "=" || probe.secondKey == "~"))
-                  || (probe.firstKey == "." && probe.secondKey == "."),
+                  || ((probe.firstKey == "." || probe.firstKey == ";")
+                      && probe.secondKey == probe.firstKey),
               let secondCaretUTF16 = utf16Range(
                   in: probe.secondDraft,
                   start: probe.secondCaretUTF8,
@@ -17312,7 +17369,7 @@ final class CapturePanelModel: ObservableObject {
         let collapseReplacement = probe.secondKey == "~" ? "~~" : ""
         let resultingDraft: String
         let resultingCaretUTF8: Int
-        if probe.secondKey == "=" || probe.secondKey == "." {
+        if probe.secondKey == "=" || probe.secondKey == "." || probe.secondKey == ";" {
             resultingDraft = probe.firstDraft
             resultingCaretUTF8 = probe.firstCaretUTF8
         } else {
@@ -17405,9 +17462,9 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        let suppressInterruptedDotArm = triggeredCharacter == "."
-            && interruptedDotAliasReply?.draft == draft
-            && interruptedDotAliasReply?.timestamp == triggerTimestamp
+        let suppressInterruptedAliasArm = (triggeredCharacter == "." || triggeredCharacter == ";")
+            && interruptedModifierAliasReply?.draft == draft
+            && interruptedModifierAliasReply?.timestamp == triggerTimestamp
         defer {
             if rewriteGeneration == generation {
                 rewriteExpectedCursorUTF8 = nil
@@ -17415,8 +17472,8 @@ final class CapturePanelModel: ObservableObject {
                 pendingHashAlias = nil
                 pendingEqualsFirstKey = nil
                 equalsProbe = nil
-                if suppressInterruptedDotArm {
-                    interruptedDotAliasReply = nil
+                if suppressInterruptedAliasArm {
+                    interruptedModifierAliasReply = nil
                 }
             }
         }
@@ -17467,8 +17524,8 @@ final class CapturePanelModel: ObservableObject {
                     triggeredCharacter: triggeredCharacter,
                     triggerPositionUTF8: cursorUTF8Offset - triggeredCharacter.utf8.count,
                     triggerTimestamp: triggerTimestamp,
-                    armRelationEqualsOpener: deferredRewriteInputDraft != draft
-                        && !suppressInterruptedDotArm
+                armRelationEqualsOpener: deferredRewriteInputDraft != draft
+                        && !suppressInterruptedAliasArm
                 )
                 return
             }
@@ -17614,6 +17671,12 @@ final class CapturePanelModel: ObservableObject {
                 pickerSnapshot: nil
             )
         }
+        let modifierAliasOpeners: [(key: String, sigil: String)] = [
+            ("=", "~"),
+            (".", "@"),
+            (".", "&"),
+            (";", "*"),
+        ]
         if response.rule == "expand_sigil_alias",
            response.edits.count == 1,
            let edit = response.edits.first,
@@ -17650,13 +17713,11 @@ final class CapturePanelModel: ObservableObject {
                     hashUTF16Range: hashUTF16Range
                 )
             } else if armRelationEqualsOpener,
-                      triggeredCharacter == "=",
-                      edit.replacement == "~",
-                      trigger == "=",
-                      utf16Range(
-                          in: response.text,
-                          byteRange: edit.range
-                      ) != nil,
+                      let opener = modifierAliasOpeners.first(where: {
+                          $0.key == triggeredCharacter && $0.sigil == edit.replacement
+                      }),
+                      trigger == opener.key,
+                      utf16Range(in: response.text, byteRange: edit.range) != nil,
                       let preDraft = equalsGesturePreDraft
             {
                 equalsGestureArm = CaptureEqualsGestureArm(
@@ -17668,34 +17729,8 @@ final class CapturePanelModel: ObservableObject {
                     postDraft: response.text,
                     postCaretUTF8: cursor,
                     pickerSnapshot: nil,
-                    key: "=",
-                    sigil: "~"
-                )
-            } else if armRelationEqualsOpener,
-                      triggeredCharacter == ".",
-                      edit.replacement == "@",
-                      trigger == ".",
-                      utf16Range(
-                          in: response.text,
-                          byteRange: edit.range
-                      ) != nil,
-                      let preDraft = equalsGesturePreDraft
-            {
-                // The `.` → `@` fallback arms the same gesture as `=`: a
-                // fast second `.` restores the literal, and Space/Escape on
-                // the still-empty route list restores it too. A `.` → `^`
-                // reply never reaches here (replacement `^`).
-                equalsGestureArm = CaptureEqualsGestureArm(
-                    surface: .editor,
-                    firstTimestamp: triggerTimestamp,
-                    isOpener: true,
-                    preDraft: preDraft,
-                    preCaretUTF8: triggerPositionUTF8,
-                    postDraft: response.text,
-                    postCaretUTF8: cursor,
-                    pickerSnapshot: nil,
-                    key: ".",
-                    sigil: "@"
+                    key: opener.key,
+                    sigil: opener.sigil
                 )
             }
         }
@@ -17775,10 +17810,8 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// True when an opener record is live against the current editor:
-    /// Bob's sigil (`~` or `@`) sits where the trigger was typed and, for
-    /// `=`, when the picker is open, it is an empty-filter Links To on that
-    /// token. A `.` opener never restores with a picker open: its route
-    /// list is completion, not a picker.
+    /// Bob's returned sigil sits where the trigger was typed and any open
+    /// picker is that sigil's own picker with an empty filter.
     var relationEqualsOpenerRestorable: Bool {
         guard let arm = equalsGestureArm,
               arm.isOpener,
@@ -17794,16 +17827,10 @@ final class CapturePanelModel: ObservableObject {
         else {
             return false
         }
-        if arm.key == "." {
-            return picker == nil && !editorInputLocked
-        }
         if let openPicker = picker {
-            return openPicker.source == .linksTo
-                && openPicker.draftSnapshot == arm.postDraft
-                && openPicker.replacementRange.start == arm.preCaretUTF8
-                && openPicker.filterText.isEmpty
+            return modifierAliasArm(arm, owns: openPicker) && openPicker.filterText.isEmpty
         }
-        return !editorInputLocked
+        return modifierAliasPickerSource(for: arm.sigil) == nil && !editorInputLocked
     }
 
     /// Restores a live opener through the native editor so Undo returns
@@ -17911,16 +17938,17 @@ final class CapturePanelModel: ObservableObject {
             else {
                 return nil
             }
-            if arm.key == "." {
-                // The `.` arm opens route completion, never a picker.
-                guard picker == nil else {
-                    return nil
-                }
-            } else if let openPicker = picker {
-                guard openPicker.source.isRelation,
-                    openPicker.draftSnapshot == arm.postDraft
-                else {
-                    return nil
+            if let openPicker = picker {
+                if arm.isOpener {
+                    guard modifierAliasArm(arm, owns: openPicker) else {
+                        return nil
+                    }
+                } else {
+                    guard openPicker.source.isRelation,
+                          openPicker.draftSnapshot == arm.postDraft
+                    else {
+                        return nil
+                    }
                 }
             }
             var probeDraft = arm.preDraft
@@ -18029,10 +18057,16 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         if let openPicker = picker {
-            guard openPicker.source.isRelation,
-                openPicker.draftSnapshot == arm.postDraft
-            else {
-                return false
+            if arm.isOpener {
+                guard modifierAliasArm(arm, owns: openPicker) else {
+                    return false
+                }
+            } else {
+                guard openPicker.source.isRelation,
+                      openPicker.draftSnapshot == arm.postDraft
+                else {
+                    return false
+                }
             }
             if !openPicker.filterText.isEmpty {
                 // The opener armed, then the filter gained text: nothing
@@ -19437,7 +19471,7 @@ final class CapturePanelModel: ObservableObject {
         equalsGestureArm = nil
         pendingEqualsFirstKey = nil
         equalsProbe = nil
-        interruptedDotAliasReply = nil
+        interruptedModifierAliasReply = nil
         relationFlipAliasOpen = nil
     }
 

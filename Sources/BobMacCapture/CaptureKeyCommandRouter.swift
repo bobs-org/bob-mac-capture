@@ -192,8 +192,10 @@ struct CaptureKeyRoutingContext: Equatable {
     var hashAliasLiteralKey: String? = nil
     var hashAliasReplyPendingKey: String? = nil
     var relationEqualsOpenerArmed = false
+    var modifierAliasOpenerOwnPickerIsEmpty = false
     var equalsGestureFastSecond = false
     var equalsGestureFastSecondKey = "="
+    var equalsProbeFirstKey: String? = nil
     var equalsProbeReplyPendingKey: String? = nil
     var editorHasMarkedText = false
     var editorLeaderPending = false
@@ -254,20 +256,24 @@ struct CaptureKeyCommandRouter {
         return nil
     }
 
-    /// The typed equals-probe key (`=`, `~`, or `.`) by characters, or nil
-    /// for any other key. Shift is allowed (for `~`); Command, Option, and
-    /// Control veto; marked text is checked by the caller through
-    /// `editorHasMarkedText`. A `.` second key only counts after a pending
-    /// first `.` (checked by the caller through
-    /// `equalsProbeReplyPendingKey`).
+    /// The typed probe key by characters, or nil for another key. Shift is
+    /// allowed (for `~`); Command, Option, and Control veto. Dot and
+    /// semicolon count only after the same pending first key.
     static func typedEqualsProbeKey(
         event: NSEvent,
-        modifiers: NSEvent.ModifierFlags
+        modifiers: NSEvent.ModifierFlags,
+        pendingFirstKey: String? = nil
     ) -> String? {
-        guard event.characters == "=" || event.characters == "~" || event.characters == ".",
+        guard event.characters == "=" || event.characters == "~"
+                || event.characters == "." || event.characters == ";",
               modifiers.intersection([.command, .option, .control]).isEmpty
         else {
             return nil
+        }
+        if event.characters == "." || event.characters == ";" {
+            guard pendingFirstKey == event.characters else {
+                return nil
+            }
         }
         return event.characters
     }
@@ -509,7 +515,11 @@ struct CaptureKeyCommandRouter {
             }
         }
 
-        if let probeKey = Self.typedEqualsProbeKey(event: event, modifiers: modifiers),
+        if let probeKey = Self.typedEqualsProbeKey(
+            event: event,
+            modifiers: modifiers,
+            pendingFirstKey: context.equalsProbeFirstKey
+        ),
            !context.editorHasMarkedText,
            context.equalsProbeReplyPendingKey == probeKey
         {
@@ -1326,12 +1336,9 @@ struct CaptureKeyCommandRouter {
         else {
             return nil
         }
-        // An armed empty Links To filter restores on Space/Escape; a
-        // non-empty filter keeps typing into the filter. Before the picker
-        // appears (race window) the arm alone restores.
-        if context.pickerVisible,
-           !(context.pickerSourceIsRelation && context.pickerFilterIsEmpty)
-        {
+        // The arm restores while its own picker has an empty filter. Before
+        // the picker appears (race window), the arm alone is enough.
+        if context.pickerVisible && !context.modifierAliasOpenerOwnPickerIsEmpty {
             return nil
         }
         let key: String?

@@ -3014,7 +3014,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }()
         let typedEqualsProbeKey = CaptureKeyCommandRouter.typedEqualsProbeKey(
             event: event,
-            modifiers: deviceIndependentModifiers
+            modifiers: deviceIndependentModifiers,
+            pendingFirstKey: model.pendingEqualsFirstKey?.key
         )
         let equalsProbeReplyPendingKey: String? = {
             guard let typedKey = typedEqualsProbeKey,
@@ -3036,38 +3037,43 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             ) ? typedKey : nil
         }()
         let equalsGestureFastSecondKey = model.equalsGestureArm?.key ?? "="
-        // A `.` arm clears on every key-down that is neither its fast
-        // second `.` nor a Space/Escape restore (Down, Up, Ctrl-N, Ctrl-P,
-        // and a non-restoring Escape included). The same eligibility that
-        // lets the router claim the gesture must preserve it. Also consume a
-        // pending dot at key-down, so navigation cannot leave a probe or a
-        // late Bob reply eligible to recreate stale gesture state. The `=` arm
-        // stays until consumed.
-        let hasDotArm = model.equalsGestureArm?.key == "."
-        let hasPendingDot = model.pendingEqualsFirstKey?.key == "."
-        if hasDotArm || hasPendingDot {
+        // Dot and semicolon arms clear on every key-down that is neither
+        // their fast second key nor a Space/Escape restore. Also consume a
+        // pending first key so navigation cannot leave a probe or late Bob
+        // reply eligible to recreate stale gesture state.
+        let modifierAliasKeys: Set<String> = [".", ";"]
+        let hasModifierAliasArm = model.equalsGestureArm.map {
+            modifierAliasKeys.contains($0.key)
+        } == true
+        let hasPendingModifierAlias = model.pendingEqualsFirstKey.map {
+            modifierAliasKeys.contains($0.key)
+        } == true
+        if hasModifierAliasArm || hasPendingModifierAlias {
             let markedText = (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
             let modifiersClear = deviceIndependentModifiers
                 .intersection([.command, .control, .option]).isEmpty
             let isNotRepeat = !event.isARepeat
-            let isDotFastSecond = equalsGestureFastSecond
-                && event.characters == "."
+            let pendingAliasKey = model.pendingEqualsFirstKey?.key
+            let armedAliasKey = model.equalsGestureArm?.key
+            let isAliasFastSecond = equalsGestureFastSecond
+                && event.characters == armedAliasKey
                 && modifiersClear
                 && !markedText
                 && isNotRepeat
-            let isDotProbeSecond = equalsProbeReplyPendingKey == "."
-                && typedEqualsProbeKey == "."
+            let isAliasProbeSecond = pendingAliasKey != nil
+                && equalsProbeReplyPendingKey == pendingAliasKey
+                && typedEqualsProbeKey == pendingAliasKey
                 && modifiersClear
                 && !markedText
                 && isNotRepeat
-            let isDotRestore = hasDotArm
+            let isAliasRestore = hasModifierAliasArm
                 && relationEqualsOpenerArmed
                 && modifiersClear
                 && !markedText
                 && isNotRepeat
                 && (event.characters == " " || event.keyCode == 53)
-            if !isDotFastSecond && !isDotProbeSecond && !isDotRestore {
-                model.clearDotGestureArmForInterveningKey()
+            if !isAliasFastSecond && !isAliasProbeSecond && !isAliasRestore {
+                model.clearModifierAliasArmForInterveningKey()
                 relationEqualsOpenerArmed = false
                 equalsGestureFastSecond = false
             }
@@ -3132,9 +3138,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
                 pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
                 pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
-                    pickerSourceIsParentTask: model.pickerSourceIsParentTask,
-                    pickerParentContinuationAvailable: model.pickerParentContinuationAvailable,
-                    pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,
+                pickerSourceIsParentTask: model.pickerSourceIsParentTask,
+                pickerParentContinuationAvailable: model.pickerParentContinuationAvailable,
+                pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,
                 pickerDispatchInFlight: model.taskGotoDispatchInFlight,
                 pickerFilterIsEmpty: model.pickerFilterIsEmpty,
                 pickerChipVisible: model.pickerChipVisible,
@@ -3148,8 +3154,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 hashAliasLiteralKey: hashAliasLiteralKey,
                 hashAliasReplyPendingKey: hashAliasReplyPendingKey,
                 relationEqualsOpenerArmed: relationEqualsOpenerArmed,
+                modifierAliasOpenerOwnPickerIsEmpty: model.modifierAliasOpenerOwnPickerIsEmpty,
                 equalsGestureFastSecond: equalsGestureFastSecond,
                 equalsGestureFastSecondKey: equalsGestureFastSecondKey,
+                equalsProbeFirstKey: model.pendingEqualsFirstKey?.key,
                 equalsProbeReplyPendingKey: equalsProbeReplyPendingKey,
                 editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false,
                 editorLeaderPending: editorLeaderPending

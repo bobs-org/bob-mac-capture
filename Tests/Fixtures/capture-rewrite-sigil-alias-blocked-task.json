@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Buy milk ;","text":"Buy milk *","changed":true,"cursor":10,"rule":"expand_sigil_alias","edits":[{"range":{"start":9,"end":10},"replacement":"*"}],"summary":"Typed * for ;"}

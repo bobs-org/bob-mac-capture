@@ -221,12 +221,12 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   After bare `~`/`~~`, `=` uses this lane to flip direction and open its
   picker. A glued `~`/`=` at a complete relation token flips in place; after a
   label, only `~` flips (`=` is label text).
-  After `@route`, `.`/`;` use this lane for `^`/`:` where Bob opens the picker;
-  on a sealed project-note first-level bullet, `- .`/`- ;` opens Move and
-  `- ^.` makes `- ^^`. A dot after space/tab following body text aliases `@`
-  wherever bare `@` opens route completion. Bob decides eligibility; the app
-  applies the edit natively and requests completion. Undo restores the key;
-  older bob leaves `.`/`;` literal. In a blank draft, `\` becomes `/` for Go To.
+  After `@route`, `.`/`;` keep their `^`/`:` Block ID aliases; sealed
+  first-level `- .`/`- ;` keeps Move, and `- ^.` makes `- ^^`. After body
+  text plus space/tab, `.` falls from `@` to `&` where Bob opens Depends On;
+  `;` falls from `:` to `*` where Bob opens Blocks. Bob decides; the app
+  applies the edit and requests completion. Undo restores the key; older Bob
+  leaves these aliases literal. In a blank draft, `\` becomes `/` for Go To.
   Else `\`/`/` aliases `#` only where it opens a menu, never at line start;
   `/` stays literal in `=/`, `[[folder/`, section names, and Pomodoro names. A
   second same-key press replaces `#` with one literal and closes the menu. Before
@@ -234,13 +234,13 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   the first would become `#`; Undo restores both. Older bob leaves both keys
   literal and does not arm. A fast `==` (350 ms) restores literal `=` in the
   editor, picker, or label card; other keys, caret moves, paste, Undo, or
-  dismissal clear that arm, and a slow second press flips twice. After the
-  spaced body-text `.` → `@` alias, fast `..` (350 ms) restores one literal `.`;
-  Space restores `. ` and Escape `.` on the still-empty route list. Caret moves
-  and other keys, including navigation and non-restoring Escape, clear the dot
-  arm. Thus `...` after body text takes four presses (as `===` gives `==`);
-  line or bullet-body starts stay literal unless the earlier Move alias applies,
-  and item-start `.bashrc` is already literal under `after_text`.
+  dismissal clear that arm, and a slow second press flips twice. After spaced
+  `.` → `@`/`&` and `;` → `*` aliases, fast `..`/`;;` (350 ms) restores one
+  literal key; Space/Escape restores on the empty route list or its own empty
+  picker. Caret moves, navigation, modifiers, and other keys clear either arm.
+  Thus `...` after body text takes four presses (as `===` gives `==`); line
+  starts stay literal under `after_text`, and item-start `.bashrc` or `.5`
+  needs `..`.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

@@ -616,6 +616,7 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
         armed.pickerSourceIsRelation = true
         armed.pickerVisible = true
         armed.pickerFilterIsEmpty = true
+        armed.modifierAliasOpenerOwnPickerIsEmpty = true
         armed.relationEqualsOpenerArmed = true
         XCTAssertEqual(
             router.command(for: spaceEvent(), context: armed),
@@ -634,7 +635,8 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
                 pickerSourceIsRelation: true,
                 pickerVisible: true,
                 pickerFilterIsEmpty: false,
-                relationEqualsOpenerArmed: true
+                relationEqualsOpenerArmed: true,
+                modifierAliasOpenerOwnPickerIsEmpty: false
             )),
             nil
         )

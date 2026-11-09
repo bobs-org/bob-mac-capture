@@ -299,7 +299,11 @@ case "${command}" in
         exit 0
       fi
     fi
-    if [[ "${draft}" == "Follow up ((" ]]; then
+    if [[ "${draft}" == "@home &" ]]; then
+      cat "${fixtures_dir}/capture-parse-modifier-dependency.json" | inject_parse_grammar
+    elif [[ "${draft}" == "Buy milk *" ]]; then
+      cat "${fixtures_dir}/capture-parse-modifier-blocked-task.json" | inject_parse_grammar
+    elif [[ "${draft}" == "Follow up ((" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-open.json" | inject_parse_grammar
     elif [[ "${draft}" == "Follow up ((s" ]]; then
       cat "${fixtures_dir}/capture-parse-wikilink-task-query.json" | inject_parse_grammar
@@ -1948,7 +1952,14 @@ JSON
         exit 0
       fi
     fi
-    if [[ "${draft}" == "New task ~=" && "${FAKE_BOB_REWRITE_RELATION_FLIP_UNCHANGED:-}" == "1" ]]; then
+    if [[ "${FAKE_BOB_MODIFIER_ALIAS_UNCHANGED:-}" == "1" \
+       && ("${draft}" == "@home ." || "${draft}" == "Buy milk ;") ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "New task ~=" && "${FAKE_BOB_REWRITE_RELATION_FLIP_UNCHANGED:-}" == "1" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       printf ',"text":'
@@ -2053,6 +2064,12 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-plan.json"
     elif [[ "${draft}" == "x made 2xx" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-made.json"
+    elif [[ "${draft}" == "2Xx" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-close-sized-prose-caps.json"
+    elif [[ "${draft}" == "@home ." ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-dependency.json"
+    elif [[ "${draft}" == "Buy milk ;" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-blocked-task.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
@@ -2382,8 +2399,19 @@ JSON
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
       exit 0
     fi
+    if [[ "${draft}" == "@home &" ]]; then
+      cat "${fixtures_dir}/capture-complete-modifier-dependency.json"
+      exit 0
+    elif [[ "${draft}" == "Buy milk *" ]]; then
+      cat "${fixtures_dir}/capture-complete-modifier-blocked-task.json"
+      exit 0
+    fi
     if [[ "${draft}" == "Fix it ~" && -n "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS}"
+    fi
+    if [[ ("${draft}" == "@home &" || "${draft}" == "Buy milk *") \
+       && -n "${FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_MODIFIER_ALIAS_COMPLETE_DELAY_SECONDS}"
     fi
     delay_request="false"
     if [[ ("${draft}" == "/" || "${draft}" == "/dee") && "${all_tasks}" == "true" ]]; then

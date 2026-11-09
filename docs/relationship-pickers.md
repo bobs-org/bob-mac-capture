@@ -50,6 +50,11 @@ then capture"). Shift-Return has no start-session behavior on this source.
 Escape restores the draft/caret and shows the Choose dependency chip; Backspace
 on an empty filter removes the `&` token.
 
+After body text plus space/tab, `.` aliases `&` only where Bob opens Depends On
+and no earlier `^`/`@` alias applies (`@home .` → `@home &`; `Buy milk .`
+stays `@`). Line-start dots stay literal. Fast `..` (350 ms) types one `.`;
+Space/Escape restores it on the empty picker.
+
 Rows without an ID show `locator:` plus a dim suggestion; accepting one opens
 the Add block ID prompt ("Add ID and use task — edits that note now") in
 dependency mode, calling `bob capture-task-id --note-path` with the exact path
@@ -73,6 +78,10 @@ replacements. The action line reads
 `↩ inserts *job:cleanup · space adds another *`; rows already on the owner's
 Depends-On line say **Already blocked**. Disabled explanations appear verbatim
 from Bob.
+
+After text/marker plus space/tab, `;` aliases `*` only where Bob opens Blocks
+and no earlier `:` alias applies (`Buy milk ;` → `Buy milk *`). Fast `;;`
+(350 ms) types one `;`; Space/Escape restores it on the empty picker.
 
 The partial `X *` need shows **Pick a task to block — press Tab to browse**.
 Return or Tab inserts Bob's replacement, Command-Return inserts then captures
