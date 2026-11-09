@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":20,"cursor":5,"replacement":{"start":0,"end":5},"context":"section","candidates":[{"kind":"record_create","replacement":"@eat/ ","label":"🍽️ New restaurant · eat/","route":"eat/","type":"restaurant","emoji":"🍽️","count":3,"cursor_after":6,"continuation":{"cursor":6,"next_missing_field":true}}]}

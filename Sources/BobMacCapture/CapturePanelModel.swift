@@ -19122,12 +19122,18 @@ final class CapturePanelModel: ObservableObject {
             context: "route",
             candidates: matching.map { target in
                 CaptureCompletionCandidate(
-                    replacement: target.route,
+                    replacement: CaptureRecordRouteCache.insertion(for: target),
                     route: target.route,
-                    label: target.label,
+                    label: CaptureRecordRouteCache.label(for: target),
                     kind: target.kind,
                     status: target.status,
-                    alias: aliasHint(for: target, query: query)
+                    alias: aliasHint(for: target, query: query),
+                    recordType: target.recordType,
+                    emoji: target.emoji,
+                    recordContinuation: CaptureRecordRouteCache.continuation(
+                        for: target,
+                        replacementStart: replacement.start
+                    )
                 )
             }
         )
@@ -19150,7 +19156,11 @@ final class CapturePanelModel: ObservableObject {
     /// each accepting as ` @<route>` at the end of the draft through the
     /// existing completion-accept path. Nil when the target cache is empty.
     private func fileUnderCompletion(draft: String) -> CaptureCompletionResponse? {
-        guard let targets = targetCacheSnapshot.targets?.targets, !targets.isEmpty else {
+        guard let cached = targetCacheSnapshot.targets?.targets, !cached.isEmpty else {
+            return nil
+        }
+        let targets = cached.filter { $0.kind != "record" }
+        guard !targets.isEmpty else {
             return nil
         }
         let end = draft.utf8.count

@@ -478,15 +478,28 @@ public final class BobProcessClient: @unchecked Sendable {
         return response
     }
 
-    /// `true` requests Bob's closed-only Go To list.
+    /// `true` requests Bob's closed-only Go To list. Record parameters are
+    /// default-off: `nextMissingField` sends `--next-missing-field` and
+    /// `recordField` sends `--record-field KEY`. Callers gate named requests
+    /// on `record.assist_version` so independently installed Mac clients can
+    /// leave unsupported controls unavailable while ordinary draft editing
+    /// keeps working. An older Bob rejects unknown flags; that maps to
+    /// `unsupportedOption` and never to an unrelated task request.
     public func captureComplete(
         _ draft: String,
         cursor: Int,
-        includeClosedTasks: Bool = false
+        includeClosedTasks: Bool = false,
+        nextMissingField: Bool = false,
+        recordField: String? = nil
     ) async throws -> CaptureCompletionResponse {
         var arguments = ["capture-complete", "--all-tasks"]
         if includeClosedTasks {
             arguments.append("--closed-tasks")
+        }
+        if let recordField, !recordField.isEmpty {
+            arguments += ["--record-field", recordField]
+        } else if nextMissingField {
+            arguments.append("--next-missing-field")
         }
         arguments += ["--cursor", String(cursor), "--format", "json", "--", draft]
         do {
@@ -496,11 +509,31 @@ public final class BobProcessClient: @unchecked Sendable {
                 lane: "completion"
             )
         } catch let error as BobClientError {
-            if includeClosedTasks,
-                case .processFailed(_, _, let stderr) = error,
-                Self.isUnsupportedOptionFailure(stderr: stderr, option: "--closed-tasks")
-            {
-                throw BobClientError.unsupportedOption("--closed-tasks")
+            if case .processFailed(_, _, let stderr) = error {
+                if includeClosedTasks,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--closed-tasks"
+                    )
+                {
+                    throw BobClientError.unsupportedOption("--closed-tasks")
+                }
+                if nextMissingField,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--next-missing-field"
+                    )
+                {
+                    throw BobClientError.unsupportedOption("--next-missing-field")
+                }
+                if recordField != nil,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--record-field"
+                    )
+                {
+                    throw BobClientError.unsupportedOption("--record-field")
+                }
             }
             throw error
         }

@@ -280,8 +280,8 @@ Template saves send `--template-origin` only after a successful template-list re
 
 These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
 
-- `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
-- `capture-complete --all-tasks [--closed-tasks] --cursor BYTE --format json` (candidates and replacements; closed rows for Go To)
+- `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`; record drafts add `record`)
+- `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates and replacements; record rows add `record` and per-row `continuation`)
 - `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, sigil aliases including the spaced `.` → `@` route alias, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound on new builds and supplies the running count for older-bob fallback
@@ -330,6 +330,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings, `bob relations rename` preview/write with counts, `label_range` / `hidden` on `relations[]`
 - Past fields: segment/pin, windows/cut, candidate bounds/repair, stale refusal
+- Record: `record`, `continuation`, `type`/`emoji`/`count`
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
 
 ## Compatibility
@@ -415,6 +416,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 | `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination`, `continuation`, `action_continuation_aliases`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, sections, Bob consequence footer, Shift-Return chaining, Add ID, calm Escape status, new span colours | Older Bob omits the need, so behaviour is unchanged; without aliases, `.` filters | Upgrade `bob` for move bullets |
 | `moved_tasks[]` / `move_summary` / `move_hint` on `project_note`, `moved_from` on offers | Moves band with repair footer, ghost titles, move hint, `moved from` label, `Created` notification | Band, ghosts, hint, and labels stay hidden; legacy copy remains | Upgrade `bob` for move previews |
+| `record`, `--next-missing-field` / `--record-field` | Record drafts and `eat/` rows; old Bob omits or rejects | Stays a literal task | Upgrade `bob` |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
 that rejects the command is remembered for that executable identity, so the app keeps

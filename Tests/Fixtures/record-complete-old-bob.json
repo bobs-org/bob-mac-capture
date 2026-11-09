@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "grammar": 19,
+  "cursor": 1,
+  "replacement": { "start": 1, "end": 1 },
+  "context": "route",
+  "candidates": [
+    {
+      "replacement": "mac_inbox",
+      "route": "mac_inbox",
+      "label": "mac_inbox.md",
+      "kind": "inbox",
+      "status": null
+    }
+  ],
+  "warnings": []
+}

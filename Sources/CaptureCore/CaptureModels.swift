@@ -267,6 +267,9 @@ public struct CaptureParseResponse: Codable, Equatable {
     /// Additive first-item `<` merge-in clause, when the first item carries
     /// one. Older Bob omits the key; missing or malformed decodes as nil.
     public let mergeIn: CaptureMergeIn?
+    /// Additive record creation metadata. Present on record drafts and
+    /// absent otherwise; older Bob omits it entirely.
+    public let record: CaptureRecord?
 
     public init(
         ok: Bool,
@@ -298,7 +301,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         relations: [CaptureParseRelationshipMarker] = [],
         dependencyTarget: DependencyOwner? = nil,
         template: CaptureParseTemplate? = nil,
-        mergeIn: CaptureMergeIn? = nil
+        mergeIn: CaptureMergeIn? = nil,
+        record: CaptureRecord? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -333,6 +337,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.dependencyTarget = dependencyTarget
         self.template = template
         self.mergeIn = mergeIn
+        self.record = record
     }
 
     public init(from decoder: Decoder) throws {
@@ -406,6 +411,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         )
         template = (try? container.decodeIfPresent(CaptureParseTemplate.self, forKey: .template)) ?? nil
         mergeIn = (try? container.decodeIfPresent(CaptureMergeIn.self, forKey: .mergeIn)) ?? nil
+        record = (try? container.decodeIfPresent(CaptureRecord.self, forKey: .record)) ?? nil
     }
 
     private static func normalizedSubBulletDepths(
@@ -463,6 +469,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case dependencyTarget = "dependency_target"
         case template
         case mergeIn = "merge_in"
+        case record
     }
 }
 
@@ -531,6 +538,9 @@ public struct CaptureParseItem: Codable, Equatable {
     /// Additive `<` merge-in clause for this item, when claimed. Older Bob
     /// omits the key; missing or malformed decodes as nil.
     public let mergeIn: CaptureMergeIn?
+    /// Additive record creation metadata for this item, when claimed.
+    /// Older Bob omits the key; missing or malformed decodes as nil.
+    public let record: CaptureRecord?
 
     public init(
         index: Int,
@@ -557,7 +567,8 @@ public struct CaptureParseItem: Codable, Equatable {
         relations: [CaptureParseRelationshipMarker] = [],
         dependencyTarget: DependencyOwner? = nil,
         templateRow: CaptureTemplateRow? = nil,
-        mergeIn: CaptureMergeIn? = nil
+        mergeIn: CaptureMergeIn? = nil,
+        record: CaptureRecord? = nil
     ) {
         self.index = index
         self.range = range
@@ -584,6 +595,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.dependencyTarget = dependencyTarget
         self.templateRow = templateRow
         self.mergeIn = mergeIn
+        self.record = record
     }
 
     public init(from decoder: Decoder) throws {
@@ -643,6 +655,7 @@ public struct CaptureParseItem: Codable, Equatable {
             (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
         mergeIn =
             (try? container.decodeIfPresent(CaptureMergeIn.self, forKey: .mergeIn)) ?? nil
+        record = (try? container.decodeIfPresent(CaptureRecord.self, forKey: .record)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -671,6 +684,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case dependencyTarget = "dependency_target"
         case templateRow = "template_row"
         case mergeIn = "merge_in"
+        case record
     }
 }
 
@@ -8619,6 +8633,13 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
     /// aliases; a mistyped value decodes as empty so it can never fail the
     /// targets decode.
     public let projectNameAliases: [String]
+    /// Record type id, present only on configured record-folder rows.
+    /// Older Bob omits it; missing decodes as nil.
+    public let recordType: String?
+    /// Record type emoji, present only on configured record-folder rows.
+    public let emoji: String?
+    /// Indexed note count, present only on configured record-folder rows.
+    public let count: Int?
 
     public var id: String { route }
 
@@ -8630,7 +8651,10 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         isDefault: Bool = false,
         status: String? = nil,
         relativePath: String,
-        projectNameAliases: [String] = []
+        projectNameAliases: [String] = [],
+        recordType: String? = nil,
+        emoji: String? = nil,
+        count: Int? = nil
     ) {
         self.route = route
         self.name = name
@@ -8640,6 +8664,9 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         self.status = status
         self.relativePath = relativePath
         self.projectNameAliases = projectNameAliases
+        self.recordType = recordType
+        self.emoji = emoji
+        self.count = count
     }
 
     public init(from decoder: Decoder) throws {
@@ -8659,6 +8686,9 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         default:
             projectNameAliases = []
         }
+        recordType = (try? container.decodeIfPresent(String.self, forKey: .recordType)) ?? nil
+        emoji = (try? container.decodeIfPresent(String.self, forKey: .emoji)) ?? nil
+        count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -8671,6 +8701,9 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(status, forKey: .status)
         try container.encode(relativePath, forKey: .relativePath)
         try container.encode(projectNameAliases, forKey: .projectNameAliases)
+        try container.encodeIfPresent(recordType, forKey: .recordType)
+        try container.encodeIfPresent(emoji, forKey: .emoji)
+        try container.encodeIfPresent(count, forKey: .count)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8682,6 +8715,9 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         case status
         case relativePath = "relative_path"
         case projectNameAliases = "project_name_aliases"
+        case recordType = "type"
+        case emoji
+        case count
     }
 }
 
@@ -8847,6 +8883,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// on every `drawer` response, with or without rows, so the header can name
     /// the task. Older Bob and every other context omit it.
     public let target: CaptureDrawerTarget?
+    /// Additive record metadata on `record_field`/`record_value` responses.
+    /// Older Bob and every other context omit it.
+    public let record: CaptureRecordCompletionMeta?
 
     /// Whether Bob asked for this menu to open with no selected row. Any other value,
     /// including a future one this client does not know, keeps the default selection.
@@ -8876,7 +8915,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         themeSuggestion: CaptureThemeSuggestion? = nil,
         subject: String? = nil,
         target: CaptureDrawerTarget? = nil,
-        projectTaskMove: CaptureProjectTaskMoveHeader? = nil
+        projectTaskMove: CaptureProjectTaskMoveHeader? = nil,
+        record: CaptureRecordCompletionMeta? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -8902,6 +8942,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.subject = subject
         self.target = target
         self.projectTaskMove = projectTaskMove
+        self.record = record
     }
 
     public init(from decoder: Decoder) throws {
@@ -8949,6 +8990,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
         target = (try? container.decodeIfPresent(CaptureDrawerTarget.self, forKey: .target)) ?? nil
         projectTaskMove = (try? container.decodeIfPresent(CaptureProjectTaskMoveHeader.self, forKey: .projectTaskMove)) ?? nil
+        record = (try? container.decodeIfPresent(CaptureRecordCompletionMeta.self, forKey: .record)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8976,6 +9018,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case subject
         case target
         case projectTaskMove = "project_task_move"
+        case record
     }
 
 }
@@ -10329,6 +10372,23 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     /// such as `Adds after "2 GB RAM" in REQUIREMENTS`. The menu footer
     /// shows it for the selected row.
     public let consequence: String?
+    /// Additive record `value` candidate display string (`display`).
+    /// Older Bob and every other context omit it.
+    public let display: String?
+    /// Additive record value (`value`) on `record_value` rows.
+    public let recordValue: String?
+    /// Additive record type id (`type`) on record route/create/value rows.
+    public let recordType: String?
+    /// Additive record type emoji on route/create/completion metadata rows.
+    public let emoji: String?
+    /// Additive record field flags on `record_field` rows. Missing decodes
+    /// as false so ordinary rows stay unchanged.
+    public let recordRequired: Bool
+    public let recordList: Bool
+    public let recordDefaulted: Bool
+    /// Additive follow-up request Bob authors on an accepted record row.
+    /// Distinct from the generic picker `continuation` string.
+    public let recordContinuation: CaptureRecordContinuation?
 
     public var id: String {
         [
@@ -10442,7 +10502,15 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         noteCount: Int? = nil,
         lastSeen: Int? = nil,
         creates: Bool = false,
-        consequence: String? = nil
+        consequence: String? = nil,
+        display: String? = nil,
+        recordValue: String? = nil,
+        recordType: String? = nil,
+        emoji: String? = nil,
+        recordRequired: Bool = false,
+        recordList: Bool = false,
+        recordDefaulted: Bool = false,
+        recordContinuation: CaptureRecordContinuation? = nil
     ) {
         self.replacement = replacement
         self.token = token
@@ -10532,6 +10600,14 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.lastSeen = lastSeen
         self.creates = creates
         self.consequence = consequence
+        self.display = display
+        self.recordValue = recordValue
+        self.recordType = recordType
+        self.emoji = emoji
+        self.recordRequired = recordRequired
+        self.recordList = recordList
+        self.recordDefaulted = recordDefaulted
+        self.recordContinuation = recordContinuation
     }
 
     public init(from decoder: Decoder) throws {
@@ -10629,6 +10705,19 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         lastSeen = (try? container.decodeIfPresent(Int.self, forKey: .lastSeen)) ?? nil
         creates = (try? container.decodeIfPresent(Bool.self, forKey: .creates)) ?? false
         consequence = (try? container.decodeIfPresent(String.self, forKey: .consequence)) ?? nil
+        display = (try? container.decodeIfPresent(String.self, forKey: .display)) ?? nil
+        recordValue = (try? container.decodeIfPresent(String.self, forKey: .recordValue)) ?? nil
+        recordType = (try? container.decodeIfPresent(String.self, forKey: .recordType)) ?? nil
+        emoji = (try? container.decodeIfPresent(String.self, forKey: .emoji)) ?? nil
+        recordRequired = (try? container.decodeIfPresent(Bool.self, forKey: .recordRequired)) ?? false
+        recordList = (try? container.decodeIfPresent(Bool.self, forKey: .recordList)) ?? false
+        recordDefaulted =
+            (try? container.decodeIfPresent(Bool.self, forKey: .recordDefaulted)) ?? false
+        recordContinuation =
+            (try? container.decodeIfPresent(
+                CaptureRecordContinuation.self,
+                forKey: .recordContinuation
+            )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -10720,6 +10809,14 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case lastSeen = "last_seen"
         case creates
         case consequence
+        case display
+        case recordValue = "value"
+        case recordType = "type"
+        case emoji
+        case recordRequired = "required"
+        case recordList = "list"
+        case recordDefaulted = "defaulted"
+        case recordContinuation = "continuation"
     }
 }
 

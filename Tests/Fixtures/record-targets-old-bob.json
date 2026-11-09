@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "bob_dir": "/tmp/bob-mac-capture-record-fixture/vault",
+  "count": 1,
+  "targets": [
+    {
+      "route": "mac_inbox",
+      "name": "mac_inbox",
+      "label": "mac_inbox.md",
+      "kind": "inbox",
+      "is_default": true,
+      "status": null,
+      "relative_path": "mac_inbox.md",
+      "project_name_aliases": []
+    }
+  ]
+}
