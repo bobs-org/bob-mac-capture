@@ -722,6 +722,10 @@ final class CapturePanelModel: ObservableObject {
     var pendingEqualsFirstKey: (
         key: String, draft: String, caretUTF8: Int, timestamp: TimeInterval
     )?
+    /// A pending dot-route rewrite whose fast escape/restore eligibility was
+    /// interrupted before Bob replied. Keep its identity long enough to apply
+    /// Bob's ordinary rewrite without arming stale gesture state.
+    var interruptedDotAliasReply: (draft: String, timestamp: TimeInterval)?
     /// One-shot probe for a second `=`/`~`/`.` typed before Bob answers the
     /// first key. Re-asks Bob about `firstDraft`; see `CaptureEqualsProbe`.
     var equalsProbe: CaptureEqualsProbe?
@@ -2843,6 +2847,7 @@ final class CapturePanelModel: ObservableObject {
             )
         }
         if typed == "." {
+            interruptedDotAliasReply = nil
             // Mirror the `=` space/tab prefilter for the probe only: the
             // rewrite intent above is always recorded, but the fast `..`
             // probe only matters where the dot-route alias can fire.
@@ -12750,10 +12755,17 @@ final class CapturePanelModel: ObservableObject {
     /// but the dot-route arm must not survive Down, Up, Ctrl-N, Ctrl-P, or
     /// a non-restoring Escape.
     func clearDotGestureArmForInterveningKey() {
-        guard let arm = equalsGestureArm, arm.key == "." else {
+        let hasDotArm = equalsGestureArm?.key == "."
+        let pendingDot = pendingEqualsFirstKey?.key == "."
+        guard hasDotArm || pendingDot else {
             return
         }
-        equalsGestureArm = nil
+        if pendingDot, let pending = pendingEqualsFirstKey {
+            interruptedDotAliasReply = (pending.draft, pending.timestamp)
+        }
+        if hasDotArm {
+            equalsGestureArm = nil
+        }
         pendingEqualsFirstKey = nil
         equalsProbe = nil
     }
@@ -16592,6 +16604,9 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
+        let suppressInterruptedDotArm = triggeredCharacter == "."
+            && interruptedDotAliasReply?.draft == draft
+            && interruptedDotAliasReply?.timestamp == triggerTimestamp
         defer {
             if rewriteGeneration == generation {
                 rewriteExpectedCursorUTF8 = nil
@@ -16599,6 +16614,9 @@ final class CapturePanelModel: ObservableObject {
                 pendingHashAlias = nil
                 pendingEqualsFirstKey = nil
                 equalsProbe = nil
+                if suppressInterruptedDotArm {
+                    interruptedDotAliasReply = nil
+                }
             }
         }
         if let current = collapsedSelectionUTF8Offset(), current != cursorUTF8Offset {
@@ -16649,6 +16667,7 @@ final class CapturePanelModel: ObservableObject {
                     triggerPositionUTF8: cursorUTF8Offset - triggeredCharacter.utf8.count,
                     triggerTimestamp: triggerTimestamp,
                     armRelationEqualsOpener: deferredRewriteInputDraft != draft
+                        && !suppressInterruptedDotArm
                 )
                 return
             }
@@ -18615,6 +18634,7 @@ final class CapturePanelModel: ObservableObject {
         equalsGestureArm = nil
         pendingEqualsFirstKey = nil
         equalsProbe = nil
+        interruptedDotAliasReply = nil
         relationFlipAliasOpen = nil
     }
 

@@ -60,6 +60,18 @@ final class CaptureDotRouteAliasTests: XCTestCase {
         keyEvent(keyCode: 125, characters: "")
     }
 
+    private func upEvent() -> NSEvent {
+        keyEvent(keyCode: 126, characters: "")
+    }
+
+    private func controlNEvent() -> NSEvent {
+        keyEvent(keyCode: 45, characters: "n", modifiers: .control)
+    }
+
+    private func controlPEvent() -> NSEvent {
+        keyEvent(keyCode: 35, characters: "p", modifiers: .control)
+    }
+
     private func xEvent() -> NSEvent {
         keyEvent(keyCode: 7, characters: "x")
     }
@@ -448,6 +460,129 @@ final class CaptureDotRouteAliasTests: XCTestCase {
         _ = controller.routeKeyDown(downEvent())
         XCTAssertNil(model.equalsGestureArm)
         XCTAssertEqual(textView.string, "Buy milk @")
+    }
+
+    func testModifiedDotInvalidatesFastEscapeForCommandControlAndOption() async throws {
+        let modifiersList: [NSEvent.ModifierFlags] = [.command, .control, .option]
+        for modifiers in modifiersList {
+            let (model, controller, textView, panel, _) = try await openAlias()
+            defer { panel.orderOut(nil) }
+
+            _ = controller.routeKeyDown(dotEvent(modifiers: modifiers, timestamp: 1.1))
+            XCTAssertNil(model.equalsGestureArm)
+
+            // With the arm invalidated, the next plain dot follows the normal
+            // editor path instead of collapsing the alias to a literal dot.
+            XCTAssertNotNil(controller.routeKeyDown(dotEvent(timestamp: 1.2)))
+            XCTAssertEqual(textView.string, "Buy milk @")
+            XCTAssertNil(model.equalsGestureArm)
+        }
+    }
+
+    func testModifiedDotDisablesSpaceAndEscapeRestore() async throws {
+        for restore in [spaceEvent(), escapeEvent()] {
+            let (model, controller, textView, panel, _) = try await openAlias()
+            defer { panel.orderOut(nil) }
+
+            _ = controller.routeKeyDown(dotEvent(modifiers: .command, timestamp: 1.1))
+            XCTAssertNil(model.equalsGestureArm)
+            _ = controller.routeKeyDown(restore)
+
+            XCTAssertEqual(textView.string, "Buy milk @")
+            XCTAssertEqual(model.plainDraft, "Buy milk @")
+            XCTAssertNil(model.equalsGestureArm)
+        }
+    }
+
+    func testNavigationKeyInvalidatesPendingDotProbeBeforeFastSecondDot() async throws {
+        let navigations = [
+            ("Down", downEvent()),
+            ("Up", upEvent()),
+            ("Control-N", controlNEvent()),
+            ("Control-P", controlPEvent()),
+        ]
+
+        for (name, navigation) in navigations {
+            let recordURL = makeRecordURL()
+            let (model, controller, textView, panel) = makeHostedEditor(text: "Buy milk ")
+            defer { panel.orderOut(nil) }
+            model.processClient = try processClient(
+                recordURL: recordURL,
+                extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+            )
+
+            XCTAssertNotNil(typeKey(
+                dotEvent(timestamp: 1.0),
+                into: textView,
+                model: model,
+                controller: controller
+            ))
+            await waitUntil {
+                (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") == true
+            } detail: {
+                "; navigation=\(name)"
+            }
+            let beforeNavigation = textView.string
+            let caretBeforeNavigation = textView.selectedRange()
+            _ = controller.routeKeyDown(navigation)
+            XCTAssertEqual(textView.string, beforeNavigation, "navigation=\(name)")
+            XCTAssertEqual(textView.selectedRange(), caretBeforeNavigation, "navigation=\(name)")
+            XCTAssertNil(model.pendingEqualsFirstKey, "navigation=\(name)")
+            XCTAssertNil(model.equalsProbe, "navigation=\(name)")
+
+            XCTAssertNotNil(typeKey(
+                dotEvent(timestamp: 1.2),
+                into: textView,
+                model: model,
+                controller: controller
+            ), "navigation=\(name)")
+            XCTAssertEqual(textView.string, "Buy milk ..", "navigation=\(name)")
+            await waitUntil {
+                (try? String(contentsOf: recordURL))?.contains("-- Buy milk ..") == true
+                    && !model.rewriteInFlightForTesting
+            } detail: {
+                "; navigation=\(name), text=\(textView.string.debugDescription)"
+            }
+            XCTAssertEqual(textView.string, "Buy milk ..", "navigation=\(name)")
+            XCTAssertNil(model.equalsGestureArm, "navigation=\(name)")
+        }
+    }
+
+    func testNavigationBeforeReplyPreventsLateDotArmAndRestore() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "Buy milk ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") == true
+        }
+        _ = controller.routeKeyDown(downEvent())
+        XCTAssertEqual(textView.string, "Buy milk .")
+        XCTAssertNil(model.pendingEqualsFirstKey)
+
+        await waitUntil {
+            textView.string == "Buy milk @" && !model.rewriteInFlightForTesting
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
+        // Navigation while the rewrite is pending can dismiss the suggestion
+        // list, but Bob's ordinary rewrite still applies without arming a
+        // stale Escape/Space restore gesture.
+        XCTAssertNil(model.equalsGestureArm)
+
+        _ = controller.routeKeyDown(escapeEvent())
+        XCTAssertEqual(textView.string, "Buy milk @")
+        XCTAssertNil(model.equalsGestureArm)
     }
 
     func testCaretMoveClearsDotArm() async throws {

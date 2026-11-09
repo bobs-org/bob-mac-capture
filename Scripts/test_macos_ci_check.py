@@ -629,7 +629,12 @@ class GateTests(unittest.TestCase):
         self.assert_identity_filters(result)
 
     def test_delayed_run_discovery(self) -> None:
-        result = self.run_gate(GH_MODE="delayed", DELAY_COUNT="3", BOB_MACOS_CI_DISCOVERY_SECONDS="2")
+        result = self.run_gate(
+            GH_MODE="delayed",
+            DELAY_COUNT="3",
+            BOB_MACOS_CI_DISCOVERY_SECONDS="10",
+            BOB_MACOS_CI_TOTAL_SECONDS="15",
+        )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         lists = [args for args in self.gh_calls() if args[:2] == ["run", "list"]]
         self.assertGreaterEqual(len(lists), 3)

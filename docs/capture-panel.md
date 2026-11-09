@@ -202,48 +202,39 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   restores the literal post-key draft. An unchanged key (for example bare
   `@route:` or whole-item `^`) types literally; its picker opens as usual.
   This gesture needs a bob build that implements `switch_block_id_separator`.
-  Typing `=` after a space or tab aliases `~` only where Bob reports the
-  Links To picker. With an empty filter, Space restores `= ` and Escape
-  restores `=`; the caret follows and the picker closes. Undo restores the
-  post-key `~` draft; Undo right after restores the literal `=`. Older bob leaves `=` literal.
-  A `-` after a space stays literal; Bob still rewrites the past-segment alias
-  such as `x=2-` to `x=2~`. Typing `x`/`s` in close slots gives `!`/`*`;
-  elsewhere literal. Use `=XS` for starts.
+  After a space or tab, `=` aliases `~` only where Bob reports the Links To
+  picker. On an empty filter, Space restores `= ` and Escape `=`; the caret
+  follows and the picker closes. Undo restores the `~` draft, then the `=`.
+  Older bob leaves `=` literal. A spaced `-` stays literal, but Bob rewrites
+  past-segment `x=2-` to `x=2~`. Close-slot `x`/`s` become `!`/`*`; elsewhere
+  they stay literal. Use `=XS` for starts.
   Meaning-changing aliases hold later edits and Return
   until Bob replies; then edits replay before submission. On timeout, the key
   stays literal, edits replay, and Return is dropped with
   “Bob did not answer; press Return again”. Old bob stays literal with update hint.
-  Typing `=` right after bare `~` or `~~` uses the
-  same lane to flip direction and open the corresponding picker. A glued `~`
-  or `=` after a complete relation token flips direction in place without
-  opening a picker; after a label, only `~` flips because `=` is label text.
-  Typing `.` or `;` immediately after `@route` uses the same lane as an alias for
-  `^` or `:`, as does `- .` or `- ;` on a first-level bullet of a sealed
-  project-note item (where the Move picker would open) and `- ^.` (which makes
-  `- ^^`). A `.` after a space or tab following text aliases `@` wherever a
-  bare `@` would open route completion. Bob decides whether the candidate would
-  open that sigil's picker; when it does, the app applies the swap natively and
-  requests completion so the picker opens through the existing handlers. Undo
-  restores the literal `.` or `;`; an older bob leaves either key literal.
-  Typing `\` or `/` uses the same lane as an alias for `#` where `#` would
-  open a menu, never at a line start. A `/` also stays literal where Bob
-  already reads it as part of a field (`=/`, `[[folder/`, and section and
-  Pomodoro names). A second press of the same key at any typing speed
-  replaces that `#` with one literal key and closes the menu; the one-shot
-  arm is checked against the editor's live text and caret and clears on any
-  other key. If the second key arrives before Bob answers, the app asks Bob
-  about the first key again and removes the extra key only when it would
-  have become `#`, and Undo then restores the doubled key.
-  Undo restores the literal key; an older bob leaves either key literal and
-  never arms the double-tap.
-  `=` also has a 350 ms escape: a fast second press restores literal `=` in the
-  editor, picker, or label card. Other keys, caret moves, paste, Undo, or
-  dismissal clear it; a slow second press flips twice. The `.` → `@` alias has
-  the same timed escape: a fast second `.` restores one literal `.`, while Space
-  restores `. ` and Escape restores `.` on the still-empty route list. Any other
-  key, Down, Up, Ctrl-N, Ctrl-P, or a non-restoring Escape clears the `.` arm, so
-  ` ...` after a space takes four presses (as `===` gives `==`), and `..` types a
-  leading `.` such as `.bashrc`.
+  After bare `~`/`~~`, `=` uses this lane to flip direction and open its
+  picker. A glued `~`/`=` at a complete relation token flips in place; after a
+  label, only `~` flips (`=` is label text).
+  After `@route`, `.`/`;` use this lane for `^`/`:` where Bob opens the picker;
+  on a sealed project-note first-level bullet, `- .`/`- ;` opens Move and
+  `- ^.` makes `- ^^`. A dot after space/tab following body text aliases `@`
+  wherever bare `@` opens route completion. Bob decides eligibility; the app
+  applies the edit natively and requests completion. Undo restores the key;
+  older bob leaves `.`/`;` literal. In a blank draft, `\` becomes `/` for Go To.
+  Else `\`/`/` aliases `#` only where it opens a menu, never at line start;
+  `/` stays literal in `=/`, `[[folder/`, section names, and Pomodoro names. A
+  second same-key press replaces `#` with one literal and closes the menu. Before
+  Bob replies, the app re-asks about the first key and removes the extra only if
+  the first would become `#`; Undo restores both. Older bob leaves both keys
+  literal and does not arm. A fast `==` (350 ms) restores literal `=` in the
+  editor, picker, or label card; other keys, caret moves, paste, Undo, or
+  dismissal clear that arm, and a slow second press flips twice. After the
+  spaced body-text `.` → `@` alias, fast `..` (350 ms) restores one literal `.`;
+  Space restores `. ` and Escape `.` on the still-empty route list. Caret moves
+  and other keys, including navigation and non-restoring Escape, clear the dot
+  arm. Thus `...` after body text takes four presses (as `===` gives `==`);
+  line or bullet-body starts stay literal unless the earlier Move alias applies,
+  and item-start `.bashrc` is already literal under `after_text`.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

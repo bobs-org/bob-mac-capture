@@ -3024,16 +3024,35 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let equalsGestureFastSecondKey = model.equalsGestureArm?.key ?? "="
         // A `.` arm clears on every key-down that is neither its fast
         // second `.` nor a Space/Escape restore (Down, Up, Ctrl-N, Ctrl-P,
-        // and a non-restoring Escape included). The `=` arm stays until
-        // consumed.
-        if model.equalsGestureArm?.key == "." {
-            let isDotFastSecond = equalsGestureFastSecond && event.characters == "."
+        // and a non-restoring Escape included). The same eligibility that
+        // lets the router claim the gesture must preserve it. Also consume a
+        // pending dot at key-down, so navigation cannot leave a probe or a
+        // late Bob reply eligible to recreate stale gesture state. The `=` arm
+        // stays until consumed.
+        let hasDotArm = model.equalsGestureArm?.key == "."
+        let hasPendingDot = model.pendingEqualsFirstKey?.key == "."
+        if hasDotArm || hasPendingDot {
+            let markedText = (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
             let modifiersClear = deviceIndependentModifiers
                 .intersection([.command, .control, .option]).isEmpty
-                && !((panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false)
-            let isDotRestore = relationEqualsOpenerArmed && modifiersClear
+            let isNotRepeat = !event.isARepeat
+            let isDotFastSecond = equalsGestureFastSecond
+                && event.characters == "."
+                && modifiersClear
+                && !markedText
+                && isNotRepeat
+            let isDotProbeSecond = equalsProbeReplyPendingKey == "."
+                && typedEqualsProbeKey == "."
+                && modifiersClear
+                && !markedText
+                && isNotRepeat
+            let isDotRestore = hasDotArm
+                && relationEqualsOpenerArmed
+                && modifiersClear
+                && !markedText
+                && isNotRepeat
                 && (event.characters == " " || event.keyCode == 53)
-            if !isDotFastSecond && !isDotRestore {
+            if !isDotFastSecond && !isDotProbeSecond && !isDotRestore {
                 model.clearDotGestureArmForInterveningKey()
                 relationEqualsOpenerArmed = false
                 equalsGestureFastSecond = false
