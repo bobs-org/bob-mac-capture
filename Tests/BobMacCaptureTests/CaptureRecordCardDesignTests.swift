@@ -88,7 +88,7 @@ final class CaptureRecordCardDesignTests: XCTestCase {
         XCTAssertEqual(status.accessibilityLabel, "Status, required, missing")
         XCTAssertEqual(status.stateSymbolName, "circle.inset.filled")
         let companions = try XCTUnwrap(presentation.rows.first { $0.key == "companions" })
-        XCTAssertEqual(companions.accessibilityLabel, "Companions, optional, default")
+        XCTAssertEqual(companions.accessibilityLabel, "Companions, kelly, optional, default")
         XCTAssertEqual(companions.stateSymbolName, "checkmark.circle")
         let url = try XCTUnwrap(presentation.rows.first { $0.key == "url" })
         XCTAssertEqual(url.accessibilityLabel, "Url, optional, none")

@@ -17923,6 +17923,8 @@ final class CapturePanelModel: ObservableObject {
         if let openPicker = picker {
             return modifierAliasArm(arm, owns: openPicker) && openPicker.filterText.isEmpty
         }
+        // Race window before Bob's picker or completion list appears: the
+        // opener arm alone is enough, including picker-backed sigils.
         return !editorInputLocked
     }
 
