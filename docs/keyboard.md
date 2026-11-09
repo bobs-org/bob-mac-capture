@@ -370,17 +370,13 @@ live parse/preview remains the sole authority for whether the resulting hierarch
 contextually valid. Ctrl-A and Ctrl-E move the caret to the beginning and end of the
 current physical line, and when the caret is already on that edge they step to the
 beginning of the previous line or the end of the next one, so repeated presses walk the
-draft line by line. They stop at the first and last line rather than wrapping around, and
-because they only move the caret they never touch the draft's text, undo history, or an
-in-flight IME composition.
+draft line by line. They stop at the first and last line rather than wrapping around.
 
 Ctrl-Shift-J and Ctrl-Shift-K move the caret to the next and previous physical line,
 keeping the column it started from: passing through a shorter line clamps the caret
 to that line's end, and the next press in the same direction restores the original
-column on the first line long enough to hold it. Any other keystroke, click, or edit
-resets that remembered column. They stop at the last and first line rather than
-wrapping around, and like Ctrl-A and Ctrl-E they only move the caret, so they never
-touch the draft's text, undo history, or an in-flight IME composition. Exact Ctrl-K
+column on the first line long enough to hold it. Other input, clicks, or edits reset
+that remembered column. They stop at the first and last lines without wrapping. Exact Ctrl-K
 is again left to AppKit's native delete-to-end-of-paragraph binding, while
 Ctrl-Shift-K is the custom upward move and Ctrl-U remains Bob's custom line-deleting
 shortcut.

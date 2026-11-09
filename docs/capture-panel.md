@@ -527,16 +527,9 @@ Canceled drafts persist across Quit, Restart, crash, and logout in
 
 ## Stash
 
-The footer's **Stash** action shows the number of retained canceled drafts and matches
-Control-S. A draft stashed by a graceful quit counts as a stash entry the same way a
-Control-C cancel does. If the stash is empty, opening it reports "No canceled drafts yet"
-without logging draft text. If the editor currently contains any characters, the picker
-refuses to open; capture, retain, cancel, or explicitly discard the live draft first so
-restore can never overwrite work. **Discard** is intentionally different from Control-C:
-it is a permanent discard and never adds an entry to the stash. Control-C on an empty or
-whitespace-only editor, on a Task Go-To (`/`) draft, or when stashing is off
-(capacity 0) closes without adding an entry. A force quit or crash still loses an
-unsent draft.
+The footer's **Stash** action shows the retained count and matches Control-S. It opens
+the canceled-draft picker only when the editor is empty; see [Canceled drafts](#canceled-drafts)
+for capacity, persistence, and cancel rules.
 
 While the stash picker is open, it is modal inside the panel's auxiliary region and
 uses the same compact material style as completion. Rows are newest first. Restoring a
