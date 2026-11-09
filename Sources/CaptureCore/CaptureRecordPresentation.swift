@@ -454,6 +454,29 @@ public struct CaptureRecordRow: Equatable, Sendable {
     public var isOptionalHidden: Bool {
         !required && state == "none"
     }
+
+    /// VoiceOver identity, for example `Status, required, missing`. State is
+    /// never color alone.
+    public var accessibilityLabel: String {
+        let requirement = required ? "required" : "optional"
+        return "\(label), \(requirement), \(stateLabel)"
+    }
+
+    /// SF Symbol for the persistent state mark. Color is supplemental.
+    public var stateSymbolName: String {
+        switch state {
+        case "set":
+            return "checkmark.circle.fill"
+        case "default":
+            return "checkmark.circle"
+        case "missing":
+            return required ? "circle.inset.filled" : "circle"
+        case "invalid":
+            return "exclamationmark.circle.fill"
+        default:
+            return "circle.dashed"
+        }
+    }
 }
 
 /// Portable card state derived from Bob's parse. Schema order is preserved;
@@ -601,6 +624,80 @@ public struct CaptureRecordPresentation: Equatable, Sendable {
             return nil
         }
         return .requestField(key: order[position - 1], nextMissing: false)
+    }
+
+    /// Header title from Bob's action and label. Never invents a filename.
+    public var headerTitle: String {
+        let label = record.label.isEmpty ? "record" : record.label
+        if record.action == "create" {
+            return "New \(label.lowercased())"
+        }
+        return label
+    }
+
+    /// Bob's path when known. Empty when Bob omitted it; never derived.
+    public var headerPath: String? {
+        guard let path = record.path, !path.isEmpty else {
+            return nil
+        }
+        return path
+    }
+
+    public var notesLabel: String {
+        record.notes == 1 ? "1 note" : "\(record.notes) notes"
+    }
+
+    /// More disclosure, listing hidden optional keys.
+    public var moreLabel: String {
+        let keys = hiddenOptionalRows.map(\.key)
+        if keys.isEmpty {
+            return "More"
+        }
+        return "More (\(keys.joined(separator: ", ")))"
+    }
+
+    /// Footer copy from Bob's missing-field order and readiness. A caller
+    /// may replace this with Bob's diagnostic or status text.
+    public var footerHint: String {
+        if let key = firstMissingFieldKey {
+            let label = rows.first(where: { $0.key == key })?.label ?? key
+            return "⇥ next field · ⏎ Needs \(label) · Esc back to draft"
+        }
+        let action = record.action == "create" ? "create" : "accept"
+        return "⇥ next field · ⏎ \(action) · Esc back to draft"
+    }
+
+    /// Record whose item range contains `span`. Falls back to the top-level
+    /// record only when item data is absent. Never uses the first record
+    /// globally when items exist.
+    public static func record(
+        matching span: CaptureSpan,
+        in parse: CaptureParseResponse
+    ) -> CaptureRecord? {
+        if !parse.items.isEmpty {
+            return parse.items.first { item in
+                span.start >= item.range.start && span.start <= item.range.end
+            }?.record
+        }
+        return parse.record
+    }
+
+    /// Field Bob associated with this span, by `key` or by range overlap.
+    public static func field(
+        matching span: CaptureSpan,
+        in record: CaptureRecord
+    ) -> CaptureRecordField? {
+        if let key = span.key, !key.isEmpty {
+            return record.fields.first { $0.key == key }
+        }
+        return record.fields.first { field in
+            if let range = field.range, span.start >= range.start, span.end <= range.end {
+                return true
+            }
+            return field.valueRanges.contains {
+                span.start >= $0.start && span.end <= $0.end
+            }
+        }
     }
 }
 

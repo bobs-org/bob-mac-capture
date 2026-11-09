@@ -6012,6 +6012,21 @@ final class CapturePanelModel: ObservableObject {
 
     // MARK: - Capture picker
 
+    /// Test and render support: mounts a Record Card from fixture
+    /// presentation without a subprocess round trip.
+    func installRecordCardForPreviews(
+        presentation: CaptureRecordPresentation,
+        parse: CaptureParseResponse? = nil,
+        completion: CaptureCompletionResponse? = nil,
+        statusText: String = ""
+    ) {
+        recordPresentation = presentation
+        latestParse = parse
+        completionResponse = completion
+        selectedCompletionIndex = completion?.candidates.isEmpty == false ? 0 : nil
+        self.statusText = statusText
+    }
+
     /// Test and render support: installs a picker session directly from a
     /// snapshot, bypassing the subprocess round trip. Production code opens
     /// the picker through `scheduleAnalysis`; this exists so design tests and
@@ -19685,14 +19700,34 @@ final class CapturePanelModel: ObservableObject {
             }
 
             let category = captureSemanticCategory(forSpan: item.span, mode: parse.mode)
-            text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
+            let increaseContrast =
+                NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            var color = CaptureEditorPalette.color(for: category)
+            if item.span.kind == "record_field_value",
+               let record = CaptureRecordPresentation.record(matching: item.span, in: parse),
+               let field = CaptureRecordPresentation.field(matching: item.span, in: record)
+            {
+                color = CaptureEditorPalette.recordFieldValueColor(
+                    state: field.state,
+                    increaseContrast: increaseContrast
+                )
+            }
+            text[lower..<upper].foregroundColor = color
+            if item.span.kind == "record_route" {
+                // Chip wash only: the type emoji is a presentation adornment
+                // on the Record Card and must never enter the draft or shift
+                // copy/selection offsets.
+                text[lower..<upper].backgroundColor = CaptureEditorPalette.recordRouteWash(
+                    increaseContrast: increaseContrast
+                )
+            }
             if item.span.projectNote != nil {
                 // Every span of a sealed project-note marker, whatever the
                 // modifier says, carries the manila wash. Spans are
                 // contiguous, so the per-span washes read as one chip; the
                 // `#name` pill after the seal is a separate span.
                 text[lower..<upper].backgroundColor = CaptureEditorPalette.projectNoteWash(
-                    increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                    increaseContrast: increaseContrast
                 )
             }
             if category.isUnderlined {
@@ -19758,6 +19793,7 @@ final class CapturePanelModel: ObservableObject {
                 }
             }
         }
+        paintRecordValueRanges(&text, parse: parse, draft: draft)
         if parse.template != nil {
             for diagnostic in parse.diagnostics where diagnostic.severity != "info" && diagnostic.code != "template_missing_rows" {
                 guard let range = diagnostic.range,
@@ -19773,6 +19809,43 @@ final class CapturePanelModel: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Tints each field's `value_ranges` from the record that owns the
+    /// span, so list members and Unicode/multiline values follow Bob's
+    /// state. Items keep their own record; the first record is never used
+    /// globally when item data exists.
+    private static func paintRecordValueRanges(
+        _ text: inout AttributedString,
+        parse: CaptureParseResponse,
+        draft: String
+    ) {
+        let records: [CaptureRecord]
+        if parse.items.isEmpty {
+            records = parse.record.map { [$0] } ?? []
+        } else {
+            records = parse.items.compactMap(\.record)
+        }
+        let increaseContrast =
+            NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        for record in records {
+            for field in record.fields {
+                for valueRange in field.valueRanges {
+                    guard let typedRange = stringRange(in: draft, byteRange: valueRange),
+                          let lower = AttributedString.Index(typedRange.lowerBound, within: text),
+                          let upper = AttributedString.Index(typedRange.upperBound, within: text),
+                          lower < upper
+                    else {
+                        continue
+                    }
+                    text[lower..<upper].foregroundColor =
+                        CaptureEditorPalette.recordFieldValueColor(
+                            state: field.state,
+                            increaseContrast: increaseContrast
+                        )
+                }
+            }
+        }
     }
 
     private func shouldRequestCompletion(

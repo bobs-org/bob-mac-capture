@@ -737,6 +737,7 @@ struct CapturePanelView: View {
             || model.isTemplateShelfPresented
             || model.inlinePromptVisible
             || model.pickerVisible
+            || model.recordCardActive
             || model.pickerChipVisible
             || model.completionVisible
             || model.destinationSummary != nil
@@ -780,6 +781,14 @@ struct CapturePanelView: View {
             CapturePullInChoiceCard(model: model, choice: choice)
                 .layoutPriority(0)
                 .focused($focusedControl, equals: .pullInOfferList)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
+        } else if let presentation = model.recordPresentation {
+            RecordCardView(model: model, presentation: presentation)
+                .layoutPriority(0)
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height
                 } action: { height in
@@ -1140,6 +1149,17 @@ struct CapturePanelView: View {
         if model.isTemplateShelfPresented {
             let explicit = SavedTemplateShelfPickerHeightPolicy(
                 entryCount: model.templateShelfCount,
+                displayScale: displayScale
+            ).auxiliaryHeight
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: explicit.minimumVisibleHeight
+            )
+        }
+
+        if let presentation = model.recordPresentation {
+            let explicit = RecordCardHeightPolicy(
+                presentation: presentation,
                 displayScale: displayScale
             ).auxiliaryHeight
             return CapturePanelAuxiliaryHeight(

@@ -596,4 +596,145 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(CaptureRecordRouteCache.label(for: inbox), inbox.label)
         XCTAssertNil(CaptureRecordRouteCache.continuation(for: inbox, replacementStart: 1))
     }
+
+    func testRowAccessibilityLabelAndStateSymbols() throws {
+        let missing = CaptureRecordRow(
+            key: "status",
+            label: "Status",
+            kind: "choices",
+            required: true,
+            state: "missing"
+        )
+        XCTAssertEqual(missing.accessibilityLabel, "Status, required, missing")
+        XCTAssertEqual(missing.stateSymbolName, "circle.inset.filled")
+
+        let optionalMissing = CaptureRecordRow(
+            key: "note",
+            label: "Note",
+            required: false,
+            state: "missing"
+        )
+        XCTAssertEqual(optionalMissing.accessibilityLabel, "Note, optional, missing")
+        XCTAssertEqual(optionalMissing.stateSymbolName, "circle")
+
+        let set = CaptureRecordRow(
+            key: "category",
+            label: "Category",
+            required: true,
+            state: "set"
+        )
+        XCTAssertEqual(set.accessibilityLabel, "Category, required, set")
+        XCTAssertEqual(set.stateSymbolName, "checkmark.circle.fill")
+
+        let invalid = CaptureRecordRow(
+            key: "status",
+            label: "Status",
+            required: true,
+            state: "invalid"
+        )
+        XCTAssertEqual(invalid.accessibilityLabel, "Status, required, invalid")
+        XCTAssertEqual(invalid.stateSymbolName, "exclamationmark.circle.fill")
+
+        let defaulted = CaptureRecordRow(
+            key: "companions",
+            label: "Companions",
+            required: false,
+            state: "default",
+            source: "default"
+        )
+        XCTAssertEqual(defaulted.accessibilityLabel, "Companions, optional, default")
+        XCTAssertEqual(defaulted.stateSymbolName, "checkmark.circle")
+
+        let none = CaptureRecordRow(
+            key: "url",
+            label: "Url",
+            required: false,
+            state: "none"
+        )
+        XCTAssertEqual(none.accessibilityLabel, "Url, optional, none")
+        XCTAssertEqual(none.stateSymbolName, "circle.dashed")
+
+        let unknown = CaptureRecordRow(
+            key: "x",
+            label: "X",
+            required: false,
+            state: "future_state"
+        )
+        XCTAssertEqual(unknown.accessibilityLabel, "X, optional, none")
+        XCTAssertEqual(unknown.stateSymbolName, "circle.dashed")
+    }
+
+    func testPresentationHeaderPathNotesAndFooterComeFromBob() throws {
+        let incomplete = try decodeParse("record-parse-incomplete.json")
+        let presentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: incomplete, cursor: incomplete.input.utf8.count)
+        )
+        XCTAssertEqual(presentation.headerTitle, "New restaurant")
+        XCTAssertEqual(presentation.headerPath, "eat/ramen_nagi.md")
+        XCTAssertEqual(presentation.notesLabel, "0 notes")
+        XCTAssertEqual(presentation.moreLabel, "More (visited, url)")
+        XCTAssertEqual(
+            presentation.footerHint,
+            "⇥ next field · ⏎ Needs Status · Esc back to draft"
+        )
+
+        let complete = try decodeParse("record-parse-complete.json")
+        let ready = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: complete, cursor: complete.input.utf8.count)
+        )
+        XCTAssertEqual(ready.headerTitle, "New restaurant")
+        XCTAssertEqual(ready.footerHint, "⇥ next field · ⏎ create · Esc back to draft")
+        XCTAssertTrue(ready.hiddenOptionalRows.contains(where: { $0.key == "url" }))
+
+        let untitled = CaptureRecord(
+            action: "update",
+            label: "Restaurant",
+            path: nil,
+            notes: 1,
+            fields: []
+        )
+        let update = CaptureRecordPresentation(record: untitled)
+        XCTAssertEqual(update.headerTitle, "Restaurant")
+        XCTAssertNil(update.headerPath)
+        XCTAssertEqual(update.notesLabel, "1 note")
+        XCTAssertEqual(update.moreLabel, "More")
+        XCTAssertEqual(update.footerHint, "⇥ next field · ⏎ accept · Esc back to draft")
+    }
+
+    func testRecordMatchingUsesTheOwningItemNeverTheFirstRecordGlobally() throws {
+        let parse = try decodeParse("record-parse-mixed-incomplete.json")
+        let firstValue = try XCTUnwrap(
+            parse.spans.first { $0.kind == "record_field_value" && $0.key == "status" }
+        )
+        let first = try XCTUnwrap(CaptureRecordPresentation.record(matching: firstValue, in: parse))
+        XCTAssertEqual(first.missing, [])
+        XCTAssertEqual(first.fields.first { $0.key == "status" }?.state, "set")
+        XCTAssertEqual(
+            CaptureRecordPresentation.field(matching: firstValue, in: first)?.state,
+            "set"
+        )
+
+        let secondRoute = CaptureSpan(start: 84, end: 89, kind: "record_route")
+        let second = try XCTUnwrap(
+            CaptureRecordPresentation.record(matching: secondRoute, in: parse)
+        )
+        XCTAssertEqual(second.missing, ["status", "category", "location"])
+        XCTAssertEqual(parse.record?.missing, [])
+
+        let outside = CaptureSpan(start: 200, end: 210, kind: "record_field_value", key: "status")
+        XCTAssertNil(CaptureRecordPresentation.record(matching: outside, in: parse))
+    }
+
+    func testFieldMatchingFallsBackToRangeWhenSpanKeyIsAbsent() throws {
+        let parse = try decodeParse("record-parse-complete.json")
+        let record = try XCTUnwrap(parse.record)
+        let keyed = CaptureSpan(start: 28, end: 33, kind: "record_field_value", key: "status")
+        XCTAssertEqual(CaptureRecordPresentation.field(matching: keyed, in: record)?.key, "status")
+
+        let unkeyed = CaptureSpan(start: 47, end: 52, kind: "record_field_value")
+        XCTAssertEqual(
+            CaptureRecordPresentation.field(matching: unkeyed, in: record)?.key,
+            "category"
+        )
+    }
 }

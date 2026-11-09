@@ -39,10 +39,10 @@ final class CaptureRecordInteractionTests: XCTestCase {
         )
 
         let list = CaptureKeyRoutingContext(
+            completionVisible: true,
             recordCardActive: true,
             recordAssistAvailable: true,
             recordCompletionListVisible: true,
-            completionVisible: true,
             completionHasSelection: false
         )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: list), .acceptCompletion)
@@ -72,9 +72,9 @@ final class CaptureRecordInteractionTests: XCTestCase {
         )
 
         let listWithoutSelection = CaptureKeyRoutingContext(
+            completionVisible: true,
             recordCardActive: true,
             recordCompletionListVisible: true,
-            completionVisible: true,
             completionHasSelection: false
         )
         XCTAssertEqual(
@@ -96,7 +96,7 @@ final class CaptureRecordInteractionTests: XCTestCase {
         XCTAssertEqual(
             router.command(
                 for: escape,
-                context: CaptureKeyRoutingContext(recordCardActive: true, completionVisible: true)
+                context: CaptureKeyRoutingContext(completionVisible: true, recordCardActive: true)
             ),
             .escape
         )

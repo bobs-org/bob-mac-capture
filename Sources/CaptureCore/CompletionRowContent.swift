@@ -44,6 +44,16 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseLog
     case pomodoroStartDrop
     case link
+    /// The `@eat/` route token of a record item. Accent chip; the type
+    /// emoji is a presentation adornment on the Record Card, never draft
+    /// bytes.
+    case recordRoute
+    /// An explicit `@eat/^stem` filename span. Block-ID family.
+    case recordStem
+    /// A `- key::` field name. Dim; color is supplemental to the state text.
+    case recordFieldKey
+    /// A field value. Tinted by Bob's field state in the editor painter.
+    case recordFieldValue
     case templateSlot(Int)
     case neutral
 }
@@ -224,6 +234,14 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .taskType
     case "task_type_marker":
         return .taskTypeMarker
+    case "record_route":
+        return .recordRoute
+    case "record_stem":
+        return .recordStem
+    case "record_field_key":
+        return .recordFieldKey
+    case "record_field_value":
+        return .recordFieldValue
     default:
         return .neutral
     }

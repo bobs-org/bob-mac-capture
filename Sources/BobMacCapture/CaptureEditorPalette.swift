@@ -150,9 +150,41 @@ enum CaptureEditorPalette {
             return .gray
         case .link:
             return Color(nsColor: .linkColor)
+        case .recordRoute:
+            return .accentColor
+        case .recordStem:
+            return .indigo
+        case .recordFieldKey:
+            return Color(nsColor: .tertiaryLabelColor)
+        case .recordFieldValue:
+            return .primary
         case .templateSlot(let field):
             return templateSlotColor(field: field)
         case .neutral:
+            return .primary
+        }
+    }
+
+    /// Soft chip wash behind a `record_route` span. The type emoji is a
+    /// presentation adornment on the Record Card and is never inserted into
+    /// the draft. Increase Contrast raises the alpha so the chip survives.
+    static func recordRouteWash(increaseContrast: Bool) -> Color {
+        Color.accentColor.opacity(increaseContrast ? 0.28 : 0.16)
+    }
+
+    /// Value tint from Bob's field state. Color is supplemental to the
+    /// persistent state text on the card. Unknown states stay neutral.
+    static func recordFieldValueColor(state: String, increaseContrast: Bool = false) -> Color {
+        switch state {
+        case "invalid":
+            return Color(nsColor: .systemRed)
+        case "missing":
+            return increaseContrast ? .primary : .secondary
+        case "default":
+            return .teal
+        case "set":
+            return .accentColor
+        default:
             return .primary
         }
     }

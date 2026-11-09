@@ -685,6 +685,273 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testRecordSpansPaintRouteChipKeysAndValuesWithoutInsertingEmoji() throws {
+        let parse = try Self.fixtureParse("record-parse-complete.json")
+        let draft = parse.input
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(String(text.characters), draft)
+
+        let routeColor = NSColor(CaptureEditorPalette.color(for: .recordRoute))
+        let keyColor = NSColor(CaptureEditorPalette.color(for: .recordFieldKey))
+        let setColor = NSColor(
+            CaptureEditorPalette.recordFieldValueColor(state: "set")
+        )
+        let wash = CaptureEditorPalette.recordRouteWash(increaseContrast: false)
+
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == routeColor } ?? false
+            }),
+            ["@eat/"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor == wash }).joined(),
+            "@eat/"
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == keyColor } ?? false
+            }),
+            ["status", "category", "location"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == setColor } ?? false
+            }),
+            ["liked", "Ramen", "Clark"]
+        )
+    }
+
+    func testRecordUnicodeOffsetsPaintTheRouteNotASlicedGrapheme() throws {
+        let parse = try Self.fixtureParse("record-parse-unicode.json")
+        let draft = parse.input
+        XCTAssertEqual(draft, "Café Møø @eat/")
+        XCTAssertEqual(("Café Møø " as String).utf8.count, 12)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }),
+            ["@eat/"]
+        )
+    }
+
+    func testRecordMultilineValueRangesFollowByteOffsets() throws {
+        let draft = "Café Møø @eat/\n- status:: liked"
+        XCTAssertEqual(("Café Møø " as String).utf8.count, 12)
+        let routeStart = ("Café Møø " as String).utf8.count
+        let valueStart = draft.utf8.count - "liked".utf8.count
+        let spans = [
+            CaptureSpan(start: routeStart, end: routeStart + 5, kind: "record_route"),
+            CaptureSpan(
+                start: valueStart,
+                end: valueStart + 5,
+                kind: "record_field_value",
+                key: "status"
+            ),
+        ]
+        let record = CaptureRecord(
+            action: "create",
+            label: "Restaurant",
+            fields: [
+                CaptureRecordField(
+                    key: "status",
+                    label: "Status",
+                    kind: "choices",
+                    required: true,
+                    state: "set",
+                    display: "Liked",
+                    range: CaptureRange(start: valueStart, end: valueStart + 5),
+                    valueRanges: [CaptureRange(start: valueStart, end: valueStart + 5)]
+                )
+            ]
+        )
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "Café Møø",
+            mode: "record_note",
+            spans: spans,
+            record: record
+        )
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        let setColor = NSColor(CaptureEditorPalette.recordFieldValueColor(state: "set"))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == setColor } ?? false
+            }),
+            ["liked"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }),
+            ["@eat/"]
+        )
+    }
+
+    func testRecordFieldValueUsesTheOwningItemsStateNotTheFirstRecord() throws {
+        let draft = "One @eat/\n- status:: liked\n\nTwo @eat/\n- status:: nope"
+        let firstValue = CaptureSpan(
+            start: 22,
+            end: 27,
+            kind: "record_field_value",
+            key: "status"
+        )
+        let secondValue = CaptureSpan(
+            start: 51,
+            end: 55,
+            kind: "record_field_value",
+            key: "status"
+        )
+        let firstRecord = CaptureRecord(
+            action: "create",
+            label: "Restaurant",
+            missing: [],
+            fields: [
+                CaptureRecordField(
+                    key: "status",
+                    label: "Status",
+                    kind: "choices",
+                    required: true,
+                    state: "set",
+                    display: "Liked",
+                    range: CaptureRange(start: 22, end: 27)
+                )
+            ]
+        )
+        let secondRecord = CaptureRecord(
+            action: "create",
+            label: "Restaurant",
+            missing: [],
+            fields: [
+                CaptureRecordField(
+                    key: "status",
+                    label: "Status",
+                    kind: "choices",
+                    required: true,
+                    state: "invalid",
+                    range: CaptureRange(start: 51, end: 55)
+                )
+            ]
+        )
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "One",
+            mode: "record_note",
+            spans: [firstValue, secondValue],
+            items: [
+                CaptureParseItem(
+                    index: 1,
+                    range: CaptureRange(start: 0, end: 27),
+                    lineStart: 1,
+                    lineEnd: 2,
+                    body: "One",
+                    mode: "record_note",
+                    record: firstRecord
+                ),
+                CaptureParseItem(
+                    index: 2,
+                    range: CaptureRange(start: 29, end: 55),
+                    lineStart: 4,
+                    lineEnd: 5,
+                    body: "Two",
+                    mode: "record_note",
+                    record: secondRecord
+                ),
+            ],
+            record: firstRecord
+        )
+        XCTAssertEqual(
+            CaptureRecordPresentation.record(matching: firstValue, in: parse)?.fields.first?.state,
+            "set"
+        )
+        XCTAssertEqual(
+            CaptureRecordPresentation.record(matching: secondValue, in: parse)?.fields.first?.state,
+            "invalid"
+        )
+
+        let ranges = try XCTUnwrap(
+            validatedSpanRanges(in: draft, spans: [firstValue, secondValue])
+        )
+        var text = AttributedString(draft)
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        let setColor = NSColor(CaptureEditorPalette.recordFieldValueColor(state: "set"))
+        let invalidColor = NSColor(CaptureEditorPalette.recordFieldValueColor(state: "invalid"))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == setColor } ?? false
+            }),
+            ["liked"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == invalidColor } ?? false
+            }),
+            ["nope"]
+        )
+    }
+
+    func testRecordStemAndUnknownKindsStayOnTheirPalettes() throws {
+        let draft = "Ramen Nagi @eat/^custom-stem extra"
+        let spans = [
+            CaptureSpan(start: 11, end: 16, kind: "record_route"),
+            CaptureSpan(start: 16, end: 28, kind: "record_stem"),
+            CaptureSpan(start: 29, end: 34, kind: "record_future_kind"),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_stem"), .recordStem)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_future_kind"), .neutral)
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+
+        let stemColor = NSColor(CaptureEditorPalette.color(for: .recordStem))
+        let neutral = NSColor(CaptureEditorPalette.color(for: .neutral))
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == stemColor } ?? false
+            }),
+            ["^custom-stem"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == neutral } ?? false
+            }),
+            ["extra"]
+        )
+        XCTAssertEqual(String(text.characters), draft)
+    }
+
+    func testIncreaseContrastRaisesTheRecordRouteWash() {
+        XCTAssertNotEqual(
+            CaptureEditorPalette.recordRouteWash(increaseContrast: false),
+            CaptureEditorPalette.recordRouteWash(increaseContrast: true)
+        )
+    }
+
     private static func parse(draft: String, spans: [CaptureSpan]) -> CaptureParseResponse {
         CaptureParseResponse(
             ok: true,

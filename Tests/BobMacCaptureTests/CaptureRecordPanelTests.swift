@@ -204,4 +204,33 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertFalse(model.completionVisible)
         XCTAssertEqual(model.plainDraft, incompleteDraft)
     }
+
+    func testMoreDisclosureRevealsHiddenOptionalFieldsWithoutSubmitting() async throws {
+        let logURL = recordURL()
+        let model = makeModel(
+            parseFixture: "record-parse-incomplete.json",
+            completionFixture: "record-complete-next-missing-first.json",
+            draft: incompleteDraft,
+            recordPath: logURL
+        )
+
+        await waitUntil { model.recordAssistAvailable }
+        let before = try XCTUnwrap(model.recordPresentation)
+        XCTAssertTrue(before.hiddenOptionalRows.contains(where: { $0.key == "url" }))
+        XCTAssertFalse(before.displayedRows.contains(where: { $0.key == "url" }))
+        XCTAssertEqual(before.moreLabel, "More (visited, url)")
+
+        model.setRecordMoreExpanded(true)
+        let expanded = try XCTUnwrap(model.recordPresentation)
+        XCTAssertTrue(expanded.showsMore)
+        XCTAssertTrue(expanded.displayedRows.contains(where: { $0.key == "url" }))
+        XCTAssertTrue(expanded.displayedRows.contains(where: { $0.key == "visited" }))
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+
+        model.setRecordMoreExpanded(false)
+        let collapsed = try XCTUnwrap(model.recordPresentation)
+        XCTAssertFalse(collapsed.showsMore)
+        XCTAssertFalse(collapsed.displayedRows.contains(where: { $0.key == "url" }))
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
 }

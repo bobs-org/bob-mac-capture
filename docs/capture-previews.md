@@ -1,16 +1,14 @@
 ---
 title: "Mac Capture previews"
-description: "Preview cards, Pomodoro blocks, transfers, dependencies, completions, and successor offers."
+description: "Preview cards, Pomodoro blocks, transfers, dependencies, completions, successor offers, and Record Cards."
 ---
 
-Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard data unless the accepted parse reports `%c`; Preview and Capture read it and mirror the full block. See [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md) for insertion.
+Cards render Bob's ordered `bob capture --dry-run [--no-clip] --format json` response. Live preview omits clipboard unless parse reports `%c`; Preview and Capture read it. See [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 Transfer cards are covered in [Task transfers](capture-transfers.md).
 
-[![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion.png#only-light)](images/task-completion.png)
-[![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
-
-Synthetic CI render.
+[![Task completion card](images/task-completion.png#only-light)](images/task-completion.png)
+[![Task completion card](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
 
 ## Start overrides
 
@@ -82,6 +80,13 @@ Each `%c` item renders its own Clip card beneath its preview card, built only fr
   placeholder. Clip lines never enter
   a task block: the task-block dedup keeps matching
   them through the item's verbatim `previewBlockLines`.
+
+## Record Card
+
+A record draft occupies the picker-card slot. Header: Bob's emoji, title,
+path, note count. Rows keep labels and Bob's state; capsules accept
+completion candidates; optionals hide under More. Type emoji never enters the draft. See
+[Record cards](keyboard.md#record-cards).
 
 ## Drawer captures
 

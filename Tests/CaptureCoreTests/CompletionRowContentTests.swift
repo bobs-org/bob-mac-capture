@@ -9,6 +9,18 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_source"), .route)
     }
 
+    func testRecordSpansMapToRecordSemanticCategoriesAndUnknownStaysNeutral() {
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_route"), .recordRoute)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_stem"), .recordStem)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_field_key"), .recordFieldKey)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_field_value"), .recordFieldValue)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "record_future_kind"), .neutral)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: CaptureSpan(start: 0, end: 5, kind: "record_route")),
+            .recordRoute
+        )
+    }
+
     func testRouteContextPrefersRouteAsPrimaryAndSurfacesLabelKindStatusAsSecondaryBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "today",
