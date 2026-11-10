@@ -1753,7 +1753,17 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 14)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: .command)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: .command)))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 14, modifiers: .command)),
+            .openGcalNote(nil)
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 14, modifiers: .command),
+                completionVisible: true
+            ),
+            .openGcalNote(nil)
+        )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: [.control, .option])))
