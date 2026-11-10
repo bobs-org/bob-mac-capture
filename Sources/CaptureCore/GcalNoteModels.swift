@@ -338,6 +338,12 @@ public struct GcalNoteSpan: Decodable, Equatable, Sendable {
     public let start: Int
     public let end: Int
     public let kind: String
+
+    public init(start: Int, end: Int, kind: String) {
+        self.start = start
+        self.end = end
+        self.kind = kind
+    }
 }
 
 public struct GcalNoteIssue: Decodable, Equatable, Sendable {
@@ -353,6 +359,20 @@ public struct GcalNoteIssue: Decodable, Equatable, Sendable {
         case kind
         case message
         case suggestions
+    }
+
+    public init(
+        start: Int? = nil,
+        end: Int? = nil,
+        kind: String,
+        message: String? = nil,
+        suggestions: [String] = []
+    ) {
+        self.start = start
+        self.end = end
+        self.kind = kind
+        self.message = message
+        self.suggestions = suggestions
     }
 
     public init(from decoder: Decoder) throws {
@@ -471,5 +491,21 @@ public enum GcalNoteSpanAdapter {
             if $0.1 != $1.1 { return $0.1 < $1.1 }
             return $0.2.span.start < $1.2.span.start
         }.map(\.2)
+    }
+
+    public static func validatedIssueRanges(
+        in text: String,
+        errors: [GcalNoteIssue]
+    ) -> [(issue: GcalNoteIssue, span: ValidatedCaptureSpan)] {
+        errors.compactMap { issue in
+            guard let start = issue.start, let end = issue.end else {
+                return nil
+            }
+            let captureSpan = CaptureSpan(start: start, end: end, kind: issue.kind)
+            guard let value = validatedSpanRanges(in: text, spans: [captureSpan])?.first else {
+                return nil
+            }
+            return (issue, value)
+        }
     }
 }

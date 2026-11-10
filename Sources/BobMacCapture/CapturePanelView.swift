@@ -541,7 +541,8 @@ struct CapturePanelView: View {
             if eventNotes.isPresented {
                 GcalNotePickerView(model: eventNotes)
                     .frame(height: GcalNotePanelMetrics.resolved(
-                        availableScreenHeight: model.availableScreenHeight
+                        availableScreenHeight: model.availableScreenHeight,
+                        editing: eventNotes.showsEditor
                     ).contentHeight)
             }
         }
@@ -1092,7 +1093,8 @@ struct CapturePanelView: View {
     private func reportContentMetrics() {
         if eventNotes.isPresented {
             let height = GcalNotePanelMetrics.resolved(
-                availableScreenHeight: model.availableScreenHeight
+                availableScreenHeight: model.availableScreenHeight,
+                editing: eventNotes.showsEditor
             ).contentHeight
             onContentMetricsChange(
                 CapturePanelContentMetrics(

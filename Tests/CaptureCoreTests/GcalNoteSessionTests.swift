@@ -311,6 +311,37 @@ final class GcalNoteSessionTests: XCTestCase {
         XCTAssertFalse(model.canUndoMutation)
     }
 
+    func testClearSkipsInheritedSeriesWhenOccurrenceIsAbsent() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let argvURL = directory.appendingPathComponent("argv")
+        let map = directory.appendingPathComponent("map.json")
+        try writeMap(
+            map,
+            [
+                "list": "gcal-note/list_all.json",
+                "show": "gcal-note/inherited_reasons.json",
+            ])
+        let model = session([
+            "FAKE_BOB_GCAL_NOTE_FIXTURE_MAP": map.path,
+            "FAKE_BOB_GCAL_NOTE_ARGV_PATH": argvURL.path,
+        ])
+        model.enterPicker()
+        await waitUntil { model.phase == .listing }
+        model.select(try listedEvent(model, id: "gym"))
+        await waitUntil { model.phase == .editing }
+        XCTAssertEqual(model.editorText, "")
+        XCTAssertEqual(model.scope, .event)
+        XCTAssertFalse(model.canClearSavedScope)
+        try? FileManager.default.removeItem(at: argvURL)
+        model.clear()
+        try await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(model.phase, .editing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: argvURL.path))
+    }
+
     func testClearUndoRestoresCanonicalText() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)

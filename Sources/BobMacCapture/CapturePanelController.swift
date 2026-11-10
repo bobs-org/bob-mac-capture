@@ -1443,6 +1443,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return nil
         }
         if let textView = view as? NSTextView,
+           textView.identifier?.rawValue != gcalNoteEditorAccessibilityIdentifier,
            textView.isEditable,
            !textView.hasMarkedText(),
            textView.string == expected
@@ -2292,7 +2293,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             showEventNotes(url: url)
             return true
         case .gcalNoteEscape:
-            eventNotes.leave()
+            eventNotes.handleEscape()
             return true
         case .gcalNoteMoveNext:
             eventNotes.moveSelection(1)
@@ -2302,6 +2303,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .gcalNoteOpenSelected:
             eventNotes.openSelectedEvent()
+            return true
+        case .gcalNoteSave:
+            eventNotes.save()
+            return true
+        case .gcalNoteClear:
+            eventNotes.clear()
+            return true
+        case .gcalNoteToggleScope:
+            eventNotes.toggleScope()
             return true
         case .gcalNoteUndo:
             return eventNotes.undoLastMutation()
@@ -3336,7 +3346,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             context: CaptureKeyRoutingContext(
                 keyIsRepeat: event.isARepeat,
                 editorHasMarkedText: editor?.hasMarkedText() ?? false,
-                gcalNoteModeVisible: true
+                gcalNoteModeVisible: true,
+                gcalNoteEditing: eventNotes.isEditorKeySurface,
+                gcalNoteCanUndoMutation: eventNotes.session?.canUndoMutation == true
             )
         )
         guard let command else { return event }
@@ -3346,7 +3358,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             DispatchQueue.main.async { switcher() }
             return nil
         case .gcalNoteEscape:
-            eventNotes.leave()
+            eventNotes.handleEscape()
             return nil
         case .gcalNoteMoveNext:
             eventNotes.moveSelection(1)
@@ -3356,6 +3368,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return nil
         case .gcalNoteOpenSelected:
             eventNotes.openSelectedEvent()
+            return nil
+        case .gcalNoteSave:
+            eventNotes.save()
+            return nil
+        case .gcalNoteClear:
+            eventNotes.clear()
+            return nil
+        case .gcalNoteToggleScope:
+            eventNotes.toggleScope()
             return nil
         case .gcalNoteUndo:
             return eventNotes.undoLastMutation() ? nil : event

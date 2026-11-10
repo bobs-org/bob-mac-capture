@@ -35,6 +35,14 @@ final class GcalNotePanelModel: ObservableObject {
         processClient?.gcalNoteKnownUnsupported == true
     }
 
+    var showsEditor: Bool {
+        session?.showsEditor == true
+    }
+
+    var isEditorKeySurface: Bool {
+        session?.isEditorKeySurface == true
+    }
+
     var pickerEvents: [GcalNoteEvent] {
         guard let session else { return [] }
         return session.ambiguousCandidates.isEmpty
@@ -128,6 +136,34 @@ final class GcalNotePanelModel: ObservableObject {
         return true
     }
 
+    func save() {
+        session?.save()
+    }
+
+    func clear() {
+        session?.clear()
+    }
+
+    func toggleScope() {
+        session?.toggleScope()
+    }
+
+    func returnToPicker() {
+        session?.returnToPicker()
+    }
+
+    func handleEscape() {
+        if isEditorKeySurface {
+            returnToPicker()
+        } else {
+            leave()
+        }
+    }
+
+    func requestPreview() {
+        session?.requestPreview()
+    }
+
     func setCalendarNoteActionFocused(_ focused: Bool, url: String?) {
         calendarNoteActionIsFocused = focused
         focusedCalendarURL = focused ? url : nil
@@ -162,8 +198,11 @@ final class GcalNotePanelModel: ObservableObject {
 struct GcalNotePanelMetrics: Equatable {
     let contentHeight: CGFloat
 
-    static func resolved(availableScreenHeight: CGFloat?) -> Self {
-        let preferred: CGFloat = 420
+    static func resolved(
+        availableScreenHeight: CGFloat?,
+        editing: Bool = false
+    ) -> Self {
+        let preferred: CGFloat = editing ? 560 : 420
         let fallbackLimit: CGFloat = 680
         let screenLimit = availableScreenHeight.map { max(280, $0 - 88) } ?? fallbackLimit
         return Self(contentHeight: min(preferred, screenLimit))

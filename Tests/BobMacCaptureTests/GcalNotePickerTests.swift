@@ -113,6 +113,13 @@ final class GcalNotePickerTests: XCTestCase {
 
         let mode = CaptureKeyRoutingContext(gcalNoteModeVisible: true)
         XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 1, modifiers: [.control, .option], characters: "s"),
+                context: mode
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 53, characters: "\u{1b}"), context: mode),
             .gcalNoteEscape
         )
@@ -350,7 +357,10 @@ final class GcalNotePickerTests: XCTestCase {
 
     private func findEditor(in view: NSView?) -> NSTextView? {
         guard let view else { return nil }
-        if let textView = view as? NSTextView, textView.isEditable {
+        if let textView = view as? NSTextView,
+            textView.isEditable,
+            textView.identifier?.rawValue != gcalNoteEditorAccessibilityIdentifier
+        {
             return textView
         }
         for subview in view.subviews {

@@ -9,6 +9,17 @@ struct GcalNotePickerView: View {
     private var session: GcalNoteSession? { model.session }
 
     var body: some View {
+        Group {
+            if model.showsEditor, let event = session?.selectedEvent {
+                GcalNoteEditorView(model: model, event: event)
+            } else {
+                pickerChrome
+            }
+        }
+        .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var pickerChrome: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Label("Event notes", systemImage: "calendar.badge.note")
@@ -18,6 +29,13 @@ struct GcalNotePickerView: View {
                 Button("Back to Capture", action: model.leave)
                     .keyboardShortcut(.cancelAction)
                     .accessibilityHint("Returns to the unchanged capture draft.")
+            }
+
+            if let banner = GcalNotePresentation.statusBannerText(session?.statusBanner) {
+                Text(banner)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Event note status")
             }
 
             if let session, !session.ambiguousCandidates.isEmpty {
@@ -43,6 +61,11 @@ struct GcalNotePickerView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Event note picker")
         .onAppear { filterIsFocused = true }
+        .onChange(of: model.showsEditor) { _, showingEditor in
+            if !showingEditor {
+                filterIsFocused = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -58,10 +81,13 @@ struct GcalNotePickerView: View {
     @ViewBuilder
     private func sessionContent(_ session: GcalNoteSession) -> some View {
         switch session.phase {
-        case .inactive, .loadingList, .resolving:
+        case .inactive, .loadingList, .resolving, .editing, .previewPending, .writing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(session.phase == .resolving ? "Opening event…" : "Loading events…")
+                Text(
+                    session.phase == .loadingList || session.phase == .inactive
+                        ? "Loading events…" : "Opening event…"
+                )
                     .foregroundStyle(.secondary)
             }
         case .listing:
@@ -76,12 +102,6 @@ struct GcalNotePickerView: View {
                         : "No calendar events found")
             } else {
                 eventList
-            }
-        case .editing, .previewPending, .writing:
-            if let event = session.selectedEvent {
-                selectedEventDetail(event)
-            } else {
-                Text("Loading event details…").foregroundStyle(.secondary)
             }
         case .unsupported:
             Label("Event notes need a newer bob.", systemImage: "info.circle")
@@ -184,59 +204,6 @@ struct GcalNotePickerView: View {
             accessibilityLabel(for: event, organizer: organizer, noteSummary: noteSummary)
         )
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private func selectedEventDetail(_ event: GcalNoteEvent) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button("Events") { session?.returnToPicker() }
-                    .accessibilityHint("Returns to the event list.")
-                Spacer()
-                if event.isRecurring {
-                    Label("Recurring", systemImage: "repeat")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Text(event.title ?? "Untitled event")
-                .font(.title3.weight(.semibold))
-                .lineLimit(2)
-                .accessibilityAddTraits(.isHeader)
-            Text([event.day, event.time].compactMap { $0 }.joined(separator: " · "))
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
-            Text(event.organizer?.name.flatMap(nonBlank)
-                ?? nonBlank(event.calendarName)
-                ?? "Calendar")
-                .font(.callout)
-            if let answer = answerLabel(event.answer) {
-                Text(answer)
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.quaternary, in: Capsule())
-            }
-            Divider()
-            if let text = event.note?.text, !text.isEmpty {
-                ScrollView {
-                    Text(text)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                .accessibilityLabel("Loaded private event note")
-            } else {
-                Text("No private event note is saved for this event.")
-                    .foregroundStyle(.secondary)
-            }
-            if let message = session?.statusBanner?.detail, !message.isEmpty {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Selected event details")
     }
 
     private var dayGroups: [(day: String, events: [GcalNoteEvent])] {

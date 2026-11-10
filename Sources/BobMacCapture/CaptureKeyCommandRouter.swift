@@ -131,6 +131,9 @@ enum CaptureKeyCommand: Equatable {
     case gcalNoteMoveNext
     case gcalNoteMovePrevious
     case gcalNoteOpenSelected
+    case gcalNoteSave
+    case gcalNoteClear
+    case gcalNoteToggleScope
     case gcalNoteUndo
     case gcalNotePassThrough
     case switchPanel
@@ -207,6 +210,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var editorHasMarkedText = false
     var editorLeaderPending = false
     var gcalNoteModeVisible = false
+    var gcalNoteEditing = false
+    var gcalNoteCanUndoMutation = false
     var calendarNoteActionIsFocused = false
     var focusedCalendarNoteURL: String? = nil
     var captureSubmitInFlight = false
@@ -364,10 +369,42 @@ struct CaptureKeyCommandRouter {
                 return .gcalNoteEscape
             }
             if event.keyCode == KeyCode.z, modifiers.subtracting(.capsLock) == .command {
-                return .gcalNoteUndo
+                if context.gcalNoteCanUndoMutation {
+                    return .gcalNoteUndo
+                }
+                if context.gcalNoteEditing {
+                    return .gcalNotePassThrough
+                }
+                return .consumeKey
             }
             if event.keyCode == KeyCode.e, modifiers.subtracting(.capsLock) == .command {
                 return .consumeKey
+            }
+            if event.keyCode == KeyCode.s,
+               modifiers.subtracting(.capsLock) == [.control, .option]
+            {
+                return context.gcalNoteEditing ? .gcalNoteToggleScope : .consumeKey
+            }
+            if event.keyCode == KeyCode.delete,
+               modifiers.subtracting(.capsLock) == .command
+            {
+                return context.gcalNoteEditing ? .gcalNoteClear : .consumeKey
+            }
+            if context.gcalNoteEditing {
+                if event.keyCode == KeyCode.return || event.keyCode == KeyCode.keypadEnter {
+                    if context.keyIsRepeat || event.isARepeat {
+                        return .consumeKey
+                    }
+                    if Self.strippedReturnModifiers(modifiers).isEmpty {
+                        return .gcalNoteSave
+                    }
+                    if Self.strippedReturnModifiers(modifiers) == .shift {
+                        return .gcalNotePassThrough
+                    }
+                }
+                // Caret motion, typing, and the editor's own undo stay in the
+                // event-note NSTextView. Picker selection keys do not apply.
+                return .gcalNotePassThrough
             }
             if event.keyCode == KeyCode.arrowDown,
                modifiers.intersection([.command, .control, .option, .shift]).isEmpty

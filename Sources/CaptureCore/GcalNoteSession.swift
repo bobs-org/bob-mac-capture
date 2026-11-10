@@ -62,9 +62,44 @@ public final class GcalNoteSession {
     public var onChange: (() -> Void)?
 
     public var canUndoMutation: Bool { mutationUndo != nil }
+    /// True when the selected scope has a saved note of its own. An empty
+    /// occurrence must not clear an inherited series note.
+    public var canClearSavedScope: Bool {
+        guard selectedIdentity != nil else { return false }
+        let canonical = (currentCanonicalText() ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return !canonical.isEmpty
+    }
     public var navigationDeferred: Bool { phase == .writing }
     public var isListEmpty: Bool { events.isEmpty }
     public var hasNoFilterMatches: Bool { !events.isEmpty && filteredEvents.isEmpty }
+    public var isEditorKeySurface: Bool {
+        switch phase {
+        case .editing, .previewPending, .writing:
+            return selectedEvent != nil
+        default:
+            return false
+        }
+    }
+    public var showsEditor: Bool {
+        switch phase {
+        case .editing, .previewPending, .writing, .resolving:
+            return selectedEvent != nil
+        default:
+            return false
+        }
+    }
+    public var livePreview: GcalNotePresentation.LivePreview {
+        GcalNotePresentation.livePreview(
+            editorText: editorText,
+            isDirty: isEditorDirty,
+            phase: phase,
+            show: showResponse,
+            preview: previewResponse,
+            lastValid: lastValidPreview,
+            previewError: previewError
+        )
+    }
 
     public var availableScopes: [GcalNoteScope] {
         selectedEvent?.isRecurring == true ? [.event, .series] : [.event]
@@ -181,6 +216,16 @@ public final class GcalNoteSession {
         loadShow()
     }
 
+    public func toggleScope() {
+        let next: GcalNoteScope = scope == .series ? .event : .series
+        setScope(next)
+    }
+
+    public func requestPreview() {
+        guard isEditingSurface, selectedIdentity != nil else { return }
+        schedulePreview()
+    }
+
     public func setScope(_ next: GcalNoteScope) {
         guard phase != .writing, phase != .inactive else { return }
         guard availableScopes.contains(next), next != scope else { return }
@@ -204,7 +249,7 @@ public final class GcalNoteSession {
     }
 
     public func save() {
-        guard !navigationDeferred else { return }
+        guard phase == .editing || phase == .previewPending else { return }
         guard let identity = selectedIdentity else { return }
         if !isEditorDirty && editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return
@@ -222,8 +267,9 @@ public final class GcalNoteSession {
     }
 
     public func clear() {
-        guard !navigationDeferred else { return }
+        guard phase == .editing || phase == .previewPending else { return }
         guard let identity = selectedIdentity else { return }
+        guard canClearSavedScope else { return }
         startWrite(
             PendingWrite(
                 kind: .clear,
@@ -310,7 +356,7 @@ public final class GcalNoteSession {
         phase != .inactive
     }
 
-    private var isEditingSurface: Bool {
+    public var isEditingSurface: Bool {
         switch phase {
         case .editing, .previewPending, .resolving:
             return true
