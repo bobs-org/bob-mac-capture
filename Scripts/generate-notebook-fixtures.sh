@@ -170,6 +170,13 @@ run_capture 'Keymaps @dev^keys@ %n
 Primary leader key @dev_keys#Mappings' \
   notebook-capture-create-then-use.json
 
+# Creating beneath the nested notebook names the immediate parent (Lua),
+# not the root owner. The breadcrumb is owner through the new title.
+run_capture 'Keymaps @dev_nvim_lua^keys@ %n
+- MAPPINGS
+  - Leader key basics' \
+  notebook-capture-create-nested.json
+
 # A route catalog sample carries the notebook owner, title, summary, and
 # ancestry shown by the Mac completion menu.
 bob capture-targets --format json > "$scratch_root/raw.json"
@@ -188,8 +195,8 @@ Generated from a real Bob; do not hand-edit the JSON.
   block-ID note and one ID-less note
 - commands: capture-complete (notebook route, parent notes, sections, block
   ID, create directive); capture-parse (ordinary and sub-notes); capture
-  --dry-run (existing section, new section, named note, child notes, and
-  create-then-use batch); capture-targets
+  --dry-run (existing section, new section, named note, child notes,
+  create-then-use batch, and nested-notebook creation); capture-targets
 EOF
 
 echo "Generated notebook fixtures with $bob_commit"

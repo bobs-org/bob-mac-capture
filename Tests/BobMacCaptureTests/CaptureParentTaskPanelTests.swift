@@ -802,16 +802,106 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "+changed")
     }
 
-    private func parentTaskModel(recordURL: URL? = nil) throws -> CapturePanelModel {
+    func testNotebookIDAssignmentUsesBobsOpaqueRowReference() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = try parentTaskModel(recordURL: recordURL)
+        let (candidate, context) = try notebookIdlessNote()
+        model.installParentTaskPickerForPreviews(
+            candidates: [candidate],
+            context: context,
+            draft: "@dev_nvim+",
+            replacement: CaptureRange(start: 10, end: 10)
+        )
+        model.acceptPickerRow(id: "dev_nvim|14:060f4792", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "unidentified-guide")
+        model.submitTaskIDPrompt()
+        await waitUntil { !model.taskIDPromptVisible }
+        XCTAssertEqual(model.plainDraft, "@dev_nvim+unidentified-guide")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-task-id --route dev_nvim --task-ref 14:060f4792 --block-id unidentified-guide --format json"
+            ),
+            "expected capture-task-id to receive Bob's opaque notebook row ref, got:\n\(record)"
+        )
+    }
+
+    func testNotebookIDAssignmentWaitsForSuccessBeforeInserting() async throws {
+        let model = try parentTaskModel(extraEnvironment: ["FAKE_BOB_DELAY_SECONDS": "0.2"])
+        let (candidate, context) = try notebookIdlessNote()
+        model.installParentTaskPickerForPreviews(
+            candidates: [candidate],
+            context: context,
+            draft: "@dev_nvim+",
+            replacement: CaptureRange(start: 10, end: 10)
+        )
+        model.acceptPickerRow(id: "dev_nvim|14:060f4792", submitAfterInsert: false)
+        model.submitTaskIDPrompt()
+        XCTAssertEqual(model.taskIDPrompt?.isSaving, true)
+        XCTAssertEqual(model.plainDraft, "@dev_nvim+")
+        await waitUntil { !model.taskIDPromptVisible }
+        XCTAssertEqual(model.plainDraft, "@dev_nvim+unidentified-guide")
+    }
+
+    func testNotebookIDAssignmentRefusalLeavesDraftIntact() async throws {
+        let model = try parentTaskModel()
+        let (candidate, context) = try notebookIdlessNote()
+        model.installParentTaskPickerForPreviews(
+            candidates: [candidate],
+            context: context,
+            draft: "@dev_nvim+",
+            replacement: CaptureRange(start: 10, end: 10)
+        )
+        model.acceptPickerRow(id: "dev_nvim|14:060f4792", submitAfterInsert: false)
+        model.updateTaskIDPromptBlockID("duplicate-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.errorMessage != nil }
+        XCTAssertEqual(model.plainDraft, "@dev_nvim+")
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPrompt?.errorMessage?.contains("duplicate-id") == true)
+    }
+
+    private func notebookIdlessNote() throws -> (CaptureCompletionCandidate, ParentTaskPickerContext) {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(contentsOf: fixtures.appendingPathComponent("notebook-complete-parent-notes.json"))
+        )
+        let candidate = try XCTUnwrap(
+            response.candidates.first { $0.taskRef == "14:060f4792" }
+        )
+        XCTAssertEqual(candidate.itemKind, "note")
+        XCTAssertEqual(candidate.route, "dev_nvim")
+        XCTAssertTrue(candidate.requiresBlockID)
+        XCTAssertEqual(candidate.blockIDSuggestions, ["unidentified-guide"])
+        let context = ParentTaskPickerContext.note(
+            route: "dev_nvim",
+            noteTarget: "dev_nvim.md",
+            markerRange: CaptureRange(start: 0, end: 10),
+            triggerRemovalRange: CaptureRange(start: 9, end: 10)
+        )
+        return (candidate, context)
+    }
+
+    private func parentTaskModel(
+        recordURL: URL? = nil,
+        extraEnvironment: [String: String] = [:]
+    ) throws -> CapturePanelModel {
         let url = recordURL ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        var environment = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+            "FAKE_BOB_RECORD_PATH": url.path,
+        ]
+        extraEnvironment.forEach { environment[$0.key] = $0.value }
         return CapturePanelModel(
             processClient: BobProcessClient(
                 executablePath: try fakeBobPath(),
-                environment: [
-                    "HOME": "/tmp",
-                    "PATH": "/usr/bin:/bin",
-                    "FAKE_BOB_RECORD_PATH": url.path,
-                ]
+                environment: environment
             ),
             debounceNanoseconds: 5_000_000
         )

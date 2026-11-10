@@ -646,4 +646,15 @@ final class CaptureListPanelTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "@sase#future-work\n- boom")
     }
+
+    private func fakeBobPath() throws -> String {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return packageRoot
+            .appendingPathComponent("Tests/Fixtures/fake-bob")
+            .path
+    }
 }

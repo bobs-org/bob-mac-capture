@@ -136,4 +136,126 @@ final class CaptureNotebookPresentationTests: XCTestCase {
         XCTAssertTrue(CaptureNotebookPresentation.batchLine(for: success.normalizedCaptures[1])
             .contains("Primary leader key"))
     }
+
+    func testCreationParentUsesPenultimateBreadcrumbComponent() throws {
+        let area = try successFixture("notebook-capture-create-then-use.json")
+        let areaCreate = try XCTUnwrap(area.normalizedCaptures.first)
+        XCTAssertEqual(areaCreate.notebook?.breadcrumb, ["dev", "Keys"])
+        XCTAssertEqual(
+            CaptureNotebookPresentation.creationParentContext(for: areaCreate),
+            "dev"
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.headline(for: areaCreate),
+            "📓 New notebook dev_keys.md · in dev"
+        )
+
+        let nested = try successFixture("notebook-capture-create-nested.json")
+        let nestedCreate = try XCTUnwrap(nested.normalizedCaptures.first)
+        XCTAssertEqual(nestedCreate.notebook?.breadcrumb, ["dev", "Neovim", "Lua", "Keys"])
+        XCTAssertEqual(
+            CaptureNotebookPresentation.creationParentContext(for: nestedCreate),
+            "Lua"
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.headline(for: nestedCreate),
+            "📓 New notebook dev_nvim_lua_keys.md · in Lua"
+        )
+    }
+
+    func testCreationParentOmitsMissingShortAndBlankMetadata() {
+        XCTAssertNil(
+            CaptureNotebookPresentation.creationParentContext(
+                for: notebookCreate(breadcrumb: nil)
+            )
+        )
+        XCTAssertNil(
+            CaptureNotebookPresentation.creationParentContext(
+                for: notebookCreate(breadcrumb: [])
+            )
+        )
+        XCTAssertNil(
+            CaptureNotebookPresentation.creationParentContext(
+                for: notebookCreate(breadcrumb: ["Keys"])
+            )
+        )
+        XCTAssertNil(
+            CaptureNotebookPresentation.creationParentContext(
+                for: notebookCreate(breadcrumb: ["  ", "Keys"])
+            )
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.headline(for: notebookCreate(breadcrumb: ["Keys"])),
+            "📓 New notebook dev_keys.md"
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.creationParentContext(
+                for: notebookCreate(breadcrumb: ["dev", "Neovim", "Lua", "Keys"])
+            ),
+            "Lua"
+        )
+    }
+
+    func testNestedCreationHeadlineNotificationAndFilePairing() throws {
+        let success = try successFixture("notebook-capture-create-nested.json")
+        let items = success.normalizedCaptures
+        let pairs = CaptureNotebookPresentation.pairIndexed(
+            files: success.noteFiles,
+            items: items
+        )
+
+        XCTAssertEqual(items.map(\.kind), ["notebook_create"])
+        XCTAssertEqual(pairs.keys.sorted(), [0])
+        let file = try XCTUnwrap(pairs[0])
+        XCTAssertEqual(file.path, "dev_nvim_lua_keys.md")
+        XCTAssertEqual(file.action, "create")
+        XCTAssertEqual(file.body, "## Mappings\n\n- Leader key basics [created::2026-11-10]\n")
+        XCTAssertEqual(file.markdown, success.noteFiles[0].markdown)
+
+        let create = try XCTUnwrap(items.first)
+        XCTAssertEqual(
+            CaptureNotebookPresentation.headline(for: create),
+            "📓 New notebook dev_nvim_lua_keys.md · in Lua"
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.notificationTitle(for: create),
+            "📓 New notebook dev_nvim_lua_keys.md · in Lua"
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.notificationBody(for: create, file: file),
+            file.body
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.batchLine(for: create),
+            "📓 New notebook dev_nvim_lua_keys.md · in Lua · Keymaps"
+        )
+    }
+
+    private func notebookCreate(breadcrumb: [String]?) -> CaptureCommandSuccess {
+        let notebook: CaptureNotebookSummary?
+        if let breadcrumb {
+            notebook = CaptureNotebookSummary(
+                route: "dev_keys",
+                title: "Keys",
+                breadcrumb: breadcrumb
+            )
+        } else {
+            notebook = nil
+        }
+        return CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "dev_keys",
+            routeLabel: "dev_keys.md",
+            relativeTarget: "dev_keys.md",
+            target: "/tmp/dev_keys.md",
+            text: "Keymaps",
+            taskLine: "Keymaps",
+            kind: "notebook_create",
+            created: "2026-11-10",
+            placement: "created",
+            notebook: notebook
+        )
+    }
 }

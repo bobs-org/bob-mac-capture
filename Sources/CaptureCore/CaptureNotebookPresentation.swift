@@ -121,13 +121,17 @@ public enum CaptureNotebookPresentation {
         return "New section · \(section)"
     }
 
-    /// Bob supplies breadcrumb from owner through notebook title. Its first
-    /// component is the parent label; never infer ancestry from a filename.
+    /// Bob supplies breadcrumb from owner through the new notebook title.
+    /// The immediate parent is the penultimate component. Never infer a
+    /// parent from a filename, route prefix, or the root owner.
     public static func creationParentContext(for item: CaptureCommandSuccess) -> String? {
-        guard item.kind == "notebook_create" else {
+        guard item.kind == "notebook_create",
+              let breadcrumb = item.notebook?.breadcrumb,
+              breadcrumb.count >= 2
+        else {
             return nil
         }
-        return item.notebook?.breadcrumb?.first.flatMap(nonempty)
+        return nonempty(breadcrumb[breadcrumb.count - 2])
     }
 
     public static func contentText(for item: CaptureCommandSuccess) -> String {
