@@ -180,6 +180,84 @@ inbox_route_preview_draft='@mac_inbox:route-task'
 inbox_route_two_draft=$'@mac_inbox:route-task\n\n@gkeep_inbox:gkeep-task'
 
 case "${command}" in
+  gcal)
+    gcal_subcommand="${1:-}"
+    shift || true
+    if [[ "${gcal_subcommand}" != "note" ]]; then
+      printf "error: unrecognized subcommand '%s'\n" "${gcal_subcommand}" >&2
+      exit 2
+    fi
+    if [[ "${FAKE_BOB_GCAL_NOTE_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'note'\n\nUsage: bob gcal [COMMAND]\n" >&2
+      exit 2
+    fi
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_ARGV_PATH:-}" ]]; then
+      python3 - "${FAKE_BOB_GCAL_NOTE_ARGV_PATH}" gcal note "$@" <<'PY'
+import json, sys
+with open(sys.argv[1], "a", encoding="utf-8") as output:
+    output.write(json.dumps(sys.argv[2:], ensure_ascii=False) + "\n")
+PY
+    fi
+    operation="show"
+    text_value=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -l|--list) operation="list" ;;
+        -c|--clear) operation="clear" ;;
+        -d|--dry-run) operation="preview" ;;
+        --)
+          operation="write"
+          shift
+          text_value="${1:-}"
+          break
+          ;;
+        -i|-C|-s|-b|-D|-f|--event-id|--calendar|--scope|--bob-dir|--day|--format)
+          shift
+          ;;
+      esac
+      shift
+    done
+    case "${operation}" in
+      list)
+        fixture="${FAKE_BOB_GCAL_NOTE_LIST_FIXTURE:-gcal-note/list_all.json}"
+        ;;
+      show)
+        fixture="${FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE:-gcal-note/show.json}"
+        ;;
+      preview)
+        fixture="${FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE:-gcal-note/preview.json}"
+        ;;
+      clear)
+        fixture="${FAKE_BOB_GCAL_NOTE_CLEAR_FIXTURE:-gcal-note/cleared.json}"
+        ;;
+      write)
+        fixture="${FAKE_BOB_GCAL_NOTE_WRITE_FIXTURE:-gcal-note/saved.json}"
+        ;;
+    esac
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_GCAL_NOTE_DELAY_SECONDS}" &
+      wait $!
+    fi
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_ERROR:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_GCAL_NOTE_ERROR}" >&2
+      exit "${FAKE_BOB_GCAL_NOTE_EXIT:-2}"
+    fi
+    if [[ "${FAKE_BOB_GCAL_NOTE_EMPTY:-}" == "1" ]]; then
+      exit "${FAKE_BOB_GCAL_NOTE_EXIT:-0}"
+    fi
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_STDOUT:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_GCAL_NOTE_STDOUT}"
+      exit "${FAKE_BOB_GCAL_NOTE_EXIT:-0}"
+    fi
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_STORE:-}" ]]; then
+      case "${operation}" in
+        write) printf '%s' "${text_value}" >"${FAKE_BOB_GCAL_NOTE_STORE}" ;;
+        clear) : >"${FAKE_BOB_GCAL_NOTE_STORE}" ;;
+      esac
+    fi
+    cat "${fixtures_dir}/${fixture}"
+    exit "${FAKE_BOB_GCAL_NOTE_EXIT:-0}"
+    ;;
   capture-related)
     if [[ "${FAKE_BOB_RELATED_UNSUPPORTED:-}" == "1" ]]; then
       printf "error: unrecognized subcommand 'capture-related'\n\nUsage: bob [COMMAND]\n" >&2

@@ -74,6 +74,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedGuardFlags: Set<String> = []
     private var unsupportedRelatedIdentity: String?
     private var unsupportedGmailPeekIdentity: String?
+    private var unsupportedGcalNoteIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
     /// `inbox_route.supported == true`. Once remembered for the current
@@ -190,6 +191,20 @@ public final class BobProcessClient: @unchecked Sendable {
             let identity = identityToken
             if unsupportedGmailPeekIdentity != identity {
                 self.unsupportedGmailPeekIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Whether this executable has already rejected `gcal note`. Cached per
+    /// executable identity so replacing Bob permits a fresh capability probe.
+    public var gcalNoteKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedGcalNoteIdentity else { return false }
+            let identity = identityToken
+            if unsupportedGcalNoteIdentity != identity {
+                self.unsupportedGcalNoteIdentity = nil
                 return false
             }
             return true
@@ -365,6 +380,145 @@ public final class BobProcessClient: @unchecked Sendable {
             || normalized.contains("unrecognized subcommand \"peek\"")
             || normalized.contains("unrecognized subcommand 'gmail'")
             || normalized.contains("unrecognized subcommand \"gmail\"")
+    }
+
+    /// Reads Bob's private event-note JSON contract. Each operation has its
+    /// own lane; mutation calls share a non-cancelling lane and are serialized
+    /// by the event-note model.
+    public func gcalNoteList() async throws -> GcalNoteListResponse {
+        try await decodeGcalNote(
+            arguments: ["gcal", "note", "-l", "-a", "-f", "json"],
+            as: GcalNoteListResponse.self,
+            lane: "gcal-note-list"
+        )
+    }
+
+    /// Select an event by the identity returned from Bob, or pass the user's
+    /// original title/Calendar URL as `query` and let Bob resolve it.
+    public func gcalNoteShow(
+        query: String? = nil,
+        eventID: String? = nil,
+        calendarID: String? = nil,
+        scope: GcalNoteScope? = nil
+    ) async throws -> GcalNoteShowResponse {
+        var arguments = Self.gcalNoteSelectionArguments(
+            query: query, eventID: eventID, calendarID: calendarID, scope: scope)
+        arguments += ["-f", "json"]
+        return try await decodeGcalNote(
+            arguments: arguments,
+            as: GcalNoteShowResponse.self,
+            lane: "gcal-note-show"
+        )
+    }
+
+    public func gcalNotePreview(
+        text: String,
+        query: String? = nil,
+        eventID: String? = nil,
+        calendarID: String? = nil,
+        scope: GcalNoteScope? = nil
+    ) async throws -> GcalNoteWriteResponse {
+        var arguments = Self.gcalNoteSelectionArguments(
+            query: query, eventID: eventID, calendarID: calendarID, scope: scope)
+        arguments += ["-d", "-f", "json", "--", text]
+        return try await decodeGcalNote(
+            arguments: arguments,
+            as: GcalNoteWriteResponse.self,
+            lane: "gcal-note-preview"
+        )
+    }
+
+    public func gcalNoteSave(
+        text: String,
+        eventID: String,
+        calendarID: String,
+        scope: GcalNoteScope
+    ) async throws -> GcalNoteWriteResponse {
+        var arguments = Self.gcalNoteSelectionArguments(
+            query: nil, eventID: eventID, calendarID: calendarID, scope: scope)
+        arguments += ["-f", "json", "--", text]
+        return try await decodeGcalNote(
+            arguments: arguments,
+            as: GcalNoteWriteResponse.self,
+            lane: "gcal-note-write",
+            cancelsPreviousInLane: false
+        )
+    }
+
+    public func gcalNoteClear(
+        eventID: String,
+        calendarID: String,
+        scope: GcalNoteScope
+    ) async throws -> GcalNoteWriteResponse {
+        var arguments = Self.gcalNoteSelectionArguments(
+            query: nil, eventID: eventID, calendarID: calendarID, scope: scope)
+        arguments += ["-c", "-f", "json"]
+        return try await decodeGcalNote(
+            arguments: arguments,
+            as: GcalNoteWriteResponse.self,
+            lane: "gcal-note-write",
+            cancelsPreviousInLane: false
+        )
+    }
+
+    private static func gcalNoteSelectionArguments(
+        query: String?,
+        eventID: String?,
+        calendarID: String?,
+        scope: GcalNoteScope?
+    ) -> [String] {
+        var arguments = ["gcal", "note"]
+        if let eventID {
+            arguments += ["-i", eventID]
+        }
+        if let calendarID {
+            arguments += ["-C", calendarID]
+        }
+        if let scope {
+            arguments += ["-s", scope.wireValue]
+        }
+        if let query {
+            arguments.append(query)
+        }
+        return arguments
+    }
+
+    private func decodeGcalNote<T: Decodable & SchemaVersioned>(
+        arguments: [String],
+        as type: T.Type,
+        lane: String,
+        cancelsPreviousInLane: Bool = true
+    ) async throws -> T {
+        if gcalNoteKnownUnsupported {
+            throw BobClientError.unsupportedCommand("gcal note")
+        }
+        do {
+            return try await decodeReport(
+                arguments: arguments,
+                expectedSchema: 1,
+                lane: lane,
+                cancelsPreviousInLane: cancelsPreviousInLane
+            )
+        } catch let error as BobClientError {
+            if case .processFailed(_, let exitStatus, let stderr) = error,
+                Self.isUnsupportedGcalNoteFailure(exitStatus: exitStatus, stderr: stderr)
+            {
+                stateQueue.sync {
+                    unsupportedGcalNoteIdentity = identityToken
+                }
+                throw BobClientError.unsupportedCommand("gcal note")
+            }
+            throw error
+        }
+    }
+
+    static func isUnsupportedGcalNoteFailure(exitStatus: Int32, stderr: String) -> Bool {
+        guard exitStatus == 2 else { return false }
+        let normalized = stderr.lowercased()
+        return normalized.contains("unrecognized subcommand 'gcal'")
+            || normalized.contains("unrecognized subcommand \"gcal\"")
+            || normalized.contains("unrecognized subcommand 'note'")
+            || normalized.contains("unrecognized subcommand \"note\"")
     }
 
     static func isUnsupportedRelationsFailure(exitStatus: Int32, stderr: String) -> Bool {
