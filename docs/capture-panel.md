@@ -201,7 +201,7 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   typing `:` or `^` switches to the corresponding `@route:id` or `@route^id`
   form. A glued `.` after a complete `@route:id` or `@route^id` toggles between
   those separators, including the sealed project-note forms; after `@route+block-id`
-  it stays literal. A glued `,` after a complete `@route:id` or `@route^id`
+  it switches to `@route^block-id`, like `^`. A glued `,` after a complete `@route:id` or `@route^id`
   switches to `@route+block-id`, like `+`; after `@route+block-id` it keeps
   opening the next parent pick. Bob decides whether the marker is eligible; the app forwards the post-key
   draft and caret. A matching reply consumes the new character, switches the

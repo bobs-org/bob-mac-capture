@@ -654,6 +654,32 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(caretView.string, "Do work @file^id")
     }
 
+    func testDotKeySwitchesPlusMarkerToCaretThroughNativeInsert() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Do work @file+id")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator(".", into: textView, model: model)
+        await waitUntil {
+            model.plainDraft == "Do work @file^id"
+                && model.statusText == "Changed @file+id to @file^id"
+        }
+
+        XCTAssertEqual(textView.string, "Do work @file^id")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 16, length: 0))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.picker)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-rewrite --cursor 17 --format json -- Do work @file+id.")
+        )
+        XCTAssertFalse(record.contains("capture-complete --all-tasks --cursor 17"))
+    }
+
     func testColonKeySwitchesCaretMarkerThroughNativeInsert() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient()
