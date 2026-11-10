@@ -486,6 +486,7 @@ struct CapturePreviewPaneHeightPolicy: Equatable {
 @available(macOS 26.0, *)
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
+    @ObservedObject var eventNotes: GcalNotePanelModel
     var onContentMetricsChange: (CapturePanelContentMetrics) -> Void = { _ in }
     @FocusState private var focusedControl: CapturePanelFocusTarget?
     @AccessibilityFocusState private var errorIsFocused: Bool
@@ -494,6 +495,16 @@ struct CapturePanelView: View {
     @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
     @State private var measuredAuxiliaryContentHeight: CGFloat = 0
     @State private var measuredFooterHeight: CGFloat = 0
+
+    init(
+        model: CapturePanelModel,
+        eventNotes: GcalNotePanelModel? = nil,
+        onContentMetricsChange: @escaping (CapturePanelContentMetrics) -> Void = { _ in }
+    ) {
+        self.model = model
+        self.eventNotes = eventNotes ?? GcalNotePanelModel()
+        self.onContentMetricsChange = onContentMetricsChange
+    }
 
     private var completionViewportHeight: CGFloat {
         let base: CGFloat
@@ -518,7 +529,28 @@ struct CapturePanelView: View {
     }
 
     var body: some View {
-        agendaObservedContent
+        eventNoteObservedContent
+    }
+
+    private var eventNoteObservedContent: some View {
+        ZStack {
+            agendaObservedContent
+                .opacity(eventNotes.isPresented ? 0 : 1)
+                .allowsHitTesting(!eventNotes.isPresented)
+                .accessibilityHidden(eventNotes.isPresented)
+            if eventNotes.isPresented {
+                GcalNotePickerView(model: eventNotes)
+                    .frame(height: GcalNotePanelMetrics.resolved(
+                        availableScreenHeight: model.availableScreenHeight
+                    ).contentHeight)
+            }
+        }
+        .onChange(of: eventNotes.isPresented) { _, _ in
+            reportContentMetrics()
+        }
+        .onChange(of: eventNotes.revision) { _, _ in
+            reportContentMetrics()
+        }
     }
 
     private var focusObservedContent: some View {
@@ -881,6 +913,10 @@ struct CapturePanelView: View {
                 presentation: presentation,
                 onExpand: { model.expandAgendaUnit($0) },
                 onJoinEvent: { model.joinCalendarEvent($0) },
+                onOpenEventNote: { eventNotes.present(url: $0) },
+                onEventNoteFocusChange: { focused, url in
+                    eventNotes.setCalendarNoteActionFocused(focused, url: url)
+                },
                 onContentWidthChange: { width in
                     guard model.agendaContentWidth != width else {
                         return
@@ -1054,6 +1090,18 @@ struct CapturePanelView: View {
     }
 
     private func reportContentMetrics() {
+        if eventNotes.isPresented {
+            let height = GcalNotePanelMetrics.resolved(
+                availableScreenHeight: model.availableScreenHeight
+            ).contentHeight
+            onContentMetricsChange(
+                CapturePanelContentMetrics(
+                    idealContentHeight: height,
+                    minimumVisibleContentHeight: height
+                )
+            )
+            return
+        }
         guard measuredEditorHeight.isFinite,
               measuredEditorHeight > 1,
               measuredFooterHeight.isFinite,

@@ -4730,19 +4730,19 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(
             menu.items.map(\.title),
             [
-                "Capture", "Bob Refs…", "Settings", "Recheck Bob", "",
+                "Capture", "Event Note…", "Bob Refs…", "Settings", "Recheck Bob", "",
                 "Restart Bob Mac Capture", "Quit Bob Mac Capture",
             ]
         )
-        XCTAssertTrue(menu.items[4].isSeparatorItem)
+        XCTAssertTrue(menu.items[5].isSeparatorItem)
         XCTAssertEqual(
             menu.items.map { $0.action.map(NSStringFromSelector) },
             [
-                "openCapturePanel", "openRefsPanel", "openSettings", "recheckBob", nil,
+                "openCapturePanel", "openEventNotePanel", "openRefsPanel", "openSettings", "recheckBob", nil,
                 "restartApp", "quit",
             ]
         )
-        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["", "o", ",", "", "", "", "q"])
+        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["", "", "o", ",", "", "", "", "q"])
     }
 
     @MainActor

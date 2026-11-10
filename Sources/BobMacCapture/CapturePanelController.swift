@@ -278,6 +278,7 @@ private final class CapturePanelWindow: NSPanel {
 @MainActor
 final class CapturePanelController: NSObject, NSWindowDelegate {
     private let model: CapturePanelModel
+    private let eventNotes: GcalNotePanelModel
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
@@ -323,10 +324,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var metricsArrivedDuringApplication = false
     private var panelPlacement = CapturePanelPlacement()
     private var cachedEditor = CaptureEditorTextConfiguration.CachedEditorTextView()
+    private weak var eventNoteReturnResponder: NSResponder?
 
-    init(model: CapturePanelModel) {
+    init(model: CapturePanelModel, eventNotes: GcalNotePanelModel? = nil) {
         self.model = model
+        let eventNotes = eventNotes ?? GcalNotePanelModel()
+        self.eventNotes = eventNotes
         super.init()
+        eventNotes.onPresentationChange = { [weak self] isPresented in
+            guard let self else { return }
+            if isPresented {
+                self.eventNoteReturnResponder = self.panel?.firstResponder
+            } else if self.panel?.isVisible == true,
+                      let responder = self.eventNoteReturnResponder
+            {
+                self.eventNoteReturnResponder = nil
+                DispatchQueue.main.async { [weak self, weak responder] in
+                    guard let self, let responder, self.panel?.isVisible == true else { return }
+                    _ = self.panel?.makeFirstResponder(responder)
+                }
+            } else {
+                self.eventNoteReturnResponder = nil
+            }
+        }
         model.panelDismisser = { [weak self] in self?.hidePanel() }
         // Settles the layout while the panel is hidden: when a new
         // agenda plan publishes offscreen, the next show replays it in
@@ -426,6 +446,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         CaptureSignpost.event("editor-focus-requested")
     }
 
+    func showEventNotes(url: String? = nil) {
+        if !isVisible {
+            show()
+        }
+        eventNotes.present(url: url)
+    }
+
     /// Builds the event Carbon consumed for Command-\ so tests and the alias path
     /// route the same key code, modifiers, and characters as the physical chord.
     static func captureAliasKeyEvent(windowNumber: Int) -> NSEvent? {
@@ -487,6 +514,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_: Notification) {
         flushTypeAheadHoldBeforeFocusOrDismissal()
         model.clearEditorLeader()
+        eventNotes.clearCalendarFocus()
         editorLeaderAnchor = nil
         // Focus loss stops the pasteboard-counter poll; the counter is only
         // observed while the panel is key.
@@ -819,7 +847,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         updateAvailableScreenHeight()
         let hostingView = NSHostingView(
-            rootView: CapturePanelView(model: model) { [weak self] metrics in
+            rootView: CapturePanelView(
+                model: model,
+                eventNotes: eventNotes
+            ) { [weak self] metrics in
                 self?.receiveContentMetrics(metrics)
             }
         )
@@ -2257,6 +2288,25 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.dismissCompletion()
             model.joinFocusCalendarEvent()
             return true
+        case .openGcalNote(let url):
+            showEventNotes(url: url)
+            return true
+        case .gcalNoteEscape:
+            eventNotes.leave()
+            return true
+        case .gcalNoteMoveNext:
+            eventNotes.moveSelection(1)
+            return true
+        case .gcalNoteMovePrevious:
+            eventNotes.moveSelection(-1)
+            return true
+        case .gcalNoteOpenSelected:
+            eventNotes.openSelectedEvent()
+            return true
+        case .gcalNoteUndo:
+            return eventNotes.undoLastMutation()
+        case .gcalNotePassThrough:
+            return false
         case .switchPanel:
             let switcher = panelSwitcher
             DispatchQueue.main.async {
@@ -2440,6 +2490,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         defer { CaptureSignpost.end(token) }
         CaptureSignpost.event("panel-dismiss")
         flushTypeAheadHoldBeforeFocusOrDismissal()
+        eventNotes.leave()
         model.prepareForDismissal()
         editorLeaderAnchor = nil
         panel?.orderOut(nil)
@@ -2891,6 +2942,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 replayedKeyTimestampsForTesting.append(event.timestamp)
             }
         #endif
+        if eventNotes.isPresented {
+            return routeEventNoteKeyDown(event)
+        }
         if isReplayingTypeAheadKeys, !isDispatchingReplayedKey {
             if Self.typeAheadKeyKind(for: event) != nil {
                 // Keep physical edit/submit keys behind the already-buffered
@@ -2905,6 +2959,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         if holdOrFlushTypeAheadKey(event) {
             return nil
+        }
+        if event.keyCode == 14 {
+            let editor = panel?.firstResponder as? NSTextView
+            let command = keyRouter.command(
+                for: event,
+                context: CaptureKeyRoutingContext(
+                    keyIsRepeat: event.isARepeat,
+                    editorHasMarkedText: editor?.hasMarkedText() ?? false,
+                    calendarNoteActionIsFocused: eventNotes.calendarNoteActionIsFocused,
+                    focusedCalendarNoteURL: eventNotes.focusedCalendarURL,
+                    captureSubmitInFlight: model.isSubmitting
+                )
+            )
+            if case .openGcalNote(let url)? = command {
+                showEventNotes(url: url)
+                return nil
+            }
+            if command == .consumeKey {
+                return nil
+            }
         }
         model.clearOpenHintReveal()
         repairPromptFieldFocusIfOrphaned()
@@ -3253,6 +3327,45 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return event
         }
         return perform(command) ? nil : event
+    }
+
+    private func routeEventNoteKeyDown(_ event: NSEvent) -> NSEvent? {
+        let editor = panel?.firstResponder as? NSTextView
+        let command = keyRouter.command(
+            for: event,
+            context: CaptureKeyRoutingContext(
+                keyIsRepeat: event.isARepeat,
+                editorHasMarkedText: editor?.hasMarkedText() ?? false,
+                gcalNoteModeVisible: true
+            )
+        )
+        guard let command else { return event }
+        switch command {
+        case .switchPanel:
+            let switcher = panelSwitcher
+            DispatchQueue.main.async { switcher() }
+            return nil
+        case .gcalNoteEscape:
+            eventNotes.leave()
+            return nil
+        case .gcalNoteMoveNext:
+            eventNotes.moveSelection(1)
+            return nil
+        case .gcalNoteMovePrevious:
+            eventNotes.moveSelection(-1)
+            return nil
+        case .gcalNoteOpenSelected:
+            eventNotes.openSelectedEvent()
+            return nil
+        case .gcalNoteUndo:
+            return eventNotes.undoLastMutation() ? nil : event
+        case .consumeKey:
+            return nil
+        case .gcalNotePassThrough:
+            return event
+        default:
+            return event
+        }
     }
 
     /// Records the one-shot fast double-tap probe for a second alias key

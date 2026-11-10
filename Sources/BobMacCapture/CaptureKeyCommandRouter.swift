@@ -126,6 +126,13 @@ enum CaptureKeyCommand: Equatable {
     case undoEqualsGestureAndTypeLiteral
     case restoreRelationEqualsOpener(String)
     case joinCalendarEvent
+    case openGcalNote(String?)
+    case gcalNoteEscape
+    case gcalNoteMoveNext
+    case gcalNoteMovePrevious
+    case gcalNoteOpenSelected
+    case gcalNoteUndo
+    case gcalNotePassThrough
     case switchPanel
     case armEditorLeader
     case cancelEditorLeader
@@ -199,6 +206,10 @@ struct CaptureKeyRoutingContext: Equatable {
     var equalsProbeReplyPendingKey: String? = nil
     var editorHasMarkedText = false
     var editorLeaderPending = false
+    var gcalNoteModeVisible = false
+    var calendarNoteActionIsFocused = false
+    var focusedCalendarNoteURL: String? = nil
+    var captureSubmitInFlight = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -311,6 +322,7 @@ struct CaptureKeyCommandRouter {
         static let l: UInt16 = 37
         static let r: UInt16 = 15
         static let e: UInt16 = 14
+        static let z: UInt16 = 6
         static let n: UInt16 = 45
         static let o: UInt16 = 31
         static let p: UInt16 = 35
@@ -340,6 +352,61 @@ struct CaptureKeyCommandRouter {
                 }
                 return .switchPanel
             }
+        }
+
+        if context.gcalNoteModeVisible {
+            if context.editorHasMarkedText {
+                return .gcalNotePassThrough
+            }
+            if event.keyCode == KeyCode.escape,
+               modifiers.subtracting(.capsLock).isEmpty
+            {
+                return .gcalNoteEscape
+            }
+            if event.keyCode == KeyCode.z, modifiers.subtracting(.capsLock) == .command {
+                return .gcalNoteUndo
+            }
+            if event.keyCode == KeyCode.e, modifiers.subtracting(.capsLock) == .command {
+                return .consumeKey
+            }
+            if event.keyCode == KeyCode.arrowDown,
+               modifiers.intersection([.command, .control, .option, .shift]).isEmpty
+            {
+                return .gcalNoteMoveNext
+            }
+            if event.keyCode == KeyCode.arrowUp,
+               modifiers.intersection([.command, .control, .option, .shift]).isEmpty
+            {
+                return .gcalNoteMovePrevious
+            }
+            if event.keyCode == KeyCode.n, modifiers == .control {
+                return .gcalNoteMoveNext
+            }
+            if event.keyCode == KeyCode.p, modifiers == .control {
+                return .gcalNoteMovePrevious
+            }
+            if event.keyCode == KeyCode.return || event.keyCode == KeyCode.keypadEnter {
+                if Self.strippedReturnModifiers(modifiers).isEmpty {
+                    return .gcalNoteOpenSelected
+                }
+            }
+            // Keep native filter typing, but prevent capture commands from acting on
+            // the covered editor.
+            return .gcalNotePassThrough
+        }
+
+        if event.keyCode == KeyCode.e,
+           modifiers.subtracting(.capsLock) == .command
+        {
+            if context.editorHasMarkedText {
+                return nil
+            }
+            if context.keyIsRepeat || event.isARepeat || context.captureSubmitInFlight {
+                return .consumeKey
+            }
+            return .openGcalNote(
+                context.calendarNoteActionIsFocused ? context.focusedCalendarNoteURL : nil
+            )
         }
 
         if context.templateShelfVisible {

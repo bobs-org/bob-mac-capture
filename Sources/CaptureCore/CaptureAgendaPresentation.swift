@@ -1284,6 +1284,9 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     /// The join target behind the row's join button. Nil when the
     /// event carries no join URL.
     public let joinURL: String?
+    /// Original calendar URL for the explicit Event Note action. Bob resolves
+    /// this URL; the client never parses its event identity.
+    public let eventNoteURL: String?
     /// `"in 38m"` / `"23m left"` for running and upcoming rows. Ended
     /// rows carry the status glyph on the row instead.
     public let countdownText: String?
@@ -1302,6 +1305,7 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         offClock: Bool = false,
         dimmed: Bool = false,
         joinURL: String? = nil,
+        eventNoteURL: String? = nil,
         countdownText: String? = nil,
         startHint: String? = nil,
         bufferLabel: String? = nil,
@@ -1312,6 +1316,7 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         self.offClock = offClock
         self.dimmed = dimmed
         self.joinURL = joinURL
+        self.eventNoteURL = eventNoteURL
         self.countdownText = countdownText
         self.startHint = startHint
         self.bufferLabel = bufferLabel
@@ -2069,6 +2074,7 @@ extension CaptureAgendaPresentation {
             offClock: row.offClock,
             dimmed: dimmed,
             joinURL: row.joinURL,
+            eventNoteURL: row.calendarURL,
             countdownText: countdown,
             startHint: startHint,
             bufferLabel: bufferLabel,

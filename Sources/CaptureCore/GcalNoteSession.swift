@@ -39,24 +39,27 @@ public final class GcalNoteSession {
 
     public nonisolated static let defaultPreviewDebounceNanoseconds: UInt64 = 150_000_000
 
-    public private(set) var phase: Phase = .inactive
-    public private(set) var events: [GcalNoteEvent] = []
-    public private(set) var filterText = ""
-    public private(set) var selectedIdentity: GcalNoteIdentity?
-    public private(set) var selectedEvent: GcalNoteEvent?
-    public private(set) var scope: GcalNoteScope = .event
-    public private(set) var editorText = ""
-    public private(set) var isEditorDirty = false
-    public private(set) var showResponse: GcalNoteShowResponse?
-    public private(set) var previewResponse: GcalNoteWriteResponse?
-    public private(set) var lastValidPreview: GcalNoteWriteResponse?
-    public private(set) var writeResponse: GcalNoteWriteResponse?
-    public private(set) var previewError: String?
-    public private(set) var statusBanner: GcalNoteStatus?
-    public private(set) var warnings: [String] = []
-    public private(set) var ambiguousCandidates: [GcalNoteEvent] = []
-    public private(set) var mutationUndo: GcalNoteMutationUndo?
-    public private(set) var listWarnings: [String] = []
+    public private(set) var phase: Phase = .inactive { didSet { notifyChange() } }
+    public private(set) var events: [GcalNoteEvent] = [] { didSet { notifyChange() } }
+    public private(set) var filterText = "" { didSet { notifyChange() } }
+    public private(set) var selectedIdentity: GcalNoteIdentity? { didSet { notifyChange() } }
+    public private(set) var selectedEvent: GcalNoteEvent? { didSet { notifyChange() } }
+    public private(set) var scope: GcalNoteScope = .event { didSet { notifyChange() } }
+    public private(set) var editorText = "" { didSet { notifyChange() } }
+    public private(set) var isEditorDirty = false { didSet { notifyChange() } }
+    public private(set) var showResponse: GcalNoteShowResponse? { didSet { notifyChange() } }
+    public private(set) var previewResponse: GcalNoteWriteResponse? { didSet { notifyChange() } }
+    public private(set) var lastValidPreview: GcalNoteWriteResponse? { didSet { notifyChange() } }
+    public private(set) var writeResponse: GcalNoteWriteResponse? { didSet { notifyChange() } }
+    public private(set) var previewError: String? { didSet { notifyChange() } }
+    public private(set) var statusBanner: GcalNoteStatus? { didSet { notifyChange() } }
+    public private(set) var warnings: [String] = [] { didSet { notifyChange() } }
+    public private(set) var ambiguousCandidates: [GcalNoteEvent] = [] { didSet { notifyChange() } }
+    public private(set) var mutationUndo: GcalNoteMutationUndo? { didSet { notifyChange() } }
+    public private(set) var listWarnings: [String] = [] { didSet { notifyChange() } }
+    /// UI clients may observe state changes without making the portable session depend on
+    /// Combine or SwiftUI.
+    public var onChange: (() -> Void)?
 
     public var canUndoMutation: Bool { mutationUndo != nil }
     public var navigationDeferred: Bool { phase == .writing }
@@ -88,6 +91,10 @@ public final class GcalNoteSession {
     private var pendingLeave = false
     private var pendingWrite: PendingWrite?
     private var lastURLQuery: String?
+
+    private func notifyChange() {
+        onChange?()
+    }
 
     private struct GcalNoteDraftKey: Hashable {
         let identity: GcalNoteIdentity

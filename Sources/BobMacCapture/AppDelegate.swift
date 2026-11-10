@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
     var panelModel: CapturePanelModel?
+    var eventNotePanelModel: GcalNotePanelModel?
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
     private var agendaCancellables: Set<AnyCancellable> = []
@@ -113,6 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.agendaStore = agendaStore
         model.agendaStore = agendaStore
+        let eventNotePanelModel = GcalNotePanelModel(processClient: processClient) { [weak self] in
+            self?.agendaStore?.refresh(reason: .show)
+        }
+        self.eventNotePanelModel = eventNotePanelModel
         // The Agenda toggle applies live: the store keeps refreshing
         // for the close-list bounds while the model stops measuring,
         // planning, and showing.
@@ -156,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     )
             }
             .store(in: &agendaCancellables)
-        panelController = CapturePanelController(model: model)
+        panelController = CapturePanelController(model: model, eventNotes: eventNotePanelModel)
         panelController?.prewarm()
         // Prefetch after prewarm so the first hotkey after login already
         // has agenda data without slowing the show path.
@@ -386,6 +391,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyEquivalent: ""
             )
         )
+        menu.addItem(
+            NSMenuItem(
+                title: "Event Note…",
+                action: #selector(openEventNotePanel),
+                keyEquivalent: ""
+            )
+        )
         let refsItem = NSMenuItem(
             title: "Bob Refs…",
             action: #selector(openRefsPanel),
@@ -447,6 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelModel?.setProcessClient(nil)
             refsLibrary?.setFetcher(nil)
         }
+        eventNotePanelModel?.setProcessClient(processClient)
         updateStatusItemAppearance()
     }
 
@@ -1015,6 +1028,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(AppDelegate.openEventNotePanel) {
+            let hidden = eventNotePanelModel?.menuItemShouldBeHidden == true
+            menuItem.isHidden = hidden
+            return !hidden
+        }
         guard menuItem.action == #selector(AppDelegate.pastePlainText(_:)) else {
             return true
         }
@@ -1026,6 +1044,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openCapturePanel() {
         showCapturePanel()
+    }
+
+    @objc private func openEventNotePanel() {
+        if panelCoordinator != nil {
+            panelCoordinator?.showCapture()
+        } else {
+            showCapturePanel()
+        }
+        panelController?.showEventNotes()
     }
 
     @objc private func openRefsPanel() {
