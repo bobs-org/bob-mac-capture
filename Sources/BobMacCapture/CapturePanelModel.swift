@@ -587,7 +587,15 @@ private struct PendingRewriteSubmitIntent: Equatable {
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
     @Published var editorSelection = AttributedTextSelection()
-    @Published var statusText = ""
+    @Published var statusText = "" {
+        didSet {
+            statusIsRefusal = false
+        }
+    }
+    /// True when `statusText` is a Record Card refusal. Any later
+    /// `statusText` assignment clears it, so informational status cannot
+    /// keep painting the footer red.
+    @Published private(set) var statusIsRefusal = false
     @Published var previewState: CapturePreviewState = .idle {
         didSet {
             switch previewState {
@@ -624,7 +632,12 @@ final class CapturePanelModel: ObservableObject {
         stale: false,
         errorDescription: nil
     )
-    @Published var isSubmitting = false
+    @Published var isSubmitting = false {
+        didSet {
+            guard oldValue != isSubmitting else { return }
+            refreshRecordRouteConcealmentIfNeeded()
+        }
+    }
     @Published var isPreviewing = false
     /// The pending-list notice (`"Type a task number after ,"`) while a close
     /// draft dangles on `,`/`!`/`~`/`*` or a start draft dangles on `~`/`,`.
@@ -770,7 +783,12 @@ final class CapturePanelModel: ObservableObject {
     @Published var pickerPresentation: CapturePickerPresentation?
     @Published var pickerChip: CapturePickerChipState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
-    @Published private(set) var editorInputLocked = false
+    @Published private(set) var editorInputLocked = false {
+        didSet {
+            guard oldValue != editorInputLocked else { return }
+            refreshRecordRouteConcealmentIfNeeded()
+        }
+    }
     /// True while Control-G is waiting for its one follow-up key.
     @Published private(set) var editorLeaderPending = false
     /// One-shot arm after `\` opens Go To: the very next `\` on a bare `/`
@@ -1713,8 +1731,16 @@ final class CapturePanelModel: ObservableObject {
     /// draft; any keystroke hides them until the next preview lands. The
     /// overlay draws these without touching the text storage, so the
     /// submitted draft is exactly what was typed.
+    /// Overlay and highlighter share this gate so a visible `@` never loses
+    /// its emoji and the emoji never sits over a visible `@`.
+    var showsRecordRouteEmoji: Bool {
+        !isSubmitting && !editorInputLocked
+    }
+
     func recordRouteAdornments() -> [CaptureRecordRouteAdornment] {
-        guard let parse = latestParse, parse.input == plainDraft else {
+        guard showsRecordRouteEmoji,
+            let parse = latestParse, parse.input == plainDraft
+        else {
             return []
         }
         return CaptureRecordRouteAdornment.all(in: parse)
@@ -6164,6 +6190,13 @@ final class CapturePanelModel: ObservableObject {
         statusAnnouncementTick += 1
     }
 
+    /// Assigns panel status and then marks it as a Record Card refusal.
+    /// Callers that assign `statusText` directly stay informational.
+    private func refuseStatus(_ message: String) {
+        statusText = message
+        statusIsRefusal = true
+    }
+
     func announceTypeAheadSubmitDropped() {
         announceStatus("Bob did not answer; press Return again")
     }
@@ -6220,13 +6253,15 @@ final class CapturePanelModel: ObservableObject {
         presentation: CaptureRecordPresentation,
         parse: CaptureParseResponse? = nil,
         completion: CaptureCompletionResponse? = nil,
-        statusText: String = ""
+        statusText: String = "",
+        statusIsRefusal: Bool = false
     ) {
         recordPresentation = presentation
         latestParse = parse
         completionResponse = completion
         selectedCompletionIndex = completion?.candidates.isEmpty == false ? 0 : nil
         self.statusText = statusText
+        self.statusIsRefusal = statusIsRefusal
     }
 
     /// Test and render support: installs a picker session directly from a
@@ -11089,7 +11124,7 @@ final class CapturePanelModel: ObservableObject {
                presentation.record.assistVersion == 1
             {
                 if let fieldLabel = blocker.fieldLabel {
-                    statusText = blocker.message ?? "Needs \(fieldLabel)"
+                    refuseStatus(blocker.message ?? "Needs \(fieldLabel)")
                 }
                 _ = requestRecordField(
                     fieldKey,
@@ -11098,7 +11133,7 @@ final class CapturePanelModel: ObservableObject {
                 )
             } else {
                 if let message = blocker.message {
-                    statusText = message
+                    refuseStatus(message)
                 }
                 requestFocus(.editor)
                 restoreSelection(cursorUTF8Offset: blocker.cursor, suppressEditorCallbacks: true)
@@ -11106,7 +11141,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if case .failed(let message) = previewState {
-            statusText = errorMessage ?? message
+            refuseStatus(errorMessage ?? message)
             requestFocus(.editor)
             return
         }
@@ -16334,7 +16369,7 @@ final class CapturePanelModel: ObservableObject {
                 else {
                     errorMessage = failure.error
                     errorCode = failure.code
-                    statusText = "Capture failed"
+                    refuseStatus("Capture failed")
                     notificationService?.notifyCaptureFailure(message: failure.error)
                     return
                 }
@@ -16389,7 +16424,7 @@ final class CapturePanelModel: ObservableObject {
             previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
-            statusText = "Capture failed"
+            refuseStatus("Capture failed")
             notificationService?.notifyCaptureFailure(message: failure.error)
         }
     }
@@ -16430,7 +16465,7 @@ final class CapturePanelModel: ObservableObject {
         let message = String(describing: error)
         errorMessage = message
         errorCode = nil
-        statusText = "Capture failed"
+        refuseStatus("Capture failed")
         notificationService?.notifyCaptureFailure(message: message)
     }
 
@@ -16514,7 +16549,7 @@ final class CapturePanelModel: ObservableObject {
             previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
-            statusText = "Preview failed"
+            refuseStatus("Preview failed")
         }
     }
 
@@ -16731,7 +16766,7 @@ final class CapturePanelModel: ObservableObject {
         previewPullInSnapshot = nil
         errorMessage = String(describing: error)
         errorCode = nil
-        statusText = "Preview failed"
+        refuseStatus("Preview failed")
     }
 
     /// Turns Bob's decided empty-pull refusal into the calm preview card.
@@ -16784,7 +16819,7 @@ final class CapturePanelModel: ObservableObject {
         previewState = .failed(failure.error)
         errorMessage = nil
         errorCode = nil
-        statusText = failure.error
+        refuseStatus(failure.error)
         return true
     }
 
@@ -18629,7 +18664,7 @@ final class CapturePanelModel: ObservableObject {
                             self?.closePendingAction = "Close"
                             self?.errorMessage = failure.error
                             self?.errorCode = failure.code
-                            self?.statusText = "Preview failed"
+                            self?.refuseStatus("Preview failed")
                         }
                     }
                 }
@@ -19982,7 +20017,11 @@ final class CapturePanelModel: ObservableObject {
         scheduleGmailPeek(parse: parse, draft: draft)
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {
-            statusText = diagnostic.message
+            if diagnostic.severity == "error" {
+                refuseStatus(diagnostic.message)
+            } else {
+                statusText = diagnostic.message
+            }
         } else if CaptureRecordFooterMessage.isSupersedable(statusText) {
             statusText = "Ready"
         } else {
@@ -20059,7 +20098,8 @@ final class CapturePanelModel: ObservableObject {
                 parse: parse,
                 draft: draft,
                 ranges: ranges,
-                cursorUTF8: cursorUTF8 ?? collapsedSelectionUTF8Offset()
+                cursorUTF8: cursorUTF8 ?? collapsedSelectionUTF8Offset(),
+                concealRouteStartGlyphs: showsRecordRouteEmoji
             )
         }
         isApplyingProgrammaticDraft = false
@@ -20069,6 +20109,15 @@ final class CapturePanelModel: ObservableObject {
         // Repainting clears every editor-owned background, so restore the
         // marker wash in the same parse application while the picker is open.
         applyPickerMarkerHighlight()
+    }
+
+    /// Re-paints the current parse so route-start concealment stays in
+    /// lockstep with the overlay gate.
+    private func refreshRecordRouteConcealmentIfNeeded() {
+        guard let parse = latestParse, parse.input == plainDraft else {
+            return
+        }
+        applyHighlighting(parse: parse, draft: plainDraft)
     }
 
     /// Typed text inherits the previous character's attributes, so clear every
@@ -20087,9 +20136,14 @@ final class CapturePanelModel: ObservableObject {
         parse: CaptureParseResponse,
         draft: String,
         ranges: [ValidatedCaptureSpan],
-        cursorUTF8: Int? = nil
+        cursorUTF8: Int? = nil,
+        concealRouteStartGlyphs: Bool = false
     ) -> Bool {
         clearEditorHighlightAttributes(&text)
+        let concealedRouteStarts: Set<Int> =
+            concealRouteStartGlyphs
+            ? Set(CaptureRecordRouteAdornment.all(in: parse).map(\.start))
+            : []
         for item in ranges {
             guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
                   let upper = AttributedString.Index(item.range.upperBound, within: text)
@@ -20114,10 +20168,24 @@ final class CapturePanelModel: ObservableObject {
             if item.span.kind == "record_route" {
                 // Chip wash only: the type emoji is a presentation overlay
                 // at the route-start glyph and must never enter the draft or
-                // shift copy/selection offsets.
+                // shift copy/selection offsets. When the overlay is drawn,
+                // conceal that `@` grapheme so the emoji replaces it in place.
                 text[lower..<upper].backgroundColor = CaptureEditorPalette.recordRouteWash(
                     increaseContrast: increaseContrast
                 )
+                if concealedRouteStarts.contains(item.span.start),
+                    item.range.lowerBound < item.range.upperBound
+                {
+                    let glyphEnd = draft.index(after: item.range.lowerBound)
+                    if let glyphLower = AttributedString.Index(
+                        item.range.lowerBound,
+                        within: text
+                    ),
+                        let glyphUpper = AttributedString.Index(glyphEnd, within: text)
+                    {
+                        text[glyphLower..<glyphUpper].foregroundColor = .clear
+                    }
+                }
             }
             if item.span.projectNote != nil {
                 // Every span of a sealed project-note marker, whatever the

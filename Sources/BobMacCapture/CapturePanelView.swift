@@ -1560,8 +1560,7 @@ private struct AutosizingCaptureEditor: View {
                     .accessibilityHidden(true)
                 }
 
-                let routeAdornments = model.isSubmitting || model.editorInputLocked
-                    ? [] : model.recordRouteAdornments()
+                let routeAdornments = model.recordRouteAdornments()
                 if !routeAdornments.isEmpty, monoCharWidth > 0 {
                     RecordRouteEmojiOverlay(
                         draft: String(model.attributedDraft.characters),
@@ -1751,8 +1750,15 @@ struct RecordRouteEmojiOverlay: View {
                 ) {
                     Text(adornment.emoji)
                         .font(.system(size: 11))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .frame(
+                            width: monoCharWidth,
+                            height: lineHeight,
+                            alignment: .center
+                        )
                         .offset(
-                            x: CGFloat(origin.column) * monoCharWidth - 2,
+                            x: CGFloat(origin.column) * monoCharWidth,
                             y: CGFloat(origin.line) * lineHeight - 1
                         )
                 }

@@ -8,7 +8,8 @@ import XCTest
 @MainActor
 final class CaptureRecordPanelTests: XCTestCase {
     private let incompleteDraft = "Ramen Nagi @eat/"
-    private let completeDraft = "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark"
+    private let completeDraft =
+        "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark"
 
     private func fakeBobPath() -> String {
         URL(fileURLWithPath: #filePath)
@@ -151,7 +152,8 @@ final class CaptureRecordPanelTests: XCTestCase {
 
     func testReturnBlocksOnLaterIncompleteRecordInMixedDraft() async {
         let logURL = recordURL()
-        let draft = "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark\n\nRamen Nagi @eat/"
+        let draft =
+            "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark\n\nRamen Nagi @eat/"
         let model = makeModel(
             parseFixture: "record-parse-mixed-incomplete.json",
             completionFixture: "record-complete-empty-value.json",
@@ -167,6 +169,39 @@ final class CaptureRecordPanelTests: XCTestCase {
         }
 
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
+
+    func testRestoringCanceledRecordDraftIsInformationalStatus() throws {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        let entry = try XCTUnwrap(stash.push("Ramen Nagi @eat/"))
+        model.presentStashPicker()
+
+        model.restoreStashEntry(id: entry.id)
+
+        XCTAssertEqual(model.statusText, "Restored canceled draft")
+        XCTAssertFalse(model.statusIsRefusal)
+    }
+
+    func testReturnOnMissingStatusRefusesThenInformationalStatusClearsTheFlag() async {
+        let logURL = recordURL()
+        let model = makeModel(
+            parseFixture: "record-parse-incomplete.json",
+            completionFixture: "record-complete-empty-value.json",
+            draft: incompleteDraft,
+            recordPath: logURL
+        )
+
+        await waitUntil { model.recordAssistAvailable }
+        model.recordReturn()
+        await waitUntil { model.statusText == "Needs Status" }
+
+        XCTAssertTrue(model.statusIsRefusal)
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+
+        model.statusText = "Inserted ✅ Watched"
+        XCTAssertEqual(model.statusText, "Inserted ✅ Watched")
+        XCTAssertFalse(model.statusIsRefusal)
     }
 
     func testValidRecordReturnRunsOneAggregateCapture() async {

@@ -343,7 +343,8 @@ final class CaptureRecordCardDesignTests: XCTestCase {
         errorModel.installRecordCardForPreviews(
             presentation: presentation,
             parse: incomplete,
-            statusText: "Needs Status"
+            statusText: "Needs Status",
+            statusIsRefusal: true
         )
         let errorCard = RecordCardView(
             model: errorModel,
@@ -388,14 +389,51 @@ final class CaptureRecordCardDesignTests: XCTestCase {
             appearance: .darkAqua
         )
 
-        let two = try decodeParse("record-parse-two-records.json")
-        let overlay = RecordRouteEmojiOverlay(
-            draft: two.input,
-            adornments: CaptureRecordRouteAdornment.all(in: two),
-            wrapWidth: 760,
-            monoCharWidth: 8,
-            lineHeight: 18
+        let liked = try decodeParse("record-parse-status-liked.json")
+        let likedPresentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(
+                parse: liked,
+                cursor: liked.input.utf8.count
+            )
         )
+        let likedModel = CapturePanelModel()
+        likedModel.installRecordCardForPreviews(
+            presentation: likedPresentation,
+            parse: liked,
+            statusText: "Restored canceled draft"
+        )
+        let likedCard = RecordCardView(
+            model: likedModel,
+            presentation: likedPresentation,
+            previewMode: true
+        )
+        .padding(18)
+        try RenderFixtureWriter.write(
+            likedCard,
+            name: "capture-record-card-set-status",
+            width: 760,
+            appearance: .aqua
+        )
+        try RenderFixtureWriter.write(
+            likedCard,
+            name: "capture-record-card-set-status",
+            width: 760,
+            appearance: .darkAqua
+        )
+
+        let two = try decodeParse("record-parse-two-records.json")
+        let overlay = ZStack(alignment: .topLeading) {
+            Text(two.input)
+                .font(.system(.body, design: .monospaced))
+                .frame(width: 760, alignment: .topLeading)
+            RecordRouteEmojiOverlay(
+                draft: two.input,
+                adornments: CaptureRecordRouteAdornment.all(in: two),
+                wrapWidth: 760,
+                monoCharWidth: 8,
+                lineHeight: 18
+            )
+        }
         .frame(width: 760, height: 48, alignment: .topLeading)
         .padding(18)
         try RenderFixtureWriter.write(

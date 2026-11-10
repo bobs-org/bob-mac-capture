@@ -534,6 +534,44 @@ public struct CaptureRecordRow: Equatable, Sendable {
             return "circle.dashed"
         }
     }
+
+    /// Which value-column branch to draw. Live candidates win; a nonempty
+    /// Bob display wins over schema choice capsules. Copy is never reformatted.
+    public func valueMode(
+        hasCandidates: Bool,
+        hasDiagnostic: Bool
+    ) -> CaptureRecordRowValueMode {
+        if hasCandidates {
+            return .candidates
+        }
+        if isChanged {
+            return .changed
+        }
+        if let display, !display.isEmpty {
+            return .display
+        }
+        if kind == "choices", !choices.isEmpty {
+            return .choices
+        }
+        if hasDiagnostic {
+            return .diagnostic
+        }
+        if state == "missing" {
+            return .fillHint
+        }
+        return .empty
+    }
+}
+
+/// Record Card value-column branch. The card never invents copy or validity.
+public enum CaptureRecordRowValueMode: Equatable, Sendable {
+    case candidates
+    case changed
+    case display
+    case choices
+    case diagnostic
+    case fillHint
+    case empty
 }
 
 /// Portable card state derived from Bob's parse. Schema order is preserved;
@@ -860,7 +898,8 @@ public struct CaptureRecordFocusState: Equatable, Sendable {
         else { return nil }
         let sameItem = itemIndex == presentation.itemIndex
         let sameDraft = draft == self.draft
-        let stillExists = sameItem && sameDraft
+        let stillExists =
+            sameItem && sameDraft
             && presentation.rows.contains(where: { $0.key == fieldKey })
         let nextKey: String? =
             if let fieldKey, stillExists {
@@ -974,9 +1013,8 @@ public enum CaptureRecordCompletionSurface: Equatable, Sendable {
     }
 }
 
-/// Ordinary panel status that must not replace the Record Card footer hint
-/// or paint as a refusal. Bob diagnostics and other nonempty status stay
-/// blocking.
+/// Parse-apply helpers for resetting panel status to Ready. They do not
+/// decide Record Card footer refusal color; the model flag does.
 public enum CaptureRecordFooterMessage: Equatable, Sendable {
     public static func isOrdinaryStatus(_ text: String) -> Bool {
         if text.isEmpty { return true }
@@ -995,10 +1033,11 @@ public enum CaptureRecordFooterMessage: Equatable, Sendable {
 
     public static func copy(
         statusText: String,
+        statusIsRefusal: Bool,
         errorDiagnostic: String?,
         footerHint: String
     ) -> (text: String, isRefusal: Bool) {
-        if !isOrdinaryStatus(statusText) {
+        if statusIsRefusal, !statusText.isEmpty {
             return (statusText, true)
         }
         if let errorDiagnostic {

@@ -802,6 +802,7 @@ final class CaptureRecordTests: XCTestCase {
         let hint = "⇥ next field · ⏎ Needs Status · Esc back to draft"
         let ready = CaptureRecordFooterMessage.copy(
             statusText: "Ready",
+            statusIsRefusal: false,
             errorDiagnostic: nil,
             footerHint: hint
         )
@@ -810,20 +811,109 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertTrue(CaptureRecordFooterMessage.isOrdinaryStatus("Target cache stale"))
         XCTAssertTrue(CaptureRecordFooterMessage.isOrdinaryStatus("Capturing\u{2026}"))
         XCTAssertTrue(CaptureRecordFooterMessage.isSupersedable("Needs Status"))
-        let error = CaptureRecordFooterMessage.copy(
-            statusText: "Ready",
-            errorDiagnostic: "status is not a valid value",
-            footerHint: hint
-        )
-        XCTAssertEqual(error.text, "status is not a valid value")
-        XCTAssertTrue(error.isRefusal)
+
+        for status in ["Restored canceled draft", "Inserted ✅ Watched", "Similar tasks changed"] {
+            let informational = CaptureRecordFooterMessage.copy(
+                statusText: status,
+                statusIsRefusal: false,
+                errorDiagnostic: nil,
+                footerHint: hint
+            )
+            XCTAssertEqual(informational.text, hint, status)
+            XCTAssertFalse(informational.isRefusal, status)
+        }
+
         let needs = CaptureRecordFooterMessage.copy(
             statusText: "Needs Status",
+            statusIsRefusal: true,
             errorDiagnostic: nil,
             footerHint: hint
         )
         XCTAssertEqual(needs.text, "Needs Status")
         XCTAssertTrue(needs.isRefusal)
+
+        let diagnosticOverInfo = CaptureRecordFooterMessage.copy(
+            statusText: "Restored canceled draft",
+            statusIsRefusal: false,
+            errorDiagnostic: "status is not a valid value",
+            footerHint: hint
+        )
+        XCTAssertEqual(diagnosticOverInfo.text, "status is not a valid value")
+        XCTAssertTrue(diagnosticOverInfo.isRefusal)
+    }
+
+    func testValueModePrefersDisplayOverChoiceCapsules() throws {
+        let liked = try decodeParse("record-parse-status-liked.json")
+        let likedStatus = try XCTUnwrap(
+            liked.record?.fields.first { $0.key == "status" }.map(CaptureRecordRow.init(field:))
+        )
+        XCTAssertEqual(likedStatus.state, "set")
+        XCTAssertEqual(likedStatus.display, "Liked")
+        XCTAssertEqual(likedStatus.choices.count, 2)
+        XCTAssertEqual(
+            likedStatus.valueMode(hasCandidates: false, hasDiagnostic: false),
+            .display
+        )
+        XCTAssertEqual(
+            likedStatus.valueMode(hasCandidates: true, hasDiagnostic: false),
+            .candidates
+        )
+
+        let missing = try decodeParse("record-parse-incomplete.json")
+        let missingStatus = try XCTUnwrap(
+            missing.record?.fields.first { $0.key == "status" }.map(CaptureRecordRow.init(field:))
+        )
+        XCTAssertEqual(missingStatus.state, "missing")
+        XCTAssertNil(missingStatus.display)
+        XCTAssertEqual(
+            missingStatus.valueMode(hasCandidates: false, hasDiagnostic: false),
+            .choices
+        )
+
+        let invalid = try decodeParse("record-parse-invalid.json")
+        let invalidStatus = try XCTUnwrap(
+            invalid.record?.fields.first { $0.key == "status" }.map(CaptureRecordRow.init(field:))
+        )
+        XCTAssertEqual(invalidStatus.state, "invalid")
+        XCTAssertNil(invalidStatus.display)
+        XCTAssertEqual(
+            invalidStatus.valueMode(hasCandidates: false, hasDiagnostic: true),
+            .choices
+        )
+
+        let defaultLink = CaptureRecordRow(
+            key: "wiki",
+            label: "Wiki",
+            kind: "link",
+            state: "default",
+            display: "[[abby]]",
+            source: "default"
+        )
+        XCTAssertEqual(
+            defaultLink.valueMode(hasCandidates: false, hasDiagnostic: false),
+            .display
+        )
+
+        let changed = CaptureRecordRow(
+            key: "status",
+            label: "Status",
+            kind: "choices",
+            state: "set",
+            display: "✅ Watched",
+            beforeDisplay: "🔖 To watch",
+            choices: [
+                CaptureRecordChoice(value: "to_watch", label: "To watch"),
+                CaptureRecordChoice(value: "watched", label: "Watched"),
+            ]
+        )
+        XCTAssertEqual(
+            changed.valueMode(hasCandidates: false, hasDiagnostic: false),
+            .changed
+        )
+        XCTAssertEqual(
+            changed.valueMode(hasCandidates: true, hasDiagnostic: true),
+            .candidates
+        )
     }
 
     func testRouteAdornmentsUseOwningItemEmojiAndSkipMissingMetadata() throws {

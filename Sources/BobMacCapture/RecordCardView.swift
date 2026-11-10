@@ -341,6 +341,7 @@ struct RecordCardView: View {
     private var footerResolved: (text: String, isRefusal: Bool) {
         CaptureRecordFooterMessage.copy(
             statusText: model.statusText,
+            statusIsRefusal: model.statusIsRefusal,
             errorDiagnostic: model.latestParse?.diagnostics.first {
                 $0.severity == "error"
             }?.message,
@@ -477,13 +478,17 @@ private struct RecordCardRowView: View {
 
     @ViewBuilder
     private var valueContent: some View {
-        if !candidates.isEmpty {
+        switch row.valueMode(
+            hasCandidates: !candidates.isEmpty,
+            hasDiagnostic: diagnostic != nil
+        ) {
+        case .candidates:
             if row.kind == "choices" {
                 choiceCapsules(candidates)
             } else {
                 inlineValues(candidates)
             }
-        } else if row.isChanged {
+        case .changed:
             HStack(spacing: 6) {
                 Text(row.beforeDisplay ?? "")
                     .font(.callout)
@@ -505,11 +510,9 @@ private struct RecordCardRowView: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(row.accessibilityLabel)
-        } else if row.kind == "choices", !row.choices.isEmpty {
-            schemaChoiceCapsules
-        } else if let display = row.display, !display.isEmpty {
+        case .display:
             HStack(spacing: 6) {
-                Text(display)
+                Text(row.display ?? "")
                     .font(.callout)
                     .foregroundStyle(stateColor)
                     .lineLimit(1)
@@ -519,21 +522,23 @@ private struct RecordCardRowView: View {
                 }
                 Spacer(minLength: 0)
             }
-        } else if let diagnostic {
+        case .choices:
+            schemaChoiceCapsules
+        case .diagnostic:
             HStack(spacing: 6) {
-                Text(diagnostic)
+                Text(diagnostic ?? "")
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemRed))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
             }
-        } else if row.state == "missing" {
+        case .fillHint:
             HStack(spacing: 6) {
                 fillHint
                 Spacer(minLength: 0)
             }
-        } else {
+        case .empty:
             Spacer(minLength: 0)
         }
     }
@@ -581,7 +586,8 @@ private struct RecordCardRowView: View {
                         Array(candidates.enumerated()),
                         id: \.element.id
                     ) { index, candidate in
-                        let title = candidate.display ?? candidate.label ?? candidate.recordValue
+                        let title =
+                            candidate.display ?? candidate.label ?? candidate.recordValue
                             ?? candidate.replacement
                         let selected = index == selectedCandidateIndex
                         Button(title) { onAccept(candidate) }

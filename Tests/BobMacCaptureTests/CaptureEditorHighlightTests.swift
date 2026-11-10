@@ -749,6 +749,123 @@ final class CaptureEditorHighlightTests: XCTestCase {
         XCTAssertFalse(draft.contains("🎙️"))
     }
 
+    func testRecordRouteStartGlyphIsClearWhenAdorned() throws {
+        let parse = try Self.fixtureParse("record-parse-complete.json")
+        let draft = parse.input
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+        let routeColor = NSColor(CaptureEditorPalette.color(for: .recordRoute))
+        let wash = CaptureEditorPalette.recordRouteWash(increaseContrast: false)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertEqual(
+            Self.strings(in: text, where: Self.isClearForeground),
+            ["@"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == routeColor } ?? false
+            }),
+            ["eat/"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor == wash }).joined(),
+            "@eat/"
+        )
+    }
+
+    func testRecordRouteStartGlyphStaysVisibleWithoutEmojiMetadata() throws {
+        let parse = try Self.fixtureParse("record-parse-old-bob.json")
+        let draft = parse.input
+        XCTAssertEqual(draft, "Ramen Nagi @eat/")
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+        XCTAssertTrue(draft.contains("@"))
+    }
+
+    func testRecordRouteStartGlyphStaysVisibleWhileSubmittingOrLocked() throws {
+        let parse = try Self.fixtureParse("record-parse-complete.json")
+        let draft = parse.input
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+        let routeColor = NSColor(CaptureEditorPalette.color(for: .recordRoute))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                concealRouteStartGlyphs: false
+            )
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { run in
+                run.foregroundColor.map { NSColor($0) == routeColor } ?? false
+            }),
+            ["@eat/"]
+        )
+        XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+
+        let model = CapturePanelModel()
+        XCTAssertTrue(model.showsRecordRouteEmoji)
+        model.isSubmitting = true
+        XCTAssertFalse(model.showsRecordRouteEmoji)
+        model.isSubmitting = false
+        model.setEditorInputLockedForTests(true)
+        XCTAssertFalse(model.showsRecordRouteEmoji)
+    }
+
+    func testTwoRecordTypesConcealBothRouteStartGlyphsWithoutChangingCopy() throws {
+        let parse = try Self.fixtureParse("record-parse-two-records.json")
+        let draft = parse.input
+        XCTAssertEqual(draft, "Ramen Nagi @eat/\n\nTalk Python @podcasts/")
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertEqual(
+            Self.strings(in: text, where: Self.isClearForeground),
+            ["@", "@"]
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.backgroundColor != nil }),
+            ["@eat/", "@podcasts/"]
+        )
+        XCTAssertFalse(draft.contains("🍽️"))
+        XCTAssertFalse(draft.contains("🎙️"))
+    }
+
     func testRecordUnicodeOffsetsPaintTheRouteNotASlicedGrapheme() throws {
         let parse = try Self.fixtureParse("record-parse-unicode.json")
         let draft = parse.input
@@ -1013,5 +1130,9 @@ final class CaptureEditorHighlightTests: XCTestCase {
             }
             return String(text[run.range].characters)
         }
+    }
+
+    private static func isClearForeground(_ run: AttributeContainer) -> Bool {
+        run.foregroundColor.map { NSColor($0).alphaComponent == 0 } ?? false
     }
 }

@@ -84,14 +84,14 @@ Each `%c` item renders its own Clip card beneath its preview card, built only
 
 A record draft occupies the picker-card slot. Header: Bob's emoji, title,
 path, note count (`+N notes` on an `@dir/stem` update). Rows keep labels
-and Bob's state; capsules and value lists accept candidates and keep the
-selected row visible. Optionals hide under More. An update card shows
-Bob's current values and each changed field as a `before → after` row
-with the same VoiceOver text. Existing-record `record_target` rows use
-the generic completion list with status plus up to two field values
-(for example `Ninja Sushi — Liked · Sushi · Clark`). Type emoji overlays
-the card and editor route chip; it never enters the draft. Ready keeps
-the footer hint. See [Record cards](keyboard.md#record-cards).
+and Bob's state: set choices show Bob's display, else capsules. Value
+lists accept candidates and keep the selected row visible. Optionals hide
+under More. An update card shows Bob's current values and each changed
+field as `before → after` with the same VoiceOver text. Existing-record
+`record_target` rows use the generic completion list with status plus up
+to two field values (for example `Ninja Sushi — Liked · Sushi · Clark`).
+Type emoji replaces the `@` and never enters the draft. Footer red is
+refusals and diagnostics. See [Record cards](keyboard.md#record-cards).
 
 A committed record uses Bob's per-item `record_note` summary, not the
 cleared editor: headline `emoji new label  path` (for example
