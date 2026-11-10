@@ -2161,6 +2161,42 @@ JSON
 "edits":[{"range":{"start":8,"end":17},"replacement":"@file^id"}],
 "summary":"Changed @file:id to @file^id"}
 JSON
+    elif [[ "${draft}" == "Follow up @file:new-id." && "${FAKE_BOB_REWRITE_DOT_UNCHANGED:-}" == "1" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "Follow up @file:new-id." ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Follow up @file^new-id","changed":true,"cursor":22,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":10,"end":23},"replacement":"@file^new-id"}],
+"summary":"Changed @file:new-id to @file^new-id"}
+JSON
+    elif [[ "${draft}" == "Follow up @file^new-id." ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Follow up @file:new-id","changed":true,"cursor":22,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":10,"end":23},"replacement":"@file:new-id"}],
+"summary":"Changed @file^new-id to @file:new-id"}
+JSON
+    elif [[ "${draft}" == "Follow up @file+new-id." ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == $'@dev\n- Fix flaky gkeep test :new-id.' ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@dev\n- Fix flaky gkeep test ^new-id","changed":true,"cursor":35,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":28,"end":36},"replacement":"^new-id"}],
+"summary":"Changed :new-id to ^new-id"}
+JSON
     elif [[ "${draft}" == "Do work @file:id+" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"

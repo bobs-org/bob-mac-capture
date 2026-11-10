@@ -2020,6 +2020,76 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.focusRequest.target, .editor)
     }
 
+    func testBlockIDNewIDDottedTypeThroughTogglesColonToCaret() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file:"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id.")
+
+        await waitUntil {
+            model.plainDraft == "Follow up @file^new-id"
+                && model.statusText == "Changed @file:new-id to @file^new-id"
+        }
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlockIDNewIDDottedTypeThroughTogglesCaretToColon() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id.")
+
+        await waitUntil {
+            model.plainDraft == "Follow up @file:new-id"
+                && model.statusText == "Changed @file^new-id to @file:new-id"
+        }
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlockIDNewIDDottedTypeThroughKeepsLiteralWhenBobDeclines() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_REWRITE_DOT_UNCHANGED": "1",
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file:"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id.")
+
+        await waitUntil { model.plainDraft == "Follow up @file:new-id." }
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 23)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
     func testBlockIDNewIDSealTypeThroughSealsTheProjectNote() async throws {
         let model = CapturePanelModel(
             processClient: BobProcessClient(

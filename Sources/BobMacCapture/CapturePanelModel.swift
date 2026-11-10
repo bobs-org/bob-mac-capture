@@ -8858,8 +8858,24 @@ final class CapturePanelModel: ObservableObject {
     /// right after it. The commit is literal even when the ID is taken or
     /// invalid, because Bob's preview reports that exactly as without the
     /// picker. Runs an `.edit` analysis with completion at the new caret so
-    /// `#` opens Pomodoro-name completion; the caret sits past the committed
-    /// token, so the ID picker cannot reopen for it.
+    /// `#` opens Pomodoro-name completion; a single separator key also passes
+    /// through Bob's rewrite lane before completion. The caret sits past the
+    /// committed token, so the ID picker cannot reopen for it.
+    private func blockIDSeparatorTypeThroughRewrite(
+        remainder: String,
+        draft: String,
+        caretUTF8Offset: Int
+    ) -> Task<Void, Never>? {
+        guard [".", "^", ":", "+", ";"].contains(remainder) else {
+            return nil
+        }
+        return startCaptureRewrite(
+            draft: draft,
+            cursorUTF8Offset: caretUTF8Offset,
+            triggeredCharacter: remainder
+        )
+    }
+
     private func commitBlockIDTypeThrough(id: String, remainder: String) {
         guard let openPicker = picker,
               plainDraft == openPicker.draftSnapshot,
@@ -8893,10 +8909,16 @@ final class CapturePanelModel: ObservableObject {
                 applyBlockIDSpliceNatively(edit: edit, caretUTF8: applied.caret)
             {
                 closePickerForAccept()
+                let completionGate = blockIDSeparatorTypeThroughRewrite(
+                    remainder: remainder,
+                    draft: plainDraft,
+                    caretUTF8Offset: applied.caret
+                )
                 scheduleAnalysis(
                     cursorUTF8Offset: applied.caret,
                     requestCompletion: true,
-                    trigger: .edit
+                    trigger: .edit,
+                    completionGate: completionGate
                 )
                 return
             }
@@ -8905,7 +8927,17 @@ final class CapturePanelModel: ObservableObject {
             closePickerForAccept()
             suppressedCompletionAcceptanceDraft = text
             setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
-            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+            let completionGate = blockIDSeparatorTypeThroughRewrite(
+                remainder: remainder,
+                draft: text,
+                caretUTF8Offset: caret
+            )
+            scheduleAnalysis(
+                cursorUTF8Offset: caret,
+                requestCompletion: true,
+                trigger: .edit,
+                completionGate: completionGate
+            )
             return
         }
         let insertion = id + remainder
@@ -8918,7 +8950,17 @@ final class CapturePanelModel: ObservableObject {
             applyBlockIDSpliceNatively(edit: edit, caretUTF8: caret)
         {
             closePickerForAccept()
-            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+            let completionGate = blockIDSeparatorTypeThroughRewrite(
+                remainder: remainder,
+                draft: plainDraft,
+                caretUTF8Offset: caret
+            )
+            scheduleAnalysis(
+                cursorUTF8Offset: caret,
+                requestCompletion: true,
+                trigger: .edit,
+                completionGate: completionGate
+            )
             return
         }
         var text = plainDraft
@@ -8930,7 +8972,17 @@ final class CapturePanelModel: ObservableObject {
         closePickerForAccept()
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
-        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        let completionGate = blockIDSeparatorTypeThroughRewrite(
+            remainder: remainder,
+            draft: text,
+            caretUTF8Offset: caret
+        )
+        scheduleAnalysis(
+            cursorUTF8Offset: caret,
+            requestCompletion: true,
+            trigger: .edit,
+            completionGate: completionGate
+        )
     }
 
     func selectPickerRow(id: String) {

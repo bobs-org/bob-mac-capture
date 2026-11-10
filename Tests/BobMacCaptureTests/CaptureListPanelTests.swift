@@ -428,6 +428,40 @@ final class CaptureListPanelTests: XCTestCase {
         assertOneNativeUndoStep(textView: textView, model: model, from: draft, to: after)
     }
 
+    func testTypeThroughSeparatorRewriteHasItsOwnNativeUndoStep() async throws {
+        let draft = "@dev\n- Fix flaky gkeep test :"
+        let (textView, window) = makeHostedTextView(draft)
+        defer { window.close() }
+        let model = try installHostedPrompt(
+            "list-complete-same-line.json",
+            textView: textView,
+            caret: 29,
+            markerLine: 2
+        )
+        model.setProcessClient(
+            BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            )
+        )
+
+        model.updatePickerFilter("new-id.")
+
+        let after = "@dev\n- Fix flaky gkeep test ^new-id"
+        for _ in 0..<100 where model.plainDraft != after {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(textView.string, after)
+        XCTAssertEqual(model.statusText, "Changed :new-id to ^new-id")
+        XCTAssertFalse(model.pickerVisible)
+
+        textView.undoManager?.undo()
+        let literal = "@dev\n- Fix flaky gkeep test :new-id."
+        XCTAssertEqual(textView.string, literal)
+        model.plainDraft = textView.string
+        XCTAssertEqual(model.plainDraft, literal)
+    }
+
     func testProjectNoteNestedIsOneNativeUndoStep() throws {
         let draft = "Finish it @cash^goog-exit@\n- Draft the memo\n  - outline first :"
         let after = "Finish it @cash^goog-exit@\n- Draft the memo :draft-memo\n  - outline first"

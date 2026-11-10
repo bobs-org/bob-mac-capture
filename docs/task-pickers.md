@@ -344,8 +344,11 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   type-through remainder lands after the text the splice wrote. Undo follows the
   same path as every other picker accept. In the New ID composer the field only ever holds ID characters: typing a
   character outside Bob's allowed set (space, `#`, `=`, `@`, `+`, `.`, …) at the end of the
-  field commits the typed ID and keeps typing that character in the editor, so `#`
-  after a commit opens `task_type` completion naturally. The Link picker keeps
+  field commits the typed ID and keeps typing that character in the editor. A single
+  `.`, `^`, `:`, `+`, or `;` then goes through Bob's rewrite lane exactly as in the
+  editor; for example, `@sase:sase-gallery.` becomes `@sase^sase-gallery`. Other
+  type-through characters keep their existing behavior, so `#` after a commit opens
+  `task_type` completion naturally. The Link picker keeps
   `^`'s semantics: spaces separate fuzzy tokens. Backspace on an empty field deletes
   the `:`/`^` separator and the part so route completion resumes. The chip reads
   `Browse <note> tasks ⇥` (Link) or `Suggest an ID for <note> ⇥` (New ID); Tab, Down,
