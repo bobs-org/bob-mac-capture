@@ -63,6 +63,8 @@ including the next panel show.
   tinted with the event hue while its buffer is in progress) when the event
   reserves one, a join button when the event carries one,
   and a trailing countdown; the focus row also wears the `=meet`-style fit draft.
+Each row with a calendar URL also carries an Event note action that opens
+[Event notes](event-notes.md) for that event.
   VoiceOver adds the buffer facts ("30-minute buffer before and 15-minute buffer
   after, holds 11:30 to 13:15"). A quiet gap row ("38m free · =7 fits") precedes
   the focus, and a collision ("BOB runs 10m into Standup", or "BOB runs 5m into

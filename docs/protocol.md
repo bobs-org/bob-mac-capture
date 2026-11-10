@@ -313,6 +313,7 @@ and ignores a duplicate content hash. Launch never reads a receipt.
 These features stay hidden when the installed `bob` does not provide the command:
 
 - `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
+- `gcal note -l -a -f json`, show, preview, save, and clear (private [Event notes](event-notes.md), schema 1)
 
 ## Optional fields
 
@@ -418,6 +419,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `cancels_source`, `configured`, `relation_cancel`, span `cancels_source`, `relation_cancels[]`, `cancel_effect`, `relation_cancelled_source` | ⊘ cancels capsule, dimmed source, verdict slot, cancelled span tint, ⊘ preview rows, `Capture & cancel N task(s)` | No cue; ordinary relation labels and preview rows | Upgrade `bob` for cancel labels |
 | `completes_source`, `relation_complete`, span `completes_source`, `relation_completes[]` (with nested `task_complete`), `complete_effect`, `relation_completed_source` | ✓ completes capsule, dimmed source, verdict slot, complete span tint, ✓ preview rows with `!` detail rows, `Capture & complete N task(s)` / `Capture & close N tasks`, in-panel successor choice | No cue; ordinary relation labels and preview rows, no successor offers | Upgrade `bob` for complete labels |
 | Candidate/span `offers_source`, `relation_successor` in `capture-complete` | `link` / **offers** capsule and successor-label tint; show Bob's `message` verbatim, released `already_parked` / `already_closed` messages in amber, and muted `hint` | Missing flags are false; inverse hints may omit verdicts. Source never dims; the app never infers verdict from task status | Upgrade `bob` for successor-label authoring |
+| `gcal note` with `schema_version` 1 (list, show, preview, save, clear) | [Event notes](event-notes.md): picker, highlighted editor, hatched rail, save/clear/undo | Without the command the menu item hides and Command-E names the upgrade; missing reason fields omit the rail label; a schema mismatch refuses | Upgrade `bob` for event notes |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 | `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination`, `continuation`, `action_continuation_aliases`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, sections, Bob consequence footer, Shift-Return chaining, Add ID, calm Escape status, new span colours | Older Bob omits the need, so behaviour is unchanged; without aliases, `.` filters | Upgrade `bob` for move bullets |

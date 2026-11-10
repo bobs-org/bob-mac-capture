@@ -9,6 +9,13 @@ Successor choice cards are described in [Capture previews](capture-previews.md);
 
 Ctrl-Tab and Ctrl-Shift-Tab switch panels, keeping the draft and view.
 
+## Event note keys
+
+Command-E opens [Event notes](event-notes.md) from any draft (Control-E keeps line
+motion). Picker: Control-N/P moves, Return opens. Editor: Return saves,
+Shift-Return newlines, Command-Delete clears, Control-Option-S toggles scope,
+Command-Z undoes.
+
 ## Bob Refs shortcuts
 
 These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them. Global Control-Shift-Command-O and `Command-]` toggle the panel from any app; see [Opening Bob Refs](refs.md#opening-bob-refs).
