@@ -232,8 +232,10 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   label, only `~` flips (`=` is label text).
   After `@route`, `.`/`;` keep their `^`/`:` Block ID aliases; sealed
   first-level `- .`/`- ;` keeps Move, and `- ^.` makes `- ^^`. After body
-  text plus space/tab, `.` falls from `@` to `&` where Bob opens Depends On;
-  `;` falls from `:` to `*` where Bob opens Blocks. Bob decides; the app
+  text plus space/tab, `.` gives `@` where Bob opens route completion unless
+  the item is already routed; once routed, `.` gives `&` first and falls back
+  to `@` only where `&` cannot open; `;` falls from `:` to `*` where Bob opens
+  Blocks. Bob decides; the app
   applies the edit and requests completion. Undo restores the key; older Bob
   leaves these aliases literal. In a blank draft, `\` becomes `/` for Go To.
   Else `\`/`/` aliases `#` only where it opens a menu, never at line start;

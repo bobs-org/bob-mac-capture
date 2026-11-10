@@ -50,9 +50,11 @@ then capture"). Shift-Return has no start-session behavior on this source.
 Escape restores the draft/caret and shows the Choose dependency chip; Backspace
 on an empty filter removes the `&` token.
 
-After body text plus space/tab, `.` aliases `&` only where Bob opens Depends On
-and no earlier `^`/`@` alias applies (`@home .` → `@home &`; `Buy milk .`
-stays `@`). Line-start dots stay literal. Fast `..` (350 ms) types one `.`;
+After body text plus space/tab, `.` aliases `@` where Bob opens route
+completion unless the item is already routed; once routed, `.` aliases `&`
+first and falls back to `@` only where `&` cannot open
+(`Buy milk @foo:bar .` → `Buy milk @foo:bar &`; `Buy milk .` stays `@`).
+Line-start dots stay literal. Fast `..` (350 ms) types one `.`;
 Space/Escape restores it on the empty picker.
 
 Rows without an ID show `locator:` plus a dim suggestion; accepting one opens
