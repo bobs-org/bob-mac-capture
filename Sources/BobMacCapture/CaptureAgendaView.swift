@@ -495,7 +495,6 @@ struct CaptureAgendaRowView: View {
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
     var onJoinEvent: (URL) -> Void = { _ in }
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     /// Whether the row's accessory renders as a chip button: every
     /// row whose presentation names an expansion action, plus the
@@ -1205,27 +1204,18 @@ struct CaptureAgendaRowView: View {
         _ event: CaptureAgendaRailEvent,
         width: CGFloat
     ) -> some View {
-        let color = PomodoroHomeColor.color(for: event.hue, scheme: colorScheme)
         let capsuleWidth = railWidth(event, width: width)
-        let strokeWidth: CGFloat = colorSchemeContrast == .increased ? 1.5 : 1
-        return RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(event.offClock || event.maybe ? .clear : color.opacity(0.9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .stroke(
-                        color,
-                        style: StrokeStyle(
-                            lineWidth: strokeWidth,
-                            dash: event.maybe ? [1, 2] : event.offClock ? [3, 2] : []
-                        )
-                    )
-            }
-            .frame(width: capsuleWidth, height: 5)
-            .position(
-                x: railX((event.start + event.end) / 2, width: width),
-                y: 10
-            )
-            .accessibilityHidden(true)
+        return SharedRailCapsule(
+            hue: event.hue,
+            offClock: event.offClock,
+            maybe: event.maybe
+        )
+        .frame(width: capsuleWidth, height: 5)
+        .position(
+            x: railX((event.start + event.end) / 2, width: width),
+            y: 10
+        )
+        .accessibilityHidden(true)
     }
 
     private func railWidth(_ event: CaptureAgendaRailEvent, width: CGFloat) -> CGFloat {
@@ -1233,42 +1223,43 @@ struct CaptureAgendaRowView: View {
     }
 
     private func railSpanWidth(start: Double, end: Double, width: CGFloat) -> CGFloat {
-        max(2, CGFloat(max(0, end - start)) * width)
+        max(
+            2,
+            EventTimeRailGeometry.spanWidth(
+                start: start,
+                end: end,
+                totalWidth: Double(width)
+            )
+        )
     }
 
-    /// A buffer wing fused to a rail capsule: thinner than the capsule,
-    /// in the event's home hue at low opacity, dashed when the event is
-    /// off-clock or Maybe/free, and outlined in the hue while the
-    /// buffer is in progress.
+    /// A buffer wing fused to a rail capsule. The hatched fill lives in
+    /// `SharedRailWing`; this wrapper keeps the agenda's thinner wing
+    /// size and row position.
     private func railWingView(
         _ wing: CaptureAgendaRailWing,
         event: CaptureAgendaRailEvent,
         width: CGFloat
     ) -> some View {
-        let color = PomodoroHomeColor.color(for: event.hue, scheme: colorScheme)
-        let dashed = event.offClock || event.maybe
-        return RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-            .fill(color.opacity(0.35))
-            .overlay {
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .stroke(
-                        wing.active ? color : color.opacity(0.55),
-                        style: StrokeStyle(
-                            lineWidth: wing.active ? 1.5 : 1,
-                            dash: dashed ? [2, 2] : []
-                        )
-                    )
-            }
-            .frame(width: railSpanWidth(start: wing.start, end: wing.end, width: width), height: 3)
-            .position(
-                x: railX((wing.start + wing.end) / 2, width: width),
-                y: 10
-            )
-            .accessibilityHidden(true)
+        SharedRailWing(
+            hue: event.hue,
+            offClock: event.offClock,
+            maybe: event.maybe,
+            active: wing.active
+        )
+        .frame(
+            width: railSpanWidth(start: wing.start, end: wing.end, width: width),
+            height: 3
+        )
+        .position(
+            x: railX((wing.start + wing.end) / 2, width: width),
+            y: 10
+        )
+        .accessibilityHidden(true)
     }
 
     private func railX(_ position: Double, width: CGFloat) -> CGFloat {
-        min(width, max(0, CGFloat(position) * width))
+        CGFloat(EventTimeRailGeometry.x(position, totalWidth: Double(width)))
     }
 
     private var calendarRowView: some View {
