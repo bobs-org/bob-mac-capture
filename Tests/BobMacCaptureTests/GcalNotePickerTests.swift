@@ -1,8 +1,8 @@
 import AppKit
-import CaptureCore
 import XCTest
 
 @testable import BobMacCapture
+@testable import CaptureCore
 
 @MainActor
 final class GcalNotePickerTests: XCTestCase {
