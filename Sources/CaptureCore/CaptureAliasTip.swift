@@ -122,6 +122,20 @@ public enum AliasTipChance: String, Codable, Equatable, Sendable {
     case miss
 }
 
+/// Why a bob-proved typing tip did not appear. Values are persisted in the
+/// local ledger, so their raw strings are a stable diagnostics contract.
+public enum AliasTipDropReason: String, Codable, CaseIterable, Equatable, Sendable {
+    case lateReply = "late_reply"
+    case sigilEdited = "sigil_edited"
+    case unanchored
+    case superseded
+    case closed
+    case notDue = "not_due"
+    case session
+    case host
+    case budget
+}
+
 /// Thresholds for the fade-by-fluency policy. The values are hypotheses
 /// kept as named constants.
 public enum AliasTipPolicy: Sendable {
@@ -320,18 +334,21 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
     public var lessons: [String: AliasTipLessonState]
     public var ineligible: [String: Int]
     public var weeks: [String: [String: AliasTipWeekEntry]]
+    public var dropped: [String: Int]
     private var liveHitCredits: Set<UUID> = []
 
     public init(
         version: Int = currentVersion,
         lessons: [String: AliasTipLessonState] = [:],
         ineligible: [String: Int] = [:],
-        weeks: [String: [String: AliasTipWeekEntry]] = [:]
+        weeks: [String: [String: AliasTipWeekEntry]] = [:],
+        dropped: [String: Int] = [:]
     ) {
         self.version = version
         self.lessons = lessons
         self.ineligible = ineligible
         self.weeks = weeks
+        self.dropped = dropped
     }
 
     public init(from decoder: Decoder) throws {
@@ -346,6 +363,7 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
             [String: [String: AliasTipWeekEntry]].self,
             forKey: .weeks
         ) ?? [:]
+        dropped = try container.decodeIfPresent([String: Int].self, forKey: .dropped) ?? [:]
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -353,6 +371,7 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
         case lessons
         case ineligible
         case weeks
+        case dropped
     }
 
     public static let empty = AliasTipLedger()
@@ -373,10 +392,18 @@ public struct AliasTipLedger: Codable, Equatable, Sendable {
         lessons[id]?.fluent ?? false
     }
 
-    public mutating func recordMiss(id: String, shown: Bool, date: Date) {
+    public mutating func recordMiss(
+        id: String,
+        shown: Bool,
+        dropReason: AliasTipDropReason? = nil,
+        date: Date
+    ) {
         var lesson = lessons[id] ?? AliasTipLessonState()
         lesson.recordMiss(shown: shown)
         lessons[id] = lesson
+        if !shown, let dropReason {
+            dropped[dropReason.rawValue, default: 0] += 1
+        }
         var entry = weeks[Self.weekKey(for: date)]?[id] ?? AliasTipWeekEntry()
         entry.misses += 1
         if shown {
@@ -501,9 +528,13 @@ public struct AliasTipLedgerStore: @unchecked Sendable {
         hitCredits.reset()
     }
 
-    public func recordMiss(id: String, shown: Bool) {
+    public func recordMiss(
+        id: String,
+        shown: Bool,
+        dropReason: AliasTipDropReason? = nil
+    ) {
         var ledger = load()
-        ledger.recordMiss(id: id, shown: shown, date: now())
+        ledger.recordMiss(id: id, shown: shown, dropReason: dropReason, date: now())
         save(ledger)
     }
 

@@ -299,6 +299,20 @@ case "${command}" in
         exit 0
       fi
     fi
+    if [[ "${FAKE_BOB_ALIAS_TIP_ANCHOR:-}" == "1" ]]; then
+      case "${draft}" in
+        "Buy milk @er") fixture="capture-parse-alias-tip-route-query.json" ;;
+        "Buy milk @e") fixture="capture-parse-alias-tip-route-filtered.json" ;;
+        "@file") fixture="capture-parse-alias-tip-route-base.json" ;;
+        "@file:") fixture="capture-parse-alias-tip-link-after-route.json" ;;
+        "@file^") fixture="capture-parse-alias-tip-block-id-after-route.json" ;;
+        *) fixture="" ;;
+      esac
+      if [[ -n "${fixture}" ]]; then
+        cat "${fixtures_dir}/${fixture}" | inject_parse_grammar
+        exit 0
+      fi
+    fi
     if [[ "${draft}" == "@home &" ]]; then
       cat "${fixtures_dir}/capture-parse-modifier-dependency.json" | inject_parse_grammar
     elif [[ "${draft}" == "Buy milk *" ]]; then
@@ -2079,6 +2093,10 @@ JSON
         unknown) cat "${fixtures_dir}/capture-rewrite-alias-tip-unknown.json" ;;
         *) cat "${fixtures_dir}/capture-rewrite-alias-tip-route.json" ;;
       esac
+    elif [[ "${FAKE_BOB_ALIAS_TIP_ANCHOR:-}" == "1" && "${draft}" == "@file:" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-alias-tip-link-after-route.json"
+    elif [[ "${FAKE_BOB_ALIAS_TIP_ANCHOR:-}" == "1" && "${draft}" == "@file^" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-alias-tip-block-id-after-route.json"
     elif [[ "${draft}" == "jot idea #" ]]; then
       cat "${fixtures_dir}/capture-rewrite-alias-tip-hash.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
@@ -2528,6 +2546,20 @@ JSON
       if [[ "${draft}" == '#'* || "${draft}" == *' #' || "${draft}" == *' #fi' \
          || "${draft}" == *' #fix' || "${draft}" == *' #fixs' || "${draft}" == *' #f' ]]; then
         task_type_edge=1
+      fi
+    fi
+    if [[ "${FAKE_BOB_ALIAS_TIP_ANCHOR:-}" == "1" ]]; then
+      case "${draft}" in
+        "Buy milk @er") fixture="capture-complete-alias-tip-route-query.json" ;;
+        "Buy milk @e") fixture="capture-complete-alias-tip-route-filtered.json" ;;
+        "@file") fixture="capture-complete-alias-tip-route-base.json" ;;
+        "@file:") fixture="capture-complete-alias-tip-link-after-route.json" ;;
+        "@file^") fixture="capture-complete-alias-tip-block-id-after-route.json" ;;
+        *) fixture="" ;;
+      esac
+      if [[ -n "${fixture}" ]]; then
+        cat "${fixtures_dir}/${fixture}"
+        exit 0
       fi
     fi
     if [[ "${task_type_edge}" == "1" ]]; then

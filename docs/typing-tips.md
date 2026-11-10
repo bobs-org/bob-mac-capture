@@ -13,10 +13,13 @@ the draft from a tip, and never delays completion, preview, Similar Tasks, or Re
 The row sits at the foot of the completion-list card, under a hairline, pinned so it
 does not scroll away. Picker tips use the same row at the foot of the picker card,
 under a divider and below its detail strip. A tip appears only in the first frame of the
-list or picker the sigil opened. The first surface consumes it; it never jumps between
-surfaces. Filtering leaves the row in place. Closing the surface, accepting a row,
-submitting, or hiding the panel clears it. A tip that arrives after the surface is
-already open is dropped.
+list or picker anchored at the sigil, even if you keep typing its query before that
+surface opens. A list or picker left from the previous token does not count. The first
+anchored surface consumes the opportunity; the tip never jumps between surfaces.
+Filtering leaves the row in place. Editing at or before the sigil, or pausing first on a
+draft with no anchored surface, drops the tip. Closing the surface, accepting a row,
+submitting, or hiding the panel clears a shown row. A tip that arrives after its
+anchored surface is already open is dropped.
 
 The picker includes the row only when its full height at the open row budget fits the
 panel's screen space. A cramped panel drops the tip before it trims the candidate rows.
@@ -74,7 +77,11 @@ defaults read org.bobs.bob-mac-capture org.bobs.bob-mac-capture.typing-tips
 ```
 
 It stores per-lesson recent hits and misses, how many tips have been shown, and weekly
-counts. A corrupt or unknown-version blob resets to empty.
+counts. The additive `dropped` map counts why bob-proved tips were not shown, using the
+stable reasons `late_reply`, `sigil_edited`, `unanchored`, `superseded`, `closed`,
+`not_due`, `session`, `host`, and `budget`. It stores no draft text. Older version-1
+blobs without `dropped` load with an empty map. Reset clears the map with the rest of
+the ledger; a corrupt or unknown-version blob resets to empty.
 
 ## Compatibility
 

@@ -6,22 +6,9 @@ import XCTest
 
 @MainActor
 final class CaptureAliasTipPanelTests: XCTestCase {
-    private var suiteName = ""
-    private var defaults: UserDefaults!
+    private let suiteName = "org.bobs.bob-mac-capture.tests.tips.\(UUID().uuidString)"
+    private lazy var defaults = UserDefaults(suiteName: suiteName)!
     private var hostedWindows: [NSWindow] = []
-
-    override func setUp() {
-        super.setUp()
-        suiteName = "org.bobs.bob-mac-capture.tests.tips.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-    }
-
-    override func tearDown() {
-        hostedWindows.removeAll()
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
-    }
 
     func testTipIsInTheListsFirstFrame() async throws {
         let recordURL = makeRecordURL()
@@ -44,6 +31,118 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             (try String(contentsOf: recordURL)).contains(
                 "argv=capture-rewrite --cursor 10 --format json -- Buy milk @"
             )
+        )
+    }
+
+    func testTypingQueryBeforeTheRouteListOpensKeepsTheTip() async throws {
+        let (model, textView) = try makeModel(
+            recordURL: makeRecordURL(),
+            debounceNanoseconds: 200_000_000
+        )
+        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        insert("er", into: textView, model: model)
+
+        await waitUntil {
+            model.completionDraftSnapshotForTesting == "Buy milk @er"
+                && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
+        }
+
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?.tipsShown,
+            1
+        )
+        XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+    }
+
+    func testFilteringKeepsTheShownTipAnchoredToTheSigil() async throws {
+        let (model, textView) = try makeModel(recordURL: makeRecordURL())
+        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        await waitUntil {
+            model.completionVisible
+                && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
+        }
+
+        insert("e", into: textView, model: model)
+        await waitUntil {
+            model.completionDraftSnapshotForTesting == "Buy milk @e"
+                && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
+        }
+
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?.tipsShown,
+            1
+        )
+        XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+    }
+
+    func testPreviousRouteListDoesNotBlockPickerTips() async throws {
+        for (sigil, lessonID) in [
+            (":", CaptureAliasLesson.linkAfterRoute),
+            ("^", CaptureAliasLesson.blockIDAfterRoute),
+        ] {
+            defaults.removePersistentDomain(forName: suiteName)
+            let recordURL = makeRecordURL()
+            let (model, textView) = try makeModel(
+                recordURL: recordURL,
+                extra: [
+                    "FAKE_BOB_ALIAS_TIP_ANCHOR": "1",
+                    "FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS": "0.15",
+                ],
+                debounceNanoseconds: 0,
+                text: "@file"
+            )
+            model.editorTextDidChange(cursorUTF8Offset: "@file".utf8.count)
+            await waitUntil {
+                model.completionDraftSnapshotForTesting == "@file" && model.completionVisible
+            }
+            XCTAssertNil(model.picker)
+
+            typeSigil(sigil, into: textView, model: model, modifiers: .shift)
+            await waitUntil {
+                model.pickerVisible && model.presentedAliasTip?.id == lessonID
+            }
+
+            XCTAssertEqual(model.aliasTipLedgerStore.load().lessons[lessonID]?.tipsShown, 1)
+            XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+        }
+    }
+
+    func testEditingTheSigilAfterItShowsClearsTheTipRow() async throws {
+        let (model, textView) = try makeModel(recordURL: makeRecordURL())
+        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        await waitUntil {
+            model.completionVisible
+                && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
+        }
+
+        restorePrefix("Buy milk ", into: textView, model: model)
+        model.editorTextDidChange(cursorUTF8Offset: "Buy milk ".utf8.count)
+
+        XCTAssertNil(model.presentedAliasTip)
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?.tipsShown,
+            1
+        )
+        XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+    }
+
+    func testFirstSettledAnalysisWithoutAnAnchoredSurfaceCountsUnanchored() async throws {
+        let (model, textView) = try makeModel(
+            recordURL: makeRecordURL(),
+            debounceNanoseconds: 200_000_000
+        )
+        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        insert(" ", into: textView, model: model)
+
+        await waitUntil {
+            model.aliasTipLedgerStore.load().dropped[AliasTipDropReason.unanchored.rawValue] == 1
+        }
+
+        XCTAssertNil(model.presentedAliasTip)
+        XCTAssertNil(model.pendingAliasTipForTesting)
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?.recent,
+            [.miss]
         )
     }
 
@@ -75,6 +174,10 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?
                 .recent,
             [.miss]
+        )
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().dropped[AliasTipDropReason.lateReply.rawValue],
+            1
         )
     }
 
@@ -193,6 +296,10 @@ final class CaptureAliasTipPanelTests: XCTestCase {
         await waitUntil { !model.aliasTipInFlightForTesting }
         XCTAssertNil(model.presentedAliasTip)
         XCTAssertNil(model.pendingAliasTipForTesting)
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().dropped[AliasTipDropReason.sigilEdited.rawValue],
+            1
+        )
     }
 
     func testUnshiftedRepeatPasteAndTipsOffSpawnNothing() async throws {

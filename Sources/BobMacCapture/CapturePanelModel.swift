@@ -42,21 +42,40 @@ private struct TypedSigilIntent: Equatable {
 private enum AliasTipSurface: Equatable {
     case completionList
     case picker
+
+    var lessonHost: CaptureAliasTipHost {
+        switch self {
+        case .completionList: return .completionList
+        case .picker: return .picker
+        }
+    }
+}
+
+private struct AliasTipSurfaceSnapshot {
+    let kind: AliasTipSurface
+    let draft: String
+    let replacementRange: CaptureRange
+}
+
+private struct AliasTipAnchor: Equatable {
+    let draft: String
+    let sigilRange: CaptureRange
+    let sigil: String
 }
 
 /// One physical request owns exactly one first-surface opening opportunity.
 private struct AliasTipRequest: Equatable {
     let generation: UInt64
-    let draft: String
     let cursorUTF8Offset: Int
-    var firstSurface: AliasTipSurface?
-    var displayEligible = true
+    let anchor: AliasTipAnchor
+    var openedSurface: AliasTipSurface? = nil
+    var dropReason: AliasTipDropReason? = nil
 }
 
 /// A bob-proved tip waiting for the first surface opened by its request.
 private struct PendingAliasTip: Equatable {
     let tip: CaptureSigilAliasTip
-    let draft: String
+    let anchor: AliasTipAnchor
     let generation: UInt64
 }
 
@@ -1075,6 +1094,7 @@ final class CapturePanelModel: ObservableObject {
     var aliasTipGenerationForTesting: UInt64 { aliasTipGeneration }
     var pendingAliasTipForTesting: CaptureSigilAliasTip? { pendingAliasTip?.tip }
     var aliasTipSessionForTesting: AliasTipSession { aliasTipSession }
+    var completionDraftSnapshotForTesting: String? { completionDraftSnapshot }
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.
@@ -1185,7 +1205,7 @@ final class CapturePanelModel: ObservableObject {
             guard typingTipsEnabled != oldValue else { return }
             if !typingTipsEnabled {
                 cancelAliasTipLane()
-                dropPendingAliasTip()
+                dropPendingAliasTip(reason: .closed)
                 presentedAliasTip = nil
                 pendingTypedSigilIntent = nil
             }
@@ -1196,11 +1216,11 @@ final class CapturePanelModel: ObservableObject {
     @Published private(set) var presentedAliasTip: CaptureSigilAliasTip? {
         didSet {
             if presentedAliasTip == nil {
-                presentedAliasTipDraft = nil
+                presentedAliasTipAnchor = nil
             }
         }
     }
-    private var presentedAliasTipDraft: String?
+    private var presentedAliasTipAnchor: AliasTipAnchor?
 
     /// Test-injectable ledger. Production uses the standard defaults store.
     var aliasTipLedgerStore = AliasTipLedgerStore()
@@ -3259,14 +3279,14 @@ final class CapturePanelModel: ObservableObject {
             deferredRewriteEchoCursorUTF8 = nil
         }
         reconcileAliasTipHit(with: draft)
-        if let presentedAliasTipDraft, presentedAliasTipDraft != draft {
-            retireAliasTipDisplayEligibility()
+        if let presentedAliasTipAnchor, !aliasTipIsIntact(presentedAliasTipAnchor) {
+            retireAliasTipDisplayEligibility(reason: .sigilEdited)
         }
-        if let request = aliasTipRequest, request.draft != draft {
-            retireAliasTipDisplayEligibility()
+        if let request = aliasTipRequest, !aliasTipIsIntact(request.anchor) {
+            retireAliasTipDisplayEligibility(reason: .sigilEdited)
         }
-        if let pending = pendingAliasTip, !aliasTipIsAdmissible(pending) {
-            dropPendingAliasTip()
+        if let pending = pendingAliasTip, !aliasTipIsIntact(pending.anchor) {
+            dropPendingAliasTip(reason: .sigilEdited)
         }
         let acceptedDeferredRewriteEcho = deferredRewriteEchoDraft == draft
             && (pendingRewriteSubmitIntent != nil
@@ -6238,7 +6258,7 @@ final class CapturePanelModel: ObservableObject {
             recordReturnTask = nil
         }
         if !preservePendingAliasTip {
-            dropPendingAliasTip()
+            deferAliasTipOpportunity(reason: .closed)
         }
         if !preservePresentedAliasTip {
             presentedAliasTip = nil
@@ -7013,7 +7033,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         guard Self.isUsableBlockIDCompletion(completion) else {
@@ -7178,7 +7198,6 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         clearPickerInterruption(trigger: trigger)
-        let listWasVisible = completionVisible
         let keepsRecordEdit = Self.isRecordCompletion(completion)
             && completion.record?.edit != nil
         completionResponse = completion.candidates.isEmpty && !keepsRecordEdit ? nil : completion
@@ -7201,7 +7220,7 @@ final class CapturePanelModel: ObservableObject {
             statusText = pomodoroStartPickerStatus(override: completion.overrideInfo)
         }
         applyCompletionWarnings(completion.warnings)
-        consumePendingAliasTipOnListUpdate(listWasVisible: listWasVisible)
+        consumePendingAliasTipOnListUpdate(draft: draft)
         if !completionVisible {
             presentedAliasTip = nil
         }
@@ -7211,13 +7230,21 @@ final class CapturePanelModel: ObservableObject {
     /// nothing offered) still retires the `^` affordances per trigger.
     private func handleMissingCompletion(trigger: CompletionTrigger) {
         if picker != nil {
-            dismissCompletion(cancelPendingRecordReturn: false)
+            deferAliasTipOpportunity(reason: .unanchored)
+            dismissCompletion(
+                cancelPendingRecordReturn: false,
+                preservePendingAliasTip: true
+            )
             return
         }
         clearPickerInterruption(trigger: trigger)
         // This is the analysis Return is waiting on. Clearing the empty
         // completion list must not cancel that submit.
-        dismissCompletion(cancelPendingRecordReturn: false)
+        deferAliasTipOpportunity(reason: .unanchored)
+        dismissCompletion(
+            cancelPendingRecordReturn: false,
+            preservePendingAliasTip: true
+        )
     }
 
     /// An `.edit` analysis without an `active_task` result leaves the token:
@@ -7248,7 +7275,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -7353,7 +7380,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -7453,7 +7480,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         guard let baseContext = completion.picker?.parentTaskContext else {
@@ -7615,7 +7642,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         guard let context = completion.picker?.projectTaskMoveContext else {
@@ -7811,7 +7838,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -7986,7 +8013,7 @@ final class CapturePanelModel: ObservableObject {
         )
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -8055,7 +8082,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -8150,7 +8177,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion(preservePendingAliasTip: true)
         defer {
             if picker == nil {
-                dropPendingAliasTip()
+                deferAliasTipOpportunity(reason: .unanchored)
             }
         }
         let r = completion.replacement
@@ -8343,8 +8370,9 @@ final class CapturePanelModel: ObservableObject {
             preservePresentedAliasTip: pickerWasVisible
         )
         consumePendingAliasTipOnPickerOpen(
-            visibleRowBudget: presentation.visibleRowBudget,
-            pickerWasVisible: pickerWasVisible
+            draft: draft,
+            range: range,
+            visibleRowBudget: presentation.visibleRowBudget
         )
         relationFlipAliasOpen = nil
         pickerChip = nil
@@ -20939,14 +20967,19 @@ extension CapturePanelModel {
             return
         }
         let snapshot = draft ?? plainDraft
+        let anchor = AliasTipAnchor(
+            draft: snapshot,
+            sigilRange: tip.range,
+            sigil: tip.sigil
+        )
         aliasTipRequest = AliasTipRequest(
             generation: aliasTipGeneration,
-            draft: snapshot,
-            cursorUTF8Offset: snapshot.utf8.count
+            cursorUTF8Offset: snapshot.utf8.count,
+            anchor: anchor
         )
         pendingAliasTip = PendingAliasTip(
             tip: tip,
-            draft: snapshot,
+            anchor: anchor,
             generation: aliasTipGeneration
         )
     }
@@ -21039,13 +21072,20 @@ extension CapturePanelModel {
         {
             return
         }
-        dropPendingAliasTip()
+        dropPendingAliasTip(reason: .superseded)
         cancelAliasTipLane()
+        let anchor = AliasTipAnchor(
+            draft: draft,
+            sigilRange: CaptureRange(
+                start: cursorUTF8Offset - sigil.utf8.count,
+                end: cursorUTF8Offset
+            ),
+            sigil: sigil
+        )
         aliasTipRequest = AliasTipRequest(
             generation: aliasTipGeneration,
-            draft: draft,
             cursorUTF8Offset: cursorUTF8Offset,
-            firstSurface: pickerVisible ? .picker : (completionVisible ? .completionList : nil)
+            anchor: anchor
         )
         let generation = aliasTipGeneration
         let timeout = aliasTipTimeout
@@ -21091,18 +21131,29 @@ extension CapturePanelModel {
         }
         aliasTipTask = nil
         if aliasTipRequest == nil {
+            let cursor = response.cursor ?? draft.utf8.count
+            let anchor = AliasTipAnchor(
+                draft: draft,
+                sigilRange: CaptureRange(
+                    start: max(0, cursor - sigil.utf8.count),
+                    end: cursor
+                ),
+                sigil: sigil
+            )
+            let openedSurface = currentAliasTipSurface()
+                .flatMap { surface in
+                    currentAliasTipSurfaceIsAnchored(surface, to: anchor) ? surface.kind : nil
+                }
             aliasTipRequest = AliasTipRequest(
                 generation: generation,
-                draft: draft,
-                cursorUTF8Offset: response.cursor ?? draft.utf8.count,
-                firstSurface: pickerVisible
-                    ? .picker
-                    : (completionVisible ? .completionList : nil)
+                cursorUTF8Offset: cursor,
+                anchor: anchor,
+                openedSurface: openedSurface
             )
         }
         guard var request = aliasTipRequest,
             request.generation == generation,
-            request.draft == draft
+            request.anchor.draft == draft
         else {
             return
         }
@@ -21137,106 +21188,154 @@ extension CapturePanelModel {
             finishAliasTipRequest(generation: generation)
             return
         }
-        let pending = PendingAliasTip(tip: tip, draft: draft, generation: generation)
-        guard aliasTipIsAdmissible(pending) else {
-            recordAliasTipMiss(id: tip.id, generation: generation)
+        if let reason = request.dropReason {
+            recordAliasTipMiss(id: tip.id, generation: generation, reason: reason)
             return
         }
-        guard request.firstSurface == nil, request.displayEligible else {
-            recordAliasTipMiss(id: tip.id, generation: generation)
+        guard aliasTipIsIntact(request.anchor) else {
+            recordAliasTipMiss(id: tip.id, generation: generation, reason: .sigilEdited)
             return
         }
-        let due = aliasTipLedgerStore.isDue(id: tip.id)
-        guard due, aliasTipSession.canShow(lessonId: tip.id) else {
-            recordAliasTipMiss(id: tip.id, generation: generation)
+        guard request.openedSurface == nil else {
+            recordAliasTipMiss(id: tip.id, generation: generation, reason: .lateReply)
             return
         }
-        pendingAliasTip = pending
+        guard aliasTipLedgerStore.isDue(id: tip.id) else {
+            recordAliasTipMiss(id: tip.id, generation: generation, reason: .notDue)
+            return
+        }
+        guard aliasTipSession.canShow(lessonId: tip.id) else {
+            recordAliasTipMiss(id: tip.id, generation: generation, reason: .session)
+            return
+        }
+        pendingAliasTip = PendingAliasTip(
+            tip: tip,
+            anchor: request.anchor,
+            generation: generation
+        )
         aliasTipRequest = request
     }
 
-    fileprivate func consumePendingAliasTipOnListUpdate(listWasVisible: Bool) {
-        guard completionVisible, !recordShowsGenericCompletionFallback else {
-            return
-        }
-        consumeAliasTipOpeningOpportunity(.completionList)
-        guard let pending = pendingAliasTip else {
-            return
-        }
-        pendingAliasTip = nil
-        guard var request = aliasTipRequest,
-            request.generation == pending.generation
-        else {
-            recordAliasTipMiss(id: pending.tip.id, generation: pending.generation)
-            return
-        }
-        let canAdmit =
-            request.firstSurface == .completionList
-            && request.displayEligible
-            && !listWasVisible
-            && aliasTipIsAdmissible(pending)
-            && aliasTipFitsPanelBudget
-            && CaptureAliasLesson.host(for: pending.tip.id) == .completionList
-            && aliasTipSession.canShow(lessonId: pending.tip.id)
-        if canAdmit {
-            presentedAliasTip = pending.tip
-            presentedAliasTipDraft = pending.draft
-            aliasTipSession.markShown()
-            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: true)
-        } else {
-            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
-        }
-        finishAliasTipRequest(generation: request.generation)
+    fileprivate func consumePendingAliasTipOnListUpdate(draft: String) {
+        let surface =
+            completionVisible && !recordShowsGenericCompletionFallback
+            ? currentAliasTipSurface()
+            : nil
+        resolveAliasTipOpeningOpportunity(
+            surface: surface,
+            draft: draft,
+            fallbackReason: .unanchored
+        )
     }
 
     func consumePendingAliasTipOnPickerOpen(
-        visibleRowBudget: Int,
-        pickerWasVisible: Bool = false
+        draft: String,
+        range: CaptureRange,
+        visibleRowBudget: Int
     ) {
-        consumeAliasTipOpeningOpportunity(.picker)
-        guard let pending = pendingAliasTip else {
+        resolveAliasTipOpeningOpportunity(
+            surface: AliasTipSurfaceSnapshot(
+                kind: .picker,
+                draft: draft,
+                replacementRange: range
+            ),
+            draft: draft,
+            fallbackReason: .unanchored,
+            pickerVisibleRowBudget: visibleRowBudget
+        )
+    }
+
+    private func resolveAliasTipOpeningOpportunity(
+        surface: AliasTipSurfaceSnapshot?,
+        draft: String,
+        fallbackReason: AliasTipDropReason,
+        pickerVisibleRowBudget: Int? = nil
+    ) {
+        if let presentedAliasTipAnchor {
+            let staysAnchored =
+                surface.map {
+                    aliasTipIsIntact(presentedAliasTipAnchor, in: $0.draft)
+                        && Self.isAliasTipSurfaceAnchored($0, to: presentedAliasTipAnchor)
+                } ?? false
+            if !staysAnchored {
+                presentedAliasTip = nil
+            }
+        }
+        guard var request = aliasTipRequest,
+            request.openedSurface == nil,
+            request.dropReason == nil
+        else {
+            return
+        }
+        guard aliasTipIsIntact(request.anchor, in: draft) else {
+            request.dropReason = .sigilEdited
+            aliasTipRequest = request
+            dropPendingAliasTip(reason: .sigilEdited)
+            return
+        }
+        guard let surface,
+            aliasTipIsIntact(request.anchor, in: surface.draft),
+            Self.isAliasTipSurfaceAnchored(surface, to: request.anchor)
+        else {
+            request.dropReason = fallbackReason
+            aliasTipRequest = request
+            dropPendingAliasTip(reason: fallbackReason)
+            return
+        }
+        request.openedSurface = surface.kind
+        aliasTipRequest = request
+        guard let pending = pendingAliasTip,
+            pending.generation == request.generation
+        else {
             return
         }
         pendingAliasTip = nil
-        guard let request = aliasTipRequest,
-            request.generation == pending.generation
-        else {
-            recordAliasTipMiss(id: pending.tip.id, generation: pending.generation)
-            return
+        let reason: AliasTipDropReason?
+        if CaptureAliasLesson.host(for: pending.tip.id) != surface.kind.lessonHost {
+            reason = .host
+        } else if !aliasTipSession.canShow(lessonId: pending.tip.id) {
+            reason = .session
+        } else if surface.kind == .completionList {
+            reason = aliasTipFitsPanelBudget ? nil : .budget
+        } else if let pickerVisibleRowBudget {
+            reason =
+                aliasTipFitsPickerPanelBudget(visibleRowBudget: pickerVisibleRowBudget)
+                ? nil
+                : .budget
+        } else {
+            reason = .budget
         }
-        if request.firstSurface == .picker,
-            request.displayEligible,
-            !pickerWasVisible,
-            aliasTipSession.canShow(lessonId: pending.tip.id),
-            CaptureAliasLesson.host(for: pending.tip.id) == .picker,
-            aliasTipIsAdmissible(pending),
-            aliasTipFitsPickerPanelBudget(visibleRowBudget: visibleRowBudget)
-        {
+        if let reason {
+            recordAliasTipMiss(id: pending.tip.id, generation: pending.generation, reason: reason)
+        } else {
+            presentedAliasTipAnchor = pending.anchor
             presentedAliasTip = pending.tip
-            presentedAliasTipDraft = pending.draft
             aliasTipSession.markShown()
             aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: true)
-        } else {
-            aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
+            finishAliasTipRequest(generation: pending.generation)
         }
-        finishAliasTipRequest(generation: request.generation)
     }
 
-    private func consumeAliasTipOpeningOpportunity(_ surface: AliasTipSurface) {
-        guard var request = aliasTipRequest, request.firstSurface == nil else {
-            return
-        }
-        request.firstSurface = surface
-        aliasTipRequest = request
-    }
-
-    fileprivate func dropPendingAliasTip() {
+    fileprivate func dropPendingAliasTip(reason: AliasTipDropReason = .closed) {
         guard let pending = pendingAliasTip else {
             return
         }
         pendingAliasTip = nil
-        aliasTipLedgerStore.recordMiss(id: pending.tip.id, shown: false)
+        aliasTipLedgerStore.recordMiss(
+            id: pending.tip.id,
+            shown: false,
+            dropReason: reason
+        )
         finishAliasTipRequest(generation: pending.generation)
+    }
+
+    private func deferAliasTipOpportunity(reason: AliasTipDropReason) {
+        if pendingAliasTip != nil {
+            dropPendingAliasTip(reason: reason)
+        } else if var request = aliasTipRequest, request.openedSurface == nil {
+            request.dropReason = reason
+            aliasTipRequest = request
+        }
     }
 
     fileprivate func cancelAliasTipLane() {
@@ -21246,17 +21345,18 @@ extension CapturePanelModel {
         aliasTipRequest = nil
     }
 
-    fileprivate func retireAliasTipDisplayEligibility() {
+    fileprivate func retireAliasTipDisplayEligibility(
+        reason: AliasTipDropReason = .closed
+    ) {
         presentedAliasTip = nil
-        presentedAliasTipDraft = nil
         guard let pending = pendingAliasTip else {
-            if var request = aliasTipRequest {
-                request.displayEligible = false
+            if var request = aliasTipRequest, request.openedSurface == nil {
+                request.dropReason = reason
                 aliasTipRequest = request
             }
             return
         }
-        dropPendingAliasTip()
+        dropPendingAliasTip(reason: reason)
     }
 
     private func finishAliasTipRequest(generation: UInt64) {
@@ -21269,30 +21369,75 @@ extension CapturePanelModel {
         }
     }
 
-    private func recordAliasTipMiss(id: String, generation: UInt64) {
+    private func recordAliasTipMiss(
+        id: String,
+        generation: UInt64,
+        reason: AliasTipDropReason
+    ) {
         guard aliasTipRequest?.generation == generation else {
             return
         }
-        aliasTipLedgerStore.recordMiss(id: id, shown: false)
+        aliasTipLedgerStore.recordMiss(id: id, shown: false, dropReason: reason)
         finishAliasTipRequest(generation: generation)
     }
 
-    fileprivate func aliasTipIsAdmissible(_ pending: PendingAliasTip) -> Bool {
+    private func aliasTipIsIntact(_ anchor: AliasTipAnchor) -> Bool {
+        aliasTipIsIntact(anchor, in: plainDraft)
+    }
+
+    private func aliasTipIsIntact(_ anchor: AliasTipAnchor, in draft: String) -> Bool {
         guard
-            aliasTipPrefix(of: plainDraft, through: pending.tip.range.end)
-                == aliasTipPrefix(of: pending.draft, through: pending.tip.range.end)
+            aliasTipPrefix(of: draft, through: anchor.sigilRange.end)
+                == aliasTipPrefix(of: anchor.draft, through: anchor.sigilRange.end)
         else {
             return false
         }
         guard
             let range = stringRange(
-                in: plainDraft,
-                start: pending.tip.range.start,
-                end: pending.tip.range.end)
+                in: draft,
+                start: anchor.sigilRange.start,
+                end: anchor.sigilRange.end)
         else {
             return false
         }
-        return String(plainDraft[range]) == pending.tip.sigil
+        return String(draft[range]) == anchor.sigil
+    }
+
+    private func currentAliasTipSurface() -> AliasTipSurfaceSnapshot? {
+        if pickerVisible, let picker {
+            return AliasTipSurfaceSnapshot(
+                kind: .picker,
+                draft: picker.draftSnapshot,
+                replacementRange: picker.replacementRange
+            )
+        }
+        guard completionVisible,
+            let completionResponse,
+            let completionDraftSnapshot
+        else {
+            return nil
+        }
+        return AliasTipSurfaceSnapshot(
+            kind: .completionList,
+            draft: completionDraftSnapshot,
+            replacementRange: completionResponse.replacement
+        )
+    }
+
+    private func currentAliasTipSurfaceIsAnchored(
+        _ surface: AliasTipSurfaceSnapshot,
+        to anchor: AliasTipAnchor
+    ) -> Bool {
+        aliasTipIsIntact(anchor, in: surface.draft)
+            && Self.isAliasTipSurfaceAnchored(surface, to: anchor)
+    }
+
+    private static func isAliasTipSurfaceAnchored(
+        _ surface: AliasTipSurfaceSnapshot,
+        to anchor: AliasTipAnchor
+    ) -> Bool {
+        surface.replacementRange.start == anchor.sigilRange.start
+            || surface.replacementRange.start == anchor.sigilRange.end
     }
 
     private func aliasTipPrefix(of draft: String, through end: Int) -> String? {

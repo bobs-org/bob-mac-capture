@@ -38,8 +38,14 @@ final class AliasTipLedgerStoreTests: XCTestCase {
         let store = store()
         store.recordHit(id: "route_after_text")
         store.recordMiss(id: "route_after_text", shown: true)
+        store.recordMiss(
+            id: "link_after_route",
+            shown: false,
+            dropReason: .lateReply
+        )
         let loaded = store.load()
         XCTAssertEqual(loaded.lessons["route_after_text"]?.tipsShown, 1)
+        XCTAssertEqual(loaded.dropped[AliasTipDropReason.lateReply.rawValue], 1)
 
         let raw = defaults.string(forKey: AliasTipLedgerStore.defaultsKey)
         XCTAssertNotNil(raw)
@@ -48,13 +54,24 @@ final class AliasTipLedgerStoreTests: XCTestCase {
         XCTAssertTrue(raw!.contains("route_after_text"))
     }
 
+    func testOlderLedgerWithoutDroppedMapLoads() {
+        defaults.set(
+            #"{"version":1,"lessons":{},"ineligible":{},"weeks":{}}"#,
+            forKey: AliasTipLedgerStore.defaultsKey
+        )
+
+        XCTAssertEqual(store().load().dropped, [:])
+    }
+
     func testResetClearsTheLedger() {
         let store = store()
         store.recordHit(id: "route_after_text")
+        store.recordMiss(id: "route_after_text", shown: false, dropReason: .closed)
         XCTAssertNotNil(defaults.string(forKey: AliasTipLedgerStore.defaultsKey))
         store.reset()
         XCTAssertNil(defaults.string(forKey: AliasTipLedgerStore.defaultsKey))
         XCTAssertEqual(store.load(), .empty)
+        XCTAssertEqual(store.load().dropped, [:])
     }
 
     func testCorruptBlobRecoversToEmpty() {

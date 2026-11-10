@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":25,"input":"@file:","body":"","mode":"incomplete","route":"file","section":null,"block_id":null,"needs":["pomodoro_id"],"spans":[{"start":0,"end":5,"kind":"pomodoro_route"},{"start":5,"end":6,"kind":"interactive_placeholder"}],"diagnostics":[]}
