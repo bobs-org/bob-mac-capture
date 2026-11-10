@@ -858,9 +858,11 @@ final class CaptureEditorHighlightTests: XCTestCase {
             Self.strings(in: text, where: Self.isClearForeground),
             ["@", "@"]
         )
+        // Concealing the start glyph splits the wash run at `@`, matching
+        // testRecordRouteStartGlyphIsClearWhenAdorned.
         XCTAssertEqual(
             Self.strings(in: text, where: { $0.backgroundColor != nil }),
-            ["@eat/", "@podcasts/"]
+            ["@", "eat/", "@", "podcasts/"]
         )
         XCTAssertFalse(draft.contains("🍽️"))
         XCTAssertFalse(draft.contains("🎙️"))
