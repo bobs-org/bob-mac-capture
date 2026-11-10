@@ -68,13 +68,21 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
             blockIDSuggestions: ["setup"]
         )
 
+        let vault = ParentTaskPickerIndex(
+            candidates: [identified, idless],
+            context: .vault(markerRange: marker)
+        ).presentation(filter: "")
+        let vaultSection = try XCTUnwrap(vault.sections.first { $0.id == "note-dev_nvim" })
+        XCTAssertEqual(vaultSection.subtitle, "Notebook")
+        XCTAssertEqual(vaultSection.countText, "2 notes")
+        XCTAssertTrue(vaultSection.rows.allSatisfy { $0.glyph == .note })
+
         let index = ParentTaskPickerIndex(candidates: [identified, idless], context: context)
         let presentation = index.presentation(filter: "")
         let section = try XCTUnwrap(presentation.sections.first)
         let idlessRow = try XCTUnwrap(presentation.rowsByID.values.first { $0.pendingBlockID != nil })
 
-        XCTAssertEqual(section.subtitle, "Notebook")
-        XCTAssertEqual(section.countText, "2 notes")
+        XCTAssertEqual(presentation.countText, "2 notes")
         XCTAssertTrue(section.rows.allSatisfy { $0.glyph == .note })
         XCTAssertEqual(section.rows.first?.detail.statusText, "")
         XCTAssertTrue(section.rows.first?.accessibilityLabel.contains("Configuration overview") ?? false)
@@ -472,7 +480,7 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
         let row = try XCTUnwrap(index.presentation(filter: "").rowsByID["sase|9:hhhh8888"])
         XCTAssertEqual(
             index.actionLine(for: row),
-            "↩ adds ^fix-flaky-gkeep to sase.md, then inserts @sase+fix-flaky-gkeep"
+            "↩ adds ^fix-flaky-gkeep to sase.md, then inserts @sase+fix-flaky-gkeep for the task"
         )
     }
 

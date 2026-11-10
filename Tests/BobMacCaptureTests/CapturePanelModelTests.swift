@@ -2028,6 +2028,7 @@ final class CapturePanelModelTests: XCTestCase {
             ),
             debounceNanoseconds: 5_000_000
         )
+        model.applyNativeRewriteEdit = { _ in true }
         model.plainDraft = "Follow up @file:"
         model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
@@ -2051,6 +2052,7 @@ final class CapturePanelModelTests: XCTestCase {
             ),
             debounceNanoseconds: 5_000_000
         )
+        model.applyNativeRewriteEdit = { _ in true }
         model.plainDraft = "Follow up @file^"
         model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
