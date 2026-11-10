@@ -8893,15 +8893,16 @@ final class CapturePanelModel: ObservableObject {
     /// right after it. The commit is literal even when the ID is taken or
     /// invalid, because Bob's preview reports that exactly as without the
     /// picker. Runs an `.edit` analysis with completion at the new caret so
-    /// `#` opens Pomodoro-name completion; a single separator key also passes
-    /// through Bob's rewrite lane before completion. The caret sits past the
-    /// committed token, so the ID picker cannot reopen for it.
+    /// `#` opens Pomodoro-name completion; a single separator key (`.`, `^`,
+    /// `:`, `+`, `;`, or `,`) also passes through Bob's rewrite lane before
+    /// completion. The caret sits past the committed token, so the ID picker
+    /// cannot reopen for it.
     private func blockIDSeparatorTypeThroughRewrite(
         remainder: String,
         draft: String,
         caretUTF8Offset: Int
     ) -> Task<Void, Never>? {
-        guard [".", "^", ":", "+", ";"].contains(remainder) else {
+        guard [".", "^", ":", "+", ";", ","].contains(remainder) else {
             return nil
         }
         return startCaptureRewrite(

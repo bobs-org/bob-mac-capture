@@ -201,7 +201,9 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   typing `:` or `^` switches to the corresponding `@route:id` or `@route^id`
   form. A glued `.` after a complete `@route:id` or `@route^id` toggles between
   those separators, including the sealed project-note forms; after `@route+block-id`
-  it stays literal. Bob decides whether the marker is eligible; the app forwards the post-key
+  it stays literal. A glued `,` after a complete `@route:id` or `@route^id`
+  switches to `@route+block-id`, like `+`; after `@route+block-id` it keeps
+  opening the next parent pick. Bob decides whether the marker is eligible; the app forwards the post-key
   draft and caret. A matching reply consumes the new character, switches the
   separator, and leaves the caret after the unchanged ID so the keys can be
   repeated without moving backward. The new key must sit against the ID, and
@@ -212,7 +214,7 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   after `@route:block-id@` use the same lane to switch between the two project forms
   (an older bob leaves them literal), while the same separator or `+` after a seal
   stays literal and `@` itself is never a rewrite key. Undo after a successful rewrite
-  restores the literal post-key draft, including `.`. An unchanged key (for example bare
+  restores the literal post-key draft, including `.` and `,`. An unchanged key (for example bare
   `@route:` or whole-item `^`) types literally; its picker opens as usual.
   This gesture needs a bob build that implements `switch_block_id_separator`.
   After a space or tab, `=` aliases `~` only where Bob reports the Links To

@@ -13,7 +13,7 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
 
 - A `bob` build that supports route-only `@@route` global destination declarations
   anywhere in the draft, `capture-rewrite` (including
-  `switch_block_id_separator` for `^`, `:`, `+`, and a glued `.`),
+  `switch_block_id_separator` for `^`, `:`, `+`, a glued `.`, and a glued `,`),
   `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
@@ -344,7 +344,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` declaration | Unmarked items route to the declaration; items retain their own route overrides | Ordinary draft capture; bare markers report Bob's local error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias`, `toggle_relation_direction` | Rewrites markers, relations, `.` → `@`/`&`, `;` → `:`/`*`, Parent Task commas, and `x`/`s` outcomes | Older Bob leaves `.` literal (no new gate); old apps lack fast modifier escapes/restores | Upgrade `bob` |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `expand_sigil_alias`, `toggle_relation_direction` | Rewrites markers, relations, `.` → `@`/`&`, `;` → `:`/`*`, Parent Task commas, and `x`/`s` outcomes | Older Bob leaves `.`/`,` literal (no new gate); old apps lack fast modifier escapes/restores | Upgrade `bob` |
 | `project_note` span modifier, `project_note_separator` and `project_note_offer_marker` spans, the `@` seal | Chip behind the sealed marker (brown name/seal; green `:`/`@` on offers) | Older Bob omits the modifier; an older app shows a yellow seal and neutral separator, without wash | Upgrade `bob` for the chip; upgrade the app to paint it |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |

@@ -2068,6 +2068,54 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.pickerVisible)
     }
 
+    func testBlockIDNewIDCommaTypeThroughSwitchesColonToPlus() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.applyNativeRewriteEdit = { _ in true }
+        model.plainDraft = "Follow up @file:"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id,")
+
+        await waitUntil {
+            model.plainDraft == "Follow up @file+new-id"
+                && model.statusText == "Changed @file:new-id to @file+new-id"
+        }
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlockIDNewIDCommaTypeThroughSwitchesCaretToPlus() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.applyNativeRewriteEdit = { _ in true }
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 16)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id,")
+
+        await waitUntil {
+            model.plainDraft == "Follow up @file+new-id"
+                && model.statusText == "Changed @file^new-id to @file+new-id"
+        }
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
     func testBlockIDNewIDDottedTypeThroughKeepsLiteralWhenBobDeclines() async throws {
         let model = CapturePanelModel(
             processClient: BobProcessClient(
