@@ -564,20 +564,40 @@ public func completionRowContent(
     switch context {
     case .route:
         category = .route
-        symbolName = "signpost.right"
+        symbolName = candidate.kind == "notebook" ? "book.closed" : "signpost.right"
         contextLabel = "Destination"
-        if let alias = candidate.alias, !alias.isEmpty,
+        if candidate.kind == "notebook" {
+            let route = candidate.route ?? candidate.replacement
+            primaryText = candidate.title ?? route
+            let parents = candidate.breadcrumb?.dropLast().filter { !$0.isEmpty } ?? []
+            if !parents.isEmpty {
+                secondaryText = parents.joined(separator: " › ")
+            } else if let label = candidate.label, label != primaryText {
+                secondaryText = label
+            }
+            detailText = candidate.summary
+            badges = ["Notebook"]
+            // The route hint is assigned once below, after both route kinds
+            // have selected their row details.
+        } else if let alias = candidate.alias, !alias.isEmpty,
            let route = candidate.route, !route.isEmpty
         {
             primaryText = "\(route) · aka \(alias)"
         } else {
             primaryText = candidate.route ?? candidate.label ?? candidate.replacement
         }
-        if let label = candidate.label, label != primaryText {
+        if candidate.kind != "notebook",
+           let label = candidate.label, label != primaryText
+        {
             secondaryText = label
         }
-        badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
-        accessibilityHint = "Sets the capture destination."
+        if candidate.kind != "notebook" {
+            badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
+        }
+        accessibilityHint = candidate.kind == "notebook"
+            ? candidate.summary.map { "Sets the notebook destination. \($0)" }
+                ?? "Sets the notebook destination."
+            : "Sets the capture destination."
 
     case .section:
         category = .section

@@ -10,6 +10,12 @@ import Foundation
 /// destination Bob's dry run reports. Nothing here parses grammar, computes a
 /// preview, or writes the vault.
 public enum CaptureRefFileUnder {
+    /// Only routes that are valid parents for queued references. Notebook,
+    /// record, and unknown future target kinds stay out of File-under.
+    public static func eligibleTargets(_ targets: [CaptureTarget]) -> [CaptureTarget] {
+        targets.filter { ["inbox", "area", "project"].contains($0.kind) }
+    }
+
     /// The picker's header, rendered above the route rows.
     public static let headerTitle = "File under"
 
@@ -93,11 +99,12 @@ public enum CaptureRefFileUnder {
         _ targets: [CaptureTarget],
         lastUsedParent: String?
     ) -> [CaptureTarget] {
+        let eligible = eligibleTargets(targets)
         var ordered: [CaptureTarget] = []
         var seen = Set<String>()
         func append(_ route: String) {
             guard !route.isEmpty, seen.insert(route).inserted,
-                  let target = targets.first(where: { $0.route == route })
+                  let target = eligible.first(where: { $0.route == route })
             else {
                 return
             }
@@ -107,7 +114,7 @@ public enum CaptureRefFileUnder {
             append(lastUsedParent)
         }
         append("mac_inbox")
-        for target in targets where seen.insert(target.route).inserted {
+        for target in eligible where seen.insert(target.route).inserted {
             ordered.append(target)
         }
         return ordered
@@ -123,11 +130,12 @@ public enum CaptureRefFileUnder {
         _ targets: [CaptureTarget],
         query: String
     ) -> [CaptureTarget] {
+        let eligible = eligibleTargets(targets)
         let folded = query.lowercased()
         guard !folded.isEmpty else {
-            return targets
+            return eligible
         }
-        let filtered = targets.filter { matches(target: $0, query: query) }
+        let filtered = eligible.filter { matches(target: $0, query: query) }
         let prefix = filtered.filter { target in
             target.route.lowercased().hasPrefix(folded)
                 || target.label.lowercased().hasPrefix(folded)
@@ -151,7 +159,7 @@ public enum CaptureRefFileUnder {
         guard !folded.isEmpty else {
             return nil
         }
-        let owners = targets.filter { target in
+        let owners = eligibleTargets(targets).filter { target in
             target.projectNameAliases.contains { $0.lowercased() == folded }
         }
         return owners.count == 1 ? owners[0] : nil

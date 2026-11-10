@@ -43,7 +43,7 @@ public struct BlockIDPickerContext: Equatable, Sendable {
     /// Link intent, or no field (older Bob): browse the note's tasks.
     /// Anything else is the New ID composer.
     public var isNewIDMode: Bool {
-        intent == .new || intent == .projectNote
+        intent == .new || intent == .projectNote || intent == .unsupported
     }
 
     /// Note file the picker browses (`sase.md`), from Bob's
@@ -62,7 +62,9 @@ public struct BlockIDPickerContext: Equatable, Sendable {
     /// A bare `:` link takes `#name` or `=`. Project notes and project-task IDs
     /// need no follow-up.
     public var teachingLine: String? {
-        if intent == .projectNote || scope == .projectTask {
+        if intent == .projectNote || intent == .unsupported || scope == .projectTask
+            || field?.destinationKind == "notebook"
+        {
             return nil
         }
         if marker == "^" {
@@ -1061,6 +1063,7 @@ public enum CapturePickerTaskStatus: Equatable, Sendable {
 public enum CapturePickerGlyph: Equatable, Sendable {
     case task(CapturePickerTaskStatus)
     case anchor
+    case note
     case newID(CapturePickerAvailability)
     case alternativeID
     case suggestion

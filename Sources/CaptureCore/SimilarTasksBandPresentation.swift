@@ -154,6 +154,8 @@ public enum SimilarTasksBandPresentation {
             return "book"
         case "record":
             return "doc.text"
+        case "notebook":
+            return "book.closed"
         default:
             return nil
         }
@@ -167,6 +169,8 @@ public enum SimilarTasksBandPresentation {
             return "Reading task"
         case "record":
             return "Record"
+        case "notebook":
+            return "Notebook"
         default:
             return nil
         }

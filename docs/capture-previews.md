@@ -107,6 +107,17 @@ copyable draft that is never applied; mixed captures keep the other
 items. JSON names and older-Bob fallbacks are in
 [Protocol](protocol.md#compatibility).
 
+## Notebook notes
+
+Notebook results use Bob's per-item `notebook` metadata for the title,
+breadcrumb, section, and block ID. Note rows show their body and authored
+children without task status or task controls; creating a section adds a
+**New section** badge. Notebook creation pairs the `action: "create"`
+`note_files` entry with its item by path and action, then shows Bob's
+summary and seed notes. **View Markdown** reveals and copies the exact bytes
+Bob plans to write. Mixed captures keep item order, and success copy and
+notifications use the same notebook headline.
+
 ## Drawer captures
 
 A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the

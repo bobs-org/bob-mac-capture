@@ -130,6 +130,28 @@ final class CaptureRefFileUnderTests: XCTestCase {
         XCTAssertEqual(ordered.map(\.route), ["mac_inbox", "bob", "sase"])
     }
 
+    func testFileUnderAllowsOnlyInboxAreasAndProjects() {
+        let candidates = targets + [
+            target("dev_notes", kind: "notebook", aliases: ["dev-notebook"]),
+            target("restaurants", kind: "record"),
+            target("future", kind: "future-kind"),
+        ]
+
+        XCTAssertEqual(
+            CaptureRefFileUnder.eligibleTargets(candidates).map(\.route),
+            ["mac_inbox", "bob", "sase"]
+        )
+        XCTAssertEqual(
+            CaptureRefFileUnder.rankedTargets(candidates, query: "" ).map(\.route),
+            ["mac_inbox", "bob", "sase"]
+        )
+        XCTAssertEqual(
+            CaptureRefFileUnder.orderedTargets(candidates, lastUsedParent: "dev_notes").map(\.route),
+            ["mac_inbox", "bob", "sase"]
+        )
+        XCTAssertNil(CaptureRefFileUnder.aliasOwner(candidates, query: "dev-notebook"))
+    }
+
     // MARK: - Filtering with aliases
 
     func testEmptyQueryKeepsInputOrder() {

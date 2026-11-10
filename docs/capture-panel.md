@@ -167,6 +167,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
   also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker
   and a route-only `@@route` declaration anywhere in the draft.
+  Notebook route rows use Bob's `title`, `summary`, `owner`, and `breadcrumb`
+  for display while preserving the route as the insertion identity. In a notebook
+  `@route+` picker, `item_kind: "note"` rows use a book icon and note count, omit
+  task status, and keep Bob's ID-less Add block ID flow. The reference File under
+  list accepts only inbox, area, and project targets.
   A single leading `@` and its still-typing route fragment also remain
   completion-active before the draft has enough syntax to be submitted as a routed
   capture, so an empty editor can complete the marker-only task-toggle form

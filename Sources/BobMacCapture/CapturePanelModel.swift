@@ -16166,6 +16166,11 @@ final class CapturePanelModel: ObservableObject {
                 let headline = CaptureRecordPreviewPresentation.headline(for: summary)
                 let detail = CaptureRecordPreviewPresentation.detail(for: summary)
                 statusText = "\(headline) · \(detail)"
+            } else if captures.count == 1,
+                      let notebook = captures.first,
+                      CaptureNotebookPresentation.isNotebook(notebook)
+            {
+                statusText = "Captured → \(CaptureNotebookPresentation.headline(for: notebook))"
             } else {
                 statusText = captureStatus(
                     prefix: "Captured",
@@ -20379,10 +20384,14 @@ final class CapturePanelModel: ObservableObject {
             candidates: matching.map { target in
                 CaptureCompletionCandidate(
                     replacement: CaptureRecordRouteCache.insertion(for: target),
+                    summary: target.summary,
                     route: target.route,
                     label: CaptureRecordRouteCache.label(for: target),
                     kind: target.kind,
                     status: target.status,
+                    title: target.title,
+                    owner: target.owner,
+                    breadcrumb: target.breadcrumb,
                     alias: aliasHint(for: target, query: query),
                     recordType: target.recordType,
                     emoji: target.emoji,
@@ -20415,7 +20424,7 @@ final class CapturePanelModel: ObservableObject {
         guard let cached = targetCacheSnapshot.targets?.targets, !cached.isEmpty else {
             return nil
         }
-        let targets = cached.filter { $0.kind != "record" }
+        let targets = CaptureRefFileUnder.eligibleTargets(cached)
         guard !targets.isEmpty else {
             return nil
         }
@@ -20435,10 +20444,14 @@ final class CapturePanelModel: ObservableObject {
             candidates: ordered.map { target in
                 CaptureCompletionCandidate(
                     replacement: CaptureRefFileUnder.insertionText(route: target.route),
+                    summary: target.summary,
                     route: target.route,
                     label: target.label,
                     kind: target.kind,
                     status: target.status,
+                    title: target.title,
+                    owner: target.owner,
+                    breadcrumb: target.breadcrumb,
                     alias: target.projectNameAliases.first
                 )
             }

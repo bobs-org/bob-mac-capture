@@ -131,6 +131,13 @@ readiness; otherwise it focuses the first missing field and says
 `Needs <field>`. Escape closes suggestions, then the card. Next Escape
 behaves normally.
 
+### Notebook note rows
+
+In a notebook `@route+` picker, rows select note bullets rather than tasks.
+Return, Tab, and click keep the usual picker behavior; an ID-less note opens
+Add block ID and preserves the existing Tab / Shift-Tab suggestion cycling.
+Notebook notes have no task status controls.
+
 ## Capture picker keys
 
 Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =`. If `=` opens Links To, Space restores `= ` and Escape restores `=` on an empty filter. In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips; Control-Return inserts the token and opens its label card. `|` after a relation token opens that card with or without spaces; Return removes an empty-label pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).

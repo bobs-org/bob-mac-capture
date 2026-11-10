@@ -18,6 +18,8 @@ enum CapturePullInGlyph {
             return "forward.end.fill"
         case "note_pull":
             return "tray.and.arrow.down.fill"
+        case "notebook", "notebook_note", "notebook_sub_note":
+            return "book.closed"
         case "relation":
             return "link"
         default:

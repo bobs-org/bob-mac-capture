@@ -118,7 +118,7 @@ public struct BlockIDPickerIndex: Sendable {
     /// Link intent, or no field (older Bob): the note's linkable tasks.
     /// Anything else is the New ID composer.
     private var isNewIDMode: Bool {
-        field?.intent == .new || field?.intent == .projectNote
+        field?.intent == .new || field?.intent == .projectNote || field?.intent == .unsupported
     }
 
     /// Presents the snapshot for `filter`: grouped sections for an empty
@@ -155,7 +155,11 @@ public struct BlockIDPickerIndex: Sendable {
     /// prompt, and a response without `owner_line` all return nil, so the
     /// card reads exactly as before.
     private var ownerCaption: String? {
-        guard isNewIDMode, let owner = field?.ownerTaskText(markerLine: markerLine) else {
+        guard isNewIDMode,
+              field?.intent != .unsupported,
+              field?.destinationKind != "notebook",
+              let owner = field?.ownerTaskText(markerLine: markerLine)
+        else {
             return nil
         }
         return "ID for \u{2018}\(owner)\u{2019}"
@@ -803,11 +807,11 @@ public struct BlockIDPickerIndex: Sendable {
         let title: String
         let outcome: String
         if let field {
-            title = ownerCaption ?? (field.body.isEmpty ? "New task" : "“\(field.body)”")
+            title = ownerCaption ?? newIDTitle(for: field)
             outcome = newIDOutcome(for: field)
         } else {
-            title = "New task"
-            outcome = "New task in ▣ \(noteTarget())"
+            title = "New ID"
+            outcome = "New ID in ▣ \(noteTarget())"
         }
         return CapturePickerRowDetail(
             statusText: title,
@@ -820,6 +824,12 @@ public struct BlockIDPickerIndex: Sendable {
 
     /// What accepting a New ID does, in the strip's wording.
     private func newIDOutcome(for field: CaptureBlockIDField) -> String {
+        if field.intent == .unsupported {
+            return "New block ID in ▣ \(noteTarget())"
+        }
+        if field.destinationKind == "notebook" {
+            return "Notebook note in ▣ \(noteTarget())"
+        }
         if field.intent == .projectNote {
             // The offer form (`@route:id@`) ends in a choice card, so the
             // strip says what follows the name.
@@ -837,6 +847,16 @@ public struct BlockIDPickerIndex: Sendable {
             return "New Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
         }
         return "New task in ▣ \(noteTarget())"
+    }
+
+    private func newIDTitle(for field: CaptureBlockIDField) -> String {
+        if field.intent == .unsupported {
+            return "New ID"
+        }
+        if field.destinationKind == "notebook" {
+            return "Notebook note"
+        }
+        return field.body.isEmpty ? "New task" : "“\(field.body)”"
     }
 
     // MARK: - Shared presentation helpers

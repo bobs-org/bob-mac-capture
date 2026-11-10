@@ -743,6 +743,15 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if CaptureNotebookPresentation.isNotebook(capture) {
+                return singlePresentation(
+                    title: CaptureNotebookPresentation.notificationTitle(for: capture),
+                    subtitle: displayLabel(for: capture),
+                    body: CaptureNotebookPresentation.notificationBody(for: capture),
+                    capture: capture,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return singlePresentation(
                 title: "\(kind) captured",
@@ -1094,6 +1103,9 @@ final class NotificationService: NSObject, ObservableObject {
     // the raw post-image task line, which a `pomodoro_link` capture leaves empty
     // or Markdown-formatted. Every other kind keeps the semantic text.
     nonisolated private static func batchLineText(_ capture: CaptureCommandSuccess) -> String {
+        if CaptureNotebookPresentation.isNotebook(capture) {
+            return CaptureNotebookPresentation.batchLine(for: capture)
+        }
         if let summary = capture.recordNote,
            capture.kind == "record_note" || capture.kind == "record_update"
         {
@@ -1129,6 +1141,9 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func friendlyKindLabel(_ kind: String) -> String {
+        if let label = CaptureNotebookPresentation.friendlyKindLabel(kind) {
+            return label
+        }
         switch kind.lowercased() {
         case "pomodoro-close", "pomodoro_close":
             return "Close"

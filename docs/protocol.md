@@ -72,6 +72,12 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
+  Notebook capture requires notebook metadata on `capture-targets` and route
+  candidates (`title`, `summary`, `owner`, `breadcrumb`), notebook note rows
+  with `item_kind: "note"` in parent-task completion, `destination_kind: "notebook"`
+  on notebook block-ID fields, and the per-item `notebook` summary plus
+  `note_files[]` for notebook creation. An older Bob that omits this metadata
+  keeps ordinary completion and capture decoding available.
   Task Wikilink picks require `capture-parse` spans
   `wikilink_task_delimiter` / `wikilink_task_query` to request the `wikilink_task`
   completion context (with the additive `link_target` candidate field, Bob-order
@@ -326,6 +332,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
+- `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings, `bob relations rename` preview/write with counts, `label_range` / `hidden` on `relations[]`
 - Past fields: segment/pin, windows/cut, candidate bounds/repair, stale refusal
@@ -417,6 +424,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `moved_tasks[]` / `move_summary` / `move_hint` on `project_note`, `moved_from` on offers | Moves band with repair footer, ghost titles, move hint, `moved from` label, `Created` notification | Band, ghosts, hint, and labels stay hidden; legacy copy remains | Upgrade `bob` for move previews |
 | `record`, `--next-missing-field` / `--record-field` | Record drafts and `eat/` rows; old Bob omits or rejects | Stays a literal task | Upgrade `bob` |
 | `note_files[]`, per-item `record_note`, refusal `draft` / `missing[]` / `invalid[]` | Record commit summary, exact `note_files` Markdown, and inline refusals; malformed rows degrade to generic preview | Generic preview and result copy | Upgrade `bob` for record result details |
+| Notebook `capture-targets` and route fields, `item_kind: "note"`, `destination_kind: "notebook"`, per-item `notebook`, and notebook `note_files[]` | Notebook route and parent rows, safe notebook ID copy, note previews, and exact create Markdown | Missing optional metadata decodes away; ordinary capture remains usable | Upgrade `bob` for notebook-specific display |
+| Explicit unknown block-ID `intent` | Opens the New ID composer without showing task-link candidates | Missing intent keeps the legacy Link behavior | The app treats unrecognized intent values as unsupported |
 
 The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
 that rejects the command is remembered for that executable identity, so the app keeps

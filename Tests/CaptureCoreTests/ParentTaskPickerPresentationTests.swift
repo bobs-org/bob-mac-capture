@@ -32,6 +32,56 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.sections.first?.rows.first?.detail.summary, "⤵ merge in · 1 note")
     }
 
+    func testNotebookParentCandidatesAreNoteRowsAndKeepIDLessAssignmentFlow() throws {
+        let marker = CaptureRange(start: 0, end: 1)
+        let context = ParentTaskPickerContext.note(
+            route: "dev_nvim",
+            noteTarget: "dev_nvim.md",
+            markerRange: marker,
+            triggerRemovalRange: marker
+        )
+        let identified = CaptureCompletionCandidate(
+            replacement: "@dev_nvim+intro",
+            summary: "Configuration overview",
+            route: "dev_nvim",
+            itemKind: "note",
+            breadcrumb: ["dev", "Developer tools", "Neovim"],
+            taskRef: "2:note-a",
+            blockID: "intro",
+            statusSymbol: " ",
+            statusName: "Ready",
+            text: "Introduction",
+            noteKind: "notebook"
+        )
+        let idless = CaptureCompletionCandidate(
+            replacement: "",
+            summary: "First-time setup",
+            route: "dev_nvim",
+            itemKind: "note",
+            taskRef: "4:note-b",
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Ready",
+            text: "Setup guide",
+            section: "Getting Started",
+            noteKind: "notebook",
+            blockIDSuggestions: ["setup"]
+        )
+
+        let index = ParentTaskPickerIndex(candidates: [identified, idless], context: context)
+        let presentation = index.presentation(filter: "")
+        let section = try XCTUnwrap(presentation.sections.first)
+        let idlessRow = try XCTUnwrap(presentation.rowsByID.values.first { $0.pendingBlockID != nil })
+
+        XCTAssertEqual(section.subtitle, "Notebook")
+        XCTAssertEqual(section.countText, "2 notes")
+        XCTAssertTrue(section.rows.allSatisfy { $0.glyph == .note })
+        XCTAssertEqual(section.rows.first?.detail.statusText, "")
+        XCTAssertTrue(section.rows.first?.accessibilityLabel.contains("Configuration overview") ?? false)
+        XCTAssertEqual(idlessRow.pendingBlockID?.suggestions, ["setup"])
+        XCTAssertTrue(index.actionLine(for: idlessRow).contains("for the note"))
+    }
+
     private func vaultCandidatesJSON() -> String {
         """
         [

@@ -4011,10 +4011,9 @@ struct PreviewPane: View {
             flush()
             return runs
         }()
-        // New-record files pair to record items in order by Bob's
-        // path/action identity, each consumed once; mixed task/record
-        // drafts keep their item order and task previews.
-        let recordFilesByIndex = CaptureRecordPreviewPresentation.pairIndexed(
+        // Planned notebook and record files pair to their items in draft order
+        // by Bob's path/action identity, each file consumed once.
+        let noteFilesByIndex = CaptureNotebookPresentation.pairIndexed(
             files: success.noteFiles,
             items: captures
         )
@@ -4064,7 +4063,7 @@ struct PreviewPane: View {
                         planBudget: success.planBudget,
                         pullIn: success.pullIn,
                         moveChoice: success.moveChoice,
-                        recordFile: recordFilesByIndex[index]
+                        noteFile: noteFilesByIndex[index]
                     )
                 }
             }
@@ -4181,7 +4180,7 @@ struct PreviewPane: View {
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
         moveChoice: CaptureMoveChoice? = nil,
-        recordFile: CaptureNoteFile? = nil
+        noteFile: CaptureNoteFile? = nil
     ) -> some View {
         let isLocalOverride =
             globalDestination.map {
@@ -4311,6 +4310,9 @@ struct PreviewPane: View {
                     total: total,
                     isLocalOverride: isLocalOverride
                 )
+            } else if CaptureNotebookPresentation.isNotebook(success) {
+                CaptureNotebookPreviewView(item: success, file: noteFile)
+                    .id("notebook-note-\(success.relativeTarget)-\(noteFile?.action ?? "item")")
             } else if success.kind == "record_note",
                       let summary = success.recordNote,
                       summary.action == "create"
@@ -4318,9 +4320,9 @@ struct PreviewPane: View {
                 // New records preview the note Bob will write. Update
                 // items and absent/unusable metadata keep the generic
                 // fallback for phase 12.
-                if let recordFile, recordFile.isUsable {
-                    RecordNotePreviewView(item: success, file: recordFile)
-                        .id("record-note-\(success.relativeTarget)-\(recordFile.action)")
+                if let noteFile, noteFile.isUsable {
+                    RecordNotePreviewView(item: success, file: noteFile)
+                        .id("record-note-\(success.relativeTarget)-\(noteFile.action)")
                 } else {
                     standardPreviewItem(
                         success,

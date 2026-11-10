@@ -42,7 +42,8 @@ final class BlockIDPickerIndexTests: XCTestCase {
         allowedCharacter: String = "[A-Za-z0-9-]",
         allowedDescription: String = "A-Z, a-z, 0-9 or '-'",
         suggestions: [String] = [],
-        used: [CaptureUsedBlockID] = []
+        used: [CaptureUsedBlockID] = [],
+        destinationKind: String? = nil
     ) -> CaptureBlockIDField {
         CaptureBlockIDField(
             route: route,
@@ -50,6 +51,7 @@ final class BlockIDPickerIndexTests: XCTestCase {
             noteExists: noteExists,
             marker: marker,
             intent: intent,
+            destinationKind: destinationKind,
             body: body,
             allowedCharacter: allowedCharacter,
             allowedDescription: allowedDescription,
@@ -570,7 +572,41 @@ final class BlockIDPickerIndexTests: XCTestCase {
         XCTAssertNil(context(intent: .projectNote, marker: "^").teachingLine)
         XCTAssertNil(context(intent: .projectNote, marker: ":").teachingLine)
         XCTAssertNil(context(intent: .new, marker: ":", scope: .projectTask).teachingLine)
+        XCTAssertNil(context(intent: .unsupported, marker: ":").teachingLine)
+        XCTAssertNil(
+            BlockIDPickerContext(
+                field: blockField(intent: .new, destinationKind: "notebook"),
+                route: "notes",
+                marker: ":",
+                intent: .new,
+                rules: nil
+            ).teachingLine
+        )
         XCTAssertFalse(context(intent: .new, marker: "^").teachingLine?.contains("+") ?? false)
+    }
+
+    func testUnknownIntentNeverShowsTaskLinkCandidates() {
+        let index = linkIndex(
+            field: blockField(intent: .unsupported),
+            candidates: [linkCandidate("a1", text: "Alpha task")]
+        )
+
+        let presentation = index.presentation(filter: "")
+        XCTAssertTrue(presentation.orderedRowIDs.isEmpty)
+        XCTAssertNil(presentation.row(id: "a1"))
+        XCTAssertNil(index.blockStatus(filter: "")?.ownerCaption)
+    }
+
+    func testNotebookDestinationUsesNotebookOutcomeForNewID() throws {
+        let index = linkIndex(
+            field: blockField(intent: .new, destinationKind: "notebook"),
+            candidates: [linkCandidate("a1", text: "Alpha task")]
+        )
+
+        let row = try XCTUnwrap(index.presentation(filter: "draft").row(id: "new:draft"))
+        XCTAssertEqual(row.detail.statusText, "Notebook note")
+        XCTAssertTrue(row.detail.summary.contains("Notebook note in ▣ notes.md"))
+        XCTAssertNil(index.presentation(filter: "").row(id: "a1"))
     }
 
     func testProjectNoteScopeIsOnlyTheSealedBlockIDPicker() {

@@ -134,7 +134,10 @@ final class SimilarTasksBandPolicyTests: XCTestCase {
     func testModeAndEmptyCountGateKeepTheBandAbsent() {
         let response = CaptureRelatedResponse(items: [
             item(0, mode: "ref", matches: [match("wrong-kind")]),
-            item(1, matches: []),
+            item(1, mode: "notebook_note", matches: [match("notebook-note")]),
+            item(2, mode: "notebook_sub_note", matches: [match("notebook-subnote")]),
+            item(3, mode: "notebook_create", matches: [match("notebook-create")]),
+            item(4, matches: []),
         ])
 
         let state = SimilarTasksBandPolicy.reduce(response)

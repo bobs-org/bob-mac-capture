@@ -806,6 +806,8 @@ private struct CapturePickerSectionHeader: View {
             return "square.stack"
         case "Project":
             return "folder"
+        case "Notebook":
+            return "book.closed"
         default:
             return "doc"
         }
@@ -921,6 +923,8 @@ private struct CapturePickerRowView: View {
             return CaptureEditorPalette.taskStatus(status)
         case .anchor:
             return ("paragraphsign", .secondary)
+        case .note:
+            return ("book.closed", .secondary)
         case .newID(let availability):
             switch availability {
             case .available:
@@ -1104,15 +1108,26 @@ private struct CapturePickerDetailStrip: View {
 
     private func metadataText(for row: CapturePickerRow) -> Text {
         let (label, icon) = noteLabel(for: row.detail.route)
-        var notePart = Text("")
+        var result = Text(row.detail.statusText)
+        var hasContent = !row.detail.statusText.isEmpty
         if !label.isEmpty {
-            notePart = Text("\(Text(" · "))\(Text(Image(systemName: icon)))\(Text(" \(label)"))")
+            if hasContent {
+                result = result + Text(" · ")
+            }
+            result = result + Text(Image(systemName: icon)) + Text(" \(label)")
+            hasContent = true
         }
-        var sectionPart = Text("")
         if let section = row.detail.section, !section.isEmpty {
-            sectionPart = Text(" › \(section)")
+            result = result + Text(" › \(section)")
+            hasContent = true
         }
-        return Text("\(Text(row.detail.statusText))\(notePart)\(sectionPart)\(Text(" · \(row.detail.summary)"))")
+        if !row.detail.summary.isEmpty {
+            if hasContent {
+                result = result + Text(" · ")
+            }
+            result = result + Text(row.detail.summary)
+        }
+        return result
     }
 
     /// Note kind icon plus label from the capture-targets cache, falling back
@@ -1135,6 +1150,8 @@ private struct CapturePickerDetailStrip: View {
             return "square.stack"
         case "project":
             return "folder"
+        case "notebook":
+            return "book.closed"
         default:
             return "doc"
         }

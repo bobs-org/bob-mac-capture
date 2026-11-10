@@ -11,14 +11,13 @@ import SwiftUI
 struct RecordNotePreviewView: View {
     let item: CaptureCommandSuccess
     let file: CaptureNoteFile
-    @State private var showsMarkdown: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let startsExpanded: Bool
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     init(item: CaptureCommandSuccess, file: CaptureNoteFile, expanded: Bool = false) {
         self.item = item
         self.file = file
-        _showsMarkdown = State(initialValue: expanded)
+        startsExpanded = expanded
     }
 
     private var summary: CaptureRecordNoteSummary? {
@@ -133,33 +132,11 @@ struct RecordNotePreviewView: View {
     }
 
     private var markdownDisclosure: some View {
-        DisclosureGroup("View Markdown", isExpanded: $showsMarkdown) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(file.markdown)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("Exact note Markdown")
-                Button("Copy Markdown") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(file.markdown, forType: .string)
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("record-note-copy-markdown")
-                .accessibilityLabel("Copy exact note Markdown")
-                .accessibilityHint("Copies the exact Markdown Bob will write")
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .accessibilityIdentifier("record-note-view-markdown")
-        .accessibilityLabel("View Markdown")
-        .accessibilityHint(
-            showsMarkdown ? "Hides the exact note Markdown" : "Shows the exact note Markdown"
+        CaptureNoteMarkdownDisclosure(
+            markdown: file.markdown,
+            identifierPrefix: "record-note",
+            expanded: startsExpanded
         )
-        .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: showsMarkdown)
     }
 }
 

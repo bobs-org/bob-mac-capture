@@ -235,12 +235,22 @@ final class BlockIDDecodingTests: XCTestCase {
         XCTAssertEqual(field.used, [])
     }
 
-    func testUnknownIntentDecodesToLink() {
+    func testUnknownExplicitIntentIsUnsupportedButMissingIntentDefaultsToLink() throws {
         XCTAssertEqual(CaptureBlockIDIntent(wireValue: "link"), .link)
         XCTAssertEqual(CaptureBlockIDIntent(wireValue: "new"), .new)
         XCTAssertEqual(CaptureBlockIDIntent(wireValue: "project_note"), .projectNote)
-        XCTAssertEqual(CaptureBlockIDIntent(wireValue: "frob"), .link)
+        XCTAssertEqual(CaptureBlockIDIntent(wireValue: "frob"), .unsupported)
         XCTAssertEqual(CaptureBlockIDIntent(wireValue: nil), .link)
+
+        let explicit = try JSONDecoder().decode(
+            CaptureBlockIDField.self,
+            from: Data(#"{"intent":"frob","destination_kind":"notebook"}"#.utf8)
+        )
+        XCTAssertEqual(explicit.intent, .unsupported)
+        XCTAssertEqual(explicit.destinationKind, "notebook")
+
+        let missing = try JSONDecoder().decode(CaptureBlockIDField.self, from: Data("{}".utf8))
+        XCTAssertEqual(missing.intent, .link)
     }
 
     func testCompletionContextMapsTaskBlockIDAndRejectsUnknown() {

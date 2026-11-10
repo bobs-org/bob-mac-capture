@@ -60,6 +60,21 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("2 notes"), content.body)
     }
 
+    func testNotebookNotificationUsesNotebookHeadlineAndBatchDetails() throws {
+        let success = try closeSuccessFixture("notebook-capture-create-then-use.json")
+        let create = try XCTUnwrap(success.normalizedCaptures.first)
+        let single = NotificationService.successContent(captures: [create])
+
+        XCTAssertEqual(single.title, "📓 New notebook dev_keys.md · in dev")
+        XCTAssertEqual(single.subtitle, "dev_keys.md")
+        XCTAssertEqual(single.body, "Keymaps")
+
+        let batch = NotificationService.successContent(captures: success.normalizedCaptures)
+        XCTAssertEqual(batch.title, "2 items captured")
+        XCTAssertTrue(batch.body.contains("New notebook dev_keys.md"), batch.body)
+        XCTAssertTrue(batch.body.contains("Primary leader key"), batch.body)
+    }
+
     func testMixedRecordAndTaskNotificationListsEachRecordOnce() throws {
         let success = try recordFixture("record-capture-mixed.json")
         let items = success.normalizedCaptures

@@ -5397,6 +5397,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Markdown. Ordinary items and older Bob omit it; malformed values
     /// degrade to nil so the rest of capture still previews.
     public let recordNote: CaptureRecordNoteSummary?
+    /// Additive per-item notebook metadata. Older Bob omits it; malformed
+    /// optional metadata degrades to nil so legacy capture responses survive.
+    public let notebook: CaptureNotebookSummary?
     // Additive `ref` object on a `ref` capture. Older Bob binaries omit it
     // entirely; decode as nil, and a malformed value decodes as nil so it
     // can never fail the capture decode.
@@ -5548,6 +5551,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         notePull: CaptureNotePull? = nil,
         noteFiles: [CaptureNoteFile] = [],
         recordNote: CaptureRecordNoteSummary? = nil,
+        notebook: CaptureNotebookSummary? = nil,
         ref: CaptureRef? = nil,
         gmail: [CaptureGmailPreview] = [],
         planBudget: CapturePlanBudget? = nil,
@@ -5647,6 +5651,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.notePull = notePull
         self.noteFiles = noteFiles
         self.recordNote = recordNote
+        self.notebook = notebook
         self.ref = ref
         self.gmail = gmail
         self.planBudget = planBudget
@@ -5857,6 +5862,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
                 CaptureRecordNoteSummary.self,
                 forKey: .recordNote
             )) ?? nil
+        notebook =
+            (try? container.decodeIfPresent(
+                CaptureNotebookSummary.self,
+                forKey: .notebook
+            )) ?? nil
         ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
         gmail =
             (try? container.decodeIfPresent([CaptureGmailPreview].self, forKey: .gmail)) ?? []
@@ -6013,6 +6023,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case notePull = "note_pull"
         case noteFiles = "note_files"
         case recordNote = "record_note"
+        case notebook
         case ref
         case gmail
         case planBudget = "plan_budget"
@@ -8842,6 +8853,11 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
     public let emoji: String?
     /// Indexed note count, present only on configured record-folder rows.
     public let count: Int?
+    /// Notebook display metadata, present only on notebook rows.
+    public let title: String?
+    public let summary: String?
+    public let owner: String?
+    public let breadcrumb: [String]?
 
     public var id: String { route }
 
@@ -8856,7 +8872,11 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         projectNameAliases: [String] = [],
         recordType: String? = nil,
         emoji: String? = nil,
-        count: Int? = nil
+        count: Int? = nil,
+        title: String? = nil,
+        summary: String? = nil,
+        owner: String? = nil,
+        breadcrumb: [String]? = nil
     ) {
         self.route = route
         self.name = name
@@ -8869,6 +8889,10 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         self.recordType = recordType
         self.emoji = emoji
         self.count = count
+        self.title = title
+        self.summary = summary
+        self.owner = owner
+        self.breadcrumb = breadcrumb
     }
 
     public init(from decoder: Decoder) throws {
@@ -8891,6 +8915,10 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         recordType = (try? container.decodeIfPresent(String.self, forKey: .recordType)) ?? nil
         emoji = (try? container.decodeIfPresent(String.self, forKey: .emoji)) ?? nil
         count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? nil
+        summary = (try? container.decodeIfPresent(String.self, forKey: .summary)) ?? nil
+        owner = (try? container.decodeIfPresent(String.self, forKey: .owner)) ?? nil
+        breadcrumb = (try? container.decodeIfPresent([String].self, forKey: .breadcrumb)) ?? nil
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -8906,6 +8934,10 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(recordType, forKey: .recordType)
         try container.encodeIfPresent(emoji, forKey: .emoji)
         try container.encodeIfPresent(count, forKey: .count)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(summary, forKey: .summary)
+        try container.encodeIfPresent(owner, forKey: .owner)
+        try container.encodeIfPresent(breadcrumb, forKey: .breadcrumb)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8920,6 +8952,10 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         case recordType = "type"
         case emoji
         case count
+        case title
+        case summary
+        case owner
+        case breadcrumb
     }
 }
 
@@ -10409,8 +10445,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let route: String?
     public let label: String?
     public let kind: String?
+    /// Additive target role for the + picker; note rows are notebook bullets.
+    public let itemKind: String?
     public let status: String?
     public let title: String?
+    public let owner: String?
+    public let breadcrumb: [String]?
     public let level: Int?
     public let taskRef: String?
     /// Absolute note path for read-only `task_goto` candidates. Older Bob
@@ -10627,8 +10667,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         route: String? = nil,
         label: String? = nil,
         kind: String? = nil,
+        itemKind: String? = nil,
         status: String? = nil,
         title: String? = nil,
+        owner: String? = nil,
+        breadcrumb: [String]? = nil,
         level: Int? = nil,
         taskRef: String? = nil,
         target: String? = nil,
@@ -10725,8 +10768,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.route = route
         self.label = label
         self.kind = kind
+        self.itemKind = itemKind
         self.status = status
         self.title = title
+        self.owner = owner
+        self.breadcrumb = breadcrumb
         self.level = level
         self.taskRef = taskRef
         self.target = target
@@ -10826,8 +10872,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         route = try container.decodeIfPresent(String.self, forKey: .route)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        itemKind = (try? container.decodeIfPresent(String.self, forKey: .itemKind)) ?? nil
         status = try container.decodeIfPresent(String.self, forKey: .status)
         title = try container.decodeIfPresent(String.self, forKey: .title)
+        owner = (try? container.decodeIfPresent(String.self, forKey: .owner)) ?? nil
+        breadcrumb = (try? container.decodeIfPresent([String].self, forKey: .breadcrumb)) ?? nil
         level = try container.decodeIfPresent(Int.self, forKey: .level)
         taskRef = try container.decodeIfPresent(String.self, forKey: .taskRef)
         target = try container.decodeIfPresent(String.self, forKey: .target)
@@ -10940,8 +10989,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case route
         case label
         case kind
+        case itemKind = "item_kind"
         case status
         case title
+        case owner
+        case breadcrumb
         case level
         case taskRef = "ref"
         case target
@@ -11062,15 +11114,20 @@ public struct CaptureRecordTargetField: Codable, Equatable, Sendable {
 
 /// What the person can mean on the right-hand side of `@route:`/`@route^`:
 /// `link` references an existing task, `new` mints an unused ID, and
-/// `project_note` names a new project note. Unknown values decode to `link`
-/// so a newer Bob never breaks the picker.
+/// `project_note` names a new project note. Unknown explicit values are
+/// `unsupported`, keeping a newer Bob response out of the task-link picker.
 public enum CaptureBlockIDIntent: String, Equatable, Sendable {
     case link
     case new
     case projectNote = "project_note"
+    case unsupported
 
     public init(wireValue: String?) {
-        self = (wireValue.flatMap(CaptureBlockIDIntent.init(rawValue:)) ?? .link)
+        guard let wireValue else {
+            self = .link
+            return
+        }
+        self = CaptureBlockIDIntent(rawValue: wireValue) ?? .unsupported
     }
 }
 
@@ -11137,7 +11194,7 @@ public struct CaptureUsedBlockID: Codable, Equatable, Sendable {
 /// The additive top-level `block_id` object Bob sends exactly for
 /// `pomodoro_block_id` and `task_block_id` contexts. Every field decodes
 /// tolerantly: missing arrays are empty, strings are "", booleans are
-/// false, the marker range is nil, and the intent falls back to `link`.
+/// false, the marker range is nil, and a missing intent falls back to `link`.
 public struct CaptureBlockIDField: Codable, Equatable, Sendable {
     public let route: String
     public let relativeTarget: String
@@ -11145,6 +11202,9 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
     public let marker: String
     public let markerRange: CaptureRange?
     public let intent: CaptureBlockIDIntent
+    /// Optional destination role, currently `notebook` when Bob is adding
+    /// an ID to a notebook note.
+    public let destinationKind: String?
     public let body: String
     public let allowedCharacter: String
     public let allowedDescription: String
@@ -11166,6 +11226,7 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         marker: String,
         markerRange: CaptureRange? = nil,
         intent: CaptureBlockIDIntent,
+        destinationKind: String? = nil,
         body: String = "",
         allowedCharacter: String,
         allowedDescription: String,
@@ -11180,6 +11241,7 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         self.marker = marker
         self.markerRange = markerRange
         self.intent = intent
+        self.destinationKind = destinationKind
         self.body = body
         self.allowedCharacter = allowedCharacter
         self.allowedDescription = allowedDescription
@@ -11197,6 +11259,8 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         marker = try container.decodeIfPresent(String.self, forKey: .marker) ?? ""
         markerRange = try container.decodeIfPresent(CaptureRange.self, forKey: .markerRange)
         intent = try container.decodeIfPresent(CaptureBlockIDIntent.self, forKey: .intent) ?? .link
+        destinationKind =
+            (try? container.decodeIfPresent(String.self, forKey: .destinationKind)) ?? nil
         body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
         allowedCharacter = try container.decodeIfPresent(String.self, forKey: .allowedCharacter) ?? ""
         allowedDescription =
@@ -11216,6 +11280,7 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         case marker
         case markerRange = "marker_range"
         case intent
+        case destinationKind = "destination_kind"
         case body
         case allowedCharacter = "allowed_character"
         case allowedDescription = "allowed_description"

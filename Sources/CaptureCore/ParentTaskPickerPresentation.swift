@@ -293,7 +293,7 @@ public struct ParentTaskPickerIndex: Sendable {
             let byID = Dictionary(
                 uniqueKeysWithValues: groupedSections.flatMap(\.rows).map { ($0.id, $0) }
             )
-            let countText = entries.count == 1 ? "1 task" : "\(entries.count) tasks"
+            let countText = countText(for: entries)
             return CapturePickerPresentation(
                 mode: .grouped,
                 sections: groupedSections,
@@ -319,6 +319,9 @@ public struct ParentTaskPickerIndex: Sendable {
         )
         let ids = rows.map(\.id)
         let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+        let emptyNoun = !entries.isEmpty && entries.allSatisfy {
+            $0.candidate.itemKind == "note"
+        } ? "notes" : "open tasks"
         return CapturePickerPresentation(
             mode: .filtered,
             sections: [section],
@@ -327,7 +330,9 @@ public struct ParentTaskPickerIndex: Sendable {
             totalCount: entries.count,
             matchCount: rows.count,
             countText: "\(rows.count) of \(entries.count)",
-            emptyState: rows.isEmpty ? .noMatches(query: filter, noun: "open tasks") : nil,
+            emptyState: rows.isEmpty
+                ? .noMatches(query: filter, noun: emptyNoun)
+                : nil,
             visibleRowBudget: budget
         )
     }
@@ -338,14 +343,19 @@ public struct ParentTaskPickerIndex: Sendable {
         }
         if let pending = row.pendingBlockID {
             if let first = pending.suggestions.first {
-                return "↩ adds ^\(first) to \(pending.route).md, then inserts @\(pending.route)+\(first)"
+                let noun = row.glyph == .note ? "note" : "task"
+                return "↩ adds ^\(first) to \(pending.route).md, then inserts @\(pending.route)+\(first) for the \(noun)"
             }
-            return "↩ names this task, then inserts @route+id"
+            return row.glyph == .note
+                ? "↩ names this note, then inserts @route+id"
+                : "↩ names this task, then inserts @route+id"
         }
         if let badge = row.badgeText, !badge.isEmpty {
             return badge
         }
-        return "↩ names this task, then inserts @route+id"
+        return row.glyph == .note
+            ? "↩ names this note, then inserts @route+id"
+            : "↩ names this task, then inserts @route+id"
     }
 
     public static func headerTitle(relationship: CapturePickerRelationship) -> String {
@@ -378,6 +388,7 @@ public struct ParentTaskPickerIndex: Sendable {
         var next: [CapturePickerRow] = []
         var noteOrder: [String] = []
         var noteRows: [String: [CapturePickerRow]] = [:]
+        var noteEntries: [String: [ParentTaskPickerIndexEntry]] = [:]
         var noteKinds: [String: String?] = [:]
         for entry in entries {
             switch entry.group {
@@ -394,6 +405,7 @@ public struct ParentTaskPickerIndex: Sendable {
                 next.append(groupedRow(for: entry))
             case .queued, .note:
                 let route = entry.route ?? "Unknown"
+                noteEntries[route, default: []].append(entry)
                 if noteRows[route] == nil {
                     noteOrder.append(route)
                     noteRows[route] = []
@@ -434,11 +446,13 @@ public struct ParentTaskPickerIndex: Sendable {
             ))
         }
         for route in noteOrder {
+            let routeEntries = noteEntries[route] ?? []
             sections.append(CapturePickerSection(
                 id: "note-\(route)",
                 kind: .note,
                 title: "\(route).md",
                 subtitle: Self.noteKindSubtitle(noteKinds[route] ?? nil),
+                countText: countText(for: routeEntries),
                 rows: noteRows[route] ?? []
             ))
         }
@@ -453,9 +467,20 @@ public struct ParentTaskPickerIndex: Sendable {
             return "Area"
         case "project":
             return "Project"
+        case "notebook":
+            return "Notebook"
         default:
             return nil
         }
+    }
+
+    private func countText(for entries: [ParentTaskPickerIndexEntry]) -> String {
+        guard !entries.isEmpty else {
+            return "0 tasks"
+        }
+        let allNotes = entries.allSatisfy { $0.candidate.itemKind == "note" }
+        let noun = allNotes ? "note" : (entries.allSatisfy { $0.candidate.itemKind != "note" } ? "task" : "item")
+        return entries.count == 1 ? "1 \(noun)" : "\(entries.count) \(noun)s"
     }
 
     private struct RankedEntry {
@@ -544,7 +569,7 @@ public struct ParentTaskPickerIndex: Sendable {
         return CapturePickerRow(
             id: Self.key(for: candidate),
             bobIndex: entry.bobIndex,
-            glyph: .task(entry.status),
+            glyph: candidate.itemKind == "note" ? .note : .task(entry.status),
             displayText: entry.display.text,
             textSegments: entry.display.segments,
             textMatchRanges: textMatchRanges,
@@ -560,7 +585,7 @@ public struct ParentTaskPickerIndex: Sendable {
             scheduledText: nil,
             pullsForward: false,
             detail: CapturePickerRowDetail(
-                statusText: entry.status.displayName,
+                statusText: candidate.itemKind == "note" ? "" : entry.status.displayName,
                 route: candidate.route,
                 section: candidate.section,
                 summary: summary(for: entry),
@@ -571,6 +596,9 @@ public struct ParentTaskPickerIndex: Sendable {
     }
 
     private func chipText(for entry: ParentTaskPickerIndexEntry) -> String? {
+        guard entry.candidate.itemKind != "note" else {
+            return nil
+        }
         guard let pomodoro = entry.pomodoro else {
             return nil
         }
@@ -591,6 +619,9 @@ public struct ParentTaskPickerIndex: Sendable {
         }
         if let detail = entry.candidate.detail, !detail.isEmpty {
             return detail
+        }
+        if entry.candidate.itemKind == "note" {
+            return entry.candidate.summary ?? ""
         }
         return pomodoroSummary(for: entry)
     }
@@ -615,6 +646,23 @@ public struct ParentTaskPickerIndex: Sendable {
     }
 
     private func accessibilityLabel(for entry: ParentTaskPickerIndexEntry) -> String {
+        if entry.candidate.itemKind == "note" {
+            var parts = [entry.display.text]
+            if let route = entry.candidate.route, entry.candidate.requiresBlockID {
+                parts.append("Note \(route), needs a block ID")
+            } else if let route = entry.candidate.route, let blockID = entry.effectiveBlockID {
+                parts.append("Note \(route), block \(blockID)")
+            } else if let route = entry.candidate.route {
+                parts.append("Note \(route)")
+            }
+            if let breadcrumb = entry.candidate.breadcrumb, !breadcrumb.isEmpty {
+                parts.append(breadcrumb.joined(separator: " › "))
+            }
+            if let detail = nonempty(entry.candidate.detail) ?? nonempty(entry.candidate.summary) {
+                parts.append(detail)
+            }
+            return parts.joined(separator: ". ") + "."
+        }
         let name = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
         let statusText = name ?? entry.status.displayName
         var parts = [statusText, entry.display.text]
@@ -629,6 +677,13 @@ public struct ParentTaskPickerIndex: Sendable {
         }
         parts.append(summary(for: entry))
         return parts.joined(separator: ". ") + "."
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return value
     }
 }
 
@@ -680,7 +735,9 @@ private struct ParentTaskPickerIndexEntry: Sendable {
             symbol: candidate.statusSymbol,
             name: candidate.statusName
         )
-        self.group = ParentTaskGroup(wireValue: candidate.group)
+        self.group = candidate.itemKind == "note"
+            ? .note
+            : ParentTaskGroup(wireValue: candidate.group)
         self.pomodoro = candidate.pomodoro
         self.pomodoroLine = candidate.pomodoro?.line
         self.route = candidate.route
@@ -719,7 +776,9 @@ private struct ParentTaskPickerIndexEntry: Sendable {
         } else {
             self.sectionField = nil
         }
-        if let statusName = candidate.statusName, !statusName.isEmpty {
+        if candidate.itemKind == "note" {
+            self.statusField = nil
+        } else if let statusName = candidate.statusName, !statusName.isEmpty {
             self.statusField = FuzzyField(statusName)
         } else {
             self.statusField = nil

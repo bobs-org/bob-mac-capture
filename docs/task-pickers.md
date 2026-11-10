@@ -139,6 +139,11 @@ the same card across capture notes (`task_parent`, `scope: vault`). Choosing a
 task inserts `@file+id`. An older Bob that returns `task` without the descriptor
 keeps the inline parent-task list.
 
+On notebook routes, Bob marks note bullets with `item_kind: "note"`. Those rows
+use a book icon, show note counts and Bob's summary, and omit task status and
+Pomodoro context. An ID-less note still opens Add block ID and uses
+`bob capture-task-id` before the selected `@route+id` is inserted.
+
 The card uses the same picker lifecycle as `:` and `^`. Scope capsules read
 `@cash+ · cash.md` or `+ · All capture notes`. Vault empty-query rows keep the
 colon groups (queued Pomodoros, In Progress, Next, notes). Scoped empty-query
@@ -359,6 +364,9 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   Older Bob binaries that send `pomodoro_block_id` without a `block_id` object get a
   Link picker without the New ID row and without type-through; older Bob never sends
   `task_block_id`, so `@route^` shows no picker there.
+  An unknown explicit `intent` uses a safe New ID composer instead of opening the
+  task-link list. `destination_kind: "notebook"` gives its New ID rows notebook-note
+  copy and suppresses task teaching.
 
 ### Keys
 
