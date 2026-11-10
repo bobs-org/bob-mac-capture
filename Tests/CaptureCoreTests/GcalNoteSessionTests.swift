@@ -278,6 +278,28 @@ final class GcalNoteSessionTests: XCTestCase {
         XCTAssertEqual(model.editorText, "series draft")
     }
 
+    func testInvalidPreviewPublishesEditingAtomically() async throws {
+        let model = session([
+            "FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE": "gcal-note/invalid.json"
+        ])
+        var sawPendingInvalid = false
+        model.onChange = {
+            if model.phase == .previewPending, model.livePreview.isInvalid {
+                sawPendingInvalid = true
+            }
+        }
+        model.enterPicker()
+        await waitUntil { model.phase == .listing }
+        model.select(try listedEvent(model, id: "deerwood"))
+        await waitUntil { model.phase == .editing }
+        model.setEditorText("@famly")
+        await waitUntil {
+            model.phase == .editing && model.livePreview.isInvalid
+        }
+        XCTAssertFalse(sawPendingInvalid)
+        XCTAssertEqual(model.livePreview.errors.first?.kind, "route_unknown")
+    }
+
     func testSaveReturnsToPickerReloadsListAndUndoRestoresPriorText() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString)

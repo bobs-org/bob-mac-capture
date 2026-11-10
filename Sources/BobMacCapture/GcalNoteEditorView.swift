@@ -30,7 +30,9 @@ struct GcalNoteEditorView: View {
                 scopeControl
             }
             editorCard
-            if let message = live.errorMessage, !message.isEmpty {
+            if let message = live.errorMessage, !message.isEmpty,
+                !live.errors.contains(where: { $0.message == message })
+            {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)

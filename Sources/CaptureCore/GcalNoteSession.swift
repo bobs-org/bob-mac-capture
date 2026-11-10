@@ -126,9 +126,18 @@ public final class GcalNoteSession {
     private var pendingLeave = false
     private var pendingWrite: PendingWrite?
     private var lastURLQuery: String?
+    private var suppressedChangeNotifications = 0
 
     private func notifyChange() {
+        guard suppressedChangeNotifications == 0 else { return }
         onChange?()
+    }
+
+    private func publish(_ body: () -> Void) {
+        suppressedChangeNotifications += 1
+        body()
+        suppressedChangeNotifications -= 1
+        notifyChange()
     }
 
     private struct GcalNoteDraftKey: Hashable {
@@ -620,15 +629,17 @@ public final class GcalNoteSession {
                 scope: token.scope ?? .event
             )
             guard publishable(token, kind: .preview) else { return }
-            previewResponse = response
-            if response.ok {
-                lastValidPreview = response
-                previewError = nil
-            } else {
-                previewError = response.error?.message ?? response.errors.first?.message
+            publish {
+                previewResponse = response
+                if response.ok {
+                    lastValidPreview = response
+                    previewError = nil
+                } else {
+                    previewError = response.error?.message ?? response.errors.first?.message
+                }
+                warnings = response.warnings
+                phase = .editing
             }
-            warnings = response.warnings
-            phase = .editing
         } catch is CancellationError {
             return
         } catch let error as BobClientError {
@@ -692,9 +703,11 @@ public final class GcalNoteSession {
 
     private func applyShow(_ response: GcalNoteShowResponse, thenRetryWrite: Bool) {
         if !response.candidates.isEmpty, response.event == nil {
-            ambiguousCandidates = response.candidates
-            warnings = response.warnings
-            phase = .listing
+            publish {
+                ambiguousCandidates = response.candidates
+                warnings = response.warnings
+                phase = .listing
+            }
             return
         }
         guard let event = response.event else {
@@ -702,36 +715,38 @@ public final class GcalNoteSession {
             phase = .recoverableError(message: message, retry: .show, uncertain: false)
             return
         }
-        showResponse = response
-        selectedEvent = event
-        selectedIdentity = event.identity
-        if let returnedScope = response.scope, availableScopes.contains(returnedScope) {
-            scope = returnedScope
-        }
-        let loaded = event.note?.text ?? ""
-        let key = GcalNoteDraftKey(identity: event.identity, scope: writableScope)
-        canonicalText[key] = loaded
-        if let draft = drafts[key] {
-            editorText = draft
-            isEditorDirty = draft != loaded
-        } else {
-            editorText = loaded
-            isEditorDirty = false
-            drafts[key] = loaded
-        }
-        lastValidPreview = nil
-        previewResponse = nil
-        previewError = nil
-        warnings = response.warnings
-        statusBanner = nil
-        if thenRetryWrite, let pending = pendingWrite {
-            startWrite(pending)
-            return
-        }
-        if isEditorDirty {
-            schedulePreview()
-        } else {
-            phase = .editing
+        publish {
+            showResponse = response
+            selectedEvent = event
+            selectedIdentity = event.identity
+            if let returnedScope = response.scope, availableScopes.contains(returnedScope) {
+                scope = returnedScope
+            }
+            let loaded = event.note?.text ?? ""
+            let key = GcalNoteDraftKey(identity: event.identity, scope: writableScope)
+            canonicalText[key] = loaded
+            if let draft = drafts[key] {
+                editorText = draft
+                isEditorDirty = draft != loaded
+            } else {
+                editorText = loaded
+                isEditorDirty = false
+                drafts[key] = loaded
+            }
+            lastValidPreview = nil
+            previewResponse = nil
+            previewError = nil
+            warnings = response.warnings
+            statusBanner = nil
+            if thenRetryWrite, let pending = pendingWrite {
+                startWrite(pending)
+                return
+            }
+            if isEditorDirty {
+                schedulePreview()
+            } else {
+                phase = .editing
+            }
         }
     }
 

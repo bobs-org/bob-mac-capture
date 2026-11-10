@@ -268,7 +268,8 @@ final class GcalNoteEditorTests: XCTestCase {
         await waitUntil { eventNotes.session?.phase == .editing }
         eventNotes.session?.setEditorText("@famly")
         await waitUntil {
-            eventNotes.session?.livePreview.isInvalid == true
+            eventNotes.session?.phase == .editing
+                && eventNotes.session?.livePreview.isInvalid == true
                 && eventNotes.session?.previewResponse?.input?.text == "@famly"
         }
         XCTAssertEqual(eventNotes.session?.livePreview.errors.first?.kind, "route_unknown")
@@ -316,7 +317,9 @@ final class GcalNoteEditorTests: XCTestCase {
                     windowNumber: panel.windowNumber
                 )
             ))
-        await waitUntil { eventNotes.session?.scope == .series }
+        await waitUntil {
+            eventNotes.session?.scope == .series && eventNotes.session?.phase == .editing
+        }
         XCTAssertEqual(eventNotes.session?.editorText, "")
         eventNotes.session?.setEditorText("series draft")
         await waitUntil { eventNotes.session?.editorText == "series draft" }

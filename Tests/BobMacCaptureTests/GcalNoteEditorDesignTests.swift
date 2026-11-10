@@ -66,7 +66,10 @@ final class GcalNoteEditorDesignTests: XCTestCase {
         invalid.openSelectedEvent()
         await waitUntil { invalid.session?.phase == .editing }
         invalid.session?.setEditorText("@famly")
-        await waitUntil { invalid.session?.livePreview.isInvalid == true }
+        await waitUntil {
+            invalid.session?.phase == .editing
+                && invalid.session?.livePreview.isInvalid == true
+        }
         try render(invalid, base: "invalid")
 
         let saving = GcalNotePanelModel(

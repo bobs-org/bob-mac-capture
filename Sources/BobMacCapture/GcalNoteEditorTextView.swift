@@ -112,6 +112,8 @@ struct GcalNoteEditorTextView: NSViewRepresentable {
             textView.noteUndoManager.removeAllActions()
         }
         if textView.string != text, !textView.hasMarkedText() {
+            context.coordinator.applyingProgrammaticText = true
+            defer { context.coordinator.applyingProgrammaticText = false }
             replaceText(textView, with: text)
         }
         if !textView.hasMarkedText() {
@@ -151,9 +153,11 @@ struct GcalNoteEditorTextView: NSViewRepresentable {
         var parent: GcalNoteEditorTextView?
         var identityKey = ""
         var shouldFocus = true
+        var applyingProgrammaticText = false
         weak var textView: GcalNoteNSTextView?
 
         func textDidChange(_ notification: Notification) {
+            guard !applyingProgrammaticText else { return }
             guard let textView = notification.object as? NSTextView else {
                 return
             }
