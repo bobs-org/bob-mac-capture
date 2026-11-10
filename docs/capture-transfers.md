@@ -19,10 +19,14 @@ the card.
 
 After the item cards, landing cards show Bob's exact write previews in Bob's
 first-touch order. A merge target wears a purple **Merge target** capsule; each
-merged source wears a muted **Merged** capsule. Removed source lines fold into
-`⤵ N lines moved to the target`; the headline and added `LINKS` line stay open,
-and **Show all lines** or the row expands the removed bytes. Moved tasks wear an
-accent **Moved** capsule and identify their origin (`from inbox.md:5`). A merge
+merged source wears a muted **Merged** capsule and keeps its original notes: the
+card shows the cancelled headline and the added `LINKS` line, and the source row
+shows the copied-note count (`title only`, `1 note copied`, `N notes copied`).
+Moved tasks wear an accent **Moved** capsule and identify their origin
+(`from inbox.md:5`); their removed source lines fold into
+`⤵ N lines moved to the target`, and **Show all lines** or the row expands the
+removed bytes. That removed-run fold stays only for move cards and for older Bob
+responses. A merge
 into a section shows that section first as `§ Heading · note.md · line N`, with
 the heading emphasized and a pink **New**/**Created** capsule when Bob created
 it. These landing cards render before the batch's Pomodoro block cards.
