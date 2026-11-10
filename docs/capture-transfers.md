@@ -10,8 +10,9 @@ draft: source tasks, a `↓ into` connector, the destination, Bob-authored conse
 sentences, link-repair summary, TODAY badge when Bob returned `plan_budget`, and any
 merge hand-off offers. Move uses the route accent and merge uses purple throughout the
 card and editor arrow. Source rows show Bob's task title, status transition, locator, and
-block-ID change or moved-note count; the destination shows its status, locator, and
-created drawer or section. A batch-level TODAY meter stays above ordinary item cards,
+block-ID change or copied-note count (`title only`, `1 note copied`, `N notes copied`);
+the destination shows its status, locator, and created drawer or section. A batch-level
+TODAY meter stays above ordinary item cards,
 while a single transfer hosts the badge inside its card. Transfer cards stand in for the
 generic item header and item-level Pull-In summary. Inbox-route candidates remain above
 the card.

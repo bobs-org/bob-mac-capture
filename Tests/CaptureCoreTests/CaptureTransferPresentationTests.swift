@@ -52,6 +52,14 @@ final class CaptureTransferPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.sourceRows[0].targetStatusName, "Cancelled")
         XCTAssertEqual(presentation.sourceRows[0].locator, "work.md:5")
         XCTAssertEqual(presentation.sourceRows[0].detailText, "title only")
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("title only"),
+            presentation.previewAccessibilitySummary
+        )
+        XCTAssertTrue(
+            presentation.notificationBody.contains("title only"),
+            presentation.notificationBody
+        )
         XCTAssertEqual(presentation.destination.title.text, "Always add capture time to ref marker note!")
         XCTAssertEqual(presentation.destination.statusName, "Ready")
         XCTAssertEqual(presentation.destination.locator, "work.md:9")
@@ -150,6 +158,42 @@ final class CaptureTransferPresentationTests: XCTestCase {
         XCTAssertEqual(insertions.count, capture.taskBlocks.count + 1)
         XCTAssertEqual(insertions[0].map(\.heading), ["Future Work"])
         XCTAssertTrue(insertions[1].isEmpty)
+    }
+
+    func testMergeSourceDetailUsesCopiedNoteCount() throws {
+        let oneNote = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-drawer-merge.json"))
+        )
+        XCTAssertEqual(oneNote.sourceRows[0].detailText, "1 note copied")
+        XCTAssertTrue(
+            oneNote.previewAccessibilitySummary.contains("1 note copied"),
+            oneNote.previewAccessibilitySummary
+        )
+        XCTAssertTrue(
+            oneNote.notificationBody.contains("1 note copied"),
+            oneNote.notificationBody
+        )
+        XCTAssertFalse(
+            oneNote.previewAccessibilitySummary.contains("note moves"),
+            oneNote.previewAccessibilitySummary
+        )
+
+        let manyNotes = try XCTUnwrap(
+            CaptureTransferPresentation(capture: success("capture-transfer-tombstone-merge.json"))
+        )
+        XCTAssertEqual(manyNotes.sourceRows[0].detailText, "3 notes copied")
+        XCTAssertTrue(
+            manyNotes.previewAccessibilitySummary.contains("3 notes copied"),
+            manyNotes.previewAccessibilitySummary
+        )
+        XCTAssertTrue(
+            manyNotes.notificationBody.contains("3 notes copied"),
+            manyNotes.notificationBody
+        )
+        XCTAssertFalse(
+            manyNotes.notificationBody.contains("notes move"),
+            manyNotes.notificationBody
+        )
     }
 
     func testDrawerAndSectionDestinationsCarryCreatedState() throws {

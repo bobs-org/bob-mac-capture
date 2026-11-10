@@ -125,6 +125,13 @@ final class NotificationServiceTests: XCTestCase {
         )
         XCTAssertTrue(merged.body.contains("Next → Cancelled · title only"), merged.body)
         XCTAssertFalse(merged.body.contains("Unknown"), merged.body)
+
+        let copied = try committedTransferFixture("capture-transfer-drawer-merge.json")
+        let copiedContent = NotificationService.successContent(captures: [copied])
+        XCTAssertTrue(
+            copiedContent.body.contains("Ready → Cancelled · 1 note copied"),
+            copiedContent.body
+        )
     }
 
     func testMergeInNotificationUsesSettledSourceDetails() throws {

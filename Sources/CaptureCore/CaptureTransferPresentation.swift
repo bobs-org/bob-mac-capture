@@ -430,9 +430,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
                         statusName: merge.previousStatusName,
                         targetStatusName: merge.statusName,
                         locator: Self.locator(path: merge.source.path, line: merge.source.line),
-                        detailText: merge.movedNotes == 0
-                            ? "title only"
-                            : "\(merge.movedNotes) note\(merge.movedNotes == 1 ? "" : "s") move\(merge.movedNotes == 1 ? "s" : "" )",
+                        detailText: Self.mergeDetail(merge),
                         detailIsRename: false,
                         fallback: false
                     )
@@ -608,6 +606,18 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
             return "^\(oldID) → ^\(newID)"
         }
         return "^\(newID)"
+    }
+
+    /// Canonical merge source detail: `title only`, `1 note copied`, or
+    /// `N notes copied`. Counts still come from Bob's `moved_notes` field.
+    private static func mergeDetail(_ merge: CaptureTransferMerge) -> String {
+        if merge.movedNotes == 0 {
+            return "title only"
+        }
+        if merge.movedNotes == 1 {
+            return "1 note copied"
+        }
+        return "\(merge.movedNotes) notes copied"
     }
 
     private static func statusDestinationText(
