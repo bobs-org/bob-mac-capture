@@ -16,5 +16,7 @@ BOB_UPDATE_GCAL_NOTE_FIXTURES=1 cargo test --test gcal_note_cli
 Then copy the JSON files from `tests/fixtures/gcal_note/json/` into this
 directory. Mac tests read only these local copies and do not require a sibling
 checkout. `Tests/Fixtures/fake-bob` selects per-operation files through
-`FAKE_BOB_GCAL_NOTE_{LIST,SHOW,PREVIEW,WRITE,CLEAR}_FIXTURE`, records exact argv,
-and can simulate delays, explicit errors, and a temporary note store.
+`FAKE_BOB_GCAL_NOTE_{LIST,SHOW,PREVIEW,WRITE,CLEAR}_FIXTURE`, an optional JSON
+`FAKE_BOB_GCAL_NOTE_FIXTURE_MAP` keyed by `operation`, `operation:eventID`, or
+`operation:eventID:scope`, records exact argv, and can simulate delays, explicit
+errors, and a temporary note store. Absolute fixture paths are allowed.

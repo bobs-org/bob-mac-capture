@@ -200,47 +200,88 @@ PY
     fi
     operation="show"
     text_value=""
+    event_id=""
+    scope_value=""
+    dry_run=0
     while [[ $# -gt 0 ]]; do
       case "$1" in
         -l|--list) operation="list" ;;
         -c|--clear) operation="clear" ;;
-        -d|--dry-run) operation="preview" ;;
+        -d|--dry-run)
+          dry_run=1
+          operation="preview"
+          ;;
         --)
-          operation="write"
+          if [[ "${dry_run}" != "1" ]]; then
+            operation="write"
+          fi
           shift
           text_value="${1:-}"
           break
           ;;
-        -i|-C|-s|-b|-D|-f|--event-id|--calendar|--scope|--bob-dir|--day|--format)
+        -i|--event-id)
+          shift
+          event_id="${1:-}"
+          ;;
+        -s|--scope)
+          shift
+          scope_value="${1:-}"
+          ;;
+        -C|-b|-D|-f|--calendar|--bob-dir|--day|--format)
           shift
           ;;
       esac
       shift
     done
-    case "${operation}" in
-      list)
-        fixture="${FAKE_BOB_GCAL_NOTE_LIST_FIXTURE:-gcal-note/list_all.json}"
-        ;;
-      show)
-        fixture="${FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE:-gcal-note/show.json}"
-        ;;
-      preview)
-        fixture="${FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE:-gcal-note/preview.json}"
-        ;;
-      clear)
-        fixture="${FAKE_BOB_GCAL_NOTE_CLEAR_FIXTURE:-gcal-note/cleared.json}"
-        ;;
-      write)
-        fixture="${FAKE_BOB_GCAL_NOTE_WRITE_FIXTURE:-gcal-note/saved.json}"
-        ;;
-    esac
+    fixture=""
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_FIXTURE_MAP:-}" && -f "${FAKE_BOB_GCAL_NOTE_FIXTURE_MAP}" ]]; then
+      fixture="$(
+        python3 - "${FAKE_BOB_GCAL_NOTE_FIXTURE_MAP}" "${operation}" "${event_id}" "${scope_value}" <<'PY'
+import json, sys
+path, operation, event_id, scope = sys.argv[1:5]
+with open(path, encoding="utf-8") as handle:
+    mapping = json.load(handle)
+for key in (f"{operation}:{event_id}:{scope}", f"{operation}:{event_id}", operation):
+    value = mapping.get(key)
+    if value:
+        print(value)
+        break
+PY
+      )"
+    fi
+    if [[ -z "${fixture}" ]]; then
+      case "${operation}" in
+        list)
+          fixture="${FAKE_BOB_GCAL_NOTE_LIST_FIXTURE:-gcal-note/list_all.json}"
+          ;;
+        show)
+          fixture="${FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE:-gcal-note/show.json}"
+          ;;
+        preview)
+          fixture="${FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE:-gcal-note/preview.json}"
+          ;;
+        clear)
+          fixture="${FAKE_BOB_GCAL_NOTE_CLEAR_FIXTURE:-gcal-note/cleared.json}"
+          ;;
+        write)
+          fixture="${FAKE_BOB_GCAL_NOTE_WRITE_FIXTURE:-gcal-note/saved.json}"
+          ;;
+      esac
+    fi
     if [[ -n "${FAKE_BOB_GCAL_NOTE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_GCAL_NOTE_DELAY_SECONDS}" &
       wait $!
     fi
-    if [[ -n "${FAKE_BOB_GCAL_NOTE_ERROR:-}" ]]; then
-      printf '%s\n' "${FAKE_BOB_GCAL_NOTE_ERROR}" >&2
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_ERROR_FILE:-}" && -f "${FAKE_BOB_GCAL_NOTE_ERROR_FILE}" ]]; then
+      printf '%s\n' "$(cat "${FAKE_BOB_GCAL_NOTE_ERROR_FILE}")" >&2
       exit "${FAKE_BOB_GCAL_NOTE_EXIT:-2}"
+    fi
+    if [[ -n "${FAKE_BOB_GCAL_NOTE_ERROR:-}" ]]; then
+      if [[ -z "${FAKE_BOB_GCAL_NOTE_ERROR_OPERATION:-}"
+        || "${FAKE_BOB_GCAL_NOTE_ERROR_OPERATION}" == "${operation}" ]]; then
+        printf '%s\n' "${FAKE_BOB_GCAL_NOTE_ERROR}" >&2
+        exit "${FAKE_BOB_GCAL_NOTE_EXIT:-2}"
+      fi
     fi
     if [[ "${FAKE_BOB_GCAL_NOTE_EMPTY:-}" == "1" ]]; then
       exit "${FAKE_BOB_GCAL_NOTE_EXIT:-0}"
@@ -255,7 +296,11 @@ PY
         clear) : >"${FAKE_BOB_GCAL_NOTE_STORE}" ;;
       esac
     fi
-    cat "${fixtures_dir}/${fixture}"
+    if [[ "${fixture}" == /* ]]; then
+      cat "${fixture}"
+    else
+      cat "${fixtures_dir}/${fixture}"
+    fi
     exit "${FAKE_BOB_GCAL_NOTE_EXIT:-0}"
     ;;
   capture-related)

@@ -1348,6 +1348,19 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    /// Cancels only the named lanes. Event-note leave uses this for list/show/
+    /// preview so a started write is not killed by an unrelated `cancelAll`.
+    public func cancelLanes(_ lanes: Set<String>) {
+        stateQueue.sync {
+            for lane in lanes {
+                if let active = activeProcesses[lane] {
+                    Self.terminateIfRunning(active.process)
+                    activeProcesses[lane] = nil
+                }
+            }
+        }
+    }
+
     // Foundation raises NSInvalidArgumentException (which Swift cannot catch) when
     // `terminate()` is sent before `run()`. A process enters `activeProcesses` just
     // before it is launched, so cancellation and lane replacement must tolerate that

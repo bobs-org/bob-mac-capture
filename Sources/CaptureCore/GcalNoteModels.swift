@@ -2,7 +2,7 @@ import Foundation
 
 /// Scope names accepted by `bob gcal note`. Unknown schema-v1 display values
 /// remain available to the caller without gaining invented behavior.
-public enum GcalNoteScope: Equatable, Sendable {
+public enum GcalNoteScope: Equatable, Hashable, Sendable {
     case event
     case series
     case unknown(String)
@@ -35,6 +35,17 @@ public struct GcalNoteWindow: Decodable, Equatable, Sendable {
     public let to: String?
     public let start: String?
     public let end: String?
+}
+
+/// Opaque calendar/event pair returned by Bob. Mutations never match by title.
+public struct GcalNoteIdentity: Hashable, Sendable {
+    public let calendarID: String
+    public let eventID: String
+
+    public init(calendarID: String, eventID: String) {
+        self.calendarID = calendarID
+        self.eventID = eventID
+    }
 }
 
 /// Identity is always the opaque calendar/event pair returned by Bob. The
@@ -72,6 +83,20 @@ public struct GcalNoteEvent: Decodable, Equatable, Sendable {
         case url
         case lands
         case note
+    }
+
+    public var identity: GcalNoteIdentity {
+        GcalNoteIdentity(calendarID: calendarID, eventID: eventID)
+    }
+
+    public var isRecurring: Bool {
+        if recurring == true {
+            return true
+        }
+        if let seriesID, !seriesID.isEmpty {
+            return true
+        }
+        return false
     }
 }
 
