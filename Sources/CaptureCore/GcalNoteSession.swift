@@ -742,7 +742,7 @@ public final class GcalNoteSession {
                 startWrite(pending)
                 return
             }
-            if isEditorDirty {
+            if !editorText.isEmpty {
                 schedulePreview()
             } else {
                 phase = .editing
@@ -758,7 +758,7 @@ public final class GcalNoteSession {
         previewResponse = nil
         lastValidPreview = nil
         previewError = nil
-        if isEditorDirty {
+        if !editorText.isEmpty {
             schedulePreview()
         } else {
             phase = .editing

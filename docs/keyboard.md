@@ -3,18 +3,13 @@ title: "Mac Capture keyboard"
 description: "Every Bob Mac Capture key binding: editor, completion, prompts, stash, shelf, and today's Pomodoro."
 ---
 
-Successor choice cards are described in [Capture previews](capture-previews.md); stash in [Capture panel](capture-panel.md); template shelf in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+Successor cards: [Capture previews](capture-previews.md); stash: [Capture panel](capture-panel.md); templates: [Saved templates](saved-templates.md). For global chord conflicts, see [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## Switching panels
 
 Ctrl-Tab and Ctrl-Shift-Tab switch panels, keeping the draft and view.
 
-## Event note keys
-
-Command-E opens [Event notes](event-notes.md) from any draft (Control-E keeps line
-motion). Picker: Control-N/P moves, Return opens. Editor: Return saves,
-Shift-Return newlines, Command-Delete clears, Control-Option-S toggles scope,
-Command-Z undoes.
+[Event note bindings](event-notes.md).
 
 ## Bob Refs shortcuts
 

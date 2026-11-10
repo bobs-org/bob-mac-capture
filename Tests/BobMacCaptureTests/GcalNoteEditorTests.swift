@@ -544,6 +544,76 @@ final class GcalNoteEditorTests: XCTestCase {
         )
     }
 
+    func testSavedNoteHighlightsWithoutTypingAndFitsSmallPanel() async throws {
+        let eventNotes = GcalNotePanelModel(
+            processClient: client([
+                "FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE": "gcal-note/show_preview_match.json",
+                "FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE": "gcal-note/preview_match.json",
+            ]))
+        let controller = CapturePanelController(
+            model: CapturePanelModel(),
+            eventNotes: eventNotes
+        )
+        let panel = controller.makePanelIfNeeded()
+        defer { panel.orderOut(nil) }
+        controller.show()
+        eventNotes.present()
+        await waitUntil { eventNotes.session?.phase == .listing }
+        panel.setContentSize(NSSize(width: 480, height: 520))
+        eventNotes.openSelectedEvent()
+        await waitUntil {
+            eventNotes.session?.phase == .editing
+                && eventNotes.session?.isEditorDirty == false
+                && eventNotes.session?.previewResponse?.input?.text
+                    == eventNotes.session?.editorText
+        }
+
+        let editorCandidate = await waitForNoteEditor(in: panel)
+        let editor = try XCTUnwrap(editorCandidate)
+        XCTAssertEqual(editor.string, eventNotes.session?.editorText)
+        XCTAssertFalse(eventNotes.session?.isEditorDirty ?? true)
+        await waitUntil {
+            guard let storage = editor.textStorage, storage.length > 0 else {
+                return false
+            }
+            let color =
+                storage.attribute(
+                    .foregroundColor,
+                    at: 0,
+                    effectiveRange: nil
+                ) as? NSColor
+            return color?.isEqual(NSColor.labelColor) == false
+        }
+        let highlight =
+            editor.textStorage?.attribute(
+                .foregroundColor,
+                at: 0,
+                effectiveRange: nil
+            ) as? NSColor
+        XCTAssertNotNil(highlight)
+        XCTAssertFalse(highlight?.isEqual(NSColor.labelColor) ?? true)
+
+        panel.setContentSize(NSSize(width: 480, height: 520))
+        await waitUntil {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            guard let content = panel.contentView else { return false }
+            return ["Save", "Clear", "Back"].allSatisfy { title in
+                guard let button = self.findButton(title, in: content) else { return false }
+                let rect = button.convert(button.bounds, to: content)
+                return content.bounds.contains(rect) && !rect.isEmpty
+            }
+        }
+        guard let content = panel.contentView else {
+            XCTFail("The small capture panel has no content view")
+            return
+        }
+        XCTAssertGreaterThan(editor.visibleRect.height, 1)
+        for title in ["Save", "Clear", "Back"] {
+            let button = try XCTUnwrap(findButton(title, in: content))
+            XCTAssertTrue(content.bounds.contains(button.convert(button.bounds, to: content)))
+        }
+    }
+
     private func waitForNoteEditor(
         in panel: NSPanel,
         timeout: TimeInterval = 5
@@ -599,6 +669,19 @@ final class GcalNoteEditorTests: XCTestCase {
         }
         for subview in view.subviews {
             if let found = findCaptureEditor(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func findButton(_ title: String, in view: NSView?) -> NSButton? {
+        guard let view else { return nil }
+        if let button = view as? NSButton, button.title == title {
+            return button
+        }
+        for subview in view.subviews {
+            if let found = findButton(title, in: subview) {
                 return found
             }
         }

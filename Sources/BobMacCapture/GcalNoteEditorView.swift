@@ -67,11 +67,6 @@ struct GcalNoteEditorView: View {
         .background(.regularMaterial)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Event note editor")
-        .onAppear {
-            if let session, !session.editorText.isEmpty {
-                session.requestPreview()
-            }
-        }
     }
 
     private var identityCard: some View {

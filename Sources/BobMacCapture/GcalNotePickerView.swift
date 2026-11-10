@@ -31,7 +31,10 @@ struct GcalNotePickerView: View {
                     .accessibilityHint("Returns to the unchanged capture draft.")
             }
 
-            if let banner = GcalNotePresentation.statusBannerText(session?.statusBanner) {
+            if let banner = GcalNotePresentation.statusBannerText(
+                session?.statusBanner,
+                action: session?.writeResponse?.action
+            ) {
                 Text(banner)
                     .font(.caption)
                     .foregroundStyle(.secondary)

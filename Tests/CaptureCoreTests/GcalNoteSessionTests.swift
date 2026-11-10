@@ -67,6 +67,14 @@ final class GcalNoteSessionTests: XCTestCase {
         try data.write(to: url)
     }
 
+    private func recordedCalls(at url: URL) throws -> [[String]] {
+        try String(contentsOf: url, encoding: .utf8)
+            .split(separator: "\n")
+            .map { line in
+                try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String])
+            }
+    }
+
     private func listedEvent(
         _ model: GcalNoteSession,
         id: String
@@ -107,7 +115,7 @@ final class GcalNoteSessionTests: XCTestCase {
         XCTAssertFalse(model.hasNoFilterMatches)
     }
 
-    func testSelectLoadsScopeTextNotLayeredSummaryAndSkipsEmptySave() async throws {
+    func testSelectPreviewsLoadedScopeTextWithoutWriting() async throws {
         let argvURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: argvURL) }
@@ -115,13 +123,68 @@ final class GcalNoteSessionTests: XCTestCase {
         model.enterPicker()
         await waitUntil { model.phase == .listing }
         model.select(try listedEvent(model, id: "deerwood"))
-        await waitUntil { model.phase == .editing }
+        await waitUntil { model.phase == .editing && model.previewResponse != nil }
         XCTAssertEqual(
             model.editorText, "@family\n-30 Drive to Deerwood\n+15 Drive home")
         XCTAssertFalse(model.isEditorDirty)
         XCTAssertEqual(model.showResponse?.effective?.root?.value, "family")
-        let argv = try String(contentsOf: argvURL, encoding: .utf8)
-        XCTAssertFalse(argv.contains("\"--\""))
+        let calls = try recordedCalls(at: argvURL)
+        let previews = calls.filter { $0.contains("-d") || $0.contains("--dry-run") }
+        XCTAssertEqual(previews.count, 1)
+        XCTAssertEqual(previews[0].last, model.editorText)
+        XCTAssertEqual(calls.filter { $0.contains("--") }.count, 1)
+    }
+
+    func testRestoredCleanRecurringDraftPreviewsAndBlankScopeDoesNot() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let argvURL = directory.appendingPathComponent("argv")
+        let map = directory.appendingPathComponent("map.json")
+        try writeMap(
+            map,
+            [
+                "list": "gcal-note/list_all.json",
+                "show:gym-1:event": "gcal-note/both_scopes.json",
+                "show:gym-1:series": "gcal-note/series_scope.json",
+                "show": "gcal-note/both_scopes.json",
+            ])
+        let model = session([
+            "FAKE_BOB_GCAL_NOTE_ARGV_PATH": argvURL.path,
+            "FAKE_BOB_GCAL_NOTE_FIXTURE_MAP": map.path,
+        ])
+        model.enterPicker()
+        await waitUntil { model.phase == .listing }
+        let recurring = try listedEvent(model, id: "gym")
+        model.select(
+            identity: GcalNoteIdentity(calendarID: "primary", eventID: "gym-1"),
+            fallbackEvent: GcalNoteEventFixture.recurring(from: recurring)
+        )
+        await waitUntil { model.phase == .editing && model.previewResponse != nil }
+        let loadedText = model.editorText
+        XCTAssertFalse(loadedText.isEmpty)
+        XCTAssertFalse(model.isEditorDirty)
+
+        try FileManager.default.removeItem(at: argvURL)
+        model.setScope(.series)
+        await waitUntil { model.phase == .editing && model.scope == .series }
+        XCTAssertEqual(model.editorText, "")
+        let blankScopeCalls = try recordedCalls(at: argvURL)
+        XCTAssertFalse(blankScopeCalls.contains { $0.contains("-d") || $0.contains("--dry-run") })
+
+        model.setScope(.event)
+        await waitUntil {
+            model.phase == .editing
+                && model.scope == .event
+                && model.previewResponse != nil
+        }
+        XCTAssertEqual(model.editorText, loadedText)
+        XCTAssertFalse(model.isEditorDirty)
+        let previews = try recordedCalls(at: argvURL)
+            .filter { $0.contains("-d") || $0.contains("--dry-run") }
+        XCTAssertEqual(previews.count, 1)
+        XCTAssertEqual(previews[0].last, loadedText)
     }
 
     func testUserEditedBlankSchedulesPreviewAndSaveSendsText() async throws {
@@ -280,7 +343,8 @@ final class GcalNoteSessionTests: XCTestCase {
 
     func testInvalidPreviewPublishesEditingAtomically() async throws {
         let model = session([
-            "FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE": "gcal-note/invalid.json"
+            "FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE": "gcal-note/series_scope.json",
+            "FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE": "gcal-note/invalid.json",
         ])
         var sawPendingInvalid = false
         model.onChange = {

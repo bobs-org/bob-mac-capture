@@ -48,13 +48,22 @@ final class GcalNoteEditorDesignTests: XCTestCase {
             )
         }
 
-        let picker = GcalNotePanelModel(processClient: client())
+        let matchingPair = client([
+            "FAKE_BOB_GCAL_NOTE_SHOW_FIXTURE": "gcal-note/show_preview_match.json",
+            "FAKE_BOB_GCAL_NOTE_PREVIEW_FIXTURE": "gcal-note/preview_match.json",
+        ])
+        let picker = GcalNotePanelModel(processClient: matchingPair)
         picker.present()
         await waitUntil { picker.session?.phase == .listing }
         try render(picker, base: "picker")
 
         picker.openSelectedEvent()
-        await waitUntil { picker.session?.phase == .editing }
+        await waitUntil {
+            picker.session?.phase == .editing
+                && picker.session?.previewResponse?.input?.text
+                    == picker.session?.editorText
+        }
+        XCTAssertFalse(picker.session?.isEditorDirty ?? true)
         try render(picker, base: "editor")
 
         let invalid = GcalNotePanelModel(
@@ -110,13 +119,62 @@ final class GcalNoteEditorDesignTests: XCTestCase {
             .padding(12)
         for width in [720, 480] as [CGFloat] {
             for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
-                try RenderFixtureWriter.write(
+                try renderHosted(
                     view,
                     name: "event-note-\(base)-\(Int(width))",
                     width: width,
+                    height: 780,
                     appearance: appearance
                 )
             }
         }
+    }
+
+    private func renderHosted<V: View>(
+        _ view: V,
+        name: String,
+        width: CGFloat,
+        height: CGFloat,
+        appearance: NSAppearance.Name
+    ) throws {
+        guard
+            let renderDir = ProcessInfo.processInfo.environment[
+                "BOB_MAC_CAPTURE_RENDER_DIR"
+            ],
+            !renderDir.isEmpty
+        else {
+            throw XCTSkip("Set BOB_MAC_CAPTURE_RENDER_DIR to render event-note fixtures.")
+        }
+        _ = NSApplication.shared
+        let dark = appearance == .darkAqua
+        let host = NSHostingView(
+            rootView:
+                view
+                .frame(width: width, height: height, alignment: .topLeading)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .environment(\.colorScheme, dark ? .dark : .light)
+        )
+        host.appearance = NSAppearance(named: appearance)
+        host.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        let window = NSWindow(
+            contentRect: host.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.appearance = host.appearance
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.close() }
+        host.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let directory = URL(fileURLWithPath: renderDir, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try png.write(
+            to: directory.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
     }
 }

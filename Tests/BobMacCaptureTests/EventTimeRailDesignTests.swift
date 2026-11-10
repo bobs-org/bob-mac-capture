@@ -29,7 +29,7 @@ final class EventTimeRailDesignTests: XCTestCase {
         )
         let longBefore = String(repeating: "Drive to Deerwood via the long way ", count: 4)
         let longAfter = String(repeating: "Drive home past the lake ", count: 4)
-        let cases: [(String, GcalNoteEffective, String?, Double?)] = try [
+        let cases: [(String, GcalNoteEffective, String?, Double?)] = [
             ("both-wings", try effective(), "yes", nil),
             ("both-wings-active", try effective(), "yes", 585),
             (

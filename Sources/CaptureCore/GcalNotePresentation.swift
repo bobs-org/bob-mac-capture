@@ -203,12 +203,38 @@ public enum GcalNotePresentation {
         return parts.joined(separator: " · ")
     }
 
-    public static func statusBannerText(_ status: GcalNoteStatus?) -> String? {
+    public static func statusBannerText(
+        _ status: GcalNoteStatus?,
+        action: String? = nil
+    ) -> String? {
         guard let status else { return nil }
-        if let detail = nonBlank(status.detail) {
-            return "\(status.state) · \(detail)"
+        let actionLabel: String?
+        switch action?.lowercased() {
+        case "saved": actionLabel = "Saved"
+        case "cleared": actionLabel = "Cleared"
+        case "unchanged": actionLabel = "Unchanged"
+        default: actionLabel = nil
         }
-        return status.state
+        if let detail = nonBlank(status.detail) {
+            if let actionLabel,
+                detail.lowercased().hasPrefix(actionLabel.lowercased()),
+                detail.dropFirst(actionLabel.count).first.map({
+                    !$0.isLetter && !$0.isNumber
+                }) ?? true
+            {
+                return capitalizeFirst(detail)
+            }
+            if let actionLabel {
+                return "\(actionLabel) · \(detail)"
+            }
+            return detail
+        }
+        return actionLabel ?? status.state
+    }
+
+    private static func capitalizeFirst(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.uppercased() + text.dropFirst()
     }
 
     /// Lands-as copy. A null preview row is a waiting/status explanation,

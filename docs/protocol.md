@@ -279,11 +279,11 @@ If Bob rejects `-a` / `--attended` on `ref scan` as an unexpected argument (exit
 the app retries without that flag and remembers the answer for that executable, the
 same way it remembers the capture guard flags.
 
-Template saves send `--template-origin` only after a successful template-list request from that same executable; see [Saved templates](saved-templates.md).
+Template saves send `--template-origin` only after that executable’s template-list succeeds; see [Saved templates](saved-templates.md).
 
 ## Required commands
 
-These must exist; without them the feature they serve stays hidden or refuses with `bob`'s own error:
+Required commands must exist; otherwise their feature hides or Bob refuses:
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`; records add `record`)
 - `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates; records add `record` and `continuation`)
@@ -301,19 +301,18 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 
 Bob Refs ⌘S and the enabled Highlights-save trigger use this scan command.
 
-Every writing `bob ref scan` that acquired the scan writer lock writes that JSON
-envelope to `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else
-`~/.local/state`) and, on macOS, posts the Darwin notification
-`org.bobs.bob.ref.scan-finished`. Bob Refs observes that name with
-`notify_register_dispatch`, reads the receipt off the main thread (bounded at 4 MB),
-and ignores a duplicate content hash. Launch never reads a receipt.
+A locked writing `bob ref scan` stores its JSON at
+`<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else `~/.local/state`) and
+posts `org.bobs.bob.ref.scan-finished` on macOS. Bob Refs observes it via
+`notify_register_dispatch`, reads receipts off-main-thread (max 4 MB), and ignores
+duplicate hashes; launch never reads receipts.
 
 ## Optional commands
 
-These features stay hidden when the installed `bob` does not provide the command:
+Optional commands stay hidden when absent:
 
 - `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
-- `gcal note -l -a -f json`, show, preview, save, and clear (private [Event notes](event-notes.md), schema 1)
+- `gcal note` JSON: list/show/preview/save/clear; [Event notes](event-notes.md)
 
 ## Optional fields
 
@@ -419,7 +418,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `cancels_source`, `configured`, `relation_cancel`, span `cancels_source`, `relation_cancels[]`, `cancel_effect`, `relation_cancelled_source` | ⊘ cancels capsule, dimmed source, verdict slot, cancelled span tint, ⊘ preview rows, `Capture & cancel N task(s)` | No cue; ordinary relation labels and preview rows | Upgrade `bob` for cancel labels |
 | `completes_source`, `relation_complete`, span `completes_source`, `relation_completes[]` (with nested `task_complete`), `complete_effect`, `relation_completed_source` | ✓ completes capsule, dimmed source, verdict slot, complete span tint, ✓ preview rows with `!` detail rows, `Capture & complete N task(s)` / `Capture & close N tasks`, in-panel successor choice | No cue; ordinary relation labels and preview rows, no successor offers | Upgrade `bob` for complete labels |
 | Candidate/span `offers_source`, `relation_successor` in `capture-complete` | `link` / **offers** capsule and successor-label tint; show Bob's `message` verbatim, released `already_parked` / `already_closed` messages in amber, and muted `hint` | Missing flags are false; inverse hints may omit verdicts. Source never dims; the app never infers verdict from task status | Upgrade `bob` for successor-label authoring |
-| `gcal note` with `schema_version` 1 (list, show, preview, save, clear) | [Event notes](event-notes.md): picker, highlighted editor, hatched rail, save/clear/undo | Without the command the menu item hides and Command-E names the upgrade; missing reason fields omit the rail label; a schema mismatch refuses | Upgrade `bob` for event notes |
+| `gcal note` schema 1 | [Event notes](event-notes.md) | Missing command hides menu; Command-E explains upgrade; missing reasons omit rail labels; schema mismatch refuses | Upgrade `bob` |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
 | `wikilink_task_delimiter` / `wikilink_task_query` parse spans, `wikilink_task` / `wikilink_replacement` | Task Wikilink picker with link inserts | Older Bob emits no spans, so no completion; `((` stays plain text | Upgrade `bob` |
 | `project_task_move` need, `project_task_move_marker` / `project_task_move_link_marker` / `project_task_move_block_id` spans, `project_task_move` completion context, `picker` (`kind: project_task_move` with `destination`, `continuation`, `action_continuation_aliases`), `project_task_move` header, row `consequence` / `scheduled` / `hidden` | Move picker: `Move into <dest>` header, sections, Bob consequence footer, Shift-Return chaining, Add ID, calm Escape status, new span colours | Older Bob omits the need, so behaviour is unchanged; without aliases, `.` filters | Upgrade `bob` for move bullets |

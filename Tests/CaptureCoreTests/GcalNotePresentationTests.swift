@@ -147,6 +147,49 @@ final class GcalNotePresentationTests: XCTestCase {
         XCTAssertEqual(GcalNotePresentation.answerLabel("no_reply"), "Awaiting reply")
     }
 
+    func testWriteStatusBannersUseActionAndHumanDetail() throws {
+        let cases: [(String, String)] = [
+            ("saved.json", "Saved · lands in 2026/20261213.md when that day syncs"),
+            ("applied.json", "Saved · ↻ applied to 2026/20261030.md"),
+            ("cleared.json", "Cleared · lands in 2026/20261213.md when that day syncs"),
+            ("unchanged.json", "Unchanged · the canonical note is already saved"),
+            (
+                "saved_elsewhere.json",
+                "Saved · 2026/20261030.md updates on the next sync on the-mac"
+            ),
+            (
+                "saved_sync_failed.json",
+                "Saved · immediate sync failed: fake gog: second page failed · run `bob gcal sync`"
+            ),
+        ]
+
+        for (fixture, expected) in cases {
+            let write = try decode(fixture, as: GcalNoteWriteResponse.self)
+            XCTAssertEqual(
+                GcalNotePresentation.statusBannerText(write.status, action: write.action),
+                expected,
+                fixture
+            )
+        }
+    }
+
+    func testStatusBannerFallsBackToActionThenRawState() {
+        let blankDetail = GcalNoteStatus(state: "waiting_note", detail: "  ", path: nil)
+        let detail = GcalNoteStatus(state: "sync_failed", detail: "saved · later", path: nil)
+        XCTAssertEqual(
+            GcalNotePresentation.statusBannerText(blankDetail, action: "cleared"),
+            "Cleared"
+        )
+        XCTAssertEqual(
+            GcalNotePresentation.statusBannerText(blankDetail),
+            "waiting_note"
+        )
+        XCTAssertEqual(
+            GcalNotePresentation.statusBannerText(detail, action: "saved"),
+            "Saved · later"
+        )
+    }
+
     func testErrorsWithoutPreviewDoNotInventARow() throws {
         let invalid = try decode("invalid.json", as: GcalNoteWriteResponse.self)
         XCTAssertNil(invalid.preview)
