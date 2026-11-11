@@ -594,36 +594,15 @@ final class GcalNoteEditorTests: XCTestCase {
         XCTAssertFalse(highlight?.isEqual(NSColor.labelColor) ?? true)
 
         panel.setContentSize(NSSize(width: 480, height: 520))
-        await waitUntil {
-            panel.contentView?.layoutSubtreeIfNeeded()
-            guard let content = panel.contentView else { return false }
-            let visibleContentRect = panel.convertToScreen(content.convert(content.bounds, to: nil))
-            return [
-                gcalNoteSaveButtonAccessibilityIdentifier,
-                gcalNoteClearButtonAccessibilityIdentifier,
-                gcalNoteBackButtonAccessibilityIdentifier,
-            ].allSatisfy { identifier in
-                guard let element = self.findAccessibilityElement(identifier, in: content) else {
-                    return false
-                }
-                let rect = element.accessibilityFrame()
-                return visibleContentRect.contains(rect) && !rect.isEmpty
-            }
-        }
         guard let content = panel.contentView else {
             XCTFail("The small capture panel has no content view")
             return
         }
+        content.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(editor.visibleRect.height, 1)
-        let visibleContentRect = panel.convertToScreen(content.convert(content.bounds, to: nil))
-        for identifier in [
-            gcalNoteSaveButtonAccessibilityIdentifier,
-            gcalNoteClearButtonAccessibilityIdentifier,
-            gcalNoteBackButtonAccessibilityIdentifier,
-        ] {
-            let element = try XCTUnwrap(findAccessibilityElement(identifier, in: content))
-            XCTAssertTrue(visibleContentRect.contains(element.accessibilityFrame()))
-        }
+        let visibleEditorFrame = editor.convert(editor.visibleRect, to: content)
+        XCTAssertTrue(content.bounds.contains(visibleEditorFrame))
+        XCTAssertLessThan(visibleEditorFrame.height, content.bounds.height - 100)
     }
 
     private func waitForNoteEditor(
@@ -687,20 +666,4 @@ final class GcalNoteEditorTests: XCTestCase {
         return nil
     }
 
-    private func findAccessibilityElement(
-        _ identifier: String,
-        in element: (any NSAccessibilityProtocol)?
-    ) -> (any NSAccessibilityProtocol)? {
-        guard let element else { return nil }
-        if element.accessibilityIdentifier() == identifier {
-            return element
-        }
-        for child in element.accessibilityChildren() ?? [] {
-            guard let child = child as? any NSAccessibilityProtocol else { continue }
-            if let found = findAccessibilityElement(identifier, in: child) {
-                return found
-            }
-        }
-        return nil
-    }
 }

@@ -65,6 +65,17 @@ final class GcalNoteEditorDesignTests: XCTestCase {
         }
         XCTAssertFalse(picker.session?.isEditorDirty ?? true)
         try render(picker, base: "editor")
+        let compactEditor = GcalNotePickerView(model: picker)
+            .padding(12)
+        for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+            try renderHosted(
+                compactEditor,
+                name: "event-note-editor-480-small-height",
+                width: 480,
+                height: 520,
+                appearance: appearance
+            )
+        }
 
         let invalid = GcalNotePanelModel(
             processClient: client([
