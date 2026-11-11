@@ -61,6 +61,37 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertTrue(record.fields.contains(where: { $0.state == "set" }))
     }
 
+    func testParseRecordCarriesAlbumIdentity() throws {
+        let parse = try decodeParse("record-parse-complete.json")
+        let album = try XCTUnwrap(parse.record?.album)
+        XCTAssertEqual(album.stem, "eat")
+        XCTAssertEqual(album.title, "Restaurants")
+        XCTAssertEqual(album.owner, "body")
+        XCTAssertEqual(album.breadcrumb, ["body", "Restaurants"])
+        XCTAssertEqual(album.ownerTrail, ["body"])
+    }
+
+    func testBareAlbumRefusalCarriesOneKeyRewrite() throws {
+        let parse = try decodeParse("record-parse-bare-album.json")
+        XCTAssertNil(parse.record, "a bare album route plans no record")
+        let diagnostic = try XCTUnwrap(
+            parse.diagnostics.first(where: { $0.code == "album_holds_no_tasks" }))
+        XCTAssertEqual(diagnostic.severity, "error")
+        XCTAssertTrue(diagnostic.message.contains("@eat/"), diagnostic.message)
+        let rewrite = try XCTUnwrap(
+            CaptureBareAlbumRefusal.rewrite(in: parse))
+        XCTAssertEqual(rewrite.replacement, "@eat/")
+        XCTAssertEqual(rewrite.start, 6)
+        XCTAssertEqual(rewrite.end, 10)
+        XCTAssertFalse(rewrite.label.isEmpty)
+    }
+
+    func testBareAlbumRefusalIgnoresOtherDiagnostics() throws {
+        let parse = try decodeParse("record-parse-invalid.json")
+        XCTAssertNil(CaptureBareAlbumRefusal.rewrite(in: parse))
+        XCTAssertNil(CaptureBareAlbumRefusal.rewrite(in: nil))
+    }
+
     func testParseInvalidMarksField() throws {
         let parse = try decodeParse("record-parse-invalid.json")
         let record = try XCTUnwrap(parse.record)
@@ -298,6 +329,10 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(eat.recordType, "restaurant")
         XCTAssertEqual(eat.emoji, "🍽️")
         XCTAssertEqual(eat.count, 8)
+        XCTAssertEqual(eat.title, "Restaurants")
+        XCTAssertEqual(eat.summary, "Restaurants we have tried or want to try.")
+        XCTAssertEqual(eat.owner, "body")
+        XCTAssertEqual(eat.breadcrumb, ["body", "Restaurants"])
         let continuation = try XCTUnwrap(eat.recordContinuation)
         XCTAssertTrue(continuation.nextMissingField)
     }
@@ -322,6 +357,10 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(eat.recordType, "restaurant")
         XCTAssertEqual(eat.emoji, "🍽️")
         XCTAssertNotNil(eat.count)
+        XCTAssertEqual(eat.title, "Restaurants")
+        XCTAssertEqual(eat.summary, "Restaurants we have tried or want to try.")
+        XCTAssertEqual(eat.owner, "body")
+        XCTAssertEqual(eat.breadcrumb, ["body", "Restaurants"])
     }
 
     func testTargetsOldBobDecodesWithoutRecord() throws {

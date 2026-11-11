@@ -217,6 +217,52 @@ public struct CaptureRecordField: Codable, Equatable, Sendable {
     }
 }
 
+/// Album identity Bob attaches to album-backed record payloads
+/// (`capture-parse` record, per-item `record_note`, `note_files[]`).
+/// Present only for album kinds; config kinds and older Bob omit it.
+/// Every field decodes tolerantly so a partial payload never breaks
+/// an otherwise usable response.
+public struct CaptureAlbumIdentity: Codable, Equatable, Sendable {
+    public let stem: String
+    public let title: String
+    public let owner: String?
+    public let breadcrumb: [String]
+
+    public init(
+        stem: String = "",
+        title: String = "",
+        owner: String? = nil,
+        breadcrumb: [String] = []
+    ) {
+        self.stem = stem
+        self.title = title
+        self.owner = owner
+        self.breadcrumb = breadcrumb
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stem = (try? container.decodeIfPresent(String.self, forKey: .stem)) ?? ""
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        owner = (try? container.decodeIfPresent(String.self, forKey: .owner)) ?? nil
+        breadcrumb =
+            (try? container.decodeIfPresent([String].self, forKey: .breadcrumb)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case stem
+        case title
+        case owner
+        case breadcrumb
+    }
+
+    /// Owner chain above the album, mirroring the notebook row's parents:
+    /// the breadcrumb without its album-title tail.
+    public var ownerTrail: [String] {
+        breadcrumb.dropLast().filter { !$0.isEmpty }
+    }
+}
+
 /// Record creation metadata from `capture-parse` (top-level and per-item).
 public struct CaptureRecord: Codable, Equatable, Sendable {
     public let action: String
@@ -232,6 +278,9 @@ public struct CaptureRecord: Codable, Equatable, Sendable {
     public let notes: Int
     public let fields: [CaptureRecordField]
     public let assistVersion: Int?
+    /// Album identity for album-backed kinds. Config kinds and older
+    /// Bob omit it; missing decodes as nil.
+    public let album: CaptureAlbumIdentity?
 
     public init(
         action: String = "",
@@ -246,7 +295,8 @@ public struct CaptureRecord: Codable, Equatable, Sendable {
         missing: [String] = [],
         notes: Int = 0,
         fields: [CaptureRecordField] = [],
-        assistVersion: Int? = nil
+        assistVersion: Int? = nil,
+        album: CaptureAlbumIdentity? = nil
     ) {
         self.action = action
         self.recordType = recordType
@@ -261,6 +311,7 @@ public struct CaptureRecord: Codable, Equatable, Sendable {
         self.notes = notes
         self.fields = fields
         self.assistVersion = assistVersion
+        self.album = album
     }
 
     public init(from decoder: Decoder) throws {
@@ -279,6 +330,7 @@ public struct CaptureRecord: Codable, Equatable, Sendable {
         fields =
             (try? container.decodeIfPresent([CaptureRecordField].self, forKey: .fields)) ?? []
         assistVersion = (try? container.decodeIfPresent(Int.self, forKey: .assistVersion)) ?? nil
+        album = (try? container.decodeIfPresent(CaptureAlbumIdentity.self, forKey: .album)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -295,6 +347,7 @@ public struct CaptureRecord: Codable, Equatable, Sendable {
         case notes
         case fields
         case assistVersion = "assist_version"
+        case album
     }
 }
 
@@ -970,6 +1023,33 @@ public enum CaptureRecordRouteCache {
             cursor: replacementStart + insertion.utf8.count,
             nextMissingField: true
         )
+    }
+}
+
+// MARK: - Bare-album refusal rewrite
+
+/// The `album_holds_no_tasks` refusal's one-key `@<stem>/` rewrite.
+/// Bob authors the diagnostic (and its rewrite) on a bare album task
+/// home such as `Blaze @eat`; the footer offers the rewrite as a
+/// button, mirroring the merge-in refusal card's one-button-per-rewrite
+/// shape. Nil unless the current parse carries that exact error with
+/// a nonempty replacement, so unrelated diagnostics and older Bob
+/// keep the plain status text.
+public enum CaptureBareAlbumRefusal {
+    public static let code = "album_holds_no_tasks"
+
+    public static func rewrite(
+        in parse: CaptureParseResponse?
+    ) -> CaptureDiagnosticRewrite? {
+        guard
+            let rewrite = parse?.diagnostics.first(where: {
+                $0.code == code && $0.severity == "error"
+            })?.rewrite,
+            !rewrite.replacement.isEmpty
+        else {
+            return nil
+        }
+        return rewrite
     }
 }
 

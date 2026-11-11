@@ -65,6 +65,29 @@ struct RecordNotePreviewView: View {
         return parts.joined(separator: ". ")
     }
 
+    /// Album destination ("Restaurants · Body") when Bob named the
+    /// album, else the file path. The path stays in the accessibility
+    /// label either way so nothing precise is lost.
+    private var locationCaption: String {
+        if let summary,
+            let destination = CaptureRecordPreviewPresentation.albumDestination(
+                for: summary)
+        {
+            return destination
+        }
+        return file.path
+    }
+
+    private var locationAccessibilityLabel: String {
+        if let summary,
+            let destination = CaptureRecordPreviewPresentation.albumDestination(
+                for: summary)
+        {
+            return "\(destination). Path \(file.path)"
+        }
+        return "Path \(file.path)"
+    }
+
     private var headingRow: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
@@ -79,12 +102,12 @@ struct RecordNotePreviewView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(heading)
-            Text(file.path)
+            Text(locationCaption)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .accessibilityLabel("Path \(file.path)")
+                .accessibilityLabel(locationAccessibilityLabel)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

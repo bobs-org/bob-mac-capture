@@ -1392,6 +1392,21 @@ private struct CapturePanelFooter: View {
                     guard let announcement = model.mergeInAnnouncement else { return }
                     AccessibilityNotification.Announcement(announcement).post()
                 }
+            if let rewrite = CaptureBareAlbumRefusal.rewrite(in: model.latestParse) {
+                Button(rewrite.replacement) {
+                    _ = model.applyDiagnosticRewrite(rewrite)
+                }
+                .help(
+                    rewrite.label.isEmpty
+                        ? "Apply Bob's suggested fix" : rewrite.label
+                )
+                .disabled(model.isSubmitting || model.inlinePromptVisible)
+                .accessibilityLabel(
+                    rewrite.label.isEmpty
+                        ? "Apply suggested fix \(rewrite.replacement)"
+                        : rewrite.label
+                )
+            }
             Spacer(minLength: 12)
             ViewThatFits(in: .horizontal) {
                 actionRow(includeOpenChip: true)

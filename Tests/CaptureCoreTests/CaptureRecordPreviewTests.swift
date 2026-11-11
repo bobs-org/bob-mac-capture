@@ -88,7 +88,7 @@ final class CaptureRecordPreviewTests: XCTestCase {
         let summary = try XCTUnwrap(success.recordNote)
         XCTAssertEqual(
             CaptureRecordPreviewPresentation.headline(for: summary),
-            "🍽️ new restaurant  eat/cafe_møø_ramen.md")
+            "🍽️ new restaurant  Restaurants · body")
         let detail = CaptureRecordPreviewPresentation.detail(for: summary)
         XCTAssertTrue(detail.contains("Liked"), detail)
         XCTAssertTrue(detail.contains("Ramen"), detail)
@@ -104,9 +104,54 @@ final class CaptureRecordPreviewTests: XCTestCase {
         XCTAssertEqual(summary.notes, 0)
         XCTAssertEqual(
             CaptureRecordPreviewPresentation.headline(for: summary),
-            "🎙️ new podcast  podcasts/talk_python.md")
+            "🎙️ new podcast  Podcasts · dev")
         XCTAssertTrue(
             CaptureRecordPreviewPresentation.detail(for: summary).contains("no notes"))
+    }
+
+    func testAlbumDestinationUsesOwnerTrail() throws {
+        let success = try decodeSuccess("record-capture-restaurant-commit.json")
+        let summary = try XCTUnwrap(success.recordNote)
+        XCTAssertEqual(
+            CaptureRecordPreviewPresentation.albumDestination(for: summary),
+            "Restaurants · body")
+        let file = try XCTUnwrap(success.noteFiles.first)
+        XCTAssertEqual(file.album, summary.album)
+    }
+
+    func testHeadlineWithoutAlbumKeepsPath() throws {
+        let summary = CaptureRecordNoteSummary(
+            action: "create",
+            label: "Restaurant",
+            emoji: "🍽️",
+            path: "eat/ramen_nagi.md",
+            notes: 1)
+        XCTAssertNil(CaptureRecordPreviewPresentation.albumDestination(for: summary))
+        XCTAssertEqual(
+            CaptureRecordPreviewPresentation.headline(for: summary),
+            "🍽️ new restaurant  eat/ramen_nagi.md")
+    }
+
+    func testAlbumIndexChangeAddsNoCard() throws {
+        let success = try decodeSuccess("record-capture-restaurant-commit.json")
+        let items = success.normalizedCaptures
+        let albumIndex = CaptureNoteFile(
+            path: "eat.md",
+            action: "update",
+            recordType: "",
+            album: CaptureAlbumIdentity(
+                stem: "eat",
+                title: "Restaurants",
+                owner: "body",
+                breadcrumb: ["body", "Restaurants"]),
+            markdown: "> [!records] 1 restaurant\n")
+        let files = success.noteFiles + [albumIndex]
+        let pairs = CaptureRecordPreviewPresentation.pair(files: files, items: items)
+        XCTAssertEqual(pairs.count, 1)
+        XCTAssertEqual(pairs.first?.file.path, "eat/cafe_møø_ramen.md")
+        let map = CaptureRecordPreviewPresentation.pairIndexed(files: files, items: items)
+        XCTAssertEqual(map.count, 1)
+        XCTAssertNil(map.values.first(where: { $0.path == "eat.md" }))
     }
 
     func testTwoRecordsPairInOrder() throws {
@@ -352,7 +397,7 @@ final class CaptureRecordPreviewTests: XCTestCase {
             CaptureRecordPreviewPresentation.notificationBody(for: summary),
             CaptureRecordPreviewPresentation.detail(for: summary))
         let line = CaptureRecordPreviewPresentation.recordBatchLine(for: summary)
-        XCTAssertTrue(line.contains("eat/cafe_møø_ramen.md"), line)
+        XCTAssertTrue(line.contains("Restaurants · body"), line)
         XCTAssertTrue(line.contains("2 notes"), line)
     }
 

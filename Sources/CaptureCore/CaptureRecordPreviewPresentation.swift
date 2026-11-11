@@ -128,6 +128,9 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
     public let path: String
     public let action: String
     public let recordType: String
+    /// Album identity for album-backed records. Older Bob omits it;
+    /// missing decodes as nil so legacy rows keep pairing by path.
+    public let album: CaptureAlbumIdentity?
     public let properties: [CaptureNoteFileProperty]
     public let body: String
     public let markdown: String
@@ -138,6 +141,7 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         path: String = "",
         action: String = "",
         recordType: String = "",
+        album: CaptureAlbumIdentity? = nil,
         properties: [CaptureNoteFileProperty] = [],
         body: String = "",
         markdown: String = "",
@@ -146,6 +150,7 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         self.path = path
         self.action = action
         self.recordType = recordType
+        self.album = album
         self.properties = properties
         self.body = body
         self.markdown = markdown
@@ -158,6 +163,8 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? ""
         recordType =
             (try? container.decodeIfPresent(String.self, forKey: .recordType)) ?? ""
+        album =
+            (try? container.decodeIfPresent(CaptureAlbumIdentity.self, forKey: .album)) ?? nil
         properties =
             (try? container.decode(
                 CaptureLossyArray<CaptureNoteFileProperty>.self,
@@ -181,6 +188,7 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         case path
         case action
         case recordType = "record_type"
+        case album
         case properties
         case body
         case markdown
@@ -217,6 +225,9 @@ public struct CaptureRecordNoteSummary: Codable, Equatable, Sendable {
     public let emoji: String?
     public let path: String
     public let notes: Int
+    /// Album identity for album-backed records. Older Bob omits it;
+    /// missing decodes as nil so headlines keep the path fallback.
+    public let album: CaptureAlbumIdentity?
     public let properties: [CaptureNoteFileProperty]
 
     public init(
@@ -225,6 +236,7 @@ public struct CaptureRecordNoteSummary: Codable, Equatable, Sendable {
         emoji: String? = nil,
         path: String = "",
         notes: Int = 0,
+        album: CaptureAlbumIdentity? = nil,
         properties: [CaptureNoteFileProperty] = []
     ) {
         self.action = action
@@ -232,6 +244,7 @@ public struct CaptureRecordNoteSummary: Codable, Equatable, Sendable {
         self.emoji = emoji
         self.path = path
         self.notes = notes
+        self.album = album
         self.properties = properties
     }
 
@@ -242,6 +255,8 @@ public struct CaptureRecordNoteSummary: Codable, Equatable, Sendable {
         emoji = (try? container.decodeIfPresent(String.self, forKey: .emoji)) ?? nil
         path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
         notes = (try? container.decodeIfPresent(Int.self, forKey: .notes)) ?? 0
+        album =
+            (try? container.decodeIfPresent(CaptureAlbumIdentity.self, forKey: .album)) ?? nil
         properties =
             (try? container.decode(
                 CaptureLossyArray<CaptureNoteFileProperty>.self,
@@ -255,6 +270,7 @@ public struct CaptureRecordNoteSummary: Codable, Equatable, Sendable {
         case emoji
         case path
         case notes
+        case album
         case properties
     }
 }
@@ -355,16 +371,32 @@ public struct CaptureRecordRefusalPresentation: Equatable, Sendable {
 /// from Bob's per-item `record_note` object. Panel status, accessibility,
 /// and notifications share this so the copy stays identical.
 public enum CaptureRecordPreviewPresentation {
-    /// Headline such as "🍽️ new restaurant  eat/ramen_nagi.md".
-    /// Built from Bob's emoji/label/path, never the cleared editor.
+    /// Album destination such as "Restaurants · Body", from the item's
+    /// album identity. Nil for config kinds and older Bob, which keep
+    /// the path destination.
+    public static func albumDestination(for summary: CaptureRecordNoteSummary) -> String? {
+        guard let album = summary.album, !album.title.isEmpty else {
+            return nil
+        }
+        let trail = album.ownerTrail
+        if trail.isEmpty {
+            return album.title
+        }
+        return "\(album.title) · \(trail.joined(separator: " › "))"
+    }
+
+    /// Headline such as "🍽️ new restaurant  Restaurants · Body" for
+    /// album-backed records, else "🍽️ new restaurant  eat/ramen_nagi.md".
+    /// Built from Bob's emoji/label/album-or-path, never the cleared editor.
     public static func headline(for summary: CaptureRecordNoteSummary) -> String {
         let kind = summary.label.lowercased()
         let verb = summary.action == "update" ? "updated" : "new"
         let name = kind.isEmpty ? verb : "\(verb) \(kind)"
+        let destination = albumDestination(for: summary) ?? summary.path
         if let emoji = summary.emoji, !emoji.isEmpty {
-            return "\(emoji) \(name)  \(summary.path)"
+            return "\(emoji) \(name)  \(destination)"
         }
-        return "\(name)  \(summary.path)"
+        return "\(name)  \(destination)"
     }
 
     /// Detail from Bob's ordered nonempty property displays plus the note
