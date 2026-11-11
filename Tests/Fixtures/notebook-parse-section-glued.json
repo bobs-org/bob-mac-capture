@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":26,"input":"More @dev_nvim#","body":"More","mode":"incomplete","route":"dev_nvim","section":null,"block_id":null,"needs":["section"],"spans":[{"start":5,"end":14,"kind":"route","notebook":true,"title":"Neovim","key":"dev"},{"start":14,"end":15,"kind":"interactive_placeholder"}],"diagnostics":[]}

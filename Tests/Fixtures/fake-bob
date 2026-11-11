@@ -179,6 +179,38 @@ template_arity_draft=$'Record {0} @work:{1} %t\n\nAcme abc extra'
 inbox_route_preview_draft='@mac_inbox:route-task'
 inbox_route_two_draft=$'@mac_inbox:route-task\n\n@gkeep_inbox:gkeep-task'
 
+notebook_parse_fixture() {
+  case "$1" in
+    "More @dev_nvim#") echo notebook-parse-section-glued.json ;;
+    "@dev_empty#") echo notebook-parse-section-glued-empty.json ;;
+    $'@dev_nvim\n- #') echo notebook-parse-section-bullet-empty.json ;;
+    $'@dev_empty\n- #') echo notebook-parse-section-empty.json ;;
+    $'@dev_nvim\n- #Setup') echo notebook-parse-section-bullet-existing.json ;;
+    $'@dev_nvim\n- #wireguard') echo notebook-parse-section-bullet-clean-create.json ;;
+    $'@dev_nvim\n- #Setp') echo notebook-parse-section-bullet-near-miss.json ;;
+    $'@dev_nvim\n- #wireguard\n  - Set up tunnel\n- #Wir') echo notebook-parse-section-bullet-draft.json ;;
+    $'@dev_dup\n- #git') echo notebook-parse-section-bullet-refused.json ;;
+    $'Nvim notes @dev^nvim@ %n\n- KEYMAPS\n  - x\n- #key') echo notebook-parse-section-bullet-staged-create.json ;;
+    *) return 1 ;;
+  esac
+}
+
+notebook_complete_fixture() {
+  case "$1" in
+    "More @dev_nvim#") echo notebook-complete-section-glued.json ;;
+    "@dev_empty#") echo notebook-complete-section-glued-empty.json ;;
+    $'@dev_nvim\n- #') echo notebook-complete-section-bullet-empty.json ;;
+    $'@dev_empty\n- #') echo notebook-complete-section-empty.json ;;
+    $'@dev_nvim\n- #Setup') echo notebook-complete-section-bullet-existing.json ;;
+    $'@dev_nvim\n- #wireguard') echo notebook-complete-section-bullet-clean-create.json ;;
+    $'@dev_nvim\n- #Setp') echo notebook-complete-section-bullet-near-miss.json ;;
+    $'@dev_nvim\n- #wireguard\n  - Set up tunnel\n- #Wir') echo notebook-complete-section-bullet-draft.json ;;
+    $'@dev_dup\n- #git') echo notebook-complete-section-bullet-refused.json ;;
+    $'Nvim notes @dev^nvim@ %n\n- KEYMAPS\n  - x\n- #key') echo notebook-complete-section-bullet-staged-create.json ;;
+    *) return 1 ;;
+  esac
+}
+
 case "${command}" in
   gcal)
     gcal_subcommand="${1:-}"
@@ -381,6 +413,13 @@ PY
     ;;
   capture-parse)
     draft="${*: -1}"
+    if [[ "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
+      notebook_fixture="$(notebook_parse_fixture "$draft" || true)"
+      if [[ -n "$notebook_fixture" ]]; then
+        cat "${fixtures_dir}/${notebook_fixture}" | inject_parse_grammar
+        exit 0
+      fi
+    fi
     if [[ -n "${FAKE_BOB_PARSE_EXIT:-}" ]]; then
       printf 'fake capture-parse failure\n' >&2
       exit "$FAKE_BOB_PARSE_EXIT"
@@ -2254,6 +2293,8 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-slash-alias-task-type.json"
     elif [[ "${draft}" == 'jot idea @foo/' ]]; then
       cat "${fixtures_dir}/capture-rewrite-slash-alias-section.json"
+    elif [[ "${draft}" == 'More @dev_nvim/' && "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-slash-alias-notebook-section.json"
     elif [[ "${draft}" == 'Postgres 17 minimum @foo+bar/' ]]; then
       cat "${fixtures_dir}/capture-rewrite-slash-alias-drawer.json"
     elif [[ "${draft}" == '=/' ]]; then
@@ -2624,6 +2665,13 @@ JSON
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
       exit 0
+    fi
+    if [[ "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
+      notebook_fixture="$(notebook_complete_fixture "$draft" || true)"
+      if [[ -n "$notebook_fixture" ]]; then
+        cat "${fixtures_dir}/${notebook_fixture}"
+        exit 0
+      fi
     fi
     if [[ "${draft}" == "Fix it ~" && -n "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_SECONDS:-}" ]]; then
       if [[ -n "${FAKE_BOB_RELATION_EQUALS_COMPLETE_DELAY_MARKER:-}" ]]; then

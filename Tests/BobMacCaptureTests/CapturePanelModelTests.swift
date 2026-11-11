@@ -7480,6 +7480,92 @@ final class CapturePanelModelTests: XCTestCase {
         }
     }
 
+    func testNotebookNewSectionUsesDottedPurpleUnderlineAndRepaintClearsIt() throws {
+        let draft = "@dev_nvim#New Section"
+        let span = CaptureSpan(
+            start: "@dev_nvim#".utf8.count,
+            end: draft.utf8.count,
+            kind: "section",
+            notebook: true,
+            sectionAction: "create",
+            title: "New Section"
+        )
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 26,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [span]
+        )
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+        var attributed = AttributedString(draft)
+
+        XCTAssertFalse(CapturePanelModel.paintHighlighting(
+            &attributed,
+            parse: parse,
+            draft: draft,
+            ranges: ranges
+        ))
+        let dotted = NSUnderlineStyle([.single, .patternDot])
+        XCTAssertEqual(Self.underlinedStrings(in: attributed, style: dotted), ["New Section"])
+
+        let existingSpan = CaptureSpan(
+            start: span.start,
+            end: span.end,
+            kind: "section",
+            notebook: true,
+            sectionAction: "existing",
+            title: "New Section"
+        )
+        let existing = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 26,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [existingSpan]
+        )
+        let existingRanges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [existingSpan]))
+        XCTAssertFalse(CapturePanelModel.paintHighlighting(
+            &attributed,
+            parse: existing,
+            draft: draft,
+            ranges: existingRanges
+        ))
+        XCTAssertTrue(Self.underlinedStrings(in: attributed, style: dotted).isEmpty)
+
+        let generic = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 26,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [CaptureSpan(start: span.start, end: span.end, kind: "section", title: "New Section")]
+        )
+        let genericRanges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: generic.spans))
+        _ = CapturePanelModel.paintHighlighting(
+            &attributed,
+            parse: generic,
+            draft: draft,
+            ranges: genericRanges
+        )
+        XCTAssertTrue(Self.underlinedStrings(in: attributed, style: dotted).isEmpty)
+    }
+
+    private static func underlinedStrings(
+        in text: AttributedString,
+        style: NSUnderlineStyle
+    ) -> [String] {
+        text.runs.compactMap { run -> String? in
+            guard run.attributes.underlineStyle == style else { return nil }
+            return String(text[run.range].characters)
+        }
+    }
+
     func testRecentThemeCtrlDHidesAndUndoesThroughBob() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

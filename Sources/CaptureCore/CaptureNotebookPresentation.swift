@@ -57,6 +57,16 @@ public struct CaptureNotebookSummary: Codable, Equatable, Sendable {
 /// Shared, portable copy and file pairing for notebook previews, success
 /// status, batch summaries, notifications, and accessibility.
 public enum CaptureNotebookPresentation {
+    public struct NoteRun: Equatable, Sendable, Identifiable {
+        public let route: String
+        public let title: String
+        /// Original indexes in the capture result array.
+        public let itemIndexes: [Int]
+
+        public var id: String { "\(route)-\(itemIndexes.first ?? -1)" }
+        public var headline: String { "📓 \(itemIndexes.count) notes → \(title)" }
+    }
+
     public static func isNotebook(_ item: CaptureCommandSuccess) -> Bool {
         isNotebookKind(item.kind)
     }
@@ -119,6 +129,81 @@ public enum CaptureNotebookPresentation {
             return nil
         }
         return "New section · \(section)"
+    }
+
+    public static func destinationLine(for item: CaptureCommandSuccess) -> String {
+        guard item.kind == "notebook_note",
+              let section = nonempty(item.notebook?.section)
+        else {
+            return "· top"
+        }
+        return "› \(section)"
+    }
+
+    public static func groupedNewSectionLabel(for item: CaptureCommandSuccess) -> String? {
+        guard item.kind == "notebook_note", item.notebook?.sectionAction == "create" else {
+            return nil
+        }
+        return "New section"
+    }
+
+    public static func editorSectionHelp(
+        parse: CaptureParseResponse,
+        cursorUTF8: Int
+    ) -> String? {
+        guard let span = parse.spans.first(where: {
+            $0.kind == "section" && $0.notebook == true
+                && cursorUTF8 >= $0.start && cursorUTF8 <= $0.end
+        }),
+        let title = nonempty(span.title)
+        else {
+            return nil
+        }
+        return span.sectionAction == "create"
+            ? "\(title), new section"
+            : "\(title), existing section"
+    }
+
+    /// Consecutive notes to one notebook form a run. Missing metadata,
+    /// route changes, notebook-creation items, sub-notes, and ordinary captures split runs.
+    /// Single notes stay on the established per-item preview surface.
+    public static func groupedNoteRuns(items: [CaptureCommandSuccess]) -> [NoteRun] {
+        var runs: [NoteRun] = []
+        var currentRoute: String?
+        var currentTitle = ""
+        var currentIndexes: [Int] = []
+
+        func finishRun() {
+            if currentIndexes.count > 1, let route = currentRoute {
+                runs.append(NoteRun(
+                    route: route,
+                    title: currentTitle,
+                    itemIndexes: currentIndexes
+                ))
+            }
+            currentRoute = nil
+            currentTitle = ""
+            currentIndexes = []
+        }
+
+        for (index, item) in items.enumerated() {
+            guard item.kind == "notebook_note",
+                  let route = nonempty(item.notebook?.route)
+            else {
+                finishRun()
+                continue
+            }
+            if currentRoute == route {
+                currentIndexes.append(index)
+            } else {
+                finishRun()
+                currentRoute = route
+                currentTitle = nonempty(item.notebook?.title) ?? route
+                currentIndexes = [index]
+            }
+        }
+        finishRun()
+        return runs
     }
 
     /// Bob supplies breadcrumb from owner through the new notebook title.

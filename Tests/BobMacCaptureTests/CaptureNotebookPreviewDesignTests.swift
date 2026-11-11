@@ -68,4 +68,23 @@ final class CaptureNotebookPreviewDesignTests: XCTestCase {
             "📓 Note → Neovim › ^existing-guide"
         )
     }
+
+    func testGroupedNotebookNotesShowOrderedDestinationsAndNewSectionBadge() throws {
+        guard #available(macOS 26.0, *) else {
+            throw XCTSkip("Notebook preview requires macOS 26.")
+        }
+        let success = try successFixture("notebook-capture-grouped-notes.json")
+        let items = success.normalizedCaptures
+        let run = try XCTUnwrap(CaptureNotebookPresentation.groupedNoteRuns(items: items).first)
+        let preview = CaptureNotebookGroupedNotesPreviewView(run: run, items: items)
+            .padding(18)
+
+        for (name, width) in [
+            ("capture-notebook-grouped-wide", CGFloat(760)),
+            ("capture-notebook-grouped-minimum", CGFloat(CapturePanelLayout.panelMinimumContentWidth)),
+        ] {
+            try RenderFixtureWriter.write(preview, name: name, width: width, appearance: .aqua)
+            try RenderFixtureWriter.write(preview, name: name, width: width, appearance: .darkAqua)
+        }
+    }
 }

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"More @dev_nvim/","text":"More @dev_nvim#","changed":true,"cursor":15,"rule":"expand_sigil_alias","edits":[{"range":{"start":14,"end":15},"replacement":"#"}],"summary":"Typed # for /","alias":{"id":"hash_menu","key":"/","sigil":"#"}}

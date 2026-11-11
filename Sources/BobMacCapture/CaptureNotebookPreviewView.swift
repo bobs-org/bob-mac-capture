@@ -130,3 +130,80 @@ struct CaptureNotebookPreviewView: View {
         return parts.joined(separator: ". ")
     }
 }
+
+@available(macOS 26.0, *)
+struct CaptureNotebookGroupedNotesPreviewView: View {
+    let run: CaptureNotebookPresentation.NoteRun
+    let items: [CaptureCommandSuccess]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(run.headline)
+                .font(.callout.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            ForEach(run.itemIndexes, id: \.self) { index in
+                if items.indices.contains(index) {
+                    noteRow(items[index])
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(run.headline)
+    }
+
+    private func noteRow(_ item: CaptureCommandSuccess) -> some View {
+        let destination = CaptureNotebookPresentation.destinationLine(for: item)
+        let content = CaptureNotebookPresentation.contentText(for: item)
+        let blockID = item.notebook?.blockID
+        let badge = CaptureNotebookPresentation.groupedNewSectionLabel(for: item)
+        var spoken = [destination]
+        if let blockID, !blockID.isEmpty { spoken.append("^\(blockID)") }
+        if let badge { spoken.append(badge) }
+        if !content.isEmpty { spoken.append(content) }
+        spoken.append(contentsOf: item.subBullets)
+
+        return HStack(alignment: .top, spacing: 10) {
+            Text(destination)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 74, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if let badge {
+                        Text(badge)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    if let blockID, !blockID.isEmpty {
+                        Text("^\(blockID)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !content.isEmpty {
+                    Text(content)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                if !item.subBullets.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(item.subBullets.enumerated()), id: \.offset) { _, child in
+                            Text(child)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(spoken.joined(separator: ". "))
+    }
+}

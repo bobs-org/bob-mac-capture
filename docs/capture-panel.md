@@ -160,7 +160,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   name, summary, and detail in Bob's wording, with one teal tint family
   on every `%` span. A bare `#` opens the Task type menu the same way,
   with nothing selected until a key highlights a row, and `@route+id#` opens the
-  [Drawer menu](#drawer-menu) unselected too.
+  [place menus](#drawer-menu) unselected too. Bob supplies notebook section titles,
+  captions, groups, empty hints, result labels, and footer copy through the additive
+  `place_menu` object. First-level notebook section bullets use the
+  `notebook_section_bullet` completion context; ordinary bullets under a note remain
+  plain note content.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
@@ -441,7 +445,33 @@ without a block ID becomes selectable. The app does not duplicate those grammar 
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and
 submits the original draft text.
 
-## Drawer menu
+## Place menus {#drawer-menu}
+
+Bob-authored `place_menu` chrome selects the title, destination caption, group headers,
+create-row prefix, empty-state hint, result count wording, and footer hint. The app keeps
+Bob's candidate order, detail, refusal, consequence, replacement, and cursor offset. A
+newer `place_menu` kind or group remains visible as a string instead of hiding its rows.
+When an older Bob omits `place_menu`, the drawer menu keeps its legacy presentation.
+
+### Notebook sections
+
+A glued notebook `@route#` keeps Bob's `section` context plus `place_menu`
+chrome. A first-level `@route` bullet opens `notebook_section_bullet`:
+
+```text
+@dev_nvim
+- #Setup
+```
+
+Bob's `notebook` / `draft` / `new` groups, continuation (`\n  - `),
+`cursor_after`, `detail`, `refused`, and `consequence` are painted as
+returned. The first enabled existing row, or a lone clean create row, is
+selected; `initial_selection: "none"` leaves a near-miss or refused row
+unselected. A nonempty `empty_hint` keeps an empty menu visible until
+Escape. A new notebook `section` span (`section_action: "create"`) gets a
+dotted purple underline; existing sections do not.
+
+### Task drawers
 
 A glued `#` after a resolved `@route+block-id`, once the item has body text, names a
 **drawer**: a direct child bullet of the task whose whole text is an ALL-CAPS title

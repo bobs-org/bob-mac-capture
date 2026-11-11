@@ -1278,6 +1278,11 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// unknown token (`%x`) does not either. A value this client does not know still
     /// decodes. Other span kinds and an older Bob omit it.
     public let directive: String?
+    /// Additive notebook marker on section spans. Older Bob omits it.
+    public let notebook: Bool?
+    /// Whether Bob resolved a notebook section as existing or to be created.
+    /// Unknown strings are preserved for forward compatibility.
+    public let sectionAction: String?
     /// History count for `%c<N>` when N is at least 2, on a `directive` span. Bob omits it
     /// for `%c`, `%c1`, and every other span.
     public let count: Int?
@@ -1305,6 +1310,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         offersSource: Bool = false,
         projectNote: String? = nil,
         directive: String? = nil,
+        notebook: Bool? = nil,
+        sectionAction: String? = nil,
         count: Int? = nil,
         key: String? = nil,
         title: String? = nil,
@@ -1320,6 +1327,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.offersSource = offersSource
         self.projectNote = projectNote
         self.directive = directive
+        self.notebook = notebook
+        self.sectionAction = sectionAction
         self.count = count
         self.key = key
         self.title = title
@@ -1342,6 +1351,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         offersSource = (try? container.decodeIfPresent(Bool.self, forKey: .offersSource)) ?? false
         projectNote = (try? container.decodeIfPresent(String.self, forKey: .projectNote)) ?? nil
         directive = (try? container.decodeIfPresent(String.self, forKey: .directive)) ?? nil
+        notebook = (try? container.decodeIfPresent(Bool.self, forKey: .notebook)) ?? nil
+        sectionAction = (try? container.decodeIfPresent(String.self, forKey: .sectionAction)) ?? nil
         count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
         key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? nil
         title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? nil
@@ -1360,6 +1371,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case offersSource = "offers_source"
         case projectNote = "project_note"
         case directive
+        case notebook
+        case sectionAction = "section_action"
         case count
         case key
         case title
@@ -9050,6 +9063,87 @@ public struct CaptureCompletionRelation: Codable, Equatable {
     }
 }
 
+/// One Bob-authored group heading in a completion place menu. Unknown group
+/// identifiers and titles remain strings so newer Bob responses still render.
+public struct CapturePlaceMenuGroup: Codable, Equatable, Sendable {
+    public let id: String
+    public let title: String
+
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+    }
+}
+
+/// Additive, Bob-authored copy for a drawer or notebook place menu.
+public struct CapturePlaceMenu: Codable, Equatable, Sendable {
+    public let kind: String
+    public let title: String
+    public let caption: String
+    public let groups: [CapturePlaceMenuGroup]
+    public let newRowPrefix: String
+    public let emptyHint: String?
+    public let resultsLabel: String
+    public let footerHint: String
+
+    public init(
+        kind: String = "",
+        title: String = "",
+        caption: String = "",
+        groups: [CapturePlaceMenuGroup] = [],
+        newRowPrefix: String = "",
+        emptyHint: String? = nil,
+        resultsLabel: String = "results",
+        footerHint: String = ""
+    ) {
+        self.kind = kind
+        self.title = title
+        self.caption = caption
+        self.groups = groups
+        self.newRowPrefix = newRowPrefix
+        self.emptyHint = emptyHint
+        self.resultsLabel = resultsLabel
+        self.footerHint = footerHint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = (try? container.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        caption = (try? container.decodeIfPresent(String.self, forKey: .caption)) ?? ""
+        groups =
+            (try? container.decodeIfPresent([CapturePlaceMenuGroup].self, forKey: .groups)) ?? []
+        newRowPrefix =
+            (try? container.decodeIfPresent(String.self, forKey: .newRowPrefix)) ?? ""
+        emptyHint = (try? container.decodeIfPresent(String.self, forKey: .emptyHint)) ?? nil
+        resultsLabel =
+            (try? container.decodeIfPresent(String.self, forKey: .resultsLabel)) ?? "results"
+        footerHint = (try? container.decodeIfPresent(String.self, forKey: .footerHint)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case title
+        case caption
+        case groups
+        case newRowPrefix = "new_row_prefix"
+        case emptyHint = "empty_hint"
+        case resultsLabel = "results_label"
+        case footerHint = "footer_hint"
+    }
+}
+
 public struct CaptureCompletionResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -9121,6 +9215,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// on every `drawer` response, with or without rows, so the header can name
     /// the task. Older Bob and every other context omit it.
     public let target: CaptureDrawerTarget?
+    /// Additive Bob-authored drawer/notebook place-menu chrome. Older Bob
+    /// omits it and clients retain their legacy drawer presentation.
+    public let placeMenu: CapturePlaceMenu?
     /// Additive record metadata on `record_field`/`record_value` responses.
     /// Older Bob and every other context omit it.
     public let record: CaptureRecordCompletionMeta?
@@ -9153,6 +9250,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         themeSuggestion: CaptureThemeSuggestion? = nil,
         subject: String? = nil,
         target: CaptureDrawerTarget? = nil,
+        placeMenu: CapturePlaceMenu? = nil,
         projectTaskMove: CaptureProjectTaskMoveHeader? = nil,
         record: CaptureRecordCompletionMeta? = nil
     ) {
@@ -9179,6 +9277,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.themeSuggestion = themeSuggestion
         self.subject = subject
         self.target = target
+        self.placeMenu = placeMenu
         self.projectTaskMove = projectTaskMove
         self.record = record
     }
@@ -9227,6 +9326,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
             )) ?? nil
         subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
         target = (try? container.decodeIfPresent(CaptureDrawerTarget.self, forKey: .target)) ?? nil
+        placeMenu = (try? container.decodeIfPresent(CapturePlaceMenu.self, forKey: .placeMenu)) ?? nil
         projectTaskMove = (try? container.decodeIfPresent(CaptureProjectTaskMoveHeader.self, forKey: .projectTaskMove)) ?? nil
         record = (try? container.decodeIfPresent(CaptureRecordCompletionMeta.self, forKey: .record)) ?? nil
     }
@@ -9255,6 +9355,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case themeSuggestion = "theme_suggestion"
         case subject
         case target
+        case placeMenu = "place_menu"
         case projectTaskMove = "project_task_move"
         case record
     }

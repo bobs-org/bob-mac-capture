@@ -50,17 +50,21 @@ enum CapturePanelLayout {
         let rows = min(max(rowCount, 1), taskTypeVisibleRows)
         return 12 + taskTypeHeaderHeight + CGFloat(rows) * taskTypeRowHeight + taskTypeFooterHeight
     }
-    static let drawerVisibleRows = 8
-    static let drawerRowHeight: CGFloat = 28
-    static let drawerHeaderHeight: CGFloat = 22
-    static let drawerGroupHeaderHeight: CGFloat = 20
-    static let drawerFooterHeight: CGFloat = 28
-    /// Viewport for the `drawer` menu: padding, header, one header per titled
-    /// group, up to `drawerVisibleRows` rows, and the footer.
-    static func drawerViewportHeight(rowCount: Int, groupHeaderCount: Int) -> CGFloat {
-        let rows = min(max(rowCount, 1), drawerVisibleRows)
-        return 12 + drawerHeaderHeight + CGFloat(groupHeaderCount) * drawerGroupHeaderHeight
-            + CGFloat(rows) * drawerRowHeight + drawerFooterHeight
+    static let placeMenuVisibleRows = 8
+    static let placeMenuRowHeight: CGFloat = 28
+    static let placeMenuHeaderHeight: CGFloat = 22
+    static let placeMenuGroupHeaderHeight: CGFloat = 20
+    static let placeMenuFooterHeight: CGFloat = 28
+    static func placeMenuViewportHeight(
+        rowCount: Int,
+        groupHeaderCount: Int,
+        showsEmptyHint: Bool
+    ) -> CGFloat {
+        let showingEmptyHint = showsEmptyHint && rowCount == 0
+        let rows = showingEmptyHint ? 1 : min(max(rowCount, 1), placeMenuVisibleRows)
+        let rowHeight = showingEmptyHint ? completionRowHeight : placeMenuRowHeight
+        return 12 + placeMenuHeaderHeight + CGFloat(groupHeaderCount) * placeMenuGroupHeaderHeight
+            + CGFloat(rows) * rowHeight + placeMenuFooterHeight
     }
     static let stashVisibleRows = 5
     static let stashListPadding: CGFloat = 6
@@ -512,10 +516,11 @@ struct CapturePanelView: View {
             base = CapturePanelLayout.taskTypeViewportHeight(
                 rowCount: model.completionResponse?.candidates.count ?? 0
             )
-        } else if let drawer = model.drawerMenuPresentation() {
-            base = CapturePanelLayout.drawerViewportHeight(
-                rowCount: drawer.rows.count,
-                groupHeaderCount: drawer.groups.filter { $0.title != nil }.count
+        } else if let menu = model.placeMenuPresentation() {
+            base = CapturePanelLayout.placeMenuViewportHeight(
+                rowCount: menu.rows.count,
+                groupHeaderCount: menu.groups.filter { $0.title != nil }.count,
+                showsEmptyHint: menu.emptyHint?.isEmpty == false
             )
         } else {
             base = CapturePanelLayout.completionViewportHeight
@@ -1590,6 +1595,8 @@ private struct AutosizingCaptureEditor: View {
                         )
                     )
                     .accessibilityLabel("Capture draft")
+                    .accessibilityHelp(model.notebookSectionEditorHelp ?? "")
+                    .help(model.notebookSectionEditorHelp ?? "")
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
                     }
@@ -3522,9 +3529,9 @@ struct CompletionList: View {
                             model.selectedCompletionIndex = index
                             model.acceptSelectedCompletion()
                         }
-                    } else if let drawer = model.drawerMenuPresentation() {
-                        CaptureDrawerMenuView(
-                            presentation: drawer,
+                    } else if let menu = model.placeMenuPresentation() {
+                        CapturePlaceMenuView(
+                            presentation: menu,
                             selectedIndex: model.selectedCompletionIndex
                         ) { index in
                             model.selectedCompletionIndex = index
@@ -3548,9 +3555,9 @@ struct CompletionList: View {
                             .accessibilityAddTraits(.isHeader)
                     }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
-                    // context. The `task_type` and `drawer` menus paint their own rows.
+                    // context. The `task_type` and place menus paint their own rows.
                     if model.taskTypeMenuPresentation() != nil
-                        || model.drawerMenuPresentation() != nil
+                        || model.placeMenuPresentation() != nil
                     {
                         EmptyView()
                     } else if model.completionResponse?.context == "task" {
@@ -3573,7 +3580,7 @@ struct CompletionList: View {
                 }
                 .padding(6)
                 if model.taskTypeMenuPresentation() == nil,
-                    model.drawerMenuPresentation() == nil,
+                    model.placeMenuPresentation() == nil,
                     model.completionResponse?.context == "directive"
                         || model.selectedCompletionIndex == nil
                 {
@@ -3608,7 +3615,7 @@ struct CompletionList: View {
         let base: String
         if let presentation = model.taskTypeMenuPresentation() {
             base = presentation.listAccessibilityLabel
-        } else if let presentation = model.drawerMenuPresentation() {
+        } else if let presentation = model.placeMenuPresentation() {
             base = presentation.listAccessibilityLabel
         } else if let candidates = model.completionResponse?.candidates, !candidates.isEmpty {
             let contextLabel = model.rowContent(for: candidates[0]).contextLabel
@@ -4094,6 +4101,13 @@ struct PreviewPane: View {
             files: success.noteFiles,
             items: captures
         )
+        let notebookRuns = CaptureNotebookPresentation.groupedNoteRuns(items: captures)
+        let notebookStartIndices = Set(notebookRuns.compactMap(\.itemIndexes.first))
+        let notebookCoveredIndices = Set(notebookRuns.flatMap(\.itemIndexes))
+        let notebookGroupByStart = Dictionary(
+            notebookRuns.compactMap { run in run.itemIndexes.first.map { ($0, run) } },
+            uniquingKeysWith: { first, _ in first }
+        )
         let pastStartIndices = Set(pastRuns.compactMap(\.first?.index))
         let pastCoveredIndices = Set(pastRuns.flatMap { $0.map(\.index) })
         let pastGroupByStart: [Int: CapturePomodoroPastPresentation.Group] = {
@@ -4112,7 +4126,9 @@ struct PreviewPane: View {
             return map
         }()
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
-            if pastCoveredIndices.contains(index), !pastStartIndices.contains(index) {
+            if (pastCoveredIndices.contains(index) && !pastStartIndices.contains(index))
+                || (notebookCoveredIndices.contains(index) && !notebookStartIndices.contains(index))
+            {
                 EmptyView()
             } else {
                 if index > 0, !listPreview.continuesGroup(at: index) {
@@ -4121,7 +4137,9 @@ struct PreviewPane: View {
                 if let group = listPreview.group(startingAt: index) {
                     CaptureListGroupCapsule(group: group)
                 }
-                if let group = pastGroupByStart[index] {
+                if let run = notebookGroupByStart[index] {
+                    CaptureNotebookGroupedNotesPreviewView(run: run, items: captures)
+                } else if let group = pastGroupByStart[index] {
                     pastGroupCard(
                         group,
                         index: index,

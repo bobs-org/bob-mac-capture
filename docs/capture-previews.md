@@ -125,6 +125,11 @@ summary and seed notes. **View Markdown** reveals and copies the exact bytes
 Bob plans to write. Mixed captures keep item order, and success copy and
 notifications use the same notebook headline.
 
+Consecutive `notebook_note` items for the same route group under `📓 N notes → Title`.
+Each row keeps `› Section` or `· top`, its block ID, body, children, and any
+**New section** badge. Sub-notes, creation, ordinary items, missing metadata, or a
+route change end the group.
+
 ## Drawer captures
 
 A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the

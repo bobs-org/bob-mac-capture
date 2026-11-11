@@ -7,8 +7,8 @@ BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-drawer-fixtures.sh
 ```
 
-Generated with `bob 0.4.0` built from bob-cli revision `971d864f6c8ca91ed78f01aca41c0f4d93643efa`
-(grammar revision 4, `schema_version` 1). The script requires commit `971d864f`
+Generated with `bob 0.5.0` built from bob-cli revision `1f4c94571454ed9307094a677f69b31cddc30600`
+(grammar revision 26, `schema_version` 1). The script requires commit `971d864f`
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-drawer-fixture`.
 

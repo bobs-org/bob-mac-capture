@@ -61,6 +61,115 @@ final class CaptureNotebookPresentationTests: XCTestCase {
         XCTAssertNil(CaptureNotebookPresentation.newSectionBadge(for: items[0]))
     }
 
+    func testConsecutiveNotebookNotesGroupByRouteAndSplitAtOtherKinds() throws {
+        let success = try successFixture("notebook-capture-existing-notes.json")
+        let items = success.normalizedCaptures
+        let runs = CaptureNotebookPresentation.groupedNoteRuns(items: items)
+
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].route, "dev_nvim")
+        XCTAssertEqual(runs[0].title, "Neovim")
+        XCTAssertEqual(runs[0].itemIndexes, [0, 1])
+        XCTAssertEqual(runs[0].headline, "📓 2 notes → Neovim")
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: items[0]), "› Setup")
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: items[1]), "› Release Notes")
+        XCTAssertNil(CaptureNotebookPresentation.groupedNewSectionLabel(for: items[0]))
+        XCTAssertEqual(CaptureNotebookPresentation.groupedNewSectionLabel(for: items[1]), "New section")
+    }
+
+    func testGroupedNotesPreserveExistingNewAndTopDestinations() throws {
+        let success = try successFixture("notebook-capture-grouped-notes.json")
+        let items = success.normalizedCaptures
+        let runs = CaptureNotebookPresentation.groupedNoteRuns(items: items)
+
+        XCTAssertEqual(items.map { $0.notebook?.section }, ["Setup", "Batch Notes", nil])
+        XCTAssertEqual(items.map { $0.notebook?.sectionAction }, ["existing", "create", nil])
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].itemIndexes, [0, 1, 2])
+        XCTAssertEqual(runs[0].headline, "📓 3 notes → Neovim")
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: items[0]), "› Setup")
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: items[1]), "› Batch Notes")
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: items[2]), "· top")
+        XCTAssertEqual(CaptureNotebookPresentation.groupedNewSectionLabel(for: items[1]), "New section")
+        XCTAssertNil(CaptureNotebookPresentation.groupedNewSectionLabel(for: items[2]))
+    }
+
+    func testGroupedNotesSplitOnMissingMetadataRouteChangeAndSeparatedOccurrences() {
+        let setup = notebookNote(route: "dev_nvim", title: "Neovim", section: "Setup")
+        let missing = notebookNote(route: nil, title: "Neovim", section: "Setup")
+        let other = notebookNote(route: "dev_lua", title: "Lua", section: "Basics")
+        let later = notebookNote(route: "dev_nvim", title: "Neovim", section: "Git")
+        let sub = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "dev_nvim",
+            routeLabel: "dev_nvim.md",
+            relativeTarget: "dev_nvim.md",
+            target: "/tmp/dev_nvim.md",
+            text: "Child",
+            taskLine: "- Child",
+            kind: "notebook_sub_note",
+            created: "",
+            placement: "appended",
+            notebook: CaptureNotebookSummary(route: "dev_nvim", title: "Neovim")
+        )
+        let items = [setup, setup, missing, other, other, sub, later, later]
+        let runs = CaptureNotebookPresentation.groupedNoteRuns(items: items)
+
+        XCTAssertEqual(runs.map(\.itemIndexes), [[0, 1], [3, 4], [6, 7]])
+        XCTAssertEqual(runs.map(\.route), ["dev_nvim", "dev_lua", "dev_nvim"])
+        XCTAssertEqual(CaptureNotebookPresentation.destinationLine(for: missing), "› Setup")
+    }
+
+    func testNotebookSectionEditorHelpUsesBobSpanMetadataAndBounds() {
+        let draft = "hello @dev_nvim#Setup"
+        let start = draft.utf8.count - "Setup".utf8.count
+        let existing = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 26,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [CaptureSpan(
+                start: start,
+                end: draft.utf8.count,
+                kind: "section",
+                notebook: true,
+                sectionAction: "existing",
+                title: "Setup"
+            )]
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.editorSectionHelp(parse: existing, cursorUTF8: draft.utf8.count),
+            "Setup, existing section"
+        )
+        XCTAssertNil(CaptureNotebookPresentation.editorSectionHelp(parse: existing, cursorUTF8: start - 1))
+
+        let created = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 26,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [CaptureSpan(
+                start: start,
+                end: draft.utf8.count,
+                kind: "section",
+                notebook: true,
+                sectionAction: "future_action",
+                title: "Setup"
+            )]
+        )
+        XCTAssertEqual(
+            CaptureNotebookPresentation.editorSectionHelp(parse: created, cursorUTF8: start),
+            "Setup, existing section",
+            "unknown actions follow the safe existing-section wording"
+        )
+    }
+
     func testNotebookRouteAndParentCompletionMetadataDecode() throws {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -80,7 +189,9 @@ final class CaptureNotebookPresentationTests: XCTestCase {
             CaptureCompletionResponse.self,
             from: Data(contentsOf: fixtures.appendingPathComponent("notebook-complete-route.json"))
         )
-        let route = try XCTUnwrap(routeCompletion.candidates.first)
+        let route = try XCTUnwrap(
+            routeCompletion.candidates.first { $0.route == "dev_nvim" }
+        )
         XCTAssertEqual(route.kind, "notebook")
         XCTAssertEqual(route.title, "Neovim")
         XCTAssertEqual(route.owner, "dev")
@@ -228,6 +339,32 @@ final class CaptureNotebookPresentationTests: XCTestCase {
         XCTAssertEqual(
             CaptureNotebookPresentation.batchLine(for: create),
             "📓 New notebook dev_nvim_lua_keys.md · in Lua · Keymaps"
+        )
+    }
+
+    private func notebookNote(
+        route: String?,
+        title: String,
+        section: String?
+    ) -> CaptureCommandSuccess {
+        CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: route ?? "dev_nvim",
+            routeLabel: "dev_nvim.md",
+            relativeTarget: "dev_nvim.md",
+            target: "/tmp/dev_nvim.md",
+            text: "Note",
+            taskLine: "- Note",
+            kind: "notebook_note",
+            created: "",
+            placement: "appended",
+            notebook: CaptureNotebookSummary(
+                route: route,
+                title: title,
+                section: section
+            )
         )
     }
 

@@ -105,6 +105,44 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
+    func testNotebookSectionBulletFallbackKeepsSectionAndCreateSemantics() {
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "notebook_section_bullet"),
+            .notebookSectionBullet
+        )
+        let existing = completionRowContent(
+            for: CaptureCompletionCandidate(
+                replacement: "Setup\n  - ",
+                title: "Setup",
+                group: "notebook",
+                consequence: "Adds to ## Setup"
+            ),
+            context: "notebook_section_bullet",
+            query: "set"
+        )
+        XCTAssertEqual(existing.category, .section)
+        XCTAssertEqual(existing.symbolName, "list.bullet.indent")
+        XCTAssertEqual(existing.primaryText, "Setup")
+        XCTAssertEqual(existing.primaryMatchRange, 0..<3)
+
+        let create = completionRowContent(
+            for: CaptureCompletionCandidate(
+                replacement: "Wireguard\n  - ",
+                detail: "did you mean WireGuard?",
+                kind: "notebook_section_create",
+                title: "Wireguard",
+                group: "new",
+                creates: true
+            ),
+            context: "notebook_section_bullet",
+            query: "wire"
+        )
+        XCTAssertEqual(create.category, .priority)
+        XCTAssertEqual(create.symbolName, "plus.square.dashed")
+        XCTAssertEqual(create.badges, ["did you mean WireGuard?"])
+        XCTAssertEqual(create.primaryMatchRange, nil)
+    }
+
     func testPastSegmentRowsKeepBobsSuffixAndResolvedTimelineDetails() {
         let pomodoro = CaptureCompletionCandidate(
             replacement: "~1",

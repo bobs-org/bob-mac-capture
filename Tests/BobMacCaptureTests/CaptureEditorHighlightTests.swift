@@ -1123,6 +1123,54 @@ final class CaptureEditorHighlightTests: XCTestCase {
         XCTAssertEqual(String(text.characters), draft)
     }
 
+    func testNotebookCreateSectionUsesDottedUnderlineAndExistingClearsIt() throws {
+        let draft = "@dev_nvim#Wireguard"
+        let start = "@dev_nvim#".utf8.count
+        let create = CaptureSpan(
+            start: start,
+            end: draft.utf8.count,
+            kind: "section",
+            notebook: true,
+            sectionAction: "create",
+            title: "Wireguard"
+        )
+        var text = AttributedString(draft)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [create]))
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: Self.parse(draft: draft, spans: [create]),
+                draft: draft,
+                ranges: ranges
+            )
+        )
+        let dotted = NSUnderlineStyle([.single, .patternDot])
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.underlineStyle == dotted }),
+            ["Wireguard"]
+        )
+
+        let existing = CaptureSpan(
+            start: start,
+            end: draft.utf8.count,
+            kind: "section",
+            notebook: true,
+            sectionAction: "existing",
+            title: "Wireguard"
+        )
+        let existingRanges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [existing]))
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: Self.parse(draft: draft, spans: [existing]),
+                draft: draft,
+                ranges: existingRanges
+            )
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.underlineStyle == dotted }).isEmpty)
+        XCTAssertEqual(String(text.characters), draft)
+    }
+
     func testIncreaseContrastRaisesTheRecordRouteWash() {
         XCTAssertNotEqual(
             CaptureEditorPalette.recordRouteWash(increaseContrast: false),

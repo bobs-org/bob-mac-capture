@@ -1,12 +1,10 @@
 import CaptureCore
 import SwiftUI
 
-/// The `drawer` completion menu that opens on a glued `#` after `@route+id`.
-/// Grouping, counts, refusals, and the footer consequence all come from Bob
-/// through `CaptureDrawerMenuPresentation`; this view only paints them.
+/// A drawer or notebook place menu painted from Bob's decoded chrome and rows.
 @available(macOS 26.0, *)
-struct CaptureDrawerMenuView: View {
-    let presentation: CaptureDrawerMenuPresentation
+struct CapturePlaceMenuView: View {
+    let presentation: CapturePlaceMenuPresentation
     let selectedIndex: Int?
     let onSelect: (Int) -> Void
 
@@ -23,6 +21,15 @@ struct CaptureDrawerMenuView: View {
                         .onTapGesture { onSelect(row.index) }
                 }
             }
+            if presentation.rows.isEmpty, let emptyHint = presentation.emptyHint,
+               !emptyHint.isEmpty
+            {
+                Text(emptyHint)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: CapturePanelLayout.completionRowHeight)
+                    .accessibilityLabel(emptyHint)
+            }
             footer
         }
         .padding(.horizontal, 8)
@@ -33,16 +40,16 @@ struct CaptureDrawerMenuView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            Text(CaptureDrawerMenuPresentation.title)
+            Text(presentation.title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            if !presentation.headerCaption.isEmpty {
+                .textCase(presentation.usesPlaceMenuChrome ? nil : .uppercase)
+            if !presentation.caption.isEmpty {
                 Text("\u{00B7}")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                Text(presentation.headerCaption)
+                Text(presentation.caption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -52,32 +59,33 @@ struct CaptureDrawerMenuView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        .frame(height: CapturePanelLayout.drawerHeaderHeight)
+        .frame(height: CapturePanelLayout.placeMenuHeaderHeight)
     }
 
     @ViewBuilder
-    private func groupHeader(_ group: CaptureDrawerMenuPresentation.Group) -> some View {
+    private func groupHeader(_ group: CapturePlaceMenuPresentation.Group) -> some View {
         if let title = group.title {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .textCase(.uppercase)
+                .textCase(presentation.usesPlaceMenuChrome ? nil : .uppercase)
                 .padding(.horizontal, 6)
                 .frame(
-                    height: CapturePanelLayout.drawerGroupHeaderHeight,
+                    height: CapturePanelLayout.placeMenuGroupHeaderHeight,
                     alignment: .bottomLeading
                 )
                 .accessibilityAddTraits(.isHeader)
-        } else {
+        } else if group.kind == .new {
             Divider().padding(.vertical, 2)
         }
     }
 
-    private func rowView(_ row: CaptureDrawerMenuPresentation.Row) -> some View {
+    private func rowView(_ row: CapturePlaceMenuPresentation.Row) -> some View {
         let selected = row.index == selectedIndex
         let tint = CaptureEditorPalette.color(for: row.isNew ? .priority : .section)
         return HStack(spacing: 8) {
-            Image(systemName: row.isNew ? "plus.square.dashed" : "tray.full")
+            Image(systemName: row.isNew ? "plus.square.dashed" : row.isNotebookSection
+                ? "list.bullet.indent" : "tray.full")
                 .foregroundStyle(tint)
                 .frame(width: 16)
                 .accessibilityHidden(true)
@@ -90,6 +98,12 @@ struct CaptureDrawerMenuView: View {
                     .font(.caption2)
                     .foregroundStyle(Color(nsColor: .systemOrange))
                     .lineLimit(1)
+            } else if let originBadge = row.originBadge {
+                Text(originBadge)
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
             } else if let detail = row.detail {
                 Text(detail)
                     .font(.caption2)
@@ -97,7 +111,7 @@ struct CaptureDrawerMenuView: View {
                     .lineLimit(1)
             }
         }
-        .frame(height: CapturePanelLayout.drawerRowHeight)
+        .frame(height: CapturePanelLayout.placeMenuRowHeight)
         .padding(.horizontal, 6)
         .background(
             selected
@@ -105,7 +119,7 @@ struct CaptureDrawerMenuView: View {
                 : .clear
         )
         .overlay {
-            // The create row is dashed: it adds a drawer instead of choosing one.
+            // Bob's create row adds a destination instead of choosing one.
             if row.isNew {
                 RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(
@@ -121,7 +135,7 @@ struct CaptureDrawerMenuView: View {
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
-    private func emphasizedLabel(_ row: CaptureDrawerMenuPresentation.Row) -> Text {
+    private func emphasizedLabel(_ row: CapturePlaceMenuPresentation.Row) -> Text {
         guard let matchRange = row.queryMatchRange else {
             return Text(row.label)
         }
@@ -142,7 +156,7 @@ struct CaptureDrawerMenuView: View {
             .lineLimit(2)
             .frame(
                 maxWidth: .infinity,
-                minHeight: CapturePanelLayout.drawerFooterHeight,
+                minHeight: CapturePanelLayout.placeMenuFooterHeight,
                 alignment: .leading
             )
             .accessibilityLabel(presentation.footer)

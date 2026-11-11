@@ -77,7 +77,9 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   with `item_kind: "note"` in parent-task completion, `destination_kind: "notebook"`
   on notebook block-ID fields, and the per-item `notebook` summary plus
   `note_files[]` for notebook creation. An older Bob that omits this metadata
-  keeps ordinary completion and capture decoding available.
+  keeps ordinary completion and capture decoding available. Grammar 26 adds
+  `notebook_section_bullet`, span `notebook` / `section_action`, and
+  `place_menu` chrome for drawer and notebook section menus.
   Task Wikilink picks require `capture-parse` spans
   `wikilink_task_delimiter` / `wikilink_task_query` to request the `wikilink_task`
   completion context (with the additive `link_target` candidate field, Bob-order
@@ -333,6 +335,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
+- `place_menu` chrome; notebook section candidates (`group`, `detail`, `refused`, `consequence`, `creates`, `cursor_after`); span `notebook` / `section_action` / `title`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings, `bob relations rename` preview/write with counts, `label_range` / `hidden` on `relations[]`
 - Past fields: segment/pin, windows/cut, candidate bounds/repair, stale refusal
@@ -364,6 +367,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` / `type X · <source>` (`kept`) line in new-task, link, toggle, and relationship previews, VoiceOver summaries, and notifications (`type FIX` on set/kept) | No type line | Upgrade `bob` for type writes |
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
 | `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops | No task-type menu or refusal details | Upgrade `bob` for `#` completion |
+| Grammar 26 `notebook_section_bullet`, notebook `section` completion, `place_menu` | Notebook section menus for glued `@route#` and first-level bullets, using Bob's chrome | Older Bob: ordinary section completion and the legacy drawer menu | Upgrade `bob` for notebook section menus |
 | `grammar` ≥ 5 on `capture-parse` | Capture with whole-item `=/` split and `=*` merge syntax, along with earlier capture grammar | Capture disabled; "Update bob to use Pomodoro split and merge syntax"; the draft stays | Upgrade `bob` for split and merge |
 | `grammar` 12 / 14, `pomodoro_past` / `pomodoro_past_segment`, `--expect-past-windows` / `pomodoro_past_windows_changed` | Past stacks/windows/trims; segment picker/card; stale preview refresh | Older Bob omits past cards and the stale guard | Upgrade `bob` for past segments |
 | `pomodoro_split` / `pomodoro_merge` spans, modes, and summaries | Split/merge previews show before/after names, created/absorbed entries, and destination | Older Bob omits previews; these tokens do not parse | Upgrade `bob` for split and merge |

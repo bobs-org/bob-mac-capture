@@ -1973,6 +1973,30 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 14 --format json -- jot idea @foo/"))
     }
 
+    func testSlashAliasAfterNotebookRouteOpensBobNotebookPlaceMenu() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_NOTEBOOK_PLACE_MENU": "1"]
+        )
+        let textView = makeTextView("More @dev_nvim")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("/", into: textView, model: model)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(model.plainDraft, "More @dev_nvim#")
+        XCTAssertEqual(model.completionResponse?.context, "section")
+        XCTAssertEqual(model.completionResponse?.placeMenu?.kind, "notebook_section")
+        XCTAssertNotNil(model.placeMenuPresentation())
+        XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("capture-rewrite --cursor 15 --format json -- More @dev_nvim/"))
+        XCTAssertTrue(record.contains("capture-complete --all-tasks --cursor 15 --format json -- More @dev_nvim#"))
+    }
+
     func testSlashAliasAfterDrawerOpensDrawerMenuAndDoubleTapCloses() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

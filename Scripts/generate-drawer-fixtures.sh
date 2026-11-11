@@ -7,7 +7,8 @@
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
 # checkout must contain the grammar-4 capture drawer work (commit 971d864f) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies it
-# reports `grammar >= 4`, then persists, from one isolated vault, config, cache, state,
+# reports `grammar >= 26`, including Bob-authored `place_menu` chrome, then persists,
+# from one isolated vault, config, cache, state,
 # HOME, and pinned clock:
 #
 #   drawer-parse-*.json           bob capture-parse
@@ -160,8 +161,8 @@ import pathlib
 import sys
 
 grammar = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar")
-if not isinstance(grammar, int) or grammar < 4:
-    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 4")
+if not isinstance(grammar, int) or grammar < 26:
+    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 26")
 PY
 
 manifest="$scratch_root/manifest.md"
@@ -284,11 +285,13 @@ parsed = load("drawer-parse-empty.json")
 assert parsed["needs"] == ["drawer"]
 new_span = next(span for span in load("drawer-parse-new.json")["spans"] if span["kind"] == "drawer")
 assert new_span["title"] == "PERF BUDGET" and new_span["key"] == "PERF BUDGET"
-assert parsed["grammar"] >= 4
+assert parsed["grammar"] >= 26
 
 empty = load("drawer-complete-empty.json")
 assert empty["context"] == "drawer" and empty["target"]["block_id"] == "bar"
 assert empty["initial_selection"] == "none"
+assert empty["place_menu"]["kind"] == "drawer"
+assert empty["place_menu"]["title"] == "Drawer"
 assert [row["group"] for row in empty["candidates"]] == ["task", "task", "recent", "recent"]
 assert all(row["replacement"].startswith("#") for row in empty["candidates"])
 plain_task_rows = load("drawer-complete-plain-task.json")["candidates"]
@@ -345,7 +348,7 @@ PY
   echo '```'
   echo
   echo "Generated with \`${version_line}\` built from bob-cli revision \`${cli_revision}\`"
-  echo "(grammar revision 4, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
+  echo "(grammar revision 26, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
   echo "and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only"
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo

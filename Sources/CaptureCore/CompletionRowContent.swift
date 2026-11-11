@@ -297,6 +297,7 @@ public func captureSemanticCategory(
 public enum CaptureCompletionContext: Equatable, Sendable {
     case route
     case section
+    case notebookSectionBullet
     case pomodoroBlockID
     case taskBlockID
     case projectTaskBlockID
@@ -335,6 +336,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         switch rawContext {
         case "route": self = .route
         case "section": self = .section
+        case "notebook_section_bullet": self = .notebookSectionBullet
         case "pomodoro_block_id": self = .pomodoroBlockID
         case "task_block_id": self = .taskBlockID
         case "project_task_block_id": self = .projectTaskBlockID
@@ -609,8 +611,21 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts this section heading."
 
+    case .notebookSectionBullet:
+        let isNew = candidate.creates || candidate.group == "new" || candidate.kind == "create"
+        category = isNew ? .priority : .section
+        symbolName = isNew ? "plus.square.dashed" : "list.bullet.indent"
+        contextLabel = "Notebook section"
+        primaryText = candidate.title ?? candidate.replacement
+        secondaryText = candidate.refused ?? candidate.detail
+        if isNew {
+            badges = [candidate.detail ?? "New section"]
+        }
+        accessibilityHint = candidate.refused ?? candidate.consequence
+            ?? "Files a note in this notebook section."
+
     case .drawer:
-        // The panel paints `drawer` menus with `CaptureDrawerMenuView`; this
+        // The panel paints `drawer` menus with `CapturePlaceMenuView`; this
         // row backs the generic list label and any host that falls back to it.
         // Counts and ages are Bob's `detail`, never a Swift tally.
         let isNew = candidate.group == "new"
@@ -1272,7 +1287,9 @@ public func completionRowContent(
     // pickers (`^`, `:`, `+`, `&`, `!`). Bob already strips `#ref` from
     // the display text, so only the symbol changes.
     let resolvedSymbolName = bookSymbolName(for: candidate, context: context) ?? symbolName
-    let matchRange = completionMatchRange(in: primaryText, query: query)
+    let skipCreateMatch = context == .notebookSectionBullet
+        && (candidate.creates || candidate.group == "new" || candidate.kind == "create")
+    let matchRange = skipCreateMatch ? nil : completionMatchRange(in: primaryText, query: query)
     let baseAccessibilityLabel = completionAccessibilityLabel(
         contextLabel: contextLabel,
         primaryText: primaryText,

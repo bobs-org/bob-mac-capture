@@ -605,6 +605,21 @@ private struct PendingRewriteSubmitIntent: Equatable {
 
 @MainActor
 final class CapturePanelModel: ObservableObject {
+    private struct PlaceMenuScope: Equatable {
+        let context: String?
+        let kind: String
+        let destination: String
+        let fieldStart: Int
+    }
+
+    private struct PlaceMenuCandidateKey: Equatable {
+        let group: String?
+        let title: String
+        let kind: String?
+    }
+
+    private var placeMenuSelectionWasExplicit = false
+
     @Published var attributedDraft = AttributedString()
     @Published var editorSelection = AttributedTextSelection()
     @Published var statusText = "" {
@@ -1789,13 +1804,34 @@ final class CapturePanelModel: ObservableObject {
         !plainDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var notebookSectionEditorHelp: String? {
+        guard let parse = latestParse,
+              parse.input == plainDraft,
+              let cursor = collapsedSelectionUTF8Offset()
+        else {
+            return nil
+        }
+        return CaptureNotebookPresentation.editorSectionHelp(parse: parse, cursorUTF8: cursor)
+    }
+
     var completionVisible: Bool {
         !isStashPickerPresented
             && !isTemplateShelfPresented
             && !inlinePromptVisible
-            && completionResponse?.candidates.isEmpty == false
+            && completionResponse.map { response in
+                !response.candidates.isEmpty || Self.hasVisiblePlaceMenuHint(response)
+            } == true
             && (completionResponse.map(Self.isRecordCompletion) != true
                 || recordCompletionSnapshotIsCurrent)
+    }
+
+    private static func hasVisiblePlaceMenuHint(_ response: CaptureCompletionResponse) -> Bool {
+        guard response.placeMenu != nil,
+              let hint = response.placeMenu?.emptyHint
+        else {
+            return false
+        }
+        return !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var recordCardActive: Bool {
@@ -6250,6 +6286,7 @@ final class CapturePanelModel: ObservableObject {
         completionResponse = nil
         completionDraftSnapshot = nil
         selectedCompletionIndex = nil
+        placeMenuSelectionWasExplicit = false
         fileUnderActive = false
         recordAnalysisRequest = nil
         recordCompletionSnapshot = nil
@@ -7203,12 +7240,47 @@ final class CapturePanelModel: ObservableObject {
         clearPickerInterruption(trigger: trigger)
         let keepsRecordEdit = Self.isRecordCompletion(completion)
             && completion.record?.edit != nil
-        completionResponse = completion.candidates.isEmpty && !keepsRecordEdit ? nil : completion
+        let keepsEmptyPlaceMenu = Self.hasVisiblePlaceMenuHint(completion)
+        let oldResponse = completionResponse
+        let oldIndex = selectedCompletionIndex
+        let retainedKey: PlaceMenuCandidateKey? = {
+            guard placeMenuSelectionWasExplicit,
+                  let oldResponse,
+                  let oldIndex,
+                  oldResponse.candidates.indices.contains(oldIndex)
+            else {
+                return nil
+            }
+            return Self.placeMenuCandidateKey(oldResponse.candidates[oldIndex])
+        }()
+        let oldScope = oldResponse.flatMap(Self.placeMenuScope)
+
+        completionResponse = completion.candidates.isEmpty && !keepsRecordEdit && !keepsEmptyPlaceMenu
+            ? nil : completion
         completionDraftSnapshot = completionResponse == nil ? nil : draft
-        selectedCompletionIndex = CaptureCompletionMenu.initialSelectedIndex(
-            for: completion,
-            queryIsEmpty: completionQueryText().isEmpty
-        )
+        let newScope = Self.placeMenuScope(completion)
+        let preservedIndex: Int? = {
+            guard let retainedKey, oldScope == newScope, newScope != nil else {
+                return nil
+            }
+            return completion.candidates.firstIndex { candidate in
+                !CaptureCompletionMenu.isDisabled(candidate)
+                    && Self.placeMenuCandidateKey(candidate) == retainedKey
+            }
+        }()
+        if preservedIndex != nil {
+            selectedCompletionIndex = preservedIndex
+            placeMenuSelectionWasExplicit = true
+        } else if completion.placeMenu?.kind == "notebook_section" {
+            selectedCompletionIndex = Self.notebookPlaceMenuInitialIndex(completion)
+            placeMenuSelectionWasExplicit = false
+        } else {
+            selectedCompletionIndex = CaptureCompletionMenu.initialSelectedIndex(
+                for: completion,
+                queryIsEmpty: completionQueryText().isEmpty
+            )
+            placeMenuSelectionWasExplicit = false
+        }
         // A fresh server or cached completion is never the File-under list:
         // only the File-under opener sets the header back below.
         fileUnderActive = false
@@ -10922,6 +10994,9 @@ final class CapturePanelModel: ObservableObject {
         guard let count = completionResponse?.candidates.count, count > 0 else {
             return
         }
+        if let completionResponse, Self.placeMenuScope(completionResponse) != nil {
+            placeMenuSelectionWasExplicit = true
+        }
         if let index = selectedCompletionIndex {
             selectedCompletionIndex = (index + 1) % count
         } else {
@@ -10932,6 +11007,9 @@ final class CapturePanelModel: ObservableObject {
     func selectPreviousCompletion() {
         guard let count = completionResponse?.candidates.count, count > 0 else {
             return
+        }
+        if let completionResponse, Self.placeMenuScope(completionResponse) != nil {
+            placeMenuSelectionWasExplicit = true
         }
         if let index = selectedCompletionIndex {
             selectedCompletionIndex = (index + count - 1) % count
@@ -11400,6 +11478,12 @@ final class CapturePanelModel: ObservableObject {
         guard let completionResponse else {
             statusText = "Completion range is stale"
             dismissCompletion()
+            return false
+        }
+        if completionResponse.candidates.isEmpty {
+            return false
+        }
+        if completionResponse.placeMenu != nil, selectedCompletionIndex == nil {
             return false
         }
         if selectedCompletionIndex == nil {
@@ -14801,18 +14885,72 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// The `@route+id#` drawer menu, or nil for every other context. The
-    /// selection index is the completion list's own, so an unselected open
-    /// (`initial_selection: none`) shows the key hint in the footer.
-    func drawerMenuPresentation() -> CaptureDrawerMenuPresentation? {
-        guard let completionResponse, completionResponse.context == "drawer" else {
+    /// Bob-authored place menus plus the legacy drawer fallback. A generic
+    /// non-notebook `section` response without chrome stays in the completion list.
+    func placeMenuPresentation() -> CapturePlaceMenuPresentation? {
+        guard let completionResponse,
+              completionResponse.placeMenu != nil || completionResponse.context == "drawer"
+        else {
             return nil
         }
-        return CaptureDrawerMenuPresentation(
+        return CapturePlaceMenuPresentation(
             response: completionResponse,
             selectedIndex: selectedCompletionIndex,
             query: completionQueryText()
         )
+    }
+
+    private static func placeMenuScope(
+        _ response: CaptureCompletionResponse
+    ) -> PlaceMenuScope? {
+        guard response.placeMenu != nil || response.context == "drawer" else {
+            return nil
+        }
+        let destination: String
+        if let menu = response.placeMenu {
+            destination = [menu.caption, menu.title, response.target?.route ?? ""]
+                .joined(separator: "\u{1f}")
+        } else {
+            destination = [
+                response.target?.route ?? "",
+                response.target?.blockID ?? "",
+            ].joined(separator: "\u{1f}")
+        }
+        return PlaceMenuScope(
+            context: response.context,
+            kind: response.placeMenu?.kind ?? "drawer",
+            destination: destination,
+            fieldStart: response.replacement.start
+        )
+    }
+
+    private static func placeMenuCandidateKey(
+        _ candidate: CaptureCompletionCandidate
+    ) -> PlaceMenuCandidateKey {
+        PlaceMenuCandidateKey(
+            group: candidate.group,
+            title: candidate.title ?? candidate.replacement,
+            kind: candidate.kind
+        )
+    }
+
+    private static func notebookPlaceMenuInitialIndex(
+        _ response: CaptureCompletionResponse
+    ) -> Int? {
+        guard !response.opensWithoutSelection else {
+            return nil
+        }
+        let enabled = response.candidates.enumerated().filter {
+            !CaptureCompletionMenu.isDisabled($0.element)
+        }
+        if let ordinary = enabled.first(where: {
+            $0.element.group != "new" && $0.element.kind != "create" && !$0.element.creates
+        }) {
+            return ordinary.offset
+        }
+        return enabled.first(where: {
+            $0.element.group == "new" || $0.element.kind == "create" || $0.element.creates
+        })?.offset
     }
 
     func taskTypeMenuPresentation() -> CaptureTaskTypeMenuPresentation? {
@@ -14916,6 +15054,11 @@ final class CapturePanelModel: ObservableObject {
         guard let completionResponse else {
             return ""
         }
+        if completionResponse.placeMenu?.kind == "notebook_section",
+           let query = completionResponse.query
+        {
+            return query
+        }
         if completionResponse.context == "task_type" {
             return completionResponse.query ?? ""
         }
@@ -14928,10 +15071,10 @@ final class CapturePanelModel: ObservableObject {
             return ""
         }
         let typed = String(plainDraft[range])
-        if completionResponse.context == "drawer" {
+        if completionResponse.context == "drawer" || completionResponse.placeMenu != nil {
             // A drawer replacement may cover the glued `#` (and a literal's
             // opening quote); neither is part of the name being matched.
-            return CaptureDrawerMenuPresentation.queryText(fromTyped: typed)
+            return CapturePlaceMenuPresentation.queryText(fromTyped: typed)
         }
         return typed
     }
@@ -20226,6 +20369,13 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
             text[lower..<upper].foregroundColor = color
+            if item.span.kind == "section",
+               item.span.notebook == true,
+               item.span.sectionAction == "create"
+            {
+                text[lower..<upper].underlineStyle = NSUnderlineStyle([.single, .patternDot])
+                text[lower..<upper].underlineColor = NSColor.systemPurple.withAlphaComponent(0.5)
+            }
             if item.span.kind == "record_route" {
                 // Chip wash only: the type emoji is a presentation overlay
                 // at the route-start glyph and must never enter the draft or
