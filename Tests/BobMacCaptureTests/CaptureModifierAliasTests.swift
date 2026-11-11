@@ -11,10 +11,12 @@ final class CaptureModifierAliasTests: XCTestCase {
     private var ledgerSuites: [String] = []
 
     override func tearDown() {
-        for suite in ledgerSuites {
-            UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+        MainActor.assumeIsolated {
+            for suite in ledgerSuites {
+                UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite)
+            }
+            ledgerSuites.removeAll()
         }
-        ledgerSuites.removeAll()
         super.tearDown()
     }
 
