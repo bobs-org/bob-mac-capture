@@ -1595,7 +1595,7 @@ private struct AutosizingCaptureEditor: View {
                         )
                     )
                     .accessibilityLabel("Capture draft")
-                    .accessibilityHelp(model.notebookSectionEditorHelp ?? "")
+                    .accessibilityHint(model.notebookSectionEditorHelp ?? "")
                     .help(model.notebookSectionEditorHelp ?? "")
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
