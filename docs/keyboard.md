@@ -22,10 +22,12 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults with the focused PDF selected; configurable to Shift-Command-O, Command-E, or Off |
 | Command-Y | Open the Copy card for the selected row |
-| Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off. Keys typed before the PDF is known replay on the card |
+| Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off |
 | Command-B | Open the Copy card for the selected row with the code picker pressed |
 | Command-L | Open the Copy card for the selected row with the link picker pressed |
-| Command-B / Command-L (in Highlights) | Registered while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off. Keys typed before the PDF is known replay on the card |
+| Command-B / Command-L (in Highlights) | Registered while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off |
+
+For the Command-Y and Command-B / Command-L Highlights shortcuts, keys typed before the PDF is known replay on the card.
 | Control-Return | Open the reading task's file in Obsidian (at the task line) |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
@@ -145,7 +147,7 @@ replacement and continuation; Escape closes it; `/` rewrites to the same `#`.
 
 ## Capture picker keys
 
-Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =`. If `=` opens Links To, Space restores `= ` and Escape restores `=` on an empty filter. In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips; Control-Return inserts the token and opens its label card. `|` after a relation token opens that card with or without spaces; Return removes an empty-label pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =` (empty-filter Space/Escape restores are in [panel](capture-panel.md#inline-completion)). In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ## Move choices
 
@@ -171,14 +173,13 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-Return opens the choice card before writing. Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X opens the Cancel reason, Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
+Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X opens the Cancel reason, Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Inbox routing
 
-When a preview reports changing inbox tasks, Return
-opens the route card after any successor choice. Up/Down or Control-N/Control-P
-moves the destination highlight. Return moves the current task, Control-Return
-moves it and opens the capture notes, and Shift-Return keeps it in its inbox.
+Up/Down or Control-N/Control-P moves the destination highlight. Return moves
+the current task, Control-Return moves it and opens the capture notes, and
+Shift-Return keeps it in its inbox.
 Escape goes back one task, then to the successor card when one preceded
 the route card, or to the unchanged draft. Control-T and Command-\ are consumed
 while the route card is open so the shelf and Pomodoro action cannot
@@ -229,8 +230,7 @@ before capturing; on a hidden label it notes the label stays hidden.
 Ghost-hide rows read `hidden everywhere · ⌃D undo`; ghost-unhide rows read
 `visible again · ⌃D undo`. Hidden labels stay usable and hidden: accepting
 one inserts the `|` form with a `(stays hidden)` footer. An older Bob shows no
-Hidden pill; Ctrl-D and Ctrl-H give the update hint, and `||` is never
-downgraded to `|`.
+Hidden pill, and `||` is never downgraded to `|`.
 
 Ctrl-R opens rename mode with the old name prefilled: the card shows a live
 dry-run preview (`N links in M notes · mirrors · 1 commit`), Return renames
@@ -244,8 +244,7 @@ in the open draft. An older Bob shows `Update bob to rename relation labels`.
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, Open chip, and stash picker never need a pointer.
 Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt moves keyboard
-focus into its field; the first responder is owned directly by AppKit
-rather than SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims
+focus into its field, and a keystroke arriving while nothing holds focus re-claims
 the field.
 
 ## Canceled-draft stash keys
@@ -263,8 +262,7 @@ the field.
 | Command-\ | Consume the key; finish or cancel the stash first |
 
 The 36-entry bound exists so every retained row has a unique one-key
-accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
-through `C`, `-`, and `E` through `Z`.
+accelerator while reserving `D` for Delete All.
 
 ## Saved-template shelf keys
 
@@ -306,8 +304,7 @@ Landing rule, from the decoded response:
 The chosen destination is dispatched as `obsidian://bob-goto-task` with
 `path`, `line`, and `ref` when the entry's ref is valid. A missing or invalid
 ref builds a line-only URL. Nothing in the vault is written. On success the
-panel hides and a nonempty draft is retained exactly like Escape: it is never
-stashed, discarded, or captured. On a failed open, status is
+panel hides and a nonempty draft is retained like Escape. On a failed open, status is
 `Couldn't open Obsidian` and the panel stays. A failed fetch is
 `Couldn't read today's Pomodoros`. A press while a capture is submitting is
 `Wait for the capture to finish`. A press while Bob is unresolved is
@@ -327,8 +324,7 @@ alias setting: with it off, `\` still opens Go To inside the panel but the
 global chord only works there.
 
 Contrast with `Command-\` `Command-\`, which opens today's Pomodoro. The
-retained-draft caveat applies: `\` starts Go To only from a blank draft or a
-bare `/` draft, so stash (Control-C) or clear a retained capture first.
+retained-draft caveat applies: stash (Control-C) or clear a retained capture first.
 Typing `\` `\` right away types one literal `\`, so a draft can still start
 with a capture escape such as `\#fix`. After `#` or `%`, double-tap leaves
 one literal.
@@ -336,79 +332,56 @@ one literal.
 ## Editing the draft
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
-current authored row's supported indentation (zero or two ASCII spaces). With a
-collapsed caret at column zero, inside leading whitespace, on either side of the hyphen,
-after the `- ` prefix, or anywhere through the first body character of a populated `- `
-row, Ctrl-J replaces that row's leading whitespace and `- ` prefix with one line
-terminator while preserving the body. For example, `Parent\n|- child` and
-`Parent\n- |child` both become `Parent\n\n|child`. Only a caret inside or after the body
-keeps the normal new-row insertion behavior. On a line that
+current authored row's supported indentation (zero or two ASCII spaces). From column zero
+through the first body character of a populated `- ` row, Ctrl-J replaces that row's
+leading whitespace and `- ` prefix with one line terminator while preserving the body;
+only a caret inside or after the body keeps the normal new-row insertion behavior. On a line that
 contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.
-In a template draft, as reported by bob's parse, Ctrl-J inserts a plain newline
-everywhere in the draft with no indentation and no `-`.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
 remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
 for a local editor snippet: with a collapsed caret immediately after `--`, it
 replaces those two ASCII hyphens with a single em dash `—` and leaves the caret
 right after it, everywhere else in the editor including inside prose. To submit
 a one-unit earlier shift, type `--` and press Return without pressing Tab first.
-Only when no snippet matches does Tab fall through to bullet indentation. To
-author a nested row,
+To author a nested row,
 press Ctrl-J from an existing nested row, or press Ctrl-J for a fresh top-level
 placeholder and then Tab before or after typing its body to indent it under the preceding
 first-level bullet. Shift-Tab reverses that, returning a nested bullet to column zero.
 Tab/Shift-Tab only move a continuation bullet between Bob's two supported source
 prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts must still use that
 exact two-space indent; they stop at that ceiling and floor and leave every other line
-untouched. Ctrl-U deletes from the caret to the beginning of the current physical line,
-and when the caret is already at that start -- where there is nothing left to delete --
-it removes the previous line entirely, so repeated presses walk up the draft line by line
-and stop on the first line.
-Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
+untouched. Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
 toggles the current physical line's case (uppercase unless the span is already all
 uppercase, then lowercase), Escape, Ctrl-[, or a second Control-G cancels silently,
-and any other key beeps and is swallowed so it cannot also act. Holding Control-G
+and any other key beeps and is swallowed. Holding Control-G
 stays armed. A click, hiding the panel, or losing key focus drops the leader, and
-the footer reads `⌃G · U toggle line case · esc cancel` while it waits. A selection
-that spans lines uses one direction for every touched physical line, without changing
-line terminators. The toggle does not know capture syntax (`x1` becomes `X1`); Bob's
-live parse re-reads the result.
-Backspace on an empty `- ` row removes it in one action instead of requiring two ordinary
-backspaces. All five shortcuts act on the native text view directly, so undo, IME
+the footer reads `⌃G · U toggle line case · esc cancel` while it waits. The toggle
+does not know capture syntax (`x1` becomes `X1`); Bob's live parse re-reads the result.
+All five shortcuts act on the native text view directly, so undo, IME
 composition, and accessibility behave exactly as they do for any other edit, and Bob's
 live parse/preview remains the sole authority for whether the resulting hierarchy is
-contextually valid. Ctrl-A and Ctrl-E move the caret to the beginning and end of the
-current physical line, and when the caret is already on that edge they step to the
-beginning of the previous line or the end of the next one, so repeated presses walk the
-draft line by line. They stop at the first and last line rather than wrapping around.
+contextually valid.
 
 Ctrl-Shift-J and Ctrl-Shift-K move the caret to the next and previous physical line,
 keeping the column it started from: passing through a shorter line clamps the caret
 to that line's end, and the next press in the same direction restores the original
 column on the first line long enough to hold it. Other input, clicks, or edits reset
-that remembered column. They stop at the first and last lines without wrapping. Exact Ctrl-K
-is again left to AppKit's native delete-to-end-of-paragraph binding, while
-Ctrl-Shift-K is the custom upward move and Ctrl-U remains Bob's custom line-deleting
-shortcut.
+that remembered column. Exact Ctrl-K stays AppKit's native
+delete-to-end-of-paragraph binding.
 
-Ctrl-L and Ctrl-H move by WORD (vim `W` / `B`): a WORD is a run of non-blank
-characters, so `@foo#bar` is one WORD but four words (`@`, `foo`, `#`, `bar`).
-Ctrl-Shift-L and Ctrl-Shift-H move by word (vim `w` / `b`): a word is one
-keyword, emoji, or punctuation run. Empty lines are stops; lines holding only
-spaces are not. A selection collapses first — forward motions start from its
-end and backward motions from its start. The motions stop at the start and end
-of the draft rather than wrapping around. They only move the caret, so they never
-touch the draft's text, undo history, or an in-flight IME composition. In the
+Word motions treat empty lines as stops; lines holding only spaces are not. A
+selection collapses first — forward motions start from its end and backward
+motions from its start. They only move the caret, so they never touch the
+draft's text, undo history, or an in-flight IME composition. In the
 editor, Ctrl-H no longer acts as AppKit's delete-backward; Backspace and Ctrl-U
 still delete. Prompts and pickers keep their own Ctrl-H, including the relation
 card's Hidden-section toggle.
 
-Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
-is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
-rich HTML/RTF flavor forced a synchronous WebKit HTML import that could cost seconds per
-paste from browser content. When the caret is at the end of an otherwise empty `- `,
+Command-V intentionally reads only the clipboard's plain-text flavor: letting AppKit
+choose a rich HTML/RTF flavor forced a synchronous WebKit HTML import that could cost
+seconds per paste from browser content. When the caret is at the end of an otherwise empty `- `,
 `* `, or `+ ` row and the clipboard begins with a Markdown `-`, `*`, or `+` bullet with
 a body, Command-V treats that row as the first pasted bullet: the row's marker is kept,
 the clipboard's first marker is consumed, and the remaining pasted lines are rebased to

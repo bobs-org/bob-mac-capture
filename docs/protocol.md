@@ -5,7 +5,7 @@ description: "Bob Mac Capture subprocess commands, JSON boundaries, capability r
 
 Bob Mac Capture owns presentation and process orchestration. Bob owns capture grammar, completion, previews, and vault mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). New capture contracts land in `bob` first; the app decodes and presents them.
 
-Capabilities are response-driven: unknown spans render neutral, contexts generic; missing fields follow the compatibility table. Upgrade `bob`.
+Capabilities are response-driven: unknown spans render neutral, contexts generic; missing fields follow the compatibility table.
 
 ## Capability requirements
 
@@ -32,23 +32,17 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   relocation or named-future creation, and suffixed `@route+block-id!` for
   the explicit two-way toggle (`toggle_behavior` and
   `task_toggle_explicit_toggle`), plus the atomic-start `@route:block-id=<X>` and
-  `@route:block-id#name=<X>` suffix (`pomodoro_start` parse/capture JSON and the
-  `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet: empty is 25
-  minutes, `-` offsets one 5-minute unit), plus whole-item `+[N]`/`-[N]`
-  duration adjustments (`pomodoro_adjust` parse/capture JSON and the
-  `pomodoro_adjust` span, where each unit is 5 minutes and subtraction clamps
-  at zero), plus whole-item `++[N]`/`--[N]` session shifts (`pomodoro_shift`
-  parse/capture JSON and the `pomodoro_shift` span, where each unit is 5
-  minutes and the count defaults to 1, so `+`, `-`, `++`, and `--` all work),
-  plus whole-item `=`/`=<X>` session starts (`pomodoro_start` parse/capture
-  JSON and the `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet
-  and the capture summary carries the session's queued Task Links),
-  plus whole-item `=<X>#name` named starts (the `pomodoro_name` span over the
-  name bytes, the `pomodoro_start_name` completion context with the additive
+  `@route:block-id#name=<X>` suffix (`pomodoro_start` parse/capture JSON and
+  span), plus whole-item `+[N]`/`-[N]` duration adjustments
+  (`pomodoro_adjust` parse/capture JSON and span), plus whole-item
+  `++[N]`/`--[N]` session shifts (`pomodoro_shift` parse/capture JSON and
+  span), plus whole-item `=`/`=<X>` session starts (`pomodoro_start`
+  parse/capture JSON and span, with the queued Task Links in the capture
+  summary), plus whole-item `=<X>#name` named starts (the `pomodoro_name`
+  span, the `pomodoro_start_name` completion context with the additive
   `next_up` row marker, the `=#` incomplete state with its
   `interactive_placeholder` span, `x#name` close near-miss diagnostics, and
-  the additive `created_pomodoro` capture summary for new and "again"
-  sessions),
+  the additive `created_pomodoro` capture summary),
   plus Pomodoro close `x` and its additive `pomodoro_close` capture summary,
   plus project-note `@route^block-id@#pomodoro` (create) and
   `@route:block-id@#pomodoro` (offer). Retired `@route^block-id+` and
@@ -76,23 +70,20 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   candidates (`title`, `summary`, `owner`, `breadcrumb`), notebook note rows
   with `item_kind: "note"` in parent-task completion, `destination_kind: "notebook"`
   on notebook block-ID fields, and the per-item `notebook` summary plus
-  `note_files[]` for notebook creation. An older Bob that omits this metadata
-  keeps ordinary completion and capture decoding available. Grammar 26 adds
+  `note_files[]` for notebook creation. Grammar 26 adds
   `notebook_section_bullet`, span `notebook` / `section_action`, and
   `place_menu` chrome for drawer and notebook section menus.
   Task Wikilink picks require `capture-parse` spans
   `wikilink_task_delimiter` / `wikilink_task_query` to request the `wikilink_task`
   completion context (with the additive `link_target` candidate field, Bob-order
   groups, and picker descriptor) and `wikilink_replacement` on `capture-task-id`
-  results. An older Bob sends no task-wikilink spans, so the app requests no
-  completion and `((` stays plain text; upgrade `bob`.
+  results.
   Go To and Command-\ today-Pomodoro landing and Bob Refs Control-Return
-  also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the
-  version that shipped `obsidian://bob-goto-task`). Control-Return landing via
-  `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,
-  deployed to the vault with `bob plugins sync`.
+  also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0**.
+  Control-Return landing via `obsidian://bob-open-notes` needs
+  **bob-navigation-hotkeys ≥ 2.44.1**.
   Missing `pomodoro_start`/`pomodoro_close` omits its card; missing summary arrays
-  decode empty, booleans false, and unknown close roles neutral. A close without
+  decode empty, booleans false, unknown close roles neutral. A close without
   selectors stays unnumbered. Whole-item
   `x` (including the `x*` and `x!` selection forms) reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "x"}` parse spec (`raw` preserves the exact token, `x*` parks
@@ -105,65 +96,53 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   and `task_links` plus per-row `index` in the capture summary; a dangling
   `,`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
   an `interactive_placeholder` span instead of an error. A present-but-empty
-  `*`/`!` group selects all numbered links left after explicit assignments;
-  explicit forms such as `x*1` and `x!1` narrow the action to task 1. Two
-  empty wildcard groups compete and need numbers on at least one group. One
-  entry may sit on the close line itself (`x wired the lexer` logs to task 1
-  for a plain close, or to the first eligible top-level worked link with
-  wildcard intent; `x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
-  `pomodoro_close_log_index` span in cyan on the close line while the default
-  adds none, and a dangling inline number (`x 2`) reports mode `incomplete`
-  with a `pomodoro_close_log_text` need and an `interactive_placeholder`
-  span over the number. Several entries use ⌃J bullets
-  (`x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
-  entries), which add a `log` parse spec with the typed entries in order,
-  each carrying its `details`. Bullets may omit the number: unnumbered
-  bullets log in order to the close's worked tasks (`x3,4` plus `- foo bar`
-  plus `- baz bam` writes exactly what `- 3 foo bar` plus `- 4 baz bam`
-  writes), and a single worked task takes them all. Bullets are numbered
-  all or none, and a leading number is always a task number (to log text
-  that starts with a number, number every bullet). Numbered entries add
-  `pomodoro_close_log_index` spans in cyan over each entry index while
-  positional entries get no index chip; `capture-parse` omits `log[].index`
-  for entries `bob capture` resolves against the running session, and the
+  `*`/`!` group selects all numbered links left after explicit assignments
+  (`x*1`, `x!1` narrow to task 1); two empty wildcard groups compete and
+  need numbers on at least one group. One entry may sit on the close line
+  itself (logging to task 1, or to the first eligible top-level worked link
+  with wildcard intent): an explicit number adds a cyan
+  `pomodoro_close_log_index` span while the default adds none, and a
+  dangling inline number reports mode `incomplete` with a
+  `pomodoro_close_log_text` need and an `interactive_placeholder` span.
+  Further entries use ⌃J bullets with optional `  - …` detail lines, adding
+  a `log` parse spec with the typed entries in order, each carrying its
+  `details`. Bullets may omit the number: unnumbered bullets log in order
+  to the close's worked tasks, and a single worked task takes them all.
+  Bullets are numbered all or none, and a leading number is always a task
+  number. Numbered entries add cyan `pomodoro_close_log_index` spans while
+  positional entries get none; `capture-parse` omits `log[].index` for
+  entries `bob capture` resolves against the running session, and the
   app decodes a missing index as nil. Entry and detail text keeps wikilink
-  spans but is otherwise neutral prose, and a dangling bullet (`x` plus
-  `- 1`) reports mode `incomplete` with a `pomodoro_close_log_text` need
-  and an `interactive_placeholder` span over the number instead of an
-  error.
+  spans but is otherwise neutral prose, and a dangling bullet reports mode
+  `incomplete` with a `pomodoro_close_log_text` need and an
+  `interactive_placeholder` span instead of an error.
   Inline entries require a bob that understands them; an older bob reports
-  `invalid_pomodoro_close` on the entry. An older Bob that omits `log` decodes as no typed
-  entries, an older Bob that omits `details` decodes each entry without
-  details, and an older Bob that omits `typed_work_log` or
-  `typed_work_log_details` decodes as empty so the card shows only the capped
-  `work_log` previews. A parked (`*<P>`)
-  close records normal In Progress work without carrying those links forward;
-  parked rows keep readable, unstruck, undimmed text with their actual
-  transition, a `pause.circle` accent beside `Parked \u00b7 not carried`, and
-  VoiceOver reading the task number, text, actual status, and
-  "parked, not carried to the next Pomodoro". The summary uses `Continue`,
-  `Parked`, `Complete`, `Deferred`, and `Dropped` groups in that order
-  (for example `Continue 1 \u00b7 Parked 2, 3 \u00b7 Complete 4, 5`);
-  `Continue` means ordinary worked links carried onward and never names a
-  task status. `x0*2` reports `Continue none \u00b7 Parked 2`. A dropped (`~<K>`)
-  close removes those links from today without carrying or starting them; the
-  card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
-  "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
-  caption naming the lane the task keeps. The `x*`/`x!` all-task selection
-  behavior requires the corresponding updated Bob executable. With an
-  older Bob, the app displays that Bob's actual preview and submits the
-  untouched draft through one Bob capture call; it never parses selection lists
-  in Swift or simulates the new behavior. The app keeps
-  schema-version rejection unchanged. A whole-item
-  `=`/`=<X>` start reports the same numbered lineup: per-row `index` in the
-  capture summary, a `drop` list on the parse spec and capture summary, and removed rows
-  in `dropped` with their `index`, pre-image `ledger_line`, and `nested_lines`
-  count; a trailing `~<K>` adds a `pomodoro_start_drop` span in the same muted gray as
-  `pomodoro_close_drop`, and a dangling `~`/`,` reports mode `incomplete` with a
-  `pomodoro_start_task` need and an `interactive_placeholder` span instead of an error.
-  A start summary whose `drop`, `dropped`, `index`, or `nested_lines` fields are
-  absent still previews as today's unnumbered card: the spec decodes as no drop, rows
-  decode as unnumbered without badges, and no drop hint or summary renders.
+  `invalid_pomodoro_close` on the entry. An older Bob that omits `log`,
+  `details`, `typed_work_log`, or `typed_work_log_details` decodes as
+  without them, so the card shows only the capped `work_log` previews. A
+  parked (`*<P>`) close records normal In Progress work without carrying
+  those links forward; parked rows keep readable, unstruck, undimmed text
+  with their actual transition, a `pause.circle` accent, and VoiceOver
+  naming the hold. The summary groups `Continue`, `Parked`, `Complete`,
+  `Deferred`, and `Dropped` in that order; `Continue` means ordinary
+  worked links carried onward and never names a task status. A dropped
+  (`~<K>`) close removes those links from today without carrying or
+  starting them; the card strikes and dims dropped rows and adds a
+  "stays <status>" caption naming the lane each task keeps. The
+  `x*`/`x!` all-task selection behavior requires the corresponding updated
+  Bob executable. With an older Bob, the app displays that Bob's actual
+  preview and submits the untouched draft through one Bob capture call; it
+  never parses selection lists in Swift or simulates the new behavior. The
+  app keeps schema-version rejection unchanged. A whole-item `=`/`=<X>`
+  start reports the same numbered lineup: per-row `index` in the capture
+  summary, a `drop` list on the parse spec and capture summary, and removed
+  rows in `dropped` with their `index`, pre-image `ledger_line`, and
+  `nested_lines` count; a trailing `~<K>` adds a muted-gray
+  `pomodoro_start_drop` span, and a dangling `~`/`,` reports mode
+  `incomplete` with a `pomodoro_start_task` need and an
+  `interactive_placeholder` span instead of an error. A start summary
+  missing `drop`, `dropped`, `index`, or `nested_lines` still previews as
+  today's unnumbered card: no drop, no badges, and no drop hint or summary.
   `toggle_direction` is `link` or `unlink` with `status_changed` on every
   result: linking shows the added link with `set Next`, `stays Next`, or
   `stays In Progress`, and unlinking shows the removed-link count with
@@ -181,18 +160,15 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   warnings, and refusals are decoded as absent or ignored. `plan_budget` also
   carries `added_theme_refs`, the hue refs for the added names: created
   destination, start, toggle, and project-note rows wear theme pills.
-  `pomodoro_name` and `task_toggle_pomodoro_name` spans carry per-component
-  `themes` refs, so the editor tints known names behind the unchanged syntax
-  color; unknown and exempt names stay neutral. Agenda entries carry `themes`
-  refs, so group headers wear pills and the one-row fold wears swatches; home
-  dots are untouched. Refs Today rows carry `themes` refs for the same pills.
-  The shared catalog, hue, and menu rules are defined in the [Pomodoro themes
-  contract](https://bobs-org.github.io/pomodoro-themes/).
-  An older Bob that omits `plan_budget`, `role`,
-  `added_theme_refs`, span or entry `themes`, or `code` still previews and
-  captures; the Mac app decodes each as absent and renders the destination row as
-  `→ NAME`, omitting only the TODAY badge and the theme tints. Agenda and Refs rows from an older Bob render
-  the plain name with no pills. A trailing `#now` tag is the ordinary trailing-tag error like any
+  `pomodoro_name` and `task_toggle_pomodoro_name` spans, agenda entries,
+  and Refs Today rows carry `themes` refs for the same tints; unknown and
+  exempt names stay neutral and home dots are untouched. The shared
+  catalog, hue, and menu rules are defined in the [Pomodoro themes
+  contract](https://bobs-org.github.io/pomodoro-themes/). An older Bob
+  that omits `plan_budget`, `role`, `added_theme_refs`, span or entry
+  `themes`, or `code` still previews and captures; the Mac app decodes each
+  as absent and renders the destination row as `→ NAME`, omitting only the
+  TODAY badge and the theme tints. A trailing `#now` tag is the ordinary trailing-tag error like any
   other `#tag`, and `#now` typed before the route is plain body text. The `^`
   active-task picker lists In Progress and Next tasks only. An older Bob that
   still sends the `now` flag, the `now_tag` span or completion context, or
@@ -200,26 +176,19 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   unknown span as neutral, an unknown context as a generic row, and an
   unknown group as `note`. Saving links to the reading queue needs a Bob that
   emits the `ref` capture kind with the additive `ref` object, `ref` parse
-  mode, and the `ref_url` span. An older Bob keeps capturing a bare link as an
-  ordinary inbox task; the Mac app decodes the missing `ref` object as no
-  reference preview and keeps the standard card, so upgrade Bob before
-  queueing links. Filing a link needs a Bob that resolves the canonical
-  parent: the additive `ref.parent` object (`route`, `label`, `kind`,
-  `source`, `alias`) on capture results, `ref_parent` (`token`, `source`)
-  on `capture-parse` `ref` items, and `project_name_aliases` on
-  `capture-targets` entries. A bare URL that will queue under the default
-  parent opens the route list on its own with the header **File under**:
-  cached inbox, area, and project targets with the last-used parent first,
-  then `mac_inbox`; typing filters with aliases included
-  (`bob · aka bob-cli`). Accepting inserts ` @<route>` at the end of the
-  draft; Esc keeps the default (`→ mac_inbox · file it later`) and the list
-  does not reopen until the URL changes. Library hits (`in_library`,
-  `in_intake`, `clipping`, `duplicate`) never open it. The queued preview
-  reads `📖 Queue · example.com/essay → sase` (plus the parent's kind for an
-  explicit `@route`), and the confirmation and notification read
-  `Queued for reading → sase`. The last-used parent is remembered after a
-  successful submit. Route completion everywhere ranks alias matches after
-  prefix route matches. An older Bob that omits `ref.parent`,
+  mode, and the `ref_url` span. An older Bob keeps capturing a bare link as
+  an ordinary inbox task. Filing a link needs a Bob that resolves the
+  canonical parent: the additive `ref.parent` object (`route`, `label`,
+  `kind`, `source`, `alias`) on capture results, `ref_parent` (`token`,
+  `source`) on `capture-parse` `ref` items, and `project_name_aliases` on
+  `capture-targets` entries. A bare URL queueing under the default parent
+  opens the route list on its own with the header **File under**: cached
+  inbox, area, and project targets with the last-used parent first, then
+  `mac_inbox`; typing filters with aliases included, and route completion
+  ranks alias matches after prefix route matches. Accepting inserts
+  ` @<route>`; Esc keeps the default and the list does not reopen until
+  the URL changes. Library hits never open it. The last-used parent is
+  remembered after a successful submit. An older Bob that omits `ref.parent`,
   `ref_parent`, or `project_name_aliases` still previews and captures; the
   Mac app decodes each as absent, keeps today's wording, never auto-opens
   File under, and matches routes without aliases, so upgrade Bob before
@@ -240,7 +209,7 @@ and cuts. Segment-ending `-` rewrites to `~`; stale-window guards refresh previe
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
 
-The executable search paths and the Settings override live in [Install](install.md#requirements).
+Executable search paths and the Settings override live in [Install](install.md#requirements).
 
 ## Move-choice submission
 
@@ -252,13 +221,7 @@ answer chaining, and optional decoding.
 
 `pull_in.close.supported` gates `--complete-offer` and `--cancel-offer`.
 Refusals reopen intact; stale picks refresh once and never retry writes.
-
-| App × Bob | Behavior |
-| --- | --- |
-| New × new | Move → Pull-In → inbox → capture |
-| Old × new | Unanswered `^^` refuses before writing |
-| New × old | Warn once; second submit captures literally without `--move-in` |
-| Old × old | Literal task |
+The app × Bob version matrix lives with the [Move card](task-pickers.md#move-card-protocol).
 
 ## Timeouts and guards
 
@@ -267,12 +230,11 @@ Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 If Bob rejects the exact `--refuse-override` flag as an
 unexpected argument (exit 2), the app retries without that guard and remembers the
 answer for that executable. `--require-pull-in-choice` is never retried: it goes out
-only after a preview from the same executable advertised `pull_in.supported`, so an
-older Bob never sees it; it also shows a note that this Bob lacks successor-choice
+only after a preview from the same executable advertised `pull_in.supported`;
+it also shows a note that this Bob lacks successor-choice
 checks. `--require-inbox-route-choice` goes out under the same positive gate (a
-preview, or any decoded capture JSON, that carried `inbox_route.supported == true`,
-remembered per executable identity), and an older Bob that still receives it retries
-without the flag the same way. Other failures and explicit stale-key refusals are never
+preview, or any decoded capture JSON, that carried `inbox_route.supported == true`),
+and an older Bob that still receives it retries without the flag the same way. Other failures and explicit stale-key refusals are never
 retried. The app only sends explicit offer keys from a matching preview or write-free
 refusal back to `bob capture`. An older bob never overrides on `=`, so retrying without
 `--refuse-override` is safe.
@@ -291,23 +253,17 @@ Required commands must exist; otherwise their feature hides or Bob refuses:
 - `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates; records add `record` and `continuation`)
 - `capture-rewrite --cursor BYTE --format json` (marker and separator rewrites, relation-label attachment, sigil aliases including spaced `.` → `@`/`&` and `;` → `:`/`*`, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
-- `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound on new builds and supplies the running count for older-bob fallback
+- `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound and supplies the running count for older-bob fallback
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
 - `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row lacks an `added` date or git instant)
 - `plan -f json` (Refs Today join, schema 2)
-- `ref scan -a -w -f json` (Refs scan report, schema 1; `-a` omitted after older bob rejects it)
+- `ref scan -a -w -f json` (Refs scan report, schema 1; `-a` retries without the flag per executable)
 - `ref show <note-path> -f json` (inspector hydration)
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
 
-Bob Refs ⌘S and the enabled Highlights-save trigger use this scan command.
-
-A locked writing `bob ref scan` stores its JSON at
-`<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else `~/.local/state`) and
-posts `org.bobs.bob.ref.scan-finished` on macOS. Bob Refs observes it via
-`notify_register_dispatch`, reads receipts off-main-thread (max 4 MB), and ignores
-duplicate hashes; launch never reads receipts.
+Bob Refs ⌘S and the enabled Highlights-save trigger use this scan command; the receipt path and notification are in [Bob Refs](refs.md).
 
 ## Optional commands
 
