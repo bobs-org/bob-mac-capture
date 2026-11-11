@@ -224,8 +224,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   past-segment `x=2-` to `x=2~`. Close-slot `x`/`s` become `!`/`*`; elsewhere
   they stay literal. Use `=XS` for starts.
   Meaning-changing aliases hold later edits and Return
-  until Bob replies; then edits replay before submission. On timeout, the key
-  stays literal, edits replay, and Return is dropped with
+  until Bob replies; then replay them. On timeout, the key
+  stays literal, edits replay, and Return drops with
   “Bob did not answer; press Return again”. Old bob stays literal with update hint.
   After bare `~`/`~~`, `=` uses this lane to flip direction and open its
   picker. A glued `~`/`=` at a complete relation token flips in place; after a
@@ -237,19 +237,19 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   to `@` only where `&` cannot open; `;` falls from `:` to `*` where Bob opens
   Blocks. Bob decides; the app
   applies the edit and requests completion; Undo restores the key. Blank-draft
-  `\\` becomes `/` for Go To. Else `/` aliases `#` only where Bob opens its
-  menu, staying literal in `=/`, `[[folder/`, section, and Pomodoro
-  names. `\\` aliases `%` only where Bob opens the directive menu (not at line
-  start, after a word, or after another `\\`). A same-key press types one literal
-  and closes the menu. Before Bob replies, the app re-asks about the first key
-  and removes the extra only if it would become `#` or `%`; Undo restores both.
-  An older Bob's `\\` → `#` reply still arms the double-tap.
+  `\` becomes `/` for Go To. Else `/` aliases `#` where Bob opens its menu,
+  staying literal in `=/`, `[[folder/`, section, and Pomodoro names. `\`
+  aliases `%` where the directive menu opens (`Buy milk \` → `Buy milk %`;
+  literal at line start, glued to a word, or after another `\`). Same-key
+  press types one literal and closes the menu. Before Bob replies, the app
+  re-asks the first key and drops the extra only if it would become `#` or
+  `%`; Undo restores both. Older Bob's `\` → `#` still arms that double-tap.
   A fast `==` (350 ms) restores literal `=` in the
   editor, picker, or label card; other keys, caret moves, paste, Undo, or
   dismissal clear that arm, and a slow second press flips twice. After spaced
   `.` → `@`/`&` and `;` → `*` aliases, fast `..`/`;;` (350 ms) restores one
-  literal key; Space/Escape restores on the empty route list or its own empty
-  picker. Caret moves, navigation, modifiers, and other keys clear either arm.
+  literal key; Space/Escape restores on an empty route list or picker. Caret
+  moves, navigation, modifiers, and other keys clear either arm.
   Thus `...` after body text takes four presses (as `===` gives `==`); item-start
   `.bashrc` and `.5` stay literal.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.

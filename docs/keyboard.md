@@ -104,7 +104,7 @@ as Command-Y L does.
 | - | Literal after a space; Bob maps it to `~` in past segment `x=2-` | The same past-segment rewrite | Native text-field behavior | Native text-field behavior |
 | x / s | In close slots, `x`/`s` become `!`/`*` (sized too: `2xx`→`2x!`, `12xs`→`12x*`, `--1 2xx`→`--1 2x!`, `^r:id=2xs`→`^r:id=2x*`); `Plan 2xx`, `x made 2xx`, and `2Xx` stay literal prose. Time goes before `x`, task numbers after it; see [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size) | Same | Native text-field behavior | Native text-field behavior |
 | = | After space/tab, `=` → `~` opens Links To; after bare `~`/`~~` or a relation token, flips direction. Fast `==` (350 ms) types one `=` | In a relation picker, flips Links To ↔ Linked From; fast `==` undoes into the filter | Native text-field behavior | Native text-field behavior |
-| \\ or / | Blank-draft `\\` → `/` opens Go To. Else `/` → `#` and `\\` → `%` open Bob's menus only when eligible; `\\` stays literal at line start, after a word, or after another `\\`. `/` stays literal in `=/`, `[[folder/`, section and Pomodoro names. At any speed, same-key double-tap types one literal, closes the menu; Undo restores the key | The same rewrite and menu behavior | Native text-field behavior | Native text-field behavior |
+| \\ or / | Blank-draft `\` → `/` opens Go To. Else `/` → `#` and `\` → `%` when eligible (`Buy milk \` → `Buy milk %`); `\` stays literal at line start, glued to a word, or after another `\`. `/` stays literal in `=/`, `[[folder/`, section and Pomodoro names. Same-key double-tap types one literal, closes the menu; Undo restores it | The same rewrite and menu behavior | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion; with no selected row, select the first | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
@@ -327,8 +327,8 @@ Contrast with `Command-\` `Command-\`, which opens today's Pomodoro. The
 retained-draft caveat applies: `\` starts Go To only from a blank draft or a
 bare `/` draft, so stash (Control-C) or clear a retained capture first.
 Typing `\` `\` right away types one literal `\`, so a draft can still start
-with a capture escape such as `\#fix`. After a `#` or `%` alias, the same-key
-double-tap leaves one literal key and closes the menu.
+with a capture escape such as `\#fix`. After `#` or `%`, double-tap leaves
+one literal.
 
 ## Editing the draft
 
