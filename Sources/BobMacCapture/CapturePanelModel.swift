@@ -11483,7 +11483,12 @@ final class CapturePanelModel: ObservableObject {
         if completionResponse.candidates.isEmpty {
             return false
         }
-        if completionResponse.placeMenu != nil, selectedCompletionIndex == nil {
+        // Notebook near-miss and refused menus stay unselected; Tab/Return
+        // must not invent a choice. Drawer and other lists still take the
+        // first row on Tab when Bob opened them without a selection.
+        if completionResponse.placeMenu?.kind == "notebook_section",
+            selectedCompletionIndex == nil
+        {
             return false
         }
         if selectedCompletionIndex == nil {
@@ -20329,7 +20334,9 @@ final class CapturePanelModel: ObservableObject {
     static func clearEditorHighlightAttributes(_ text: inout AttributedString) {
         text.foregroundColor = nil
         text.backgroundColor = nil
-        text.underlineStyle = nil
+        // An empty style clears the run where assigning nil leaves the prior
+        // paint in place (same AttributedString quirk as unconfigured themes).
+        text.underlineStyle = NSUnderlineStyle([])
         text.underlineColor = nil
         text.inlinePresentationIntent = nil
     }
@@ -20370,11 +20377,18 @@ final class CapturePanelModel: ObservableObject {
             }
             text[lower..<upper].foregroundColor = color
             if item.span.kind == "section",
-               item.span.notebook == true,
-               item.span.sectionAction == "create"
+               item.span.notebook == true
             {
-                text[lower..<upper].underlineStyle = NSUnderlineStyle([.single, .patternDot])
-                text[lower..<upper].underlineColor = NSColor.systemPurple.withAlphaComponent(0.5)
+                if item.span.sectionAction == "create" {
+                    text[lower..<upper].underlineStyle = NSUnderlineStyle([
+                        .single, .patternDot,
+                    ])
+                    text[lower..<upper].underlineColor =
+                        NSColor.systemPurple.withAlphaComponent(0.5)
+                } else {
+                    text[lower..<upper].underlineStyle = NSUnderlineStyle([])
+                    text[lower..<upper].underlineColor = nil
+                }
             }
             if item.span.kind == "record_route" {
                 // Chip wash only: the type emoji is a presentation overlay
@@ -21516,7 +21530,10 @@ extension CapturePanelModel {
     private func deferAliasTipOpportunity(reason: AliasTipDropReason) {
         if pendingAliasTip != nil {
             dropPendingAliasTip(reason: reason)
-        } else if var request = aliasTipRequest, request.openedSurface == nil {
+        } else if var request = aliasTipRequest,
+            request.openedSurface == nil,
+            request.dropReason == nil
+        {
             request.dropReason = reason
             aliasTipRequest = request
         }

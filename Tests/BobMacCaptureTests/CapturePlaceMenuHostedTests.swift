@@ -248,6 +248,10 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
         XCTAssertNil(nearMiss.selectedCompletionIndex)
         XCTAssertEqual(nearMiss.placeMenuPresentation()?.rows.first?.refusal, nil)
         XCTAssertEqual(nearMiss.placeMenuPresentation()?.rows.first?.detail, "did you mean Setup?")
+        let nearDraft = nearMiss.plainDraft
+        XCTAssertFalse(nearMiss.acceptSelectedCompletion())
+        XCTAssertEqual(nearMiss.plainDraft, nearDraft)
+        XCTAssertTrue(nearMiss.completionVisible)
 
         let refused = try await notebookCompletion("@dev_dup\n- #git")
         XCTAssertNil(refused.selectedCompletionIndex)
