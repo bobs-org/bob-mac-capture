@@ -94,8 +94,10 @@ Type emoji replaces the `@` and never enters the draft. Footer red is
 refusals and diagnostics. See [Record cards](keyboard.md#record-cards).
 
 A committed record uses Bob's per-item `record_note` summary, not the
-cleared editor: headline `emoji new label  path` (for example
-`🍽️ new restaurant  eat/ramen_nagi.md`), ordered nonempty property
+cleared editor: headline `emoji new label  destination` (for example
+`🍽️ new restaurant  Restaurants · body` for album-backed records, else the
+path as before), the album destination caption with the path kept in the
+accessibility label, ordered nonempty property
 displays (`with` prefixes `companions`), and note count (`no notes`,
 `1 note`, `N notes`). Defaults carry a `default` badge; values without a
 display fall back to canonical form; absent optionals stay out. Exact

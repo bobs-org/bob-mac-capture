@@ -581,6 +581,20 @@ public func completionRowContent(
             badges = ["Notebook"]
             // The route hint is assigned once below, after both route kinds
             // have selected their row details.
+        } else if candidate.kind == "record",
+            let albumTitle = candidate.title, !albumTitle.isEmpty
+        {
+            // Album-backed record route (Bob's additive capture-targets
+            // fields): keep Bob's emoji/label/count line as the primary
+            // and add the album title, the owner breadcrumb, and the
+            // dimmed summary, as notebook rows do. Older Bob omits the
+            // fields and keeps the legacy route/label layout below.
+            primaryText = candidate.label ?? candidate.route ?? candidate.replacement
+            var location = [albumTitle]
+            let parents = candidate.breadcrumb?.dropLast().filter { !$0.isEmpty } ?? []
+            location.append(contentsOf: parents)
+            secondaryText = location.joined(separator: " · ")
+            detailText = candidate.summary
         } else if let alias = candidate.alias, !alias.isEmpty,
            let route = candidate.route, !route.isEmpty
         {

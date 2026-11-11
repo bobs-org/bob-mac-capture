@@ -209,7 +209,7 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
             "\(CaptureRecordPreviewPresentation.headline(for: summary)) · "
             + CaptureRecordPreviewPresentation.detail(for: summary)
         XCTAssertEqual(model.statusText, expected)
-        XCTAssertTrue(expected.contains("eat/cafe_møø_ramen.md"), expected)
+        XCTAssertTrue(expected.contains("Restaurants · body"), expected)
     }
 
     func testDelayedStaleSuccessReplyNeverClobbersCurrentRefusal() async throws {

@@ -67,48 +67,78 @@ cat > "$vault/.obsidian/plugins/obsidian-tasks-plugin/data.json" <<'JSON'
 }
 JSON
 
+# Record schemas live in album notes (bob-cli album-model phase); the config
+# carries no `records:` block so every kind resolves from its album.
 cat > "$config" <<'YAML'
-records:
-  restaurant:
-    dir: eat
-    label: Restaurant
-    emoji: "🍽️"
-    dated_notes: true
-    fields:
-      status:
-        required: true
-        values:
-          to_try: "To try"
-          liked: "Liked"
-      category:
-        required: true
-        suggest: true
-      location:
-        required: true
-        suggest: true
-      companions:
-        values: link
-        list: true
-        default: ["[[kelly]]"]
-      visited:
-        values: date
-      url:
-        values: url
-  podcast:
-    dir: podcasts
-    label: Podcast
-    emoji: "🎙️"
-    fields:
-      status:
-        required: true
-        values:
-          to_try: "To try"
-          subscribed: "Subscribed"
-      category:
-        required: true
-        suggest: true
+# Scratch config for record fixtures: no `records:` block (album-owned schemas).
 YAML
 
+cat > "$vault/body.md" <<'MD'
+---
+type: "[[area]]"
+---
+# Body
+
+## Tasks
+MD
+cat > "$vault/eat.md" <<'MD'
+---
+parent: "[[body]]"
+type: "[[album]]"
+summary: Restaurants we have tried or want to try.
+emoji: "🍽️"
+record:
+  noun: restaurant
+  label: Restaurant
+  dated_notes: true
+  fields:
+    status:
+      required: true
+      values:
+        to_try: "To try"
+        liked: "Liked"
+    category:
+      required: true
+      suggest: true
+    location:
+      required: true
+      suggest: true
+    companions:
+      values: link
+      list: true
+      default: ["[[kelly]]"]
+    visited:
+      values: date
+    url:
+      values: url
+---
+# Restaurants
+
+Add one with `Name @eat/`.
+MD
+cat > "$vault/podcasts.md" <<'MD'
+---
+parent: "[[dev]]"
+type: "[[album]]"
+summary: Podcasts we follow.
+emoji: "🎙️"
+record:
+  noun: podcast
+  label: Podcast
+  fields:
+    status:
+      required: true
+      values:
+        to_try: "To try"
+        subscribed: "Subscribed"
+    category:
+      required: true
+      suggest: true
+---
+# Podcasts
+
+Add one with `Name @podcasts/`.
+MD
 cat > "$vault/mac_inbox.md" <<'MD'
 ---
 type: "[[area]]"
@@ -393,6 +423,7 @@ run_parse "Ramen Nagi @eat/
 run_parse "@eat/nagi" record-parse-existing.json
 run_parse "Went back @eat/nagi
 - status:: liked" record-parse-title-first-update.json
+run_parse "Blaze @eat" record-parse-bare-album.json
 
 # Completion fixtures.
 run_complete "@" "$(cursor_of "@")" record-complete-route.json
@@ -486,13 +517,15 @@ cat > "$fixtures/record-fixtures-README.md" <<EOF
 Generated from a real Bob; never hand-edit the JSON.
 
 - bob: $bob_commit
-- config: restaurant (eat, 🍽️) + podcast (podcasts), companions default [[kelly]]
-- vault: eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md, eat/pizza_roma.md,
-  eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md, eat/sushi_den.md,
-  podcasts/techmeme.md
+- albums: eat (restaurant, 🍽️, owner body) + podcasts (podcast, 🎙️, owner dev),
+  companions default [[kelly]]; the config carries no records: block
+- vault: eat.md + podcasts.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
+  eat/pizza_roma.md, eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md,
+  eat/sushi_den.md, podcasts/techmeme.md
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
 - command shapes: capture-parse (including field/value caret drafts,
-  existing-record @eat/nagi, title-first update with status:: liked),
+  existing-record @eat/nagi, title-first update with status:: liked,
+  bare-album Blaze @eat refusal),
   capture-complete (caret, -n, -F, route, section, create-route
   record_target, 7+ category values, current-value named edit),
   capture --dry-run (restaurant with choice glyphs, aliased link,

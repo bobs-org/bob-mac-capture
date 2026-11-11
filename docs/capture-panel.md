@@ -172,7 +172,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker
   and a route-only `@@route` declaration anywhere in the draft.
   Notebook route rows use Bob's `title`, `summary`, `owner`, and `breadcrumb`
-  for display while preserving the route as the insertion identity. In a notebook
+  for display while preserving the route as the insertion identity. Record route
+  rows keep Bob's emoji, label, and count and add the album title, the owner
+  breadcrumb, and the dimmed `summary`. A bare album route refuses with
+  `album_holds_no_tasks` and offers the one-key `@stem/` rewrite as a footer
+  button. In a notebook
   `@route+` picker, `item_kind: "note"` rows use a book icon and note count, omit
   task status, and keep Bob's ID-less Add block ID flow. The reference File under
   list accepts only inbox, area, and project targets.

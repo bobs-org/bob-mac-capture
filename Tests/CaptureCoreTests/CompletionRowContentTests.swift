@@ -143,6 +143,48 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(create.primaryMatchRange, nil)
     }
 
+    func testRouteRecordRowsWithAlbumShowTitleOwnerAndSummary() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "eat/ ",
+            summary: "Restaurants we have tried or want to try.",
+            route: "eat/",
+            label: "🍽️ New restaurant · 8",
+            kind: "record",
+            title: "Restaurants",
+            owner: "body",
+            breadcrumb: ["body", "Restaurants"]
+        )
+
+        let content = completionRowContent(for: candidate, context: "route", query: "eat")
+
+        XCTAssertEqual(content.category, .route)
+        XCTAssertEqual(content.contextLabel, "Destination")
+        XCTAssertEqual(content.primaryText, "🍽️ New restaurant · 8")
+        XCTAssertEqual(content.secondaryText, "Restaurants · body")
+        XCTAssertEqual(content.detailText, "Restaurants we have tried or want to try.")
+        XCTAssertEqual(content.badges, ["record"])
+        XCTAssertEqual(content.accessibilityHint, "Sets the capture destination.")
+        XCTAssertEqual(
+            content.accessibilityLabel,
+            "Destination, 🍽️ New restaurant · 8, Restaurants · body, record")
+    }
+
+    func testRouteRecordRowsWithoutAlbumKeepLegacyLayout() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "eat/ ",
+            route: "eat/",
+            label: "🍽️ New restaurant · 8",
+            kind: "record"
+        )
+
+        let content = completionRowContent(for: candidate, context: "route", query: "")
+
+        XCTAssertEqual(content.primaryText, "eat/")
+        XCTAssertEqual(content.secondaryText, "🍽️ New restaurant · 8")
+        XCTAssertNil(content.detailText)
+        XCTAssertEqual(content.badges, ["record"])
+    }
+
     func testPastSegmentRowsKeepBobsSuffixAndResolvedTimelineDetails() {
         let pomodoro = CaptureCompletionCandidate(
             replacement: "~1",
