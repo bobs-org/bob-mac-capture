@@ -1,6 +1,10 @@
 import CaptureCore
 import SwiftUI
 
+let gcalNoteSaveButtonAccessibilityIdentifier = "org.bobs.bob-mac-capture.gcal-note-save"
+let gcalNoteClearButtonAccessibilityIdentifier = "org.bobs.bob-mac-capture.gcal-note-clear"
+let gcalNoteBackButtonAccessibilityIdentifier = "org.bobs.bob-mac-capture.gcal-note-back"
+
 @available(macOS 26.0, *)
 struct GcalNoteEditorView: View {
     @ObservedObject var model: GcalNotePanelModel
@@ -24,45 +28,57 @@ struct GcalNoteEditorView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            identityCard
-            if event.isRecurring {
-                scopeControl
-            }
-            editorCard
-            if let message = live.errorMessage, !message.isEmpty,
-                !live.errors.contains(where: { $0.message == message })
-            {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .accessibilityLabel("Note validation error")
-            }
-            ForEach(Array(live.errors.enumerated()), id: \.offset) { _, issue in
-                if let message = issue.message, !message.isEmpty {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
+        VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 10) {
+                    identityCard
+                    if event.isRecurring {
+                        scopeControl
+                    }
+                    editorCard
+                    if let message = live.errorMessage, !message.isEmpty,
+                        !live.errors.contains(where: { $0.message == message })
+                    {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                            .accessibilityLabel("Note validation error")
+                    }
+                    ForEach(Array(live.errors.enumerated()), id: \.offset) { _, issue in
+                        if let message = issue.message, !message.isEmpty {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    if !live.warnings.isEmpty {
+                        ForEach(Array(live.warnings.enumerated()), id: \.offset) { _, warning in
+                            Text(warning)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    EventNoteRailView(
+                        effective: live.effective,
+                        answer: event.answer
+                    )
+                    .opacity(live.isCurrent ? 1 : 0.55)
+                    landsBlock
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if !live.warnings.isEmpty {
-                ForEach(Array(live.warnings.enumerated()), id: \.offset) { _, warning in
-                    Text(warning)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-            EventNoteRailView(
-                effective: live.effective,
-                answer: event.answer
-            )
-            .opacity(live.isCurrent ? 1 : 0.55)
-            landsBlock
+            .scrollBounceBehavior(.basedOnSize)
+
             footer
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 18)
         }
-        .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)
         .accessibilityElement(children: .contain)
@@ -141,7 +157,7 @@ struct GcalNoteEditorView: View {
                 identityKey: identityKey,
                 onTextChange: { session?.setEditorText($0) }
             )
-            .frame(minHeight: 120, maxHeight: .infinity)
+            .frame(minHeight: 120, maxHeight: 220)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
@@ -196,8 +212,10 @@ struct GcalNoteEditorView: View {
             HStack(spacing: 8) {
                 Button("Save", action: model.save)
                     .disabled(writing)
+                    .accessibilityIdentifier(gcalNoteSaveButtonAccessibilityIdentifier)
                 Button("Clear", action: model.clear)
                     .disabled(writing || session?.canClearSavedScope != true)
+                    .accessibilityIdentifier(gcalNoteClearButtonAccessibilityIdentifier)
                 if canUndo {
                     Button("Undo last save", action: { _ = model.undoLastMutation() })
                         .disabled(writing)
@@ -205,8 +223,10 @@ struct GcalNoteEditorView: View {
                 Spacer()
                 Button("Back", action: model.returnToPicker)
                     .disabled(writing)
+                    .accessibilityIdentifier(gcalNoteBackButtonAccessibilityIdentifier)
             }
         }
+        .accessibilityElement(children: .contain)
     }
 
     private var identityKey: String {

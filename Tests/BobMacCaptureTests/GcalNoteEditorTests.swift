@@ -597,10 +597,17 @@ final class GcalNoteEditorTests: XCTestCase {
         await waitUntil {
             panel.contentView?.layoutSubtreeIfNeeded()
             guard let content = panel.contentView else { return false }
-            return ["Save", "Clear", "Back"].allSatisfy { title in
-                guard let button = self.findButton(title, in: content) else { return false }
-                let rect = button.convert(button.bounds, to: content)
-                return content.bounds.contains(rect) && !rect.isEmpty
+            let visibleContentRect = panel.convertToScreen(content.convert(content.bounds, to: nil))
+            return [
+                gcalNoteSaveButtonAccessibilityIdentifier,
+                gcalNoteClearButtonAccessibilityIdentifier,
+                gcalNoteBackButtonAccessibilityIdentifier,
+            ].allSatisfy { identifier in
+                guard let element = self.findAccessibilityElement(identifier, in: content) else {
+                    return false
+                }
+                let rect = element.accessibilityFrame()
+                return visibleContentRect.contains(rect) && !rect.isEmpty
             }
         }
         guard let content = panel.contentView else {
@@ -608,9 +615,14 @@ final class GcalNoteEditorTests: XCTestCase {
             return
         }
         XCTAssertGreaterThan(editor.visibleRect.height, 1)
-        for title in ["Save", "Clear", "Back"] {
-            let button = try XCTUnwrap(findButton(title, in: content))
-            XCTAssertTrue(content.bounds.contains(button.convert(button.bounds, to: content)))
+        let visibleContentRect = panel.convertToScreen(content.convert(content.bounds, to: nil))
+        for identifier in [
+            gcalNoteSaveButtonAccessibilityIdentifier,
+            gcalNoteClearButtonAccessibilityIdentifier,
+            gcalNoteBackButtonAccessibilityIdentifier,
+        ] {
+            let element = try XCTUnwrap(findAccessibilityElement(identifier, in: content))
+            XCTAssertTrue(visibleContentRect.contains(element.accessibilityFrame()))
         }
     }
 
@@ -675,13 +687,17 @@ final class GcalNoteEditorTests: XCTestCase {
         return nil
     }
 
-    private func findButton(_ title: String, in view: NSView?) -> NSButton? {
-        guard let view else { return nil }
-        if let button = view as? NSButton, button.title == title {
-            return button
+    private func findAccessibilityElement(
+        _ identifier: String,
+        in element: (any NSAccessibilityProtocol)?
+    ) -> (any NSAccessibilityProtocol)? {
+        guard let element else { return nil }
+        if element.accessibilityIdentifier() == identifier {
+            return element
         }
-        for subview in view.subviews {
-            if let found = findButton(title, in: subview) {
+        for child in element.accessibilityChildren() ?? [] {
+            guard let child = child as? any NSAccessibilityProtocol else { continue }
+            if let found = findAccessibilityElement(identifier, in: child) {
                 return found
             }
         }
