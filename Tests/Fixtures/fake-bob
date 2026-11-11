@@ -1125,6 +1125,8 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "Buy milk %" ]]; then
+      cat "${fixtures_dir}/capture-parse-alias-tip-directive.json" | inject_parse_grammar
     elif [[ "${draft}" == "jot idea %" ]]; then
       cat "${fixtures_dir}/directive-parse-bare-percent.json" | inject_parse_grammar
     elif [[ "${draft}" == "jot idea %c" ]]; then
@@ -2222,6 +2224,8 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-alias-tip-block-id-after-route.json"
     elif [[ "${draft}" == "jot idea #" ]]; then
       cat "${fixtures_dir}/capture-rewrite-alias-tip-hash.json"
+    elif [[ "${draft}" == "Buy milk %" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-alias-tip-directive.json"
     elif [[ "${draft}" == "Fix it =" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation.json"
     elif [[ "${draft}" == "New task ~=" ]]; then
@@ -2238,12 +2242,14 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-relation-direction-toggle-labeled.json"
     elif [[ "${draft}" == "New task ~~=" ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-relation-double-equals.json"
+    elif [[ "${draft}" == 'jot idea \' && "${FAKE_BOB_OLD_HASH_ALIAS:-}" == "1" ]]; then
+      cat "${fixtures_dir}/capture-rewrite-hash-alias-task-type-old-bob.json"
     elif [[ "${draft}" == 'jot idea \' ]]; then
-      cat "${fixtures_dir}/capture-rewrite-hash-alias-task-type.json"
+      cat "${fixtures_dir}/capture-rewrite-backslash-alias-directive.json"
     elif [[ "${draft}" == 'jot idea @foo\' ]]; then
-      cat "${fixtures_dir}/capture-rewrite-hash-alias-section.json"
+      cat "${fixtures_dir}/capture-rewrite-backslash-alias-section-unchanged.json"
     elif [[ "${draft}" == 'Postgres 17 minimum @foo+bar\' ]]; then
-      cat "${fixtures_dir}/capture-rewrite-hash-alias-drawer.json"
+      cat "${fixtures_dir}/capture-rewrite-backslash-alias-drawer-unchanged.json"
     elif [[ "${draft}" == 'jot idea /' ]]; then
       cat "${fixtures_dir}/capture-rewrite-slash-alias-task-type.json"
     elif [[ "${draft}" == 'jot idea @foo/' ]]; then
@@ -2793,7 +2799,7 @@ JSON
 JSON
       fi
       exit 0
-    elif [[ "${draft}" == "jot idea %" || "${draft}" == "%" ]]; then
+    elif [[ "${draft}" == "jot idea %" || "${draft}" == "Buy milk %" || "${draft}" == "%" ]]; then
       cat "${fixtures_dir}/directive-complete-bare.json"
       exit 0
     elif [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then

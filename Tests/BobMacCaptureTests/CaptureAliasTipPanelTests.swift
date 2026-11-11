@@ -34,6 +34,33 @@ final class CaptureAliasTipPanelTests: XCTestCase {
         )
     }
 
+    func testShiftTypedPercentShowsDirectiveMenuTip() async throws {
+        let recordURL = makeRecordURL()
+        let (model, textView) = try makeModel(
+            recordURL: recordURL,
+            debounceNanoseconds: 1_000_000_000
+        )
+        typeSigil("%", into: textView, model: model, modifiers: .shift)
+        await waitUntil {
+            model.completionResponse?.context == "directive"
+                && model.presentedAliasTip?.id == CaptureAliasLesson.directiveMenu
+        }
+
+        XCTAssertEqual(model.completionResponse?.context, "directive")
+        XCTAssertEqual(model.presentedAliasTip?.sigil, "%")
+        XCTAssertEqual(model.presentedAliasTip?.keys, ["\\"])
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.directiveMenu]?.tipsShown,
+            1,
+            "dropped: \(model.aliasTipLedgerStore.load().dropped)"
+        )
+        XCTAssertTrue(
+            (try String(contentsOf: recordURL)).contains(
+                "argv=capture-rewrite --cursor 10 --format json -- Buy milk %"
+            )
+        )
+    }
+
     func testTypingQueryBeforeTheRouteListOpensKeepsTheTip() async throws {
         let (model, textView) = try makeModel(
             recordURL: makeRecordURL(),
@@ -611,7 +638,7 @@ final class CaptureAliasTipPanelTests: XCTestCase {
     func testTypedSigilTriggersIncludeThePickerLessons() {
         XCTAssertEqual(
             CapturePanelModel.typedSigilTriggers,
-            Set(["@", "#", "^", ":", "+", "~", "&", "*"])
+            Set(["@", "#", "%", "^", ":", "+", "~", "&", "*"])
         )
     }
 

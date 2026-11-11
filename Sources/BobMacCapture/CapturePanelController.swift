@@ -2997,9 +2997,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let backslashLiteralArmed = model.takeBackslashLiteralArm()
         let takenHashArm = model.takeHashAliasLiteralArm()
         model.clearRelationFlipAliasOpen()
-        // The hash arm is judged against the live editor, not the SwiftUI
+        // The alias arm is judged against the live editor, not the SwiftUI
         // mirror: SwiftUI can report the caret one edit behind, and right
-        // after Bob's `#` lands `applyNativeRewrite` reassigns the mirror.
+        // after Bob's replacement sigil lands `applyNativeRewrite` reassigns
+        // the mirror.
         // The action takes the arm passed here and never re-reads the
         // property just cleared. The equals record is read live instead:
         // Space/Escape restores and fast-`==` undos re-validate inside the

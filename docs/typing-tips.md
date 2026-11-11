@@ -24,7 +24,7 @@ anchored surface is already open is dropped.
 The picker includes the row only when its full height at the open row budget fits the
 panel's screen space. A cramped panel drops the tip before it trims the candidate rows.
 
-The trigger set is `@`, `#`, `^`, `:`, `+`, `~`, `&`, and `*`. Each lesson is shown only
+The trigger set is `@`, `#`, `%`, `^`, `:`, `+`, `~`, `&`, and `*`. Each lesson is shown only
 on the surface Bob's rewrite opens for that sigil.
 
 ## Lessons
@@ -32,7 +32,8 @@ on the surface Bob's rewrite opens for that sigil.
 | Lesson | Unshifted key | Sigil | Phrase | Surface |
 | --- | --- | --- | --- | --- |
 | `route_after_text` | `.` | `@` | after a word | Completion list |
-| `hash_menu` | `/` (then `\`) | `#` | after a word, or right after a route | Completion list |
+| `hash_menu` | `/` | `#` | after a word, or right after a route | Completion list |
+| `directive_menu` | `\` | `%` | after a word | Completion list |
 | `block_id_after_route` | `.` | `^` | right after a route | Picker |
 | `link_after_route` | `;` | `:` | right after a route | Picker |
 | `task_link_item` | `;` | `:` | at an item start | Picker |
@@ -49,10 +50,10 @@ Undo, Redo, repeats, marked text, and the app's own alias output never ask.
 ## Fading
 
 Each physically typed sigil that Bob would have aliased is a miss. Each surviving
-forward alias (`. ` → `@`, `/` → `#`, and the rest) is a hit. Hits count even with tips
+forward alias (`. ` → `@`, `/` → `#`, `\` → `%`, and the rest) is a hit. Hits count even with tips
 off. Escaping an alias — Undo of the rewrite, a fast second alias key (`.`, `;`, or
-`=`), Space or Escape on the empty surface it opened, or a second `/` or `\` that puts
-the literal back — withdraws that hit and silences the lesson for the rest of the panel
+`=`), Space or Escape on the empty surface it opened, or a second same-key `/` or `\`
+that puts the literal back — withdraws that hit and silences the lesson for the rest of the panel
 session.
 
 At most one tip shows per panel session. After three learning tips, further tips wait
@@ -88,6 +89,6 @@ the ledger; a corrupt or unknown-version blob resets to empty.
 | bob | Mac | Behavior |
 | --- | --- | --- |
 | new | new | Tips are shown. |
-| new | old | The old Mac ignores the new fields. |
-| old | new | The `sigil_alias_tip` key is absent, so the Mac stops asking that bob and shows no tips. |
+| new | old | The old Mac applies `\` → `%` through its generic rewrite path, ignores the new lesson id, and skips the double-tap arm. |
+| old | new | The `sigil_alias_tip` key is absent, so the Mac shows no tips. An old Bob's `\` → `#` reply still arms the same-key double-tap. |
 | old | old | Unchanged. |

@@ -87,14 +87,15 @@ private struct AliasTipHitRecord: Equatable {
     let postDraft: String
 }
 
-/// One-shot arm after Bob rewrites a `\` or `/` alias to `#`: the very
-/// next press of the same key replaces that `#` with one literal key and
-/// closes the menu. The UTF-16 caret and the `#` range are computed once
-/// from Bob's response so the action can judge the live editor instead of
-/// the SwiftUI mirror.
+/// One-shot arm after Bob rewrites a `\` or `/` alias to `#` or `%`: the very
+/// next press of the same key replaces that sigil with one literal key and
+/// closes the menu. The UTF-16 caret and sigil range come from Bob's response
+/// so the action can judge the live editor instead of the SwiftUI mirror.
 struct CaptureHashAliasArm: Equatable {
     /// The alias key Bob replaced (`\` or `/`), taken from Bob's response.
     let key: String
+    /// The sigil Bob inserted (`#` or `%`), taken from Bob's response.
+    let sigil: String
     let draft: String
     let hashUTF8: Int
     let caretUTF8: Int
@@ -125,7 +126,7 @@ struct CaptureRelationFlipAliasOpen: Equatable {
 
 /// One-shot probe for a second alias key that lands before Bob answers the
 /// first: re-asks Bob about `firstDraft` and deletes the extra key only when
-/// Bob says the first key would have become `#`.
+/// Bob says the first key would have become `#` or `%`.
 struct HashAliasProbe: Equatable {
     let key: String
     let firstDraft: String
@@ -813,9 +814,9 @@ final class CapturePanelModel: ObservableObject {
     /// One-shot arm after `\` opens Go To: the very next `\` on a bare `/`
     /// draft types a literal `\` instead. Cleared on consume or dismissal.
     @Published private(set) var backslashLiteralArmed = false
-    /// One-shot arm after Bob rewrites `\` to `#`: the very next `\` replaces
-    /// that `#` with a literal `\` and closes the menu. Cleared on consume
-    /// or dismissal.
+    /// One-shot arm after Bob rewrites `\` or `/` to a sigil: the very next
+    /// same key replaces that sigil with one literal key and closes the menu.
+    /// Cleared on consume or dismissal.
     var hashAliasLiteralArm: CaptureHashAliasArm?
     /// One-shot allowance for the `=` → `~~` Linked From alias.
     var relationFlipAliasOpen: CaptureRelationFlipAliasOpen?
@@ -17437,8 +17438,8 @@ final class CapturePanelModel: ObservableObject {
     /// Applies a fast double-tap probe reply without running it through
     /// `applyCaptureRewrite`, whose guards compare against the request
     /// draft. On a matching alias reply deletes the second key natively, so
-    /// `#` is never shown and no arm is set; any other reply leaves the
-    /// typed doubled key alone. Always clears the probe and the
+    /// aliased sigil is never shown and no arm is set; any other reply leaves
+    /// the typed doubled key alone. Always clears the probe and the
     /// expected-cursor state.
     private func applyHashAliasProbeRewrite(
         _ response: CaptureRewriteResponse,
@@ -17463,7 +17464,7 @@ final class CapturePanelModel: ObservableObject {
         guard response.rule == "expand_sigil_alias",
               response.edits.count == 1,
               let edit = response.edits.first,
-              edit.replacement == "#",
+              (edit.replacement == "#" || edit.replacement == "%"),
               edit.range.start == probe.firstCaretUTF8 - 1,
               edit.range.end == probe.firstCaretUTF8,
               let inputRange = stringRange(
@@ -18018,7 +18019,7 @@ final class CapturePanelModel: ObservableObject {
            )?.location
         {
             let trigger = String(response.input[inputRange])
-            if edit.replacement == "#",
+            if (edit.replacement == "#" || edit.replacement == "%"),
                trigger == "\\" || trigger == "/",
                let hashUTF16Range = utf16Range(
                    in: response.text,
@@ -18027,6 +18028,7 @@ final class CapturePanelModel: ObservableObject {
             {
                 hashAliasLiteralArm = CaptureHashAliasArm(
                     key: trigger,
+                    sigil: edit.replacement,
                     draft: response.text,
                     hashUTF8: edit.range.start,
                     caretUTF8: cursor,
@@ -18069,7 +18071,7 @@ final class CapturePanelModel: ObservableObject {
         rewriteSawMatchingSelection = false
     }
 
-    /// Second alias key right after a `#` alias: replaces that `#` with the
+    /// Second alias key right after an alias: replaces Bob's sigil with the
     /// arm's literal key through the native text view so Undo stays native,
     /// then closes the menu without reopening a picker. The caller passes
     /// the arm it took at key-down time; the live editor decides through
@@ -18083,7 +18085,7 @@ final class CapturePanelModel: ObservableObject {
                   start: arm.hashUTF8,
                   end: arm.hashUTF8 + 1
               ),
-              String(arm.draft[hashRange]) == "#"
+              String(arm.draft[hashRange]) == arm.sigil
         else {
             return false
         }
@@ -20910,7 +20912,9 @@ final class CapturePanelModel: ObservableObject {
 }
 
 extension CapturePanelModel {
-    static let typedSigilTriggers: Set<String> = ["@", "#", "^", ":", "+", "~", "&", "*"]
+    static let typedSigilTriggers: Set<String> = [
+        "@", "#", "%", "^", ":", "+", "~", "&", "*",
+    ]
 
     /// Records the expected post-key draft for a physically Shift- or
     /// Option-typed capture sigil. `editorTextDidChange` consumes it only

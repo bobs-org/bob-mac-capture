@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":15,"input":"Buy milk %","body":"Buy milk","mode":"incomplete","route":null,"section":null,"block_id":null,"needs":["directive"],"spans":[{"start":9,"end":10,"kind":"directive"}],"diagnostics":[]}

@@ -33,6 +33,7 @@ below stands for `/tmp/bob-mac-capture-directive-fixture/clipboard`.
 | Fixture | Command | Input | Setup |
 | --- | --- | --- | --- |
 | `directive-parse-bare-percent.json` | `capture-parse` | `jot idea %` | - |
+| `capture-parse-alias-tip-directive.json` | `capture-parse` | `Buy milk %` | - |
 | `directive-parse-bare-hash.json` | `capture-parse` | `jot idea #` | - |
 | `directive-parse-ordinary-task.json` | `capture-parse` | `Buy milk @grocery` | - |
 | `directive-parse-clip.json` | `capture-parse` | `jot idea %c` | - |

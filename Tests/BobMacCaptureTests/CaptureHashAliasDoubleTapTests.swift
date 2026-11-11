@@ -5,7 +5,7 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Slow and fast `\` `\` double-tap after a `#` alias, driven through the
+/// Slow and fast `\` `\` double-tap after a sigil alias, driven through the
 /// real `routeKeyDown` with a hosted panel and the live editor as the
 /// first responder.
 @MainActor
@@ -180,15 +180,14 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
         await waitUntil {
-            textView.string == "jot idea #" && model.completionVisible
+            textView.string == "jot idea %" && model.completionVisible
         } detail: {
             aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
         }
-        // A current bob opens the task_type menu here; this environment
-        // answers route (the pre-existing task-type test sees the same).
-        // Assert only that a menu opened.
+        XCTAssertEqual(model.completionResponse?.context, "directive")
         XCTAssertNotNil(model.completionResponse)
         XCTAssertFalse(model.completionResponse?.candidates.isEmpty ?? true)
+        XCTAssertEqual(model.hashAliasLiteralArm?.sigil, "%")
 
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 10 --format json -- jot idea \\"))
@@ -202,10 +201,29 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         try await Task.sleep(nanoseconds: 200_000_000)
         let after = try String(contentsOf: recordURL)
         XCTAssertEqual(after.components(separatedBy: "argv=capture-complete").count - 1, completesBefore)
-        XCTAssertFalse(after.contains("capture-complete --all-tasks --cursor 10 --format json -- jot idea \\"))
+        XCTAssertFalse(after.contains("capture-complete --cursor 10 --format json -- jot idea \\"))
     }
 
-    func testDrawerDoubleTapClosesMenuWithOneLiteralBackslash() async throws {
+    func testOlderBobHashReplyStillArmsBackslashDoubleTap() async throws {
+        let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            extra: [
+                "FAKE_BOB_OLD_HASH_ALIAS": "1",
+                "FAKE_BOB_TASK_TYPE_CHOOSER": "1",
+            ]
+        )
+
+        XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        XCTAssertEqual(model.hashAliasLiteralArm?.sigil, "#")
+
+        XCTAssertNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "jot idea \\")
+        XCTAssertFalse(model.completionVisible)
+    }
+
+    func testBackslashGluedToRoutedWordStaysLiteral() async throws {
         let (model, controller, textView, panel) = makeHostedEditor(
             text: "Postgres 17 minimum @foo+bar"
         )
@@ -213,12 +231,10 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "Postgres 17 minimum @foo+bar#" && model.completionVisible }
-        XCTAssertEqual(model.completionResponse?.context, "drawer")
-
-        XCTAssertNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
+        try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(textView.string, "Postgres 17 minimum @foo+bar\\")
         XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.hashAliasLiteralArm)
     }
 
     func testMirrorLagStillConsumesSecondBackslash() async throws {
@@ -227,7 +243,7 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil { textView.string == "jot idea %" && model.completionVisible }
 
         // The SwiftUI mirror lags the editor: the old code judged the arm
         // against this stale selection and lost the double-tap.
@@ -245,11 +261,11 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil { textView.string == "jot idea %" && model.completionVisible }
 
         textView.setSelectedRange(NSRange(location: 5, length: 0))
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        XCTAssertEqual(textView.string, "jot i\\dea #")
+        XCTAssertEqual(textView.string, "jot i\\dea %")
         XCTAssertNil(model.hashAliasLiteralArm)
     }
 
@@ -259,7 +275,7 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil { textView.string == "jot idea %" && model.completionVisible }
 
         XCTAssertNil(
             typeKey(
@@ -269,7 +285,7 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
                 controller: controller
             )
         )
-        XCTAssertEqual(textView.string, "jot idea #")
+        XCTAssertEqual(textView.string, "jot idea %")
         XCTAssertNotNil(model.hashAliasLiteralArm)
 
         XCTAssertNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
@@ -277,18 +293,18 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         XCTAssertFalse(model.completionVisible)
     }
 
-    func testUndoAfterDoubleTapRestoresHashThenBackslash() async throws {
+    func testUndoAfterDoubleTapRestoresDirectiveThenBackslash() async throws {
         let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
         defer { panel.orderOut(nil) }
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil { textView.string == "jot idea %" && model.completionVisible }
         XCTAssertNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
         XCTAssertEqual(textView.string, "jot idea \\")
 
         textView.undoManager?.undo()
-        XCTAssertEqual(textView.string, "jot idea #")
+        XCTAssertEqual(textView.string, "jot idea %")
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, "jot idea \\")
     }
@@ -309,10 +325,10 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         XCTAssertEqual(textView.string, "jot idea \\\\")
 
         let deadline = Date().addingTimeInterval(5)
-        var sawHash = false
+        var sawAliasedSigil = false
         while Date() < deadline {
-            if textView.string.contains("#") {
-                sawHash = true
+            if textView.string.contains("%") {
+                sawAliasedSigil = true
                 break
             }
             if textView.string == "jot idea \\" && model.hashAliasProbe == nil {
@@ -320,7 +336,7 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
-        XCTAssertFalse(sawHash, "The alias # must never appear during a fast double-tap")
+        XCTAssertFalse(sawAliasedSigil, "The alias % must never appear during a fast double-tap")
         XCTAssertEqual(textView.string, "jot idea \\")
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 10, length: 0))
         XCTAssertFalse(model.completionVisible)
@@ -398,6 +414,7 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         }
         XCTAssertEqual(model.completionResponse?.context, "drawer")
         XCTAssertEqual(model.hashAliasLiteralArm?.key, "/")
+        XCTAssertEqual(model.hashAliasLiteralArm?.sigil, "#")
 
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 29 --format json -- Postgres 17 minimum @foo+bar/"))
@@ -437,20 +454,21 @@ final class CaptureHashAliasDoubleTapTests: XCTestCase {
         XCTAssertFalse(model.completionVisible)
     }
 
-    func testMixedKeysBackslashThenSlashEndsHashSlash() async throws {
+    func testMixedKeysBackslashThenSlashLeavesDirectiveAndSlash() async throws {
         let (model, controller, textView, panel) = makeHostedEditor(text: "jot idea ")
         defer { panel.orderOut(nil) }
         model.processClient = try processClient()
 
         XCTAssertNotNil(typeKey(backslashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { textView.string == "jot idea #" && model.completionVisible }
+        await waitUntil { textView.string == "jot idea %" && model.completionVisible }
         XCTAssertEqual(model.hashAliasLiteralArm?.key, "\\")
+        XCTAssertEqual(model.hashAliasLiteralArm?.sigil, "%")
 
         XCTAssertNotNil(typeKey(slashEvent(), into: textView, model: model, controller: controller))
-        await waitUntil { model.plainDraft == "jot idea #/" }
+        await waitUntil { model.plainDraft == "jot idea %/" }
         try await Task.sleep(nanoseconds: 200_000_000)
 
-        XCTAssertEqual(textView.string, "jot idea #/")
+        XCTAssertEqual(textView.string, "jot idea %/")
         XCTAssertNil(model.hashAliasLiteralArm)
         XCTAssertNil(model.hashAliasProbe)
     }

@@ -129,6 +129,10 @@ final class CaptureAliasTipDecodingTests: XCTestCase {
         )
         XCTAssertEqual(CaptureAliasLesson.host(for: "hash_menu"), .completionList)
         XCTAssertEqual(
+            CaptureAliasLesson.host(for: "directive_menu"),
+            .completionList
+        )
+        XCTAssertEqual(
             CaptureAliasLesson.host(for: "block_id_after_route"),
             .picker
         )

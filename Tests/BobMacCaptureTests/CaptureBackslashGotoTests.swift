@@ -751,6 +751,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         XCTAssertNil(model.hashAliasLiteralArm)
         model.hashAliasLiteralArm = CaptureHashAliasArm(
             key: "\\",
+            sigil: "#",
             draft: "jot idea #",
             hashUTF8: 9,
             caretUTF8: 10,
@@ -761,6 +762,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         XCTAssertNil(model.hashAliasLiteralArm)
         model.hashAliasLiteralArm = CaptureHashAliasArm(
             key: "\\",
+            sigil: "#",
             draft: "jot idea #",
             hashUTF8: 9,
             caretUTF8: 10,
@@ -785,6 +787,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         }
         let arm = CaptureHashAliasArm(
             key: "\\",
+            sigil: "#",
             draft: "jot idea #",
             hashUTF8: 9,
             caretUTF8: 10,
@@ -799,6 +802,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         let model = CapturePanelModel()
         let arm = CaptureHashAliasArm(
             key: "\\",
+            sigil: "#",
             draft: "jot idea #",
             hashUTF8: 9,
             caretUTF8: 10,
@@ -1024,6 +1028,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         XCTAssertNil(model.hashAliasLiteralArm)
         model.hashAliasLiteralArm = CaptureHashAliasArm(
             key: "/",
+            sigil: "#",
             draft: "jot idea #",
             hashUTF8: 9,
             caretUTF8: 10,

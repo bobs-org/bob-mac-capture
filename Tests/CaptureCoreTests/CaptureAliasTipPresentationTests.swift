@@ -58,6 +58,7 @@ final class CaptureAliasTipPresentationTests: XCTestCase {
             ",": "comma",
             "/": "slash",
             "\\": "backslash",
+            "%": "percent sign",
             "=": "equals sign",
             "@": "at sign",
             "#": "hash",

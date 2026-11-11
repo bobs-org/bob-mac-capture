@@ -236,14 +236,15 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   the item is already routed; once routed, `.` gives `&` first and falls back
   to `@` only where `&` cannot open; `;` falls from `:` to `*` where Bob opens
   Blocks. Bob decides; the app
-  applies the edit and requests completion. Undo restores the key; older Bob
-  leaves these aliases literal. In a blank draft, `\` becomes `/` for Go To.
-  Else `\`/`/` aliases `#` only where it opens a menu, never at line start;
-  `/` stays literal in `=/`, `[[folder/`, section names, and Pomodoro names. A
-  second same-key press replaces `#` with one literal and closes the menu. Before
-  Bob replies, the app re-asks about the first key and removes the extra only if
-  the first would become `#`; Undo restores both. Older bob leaves both keys
-  literal and does not arm. A fast `==` (350 ms) restores literal `=` in the
+  applies the edit and requests completion; Undo restores the key. Blank-draft
+  `\\` becomes `/` for Go To. Else `/` aliases `#` only where Bob opens its
+  menu, staying literal in `=/`, `[[folder/`, section, and Pomodoro
+  names. `\\` aliases `%` only where Bob opens the directive menu (not at line
+  start, after a word, or after another `\\`). A same-key press types one literal
+  and closes the menu. Before Bob replies, the app re-asks about the first key
+  and removes the extra only if it would become `#` or `%`; Undo restores both.
+  An older Bob's `\\` → `#` reply still arms the double-tap.
+  A fast `==` (350 ms) restores literal `=` in the
   editor, picker, or label card; other keys, caret moves, paste, Undo, or
   dismissal clear that arm, and a slow second press flips twice. After spaced
   `.` → `@`/`&` and `;` → `*` aliases, fast `..`/`;;` (350 ms) restores one
