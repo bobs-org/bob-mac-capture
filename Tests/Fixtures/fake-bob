@@ -2799,6 +2799,9 @@ JSON
 JSON
       fi
       exit 0
+    elif [[ "${draft}" == "jot idea #" ]]; then
+      cat "${fixtures_dir}/task-type-complete-incomplete-marker.json"
+      exit 0
     elif [[ "${draft}" == "jot idea %" || "${draft}" == "Buy milk %" || "${draft}" == "%" ]]; then
       cat "${fixtures_dir}/directive-complete-bare.json"
       exit 0

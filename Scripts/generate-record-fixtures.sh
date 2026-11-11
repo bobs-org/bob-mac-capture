@@ -390,6 +390,9 @@ run_parse "Ramen Nagi @eat/
 run_parse "Ramen Nagi @eat/
 - status:: liked
 - category:: " record-parse-category-caret.json
+run_parse "@eat/nagi" record-parse-existing.json
+run_parse "Went back @eat/nagi
+- status:: liked" record-parse-title-first-update.json
 
 # Completion fixtures.
 run_complete "@" "$(cursor_of "@")" record-complete-route.json
@@ -469,6 +472,8 @@ run_capture_dry "Ramen Nagi @eat/
 - category:: Ramen
 - location:: Clark
 - companions::" record-capture-optional-empty.json
+run_capture_dry "@eat/nagi
+- Went back" record-capture-update.json
 run_capture_commit "$RICH_RESTAURANT" record-capture-restaurant-commit.json
 
 # Targets fixture (record rows with type/emoji/count).
@@ -486,13 +491,15 @@ Generated from a real Bob; never hand-edit the JSON.
   eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md, eat/sushi_den.md,
   podcasts/techmeme.md
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
-- command shapes: capture-parse (including field/value caret drafts),
+- command shapes: capture-parse (including field/value caret drafts,
+  existing-record @eat/nagi, title-first update with status:: liked),
   capture-complete (caret, -n, -F, route, section, create-route
   record_target, 7+ category values, current-value named edit),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
   records; mixed task/record; missing and invalid refusals; explicit
-  empty optional), one capture commit, capture-targets
+  empty optional; existing-record note append), one capture commit,
+  capture-targets
 
 Older-Bob fixtures (no record keys) are checked in by hand:
 record-parse-old-bob.json, record-complete-old-bob.json,

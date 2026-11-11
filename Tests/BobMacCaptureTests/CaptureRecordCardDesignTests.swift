@@ -67,8 +67,43 @@ final class CaptureRecordCardDesignTests: XCTestCase {
         XCTAssertEqual(CapturePanelLayout.recordCardPadding, 10)
         XCTAssertEqual(CapturePanelLayout.recordCardMaxRows, 8)
         XCTAssertEqual(CapturePanelLayout.recordCardMinRows, 3)
+        XCTAssertEqual(CapturePanelLayout.recordCardChangesHeaderHeight, 16)
+        XCTAssertEqual(CapturePanelLayout.recordCardChangeRowHeight, 18)
+        XCTAssertEqual(CapturePanelLayout.recordCardChangesMoreHeight, 16)
+        XCTAssertEqual(CapturePanelLayout.recordCardChangesMaxRows, 3)
         XCTAssertEqual(CapturePanelLayout.panelMinimumContentWidth, 620)
         XCTAssertEqual(CapturePanelLayout.panelInitialContentWidth, 760)
+    }
+
+    func testRecordCardHeightPolicyAddsChangeLinesWithoutChangingTheZeroCase() throws {
+        let parse = try decodeParse("record-parse-incomplete.json")
+        let presentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: parse, cursor: parse.input.utf8.count)
+        )
+        let unchanged = RecordCardHeightPolicy(presentation: presentation, displayScale: 1)
+        XCTAssertEqual(unchanged.changeLineCount, 0)
+        XCTAssertEqual(unchanged.changesHeight, 0)
+        XCTAssertEqual(unchanged.idealHeight, 246)
+
+        let three = RecordCardHeightPolicy(
+            presentation: presentation,
+            displayScale: 1,
+            changeLineCount: 3
+        )
+        XCTAssertEqual(three.visibleChangeRows, 3)
+        XCTAssertFalse(three.showsChangesMore)
+        XCTAssertEqual(three.changesHeight, 70)
+        XCTAssertEqual(three.idealHeight, unchanged.idealHeight + 70)
+
+        let five = RecordCardHeightPolicy(
+            presentation: presentation,
+            displayScale: 1,
+            changeLineCount: 5
+        )
+        XCTAssertEqual(five.visibleChangeRows, 3)
+        XCTAssertTrue(five.showsChangesMore)
+        XCTAssertEqual(five.changesHeight, 86)
+        XCTAssertEqual(five.idealHeight, unchanged.idealHeight + 86)
     }
 
     func testRecordCardAccessibilityIdentitiesMatchPersistentState() throws {

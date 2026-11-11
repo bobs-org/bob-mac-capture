@@ -479,4 +479,21 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertFalse(model.recordCompletionListVisible)
         XCTAssertFalse(model.recordShowsGenericCompletionFallback)
     }
+
+    func testFilteredRouteListWithRecordRowsStaysAnOrdinaryCompletion() async {
+        let model = makeModel(
+            parseFixture: "capture-parse-alias-tip-route-filtered.json",
+            completionFixture: "capture-complete-alias-tip-route-filtered.json",
+            draft: "Buy milk @e",
+            recordPath: recordURL()
+        )
+
+        await waitUntil { model.completionVisible }
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertTrue(
+            model.completionResponse?.candidates.contains(where: { $0.kind == "record" }) == true
+        )
+        XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+        XCTAssertFalse(model.recordCompletionListVisible)
+    }
 }

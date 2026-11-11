@@ -6675,12 +6675,14 @@ final class CapturePanelModel: ObservableObject {
             || candidate.kind == "record_create"
     }
 
+    /// Record Card completions are identified by context or the `record`
+    /// object. A `route` or `section` list may include `record` rows without
+    /// becoming a Record Card completion.
     private static func isRecordCompletion(_ completion: CaptureCompletionResponse) -> Bool {
         completion.context == "record_field"
             || completion.context == "record_value"
             || completion.context == "record_target"
             || completion.record != nil
-            || completion.candidates.contains(where: isRecordCandidate)
     }
 
     private func recordCompletionDidArrive(
@@ -20112,19 +20114,22 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         cursorUTF8: Int? = nil
     ) {
-        guard let ranges = validatedSpanRanges(in: draft, spans: parse.spans) else {
+        let ranges = validatedSpanRanges(in: draft, spans: parse.spans)
+        if ranges == nil {
             statusText = "Ignored malformed parse spans"
-            return
         }
-
         guard plainDraft == draft else {
             return
         }
-        paintedSpanRanges = (draft: draft, ranges: ranges)
+        if let ranges {
+            paintedSpanRanges = (draft: draft, ranges: ranges)
+        } else {
+            paintedSpanRanges = nil
+        }
         var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
-            ignoredMalformedSpan = Self.paintHighlighting(
+            ignoredMalformedSpan = Self.applyEditorHighlighting(
                 &text,
                 parse: parse,
                 draft: draft,
@@ -20140,6 +20145,31 @@ final class CapturePanelModel: ObservableObject {
         // Repainting clears every editor-owned background, so restore the
         // marker wash in the same parse application while the picker is open.
         applyPickerMarkerHighlight()
+    }
+
+    /// Paints validated spans, or clears inherited highlight attributes when
+    /// the span list is unusable so stale route concealment cannot hide text.
+    @discardableResult
+    static func applyEditorHighlighting(
+        _ text: inout AttributedString,
+        parse: CaptureParseResponse,
+        draft: String,
+        ranges: [ValidatedCaptureSpan]?,
+        cursorUTF8: Int? = nil,
+        concealRouteStartGlyphs: Bool = false
+    ) -> Bool {
+        guard let ranges else {
+            clearEditorHighlightAttributes(&text)
+            return true
+        }
+        return paintHighlighting(
+            &text,
+            parse: parse,
+            draft: draft,
+            ranges: ranges,
+            cursorUTF8: cursorUTF8,
+            concealRouteStartGlyphs: concealRouteStartGlyphs
+        )
     }
 
     /// Re-paints the current parse so route-start concealment stays in

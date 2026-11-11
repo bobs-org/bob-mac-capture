@@ -2,11 +2,12 @@ import AppKit
 import CaptureCore
 import SwiftUI
 
-/// New-record preview for a committed-plan `note_files` entry paired with
-/// its record item. Heading and property sheet come from Bob's metadata;
-/// the exact Markdown rides a collapsed disclosure. Update items keep
-/// their existing presentation; when record metadata is absent the caller
-/// keeps the generic fallback.
+/// Record preview for a committed-plan `note_files` entry paired with its
+/// record item. Heading and property sheet come from Bob's metadata; the
+/// exact Markdown rides a collapsed disclosure. Creates show the planned
+/// note body. Updates show only changed properties and changed lines
+/// (falling back to today's body when older Bob omitted `lines`). When
+/// record metadata is absent the caller keeps the generic fallback.
 @available(macOS 26.0, *)
 struct RecordNotePreviewView: View {
     let item: CaptureCommandSuccess
@@ -102,11 +103,15 @@ struct RecordNotePreviewView: View {
 
     @ViewBuilder
     private var propertySheet: some View {
-        let rows = properties
+        let rows =
+            file.action == "update" ? properties.filter(\.displayChanged) : properties
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, property in
-                    if property.resolvedDisplay != nil || property.isDefault {
+                    if file.action == "update"
+                        || property.resolvedDisplay != nil
+                        || property.isDefault
+                    {
                         RecordNotePropertyRow(property: property)
                     }
                 }
@@ -118,6 +123,29 @@ struct RecordNotePreviewView: View {
 
     @ViewBuilder
     private var noteBody: some View {
+        if file.action == "update", let lines = file.lines {
+            let changed = lines.filter { $0.change != "unchanged" }
+            if changed.isEmpty {
+                Text("No changes")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("No changes")
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(changed.enumerated()), id: \.offset) { _, line in
+                        RecordChangeLineView(line: line)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(changed.map(\.text).joined(separator: "\n"))
+            }
+        } else {
+            plannedBody
+        }
+    }
+
+    @ViewBuilder
+    private var plannedBody: some View {
         let lines = file.body.components(separatedBy: "\n")
         let visible = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         if !visible.isEmpty {
@@ -174,18 +202,17 @@ private struct RecordNotePropertyRow: View {
     }
 
     private var isChanged: Bool {
-        guard let before = property.beforeDisplay, !before.isEmpty,
-            let after = property.resolvedDisplay, !after.isEmpty
-        else {
-            return false
-        }
-        return before != after
+        property.displayChanged
+            && !(property.resolvedBeforeDisplay ?? "").isEmpty
+            && !(property.resolvedDisplay ?? "").isEmpty
     }
 
     private var rowAccessibilityLabel: String {
         var parts = [property.label]
         if isChanged {
-            parts.append("\(property.beforeDisplay ?? "") to \(property.resolvedDisplay ?? "")")
+            parts.append(
+                "\(property.resolvedBeforeDisplay ?? "") to \(property.resolvedDisplay ?? "")"
+            )
         } else if let display = property.resolvedDisplay {
             parts.append(display)
         }
@@ -199,7 +226,7 @@ private struct RecordNotePropertyRow: View {
     private var valueContent: some View {
         if isChanged {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(property.beforeDisplay ?? "")
+                Text(property.resolvedBeforeDisplay ?? "")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .strikethrough()
@@ -332,6 +359,96 @@ private struct FlowLayout: Layout {
             rowHeight = max(rowHeight, size.height)
         }
         return ((CGSize(width: x, height: y + rowHeight)), rows)
+    }
+}
+
+/// Diff gutter, wash, and glyph for one planned record-note line. Glyphs
+/// follow the Record Card contract (`+` added, `~` changed, `−` removed);
+/// washes match `BlockDiffCard`.
+enum RecordNoteChangeChrome {
+    static func glyph(for change: String?) -> String {
+        switch change {
+        case "added":
+            return "+"
+        case "changed":
+            return "~"
+        case "removed":
+            return "−"
+        default:
+            return " "
+        }
+    }
+
+    static func color(for change: String?) -> Color {
+        switch change {
+        case "added":
+            return .green
+        case "changed":
+            return .accentColor
+        case "removed":
+            return .red
+        default:
+            return .secondary
+        }
+    }
+
+    static func wash(for change: String?, increaseContrast: Bool) -> Color {
+        let opacity: Double
+        if increaseContrast {
+            opacity = change == nil || change == "unchanged" ? 0 : 0.22
+        } else {
+            switch change {
+            case "added":
+                opacity = 0.10
+            case "changed":
+                opacity = 0.12
+            case "removed":
+                opacity = 0.08
+            default:
+                opacity = 0
+            }
+        }
+        return color(for: change).opacity(opacity)
+    }
+}
+
+/// One planned record-note change line: gutter glyph, wash, verbatim text.
+@available(macOS 26.0, *)
+struct RecordChangeLineView: View {
+    let line: CaptureNoteFileLine
+    var compact: Bool = false
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    var body: some View {
+        let increaseContrast = colorSchemeContrast == .increased
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(RecordNoteChangeChrome.glyph(for: line.change))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(RecordNoteChangeChrome.color(for: line.change))
+                .frame(width: 12, alignment: .center)
+                .accessibilityHidden(true)
+            Text(line.text)
+                .font(compact ? .caption : .callout)
+                .lineLimit(compact ? 1 : nil)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: !compact)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .padding(.vertical, compact ? 1 : 2)
+        .background(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(
+                    RecordNoteChangeChrome.wash(
+                        for: line.change,
+                        increaseContrast: increaseContrast
+                    )
+                )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(RecordNoteChangeChrome.glyph(for: line.change)) \(line.text)"
+        )
     }
 }
 

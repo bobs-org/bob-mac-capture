@@ -101,11 +101,18 @@ displays (`with` prefixes `companions`), and note count (`no notes`,
 display fall back to canonical form; absent optionals stay out. Exact
 Markdown comes from the matching `note_files` entry (paired by
 path/action, each consumed once), including YAML, indentation, Unicode,
-blanks, and the trailing newline. An incomplete record refuses inline
-with Bob's message, missing/invalid field details, and a selectable
-copyable draft that is never applied; mixed captures keep the other
-items. JSON names and older-Bob fallbacks are in
-[Protocol](protocol.md#compatibility).
+blanks, and the trailing newline. An update preview shows only properties
+whose before display differs from the after (`before → after`), omits an
+empty sheet, and renders changed `note_files[].lines` verbatim with `+` /
+`~` / `−` gutters (or **No changes**). Older Bob that omits `lines` keeps
+today's body. **View Markdown** still shows the exact bytes. While the
+Record Card is open, a live matching update adds a display-only
+**Changes** section (up to three lines, then `+N more`; VoiceOver
+`Changes, N lines`) between the rows and the footer; loading, stale, or
+empty diffs stay hidden. An incomplete record refuses inline with Bob's
+message, missing/invalid field details, and a selectable copyable draft
+that is never applied; mixed captures keep the other items. JSON names
+and older-Bob fallbacks are in [Protocol](protocol.md#compatibility).
 
 ## Notebook notes
 

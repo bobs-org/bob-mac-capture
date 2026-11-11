@@ -1052,6 +1052,43 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testMalformedSpansClearStaleRoutePaint() throws {
+        let parse = try Self.fixtureParse("record-parse-complete.json")
+        let draft = parse.input
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: parse.spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(Self.strings(in: text, where: Self.isClearForeground), ["@"])
+        XCTAssertFalse(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+
+        let route = try XCTUnwrap(parse.spans.first { $0.kind == "record_route" })
+        let overlapping = [
+            route,
+            CaptureSpan(start: route.start + 1, end: route.end, kind: "record_stem"),
+        ]
+        XCTAssertNil(validatedSpanRanges(in: draft, spans: overlapping))
+        let ignored = CapturePanelModel.applyEditorHighlighting(
+            &text,
+            parse: Self.parse(draft: draft, spans: overlapping),
+            draft: draft,
+            ranges: nil,
+            concealRouteStartGlyphs: true
+        )
+        XCTAssertTrue(ignored)
+        XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+        XCTAssertEqual(String(text.characters), draft)
+    }
+
     func testRecordStemAndUnknownKindsStayOnTheirPalettes() throws {
         let draft = "Ramen Nagi @eat/^custom-stem extra"
         let spans = [

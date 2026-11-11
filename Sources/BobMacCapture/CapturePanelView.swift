@@ -1242,17 +1242,20 @@ struct CapturePanelView: View {
             let fieldCount = fieldListVisible
                 ? (model.completionResponse?.candidates.count ?? 0)
                 : 0
+            let changeCount = recordCardChangeLineCount(for: presentation)
             let explicit: CapturePanelAuxiliaryHeight
             if fieldCount > 0 {
                 explicit = RecordCardHeightPolicy(
                     rowCount: fieldCount,
                     showsMoreControl: false,
-                    displayScale: displayScale
+                    displayScale: displayScale,
+                    changeLineCount: changeCount
                 ).auxiliaryHeight
             } else {
                 explicit = RecordCardHeightPolicy(
                     presentation: presentation,
-                    displayScale: displayScale
+                    displayScale: displayScale,
+                    changeLineCount: changeCount
                 ).auxiliaryHeight
             }
             return CapturePanelAuxiliaryHeight(
@@ -1300,6 +1303,24 @@ struct CapturePanelView: View {
         }
 
         return .overflow(idealHeight: measuredAuxiliaryContentHeight)
+    }
+
+    private func recordCardChangeLineCount(
+        for presentation: CaptureRecordPresentation
+    ) -> Int {
+        let preview: CaptureCommandSuccess?
+        if case .ready(let success) = model.previewState {
+            preview = success
+        } else {
+            preview = nil
+        }
+        return CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+            path: presentation.headerPath,
+            previewDraft: model.previewOutputsDraft,
+            plainDraft: model.plainDraft,
+            isPreviewing: model.isPreviewing,
+            preview: preview
+        )?.count ?? 0
     }
 
     private enum AuxiliarySection: Hashable {
@@ -4369,26 +4390,16 @@ struct PreviewPane: View {
             } else if CaptureNotebookPresentation.isNotebook(success) {
                 CaptureNotebookPreviewView(item: success, file: noteFile)
                     .id("notebook-note-\(success.relativeTarget)-\(noteFile?.action ?? "item")")
-            } else if success.kind == "record_note",
-                      let summary = success.recordNote,
-                      summary.action == "create"
-            {
-                // New records preview the note Bob will write. Update
-                // items and absent/unusable metadata keep the generic
-                // fallback for phase 12.
-                if let noteFile, noteFile.isUsable {
-                    RecordNotePreviewView(item: success, file: noteFile)
-                        .id("record-note-\(success.relativeTarget)-\(noteFile.action)")
-                } else {
-                    standardPreviewItem(
-                        success,
-                        index: index,
-                        total: total,
-                        isLocalOverride: isLocalOverride,
-                        blocks: blocks,
-                        taskBlocks: taskBlocks
-                    )
-                }
+            } else if success.kind == "record_note" || success.kind == "record_update" {
+                recordNotePreviewItem(
+                    success,
+                    noteFile: noteFile,
+                    index: index,
+                    total: total,
+                    isLocalOverride: isLocalOverride,
+                    blocks: blocks,
+                    taskBlocks: taskBlocks
+                )
             } else {
                 standardPreviewItem(
                     success,
@@ -6336,6 +6347,37 @@ struct PreviewPane: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .accessibilityLabel(relocation)
+        }
+    }
+
+    @ViewBuilder
+    private func recordNotePreviewItem(
+        _ success: CaptureCommandSuccess,
+        noteFile: CaptureNoteFile?,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool,
+        blocks: [CapturePomodoroBlock],
+        taskBlocks: [CaptureTaskBlock]
+    ) -> some View {
+        let expectedAction: String = {
+            if let action = success.recordNote?.action, !action.isEmpty {
+                return action
+            }
+            return success.kind == "record_update" ? "update" : "create"
+        }()
+        if let noteFile, noteFile.isUsable, noteFile.action == expectedAction {
+            RecordNotePreviewView(item: success, file: noteFile)
+                .id("record-note-\(success.relativeTarget)-\(noteFile.action)")
+        } else {
+            standardPreviewItem(
+                success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride,
+                blocks: blocks,
+                taskBlocks: taskBlocks
+            )
         }
     }
 

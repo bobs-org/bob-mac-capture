@@ -64,6 +64,7 @@ final class CaptureAliasTipPanelTests: XCTestCase {
     func testTypingQueryBeforeTheRouteListOpensKeepsTheTip() async throws {
         let (model, textView) = try makeModel(
             recordURL: makeRecordURL(),
+            extra: ["FAKE_BOB_ALIAS_TIP_ANCHOR": "1"],
             debounceNanoseconds: 200_000_000
         )
         typeSigil("@", into: textView, model: model, modifiers: .shift)
@@ -79,10 +80,14 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             1
         )
         XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+        XCTAssertFalse(model.recordShowsGenericCompletionFallback)
     }
 
     func testFilteringKeepsTheShownTipAnchoredToTheSigil() async throws {
-        let (model, textView) = try makeModel(recordURL: makeRecordURL())
+        let (model, textView) = try makeModel(
+            recordURL: makeRecordURL(),
+            extra: ["FAKE_BOB_ALIAS_TIP_ANCHOR": "1"]
+        )
         typeSigil("@", into: textView, model: model, modifiers: .shift)
         await waitUntil {
             model.completionVisible
@@ -100,6 +105,11 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             1
         )
         XCTAssertEqual(model.aliasTipLedgerStore.load().dropped, [:])
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+        XCTAssertTrue(
+            model.completionResponse?.candidates.contains(where: { $0.kind == "record" }) == true
+        )
     }
 
     func testPreviousRouteListDoesNotBlockPickerTips() async throws {

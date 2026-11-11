@@ -365,4 +365,154 @@ final class CaptureRecordPreviewTests: XCTestCase {
         XCTAssertEqual(map[1]?.path, "eat/ramen_nagi.md")
         XCTAssertNil(map[0], "task items never pair")
     }
+
+    func testUpdateDryRunPairsAndExtractsChangedLines() throws {
+        let success = try decodeSuccess("record-capture-update.json")
+        XCTAssertEqual(success.kind, "record_update")
+        let pairs = CaptureRecordPreviewPresentation.pair(
+            files: success.noteFiles, items: success.normalizedCaptures)
+        XCTAssertEqual(pairs.count, 1)
+        let file = try XCTUnwrap(pairs.first?.file)
+        XCTAssertEqual(file.action, "update")
+        XCTAssertEqual(file.path, "eat/nagi.md")
+        XCTAssertTrue(file.isUsable)
+        let changed = try XCTUnwrap(file.changedLines)
+        XCTAssertFalse(changed.isEmpty)
+        XCTAssertTrue(changed.contains { $0.change == "added" })
+        XCTAssertTrue(changed.contains { $0.text.contains("Went back") })
+        XCTAssertFalse(
+            (file.lines ?? []).contains { $0.change == "unchanged" } && changed.isEmpty)
+    }
+
+    func testChangedPropertiesFilterDisplayDifferences() {
+        let status = CaptureNoteFileProperty(
+            key: "status",
+            label: "Status",
+            value: .string("liked"),
+            display: "Liked",
+            before: .string("to_try"),
+            beforeDisplay: "To try"
+        )
+        let location = CaptureNoteFileProperty(
+            key: "location",
+            label: "Location",
+            value: .string("Clark"),
+            display: "Clark",
+            before: .string("Clark"),
+            beforeDisplay: "Clark"
+        )
+        XCTAssertTrue(status.displayChanged)
+        XCTAssertFalse(location.displayChanged)
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            properties: [status, location],
+            markdown: "# Nagi\n"
+        )
+        XCTAssertEqual(file.changedProperties.map(\.key), ["status"])
+    }
+
+    func testChangedLinesNilWhenOlderBobOmitsKey() throws {
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            body: "- leftover body",
+            markdown: "# Nagi\n"
+        )
+        XCTAssertNil(file.lines)
+        XCTAssertNil(file.changedLines)
+
+        let omitted = Data(
+            """
+            {"path":"eat/nagi.md","action":"update","markdown":"#"}
+            """.utf8)
+        let decoded = try JSONDecoder().decode(CaptureNoteFile.self, from: omitted)
+        XCTAssertNil(decoded.lines)
+
+        let empty = Data(
+            """
+            {"path":"eat/nagi.md","action":"update","markdown":"#","lines":[]}
+            """.utf8)
+        let emptyFile = try JSONDecoder().decode(CaptureNoteFile.self, from: empty)
+        XCTAssertEqual(emptyFile.lines, [])
+        XCTAssertEqual(emptyFile.changedLines, [])
+    }
+
+    func testChangedLinesEmptyWhenEveryLineIsUnchanged() {
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n",
+            lines: [
+                CaptureNoteFileLine(text: "# Nagi", depth: 0, change: "unchanged")
+            ]
+        )
+        XCTAssertEqual(file.changedLines, [])
+    }
+
+    func testLiveUpdateChangedLinesRequiresReadyMatchingDraft() {
+        let added = CaptureNoteFileLine(
+            text: "- 2026-10-30: Went back", depth: 0, change: "added")
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n",
+            lines: [added]
+        )
+        let preview = CaptureCommandSuccess(
+            ok: true, dryRun: true, routed: true, routeLabel: "eat",
+            relativeTarget: "eat/nagi.md", target: "/vault/eat/nagi.md",
+            text: "Nagi", taskLine: "", kind: "record_update",
+            created: "2026-10-30", placement: "updated",
+            noteFiles: [file],
+            recordNote: CaptureRecordNoteSummary(action: "update", path: "eat/nagi.md")
+        )
+        let draft = "@eat/nagi\n- Went back"
+        XCTAssertEqual(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "eat/nagi.md",
+                previewDraft: draft,
+                plainDraft: draft,
+                isPreviewing: false,
+                preview: preview
+            )?.map(\.text),
+            [added.text]
+        )
+        XCTAssertNil(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "eat/nagi.md",
+                previewDraft: draft,
+                plainDraft: draft,
+                isPreviewing: true,
+                preview: preview
+            )
+        )
+        XCTAssertNil(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "eat/nagi.md",
+                previewDraft: "stale",
+                plainDraft: draft,
+                isPreviewing: false,
+                preview: preview
+            )
+        )
+        XCTAssertNil(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "eat/nagi.md",
+                previewDraft: draft,
+                plainDraft: draft,
+                isPreviewing: false,
+                preview: nil
+            )
+        )
+        XCTAssertNil(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "eat/other.md",
+                previewDraft: draft,
+                plainDraft: draft,
+                isPreviewing: false,
+                preview: preview
+            )
+        )
+    }
 }

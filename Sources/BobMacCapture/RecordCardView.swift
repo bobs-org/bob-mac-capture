@@ -9,6 +9,10 @@ extension CapturePanelLayout {
     static let recordCardPadding: CGFloat = 10
     static let recordCardMaxRows = 8
     static let recordCardMinRows = 3
+    static let recordCardChangesHeaderHeight: CGFloat = 16
+    static let recordCardChangeRowHeight: CGFloat = 18
+    static let recordCardChangesMoreHeight: CGFloat = 16
+    static let recordCardChangesMaxRows = 3
 }
 
 /// Fixed-height sizing for the Record Card in the picker slot. Filtering
@@ -18,23 +22,31 @@ struct RecordCardHeightPolicy: Equatable {
     var rowCount: Int
     var showsMoreControl: Bool
     var displayScale: CGFloat = 1
+    var changeLineCount: Int = 0
 
     init(
         rowCount: Int,
         showsMoreControl: Bool,
-        displayScale: CGFloat = 1
+        displayScale: CGFloat = 1,
+        changeLineCount: Int = 0
     ) {
         self.rowCount = rowCount
         self.showsMoreControl = showsMoreControl
         self.displayScale = displayScale
+        self.changeLineCount = changeLineCount
     }
 
-    init(presentation: CaptureRecordPresentation, displayScale: CGFloat = 1) {
+    init(
+        presentation: CaptureRecordPresentation,
+        displayScale: CGFloat = 1,
+        changeLineCount: Int = 0
+    ) {
         self.init(
             rowCount: presentation.displayedRows.count,
             showsMoreControl: !presentation.hiddenOptionalRows.isEmpty
                 || presentation.showsMore,
-            displayScale: displayScale
+            displayScale: displayScale,
+            changeLineCount: changeLineCount
         )
     }
 
@@ -58,6 +70,27 @@ struct RecordCardHeightPolicy: Equatable {
         showsMoreControl ? CapturePanelLayout.recordCardMoreHeight : 0
     }
 
+    var visibleChangeRows: Int {
+        min(max(changeLineCount, 0), CapturePanelLayout.recordCardChangesMaxRows)
+    }
+
+    var showsChangesMore: Bool {
+        changeLineCount > CapturePanelLayout.recordCardChangesMaxRows
+    }
+
+    var changesHeight: CGFloat {
+        guard changeLineCount > 0 else {
+            return 0
+        }
+        var height =
+            CapturePanelLayout.recordCardChangesHeaderHeight
+            + CapturePanelLayout.recordCardChangeRowHeight * CGFloat(visibleChangeRows)
+        if showsChangesMore {
+            height += CapturePanelLayout.recordCardChangesMoreHeight
+        }
+        return roundedToPixel(height)
+    }
+
     var chromeHeight: CGFloat {
         CapturePanelLayout.recordCardPadding * 2
             + CapturePanelLayout.recordCardHeaderHeight
@@ -65,6 +98,7 @@ struct RecordCardHeightPolicy: Equatable {
             + moreHeight
             + 1
             + CapturePanelLayout.recordCardFooterHeight
+            + changesHeight
     }
 
     var idealHeight: CGFloat {
@@ -102,14 +136,36 @@ struct RecordCardView: View {
 
     private var policy: RecordCardHeightPolicy {
         let fields = fieldCandidates
+        let changeCount = liveChangeLines?.count ?? 0
         if !fields.isEmpty {
             return RecordCardHeightPolicy(
                 rowCount: fields.count,
                 showsMoreControl: false,
-                displayScale: displayScale
+                displayScale: displayScale,
+                changeLineCount: changeCount
             )
         }
-        return RecordCardHeightPolicy(presentation: presentation, displayScale: displayScale)
+        return RecordCardHeightPolicy(
+            presentation: presentation,
+            displayScale: displayScale,
+            changeLineCount: changeCount
+        )
+    }
+
+    private var liveChangeLines: [CaptureNoteFileLine]? {
+        let preview: CaptureCommandSuccess?
+        if case .ready(let success) = model.previewState {
+            preview = success
+        } else {
+            preview = nil
+        }
+        return CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+            path: presentation.headerPath,
+            previewDraft: model.previewOutputsDraft,
+            plainDraft: model.plainDraft,
+            isPreviewing: model.isPreviewing,
+            preview: preview
+        )
     }
 
     private var increaseContrast: Bool {
@@ -125,6 +181,11 @@ struct RecordCardView: View {
             if policy.showsMoreControl {
                 moreControl
                     .frame(height: CapturePanelLayout.recordCardMoreHeight)
+            }
+            if let lines = liveChangeLines, !lines.isEmpty {
+                changesSection(lines)
+                    .frame(height: policy.changesHeight, alignment: .top)
+                    .clipped()
             }
             Divider()
             footer
@@ -299,6 +360,44 @@ struct RecordCardView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func changesSection(_ lines: [CaptureNoteFileLine]) -> some View {
+        let visible = Array(lines.prefix(CapturePanelLayout.recordCardChangesMaxRows))
+        let extra = lines.count - visible.count
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Changes")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: CapturePanelLayout.recordCardChangesHeaderHeight,
+                    alignment: .leading
+                )
+            ForEach(Array(visible.enumerated()), id: \.offset) { _, line in
+                RecordChangeLineView(line: line, compact: true)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: CapturePanelLayout.recordCardChangeRowHeight,
+                        alignment: .leading
+                    )
+            }
+            if extra > 0 {
+                Text("+\(extra) more")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: CapturePanelLayout.recordCardChangesMoreHeight,
+                        alignment: .leading
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Changes, \(lines.count) lines")
+        .allowsHitTesting(false)
     }
 
     private var moreControl: some View {

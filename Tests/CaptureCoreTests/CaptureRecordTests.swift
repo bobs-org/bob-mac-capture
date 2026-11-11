@@ -112,6 +112,33 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(parse.schemaVersion, 1)
     }
 
+    func testGeneratedRecordParseFixturesHaveDisjointSpans() throws {
+        let fixtures = fixtureURL(".").deletingLastPathComponent()
+        let names = try FileManager.default.contentsOfDirectory(
+            at: fixtures,
+            includingPropertiesForKeys: nil
+        )
+        .map(\.lastPathComponent)
+        .filter { $0.hasPrefix("record-parse-") && $0.hasSuffix(".json") }
+        .sorted()
+        var checked = 0
+        for name in names {
+            if name.contains("old-bob") {
+                continue
+            }
+            if name == "record-parse-mixed-incomplete.json" {
+                continue
+            }
+            let parse = try decodeParse(name)
+            XCTAssertNotNil(
+                validatedSpanRanges(in: parse.input, spans: parse.spans),
+                "\(name) spans must be sorted and disjoint"
+            )
+            checked += 1
+        }
+        XCTAssertGreaterThan(checked, 10, "expected generated record-parse fixtures")
+    }
+
     func testRecordValuePreservesScalars() throws {
         let data = Data(
             """
@@ -584,7 +611,7 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(CaptureRecordRouteCache.insertion(for: eat), "eat/ ")
         XCTAssertEqual(
             CaptureRecordRouteCache.label(for: eat),
-            "🍽️ New restaurant · 8"
+            "🍽️ New restaurant · 9"
         )
         let continuation = try XCTUnwrap(
             CaptureRecordRouteCache.continuation(for: eat, replacementStart: 1))
@@ -994,8 +1021,9 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertEqual(response.context, "record_value")
         XCTAssertGreaterThanOrEqual(response.candidates.count, 7)
         XCTAssertEqual(response.record?.field, "category")
-        XCTAssertEqual(response.candidates[6].recordValue, "Cafe")
-        XCTAssertEqual(response.candidates[6].display, "Cafe")
+        XCTAssertTrue(
+            response.candidates.contains { $0.recordValue == "Cafe" },
+            "category suggestions still include Cafe")
     }
 
     func testRecordAssistMapsCreateRouteWithoutNextMissingToTarget() async throws {

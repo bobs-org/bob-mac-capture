@@ -67,6 +67,26 @@ public struct CaptureNoteFileProperty: Codable, Equatable, Sendable {
     /// a readable canonical value. Meaningful zero/false values are kept;
     /// absent optional values stay nil.
     public var resolvedDisplay: String? {
+        Self.resolvedDisplay(display: display, value: value)
+    }
+
+    /// Human value of the previous property, using the same display-then
+    /// canonical fallback as `resolvedDisplay`.
+    public var resolvedBeforeDisplay: String? {
+        Self.resolvedDisplay(display: beforeDisplay, value: before)
+    }
+
+    /// True when the before display differs from the after display.
+    public var displayChanged: Bool {
+        (resolvedBeforeDisplay ?? "") != (resolvedDisplay ?? "")
+    }
+
+    /// True when Bob filled this value from the type default.
+    public var isDefault: Bool {
+        source == "default"
+    }
+
+    private static func resolvedDisplay(display: String?, value: CaptureRecordValue?) -> String? {
         if let display, !display.isEmpty {
             return display
         }
@@ -74,11 +94,6 @@ public struct CaptureNoteFileProperty: Codable, Equatable, Sendable {
             return text
         }
         return nil
-    }
-
-    /// True when Bob filled this value from the type default.
-    public var isDefault: Bool {
-        source == "default"
     }
 }
 
@@ -116,7 +131,8 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
     public let properties: [CaptureNoteFileProperty]
     public let body: String
     public let markdown: String
-    public let lines: [CaptureNoteFileLine]
+    /// Planned line diff. `nil` when older Bob omitted the key.
+    public let lines: [CaptureNoteFileLine]?
 
     public init(
         path: String = "",
@@ -125,7 +141,7 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         properties: [CaptureNoteFileProperty] = [],
         body: String = "",
         markdown: String = "",
-        lines: [CaptureNoteFileLine] = []
+        lines: [CaptureNoteFileLine]? = nil
     ) {
         self.path = path
         self.action = action
@@ -150,11 +166,15 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
         body = (try? container.decodeIfPresent(String.self, forKey: .body)) ?? ""
         markdown =
             (try? container.decodeIfPresent(String.self, forKey: .markdown)) ?? ""
-        lines =
-            (try? container.decode(
-                CaptureLossyArray<CaptureNoteFileLine>.self,
-                forKey: .lines
-            ))?.values ?? []
+        if container.contains(.lines) {
+            lines =
+                (try? container.decode(
+                    CaptureLossyArray<CaptureNoteFileLine>.self,
+                    forKey: .lines
+                ))?.values
+        } else {
+            lines = nil
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -171,6 +191,21 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
     /// Markdown. Otherwise the caller keeps the generic preview.
     public var isUsable: Bool {
         !path.isEmpty && !markdown.isEmpty
+    }
+
+    /// Properties whose before display differs from the after display.
+    public var changedProperties: [CaptureNoteFileProperty] {
+        properties.filter(\.displayChanged)
+    }
+
+    /// Planned body lines whose `change` is not `unchanged`. `nil` when
+    /// older Bob omitted the `lines` key, so callers can fall back to
+    /// today's body rendering instead of an invented empty diff.
+    public var changedLines: [CaptureNoteFileLine]? {
+        guard let lines else {
+            return nil
+        }
+        return lines.filter { $0.change != "unchanged" }
     }
 }
 
@@ -355,8 +390,7 @@ public enum CaptureRecordPreviewPresentation {
     /// Pairs each normalized record item with its `note_files` entry.
     /// Matching follows Bob's path/action identity in item order and
     /// consumes each file once, so multiple operations on the same path
-    /// never collapse onto the first file. Update items pair too for
-    /// forward compatibility; phase 12 owns their presentation.
+    /// never collapse onto the first file.
     public static func pair(
         files: [CaptureNoteFile],
         items: [CaptureCommandSuccess]
@@ -447,5 +481,35 @@ public enum CaptureRecordPreviewPresentation {
         default:
             return "\(count) notes"
         }
+    }
+
+    /// Changed lines for the Record Card's live update section. Nil unless
+    /// the ready preview belongs to this draft, the paired file is an
+    /// update for `path`, and at least one line changed. Loading, stale,
+    /// or empty diffs omit the section so old data never flashes.
+    public static func liveUpdateChangedLines(
+        path: String?,
+        previewDraft: String?,
+        plainDraft: String,
+        isPreviewing: Bool,
+        preview: CaptureCommandSuccess?
+    ) -> [CaptureNoteFileLine]? {
+        guard !isPreviewing,
+            let path, !path.isEmpty,
+            let previewDraft, previewDraft == plainDraft,
+            let preview
+        else {
+            return nil
+        }
+        let paired = pair(files: preview.noteFiles, items: preview.normalizedCaptures)
+            .first { $0.file.path == path && $0.file.action == "update" }?
+            .file
+        let file =
+            paired
+            ?? preview.noteFiles.first { $0.path == path && $0.action == "update" }
+        guard let file, let lines = file.changedLines, !lines.isEmpty else {
+            return nil
+        }
+        return lines
     }
 }
