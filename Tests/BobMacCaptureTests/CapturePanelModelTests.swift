@@ -9,6 +9,8 @@ import XCTest
 
 @MainActor
 final class CapturePanelModelTests: XCTestCase {
+    private let routeCompletionFixture = "capture-complete-alias-tip-route-filtered.json"
+
     private func openNotePaths(in url: URL) -> [String] {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard let rawCount = items.first(where: { $0.name == "count" })?.value,
@@ -19,6 +21,16 @@ final class CapturePanelModelTests: XCTestCase {
         }
         return (1...count).compactMap { index in
             items.first(where: { $0.name == "path\(index)" })?.value
+        }
+    }
+
+    private func recordLog(_ url: URL) -> String {
+        (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    }
+
+    private func hasMutationCapture(in log: String) -> Bool {
+        log.split(separator: "\n").contains { line in
+            line.hasPrefix("argv=capture --") && !line.contains("--dry-run")
         }
     }
 
@@ -5692,6 +5704,94 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @ma"))
         XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testCachedRecordRouteAcceptsAndRequestsItsNextMissingField() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_CAPTURE_COMPLETE_FIXTURE": routeCompletionFixture,
+                "FAKE_BOB_RECORD_ASSIST": "1",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "movies/",
+                    name: "movies",
+                    label: "Movie",
+                    kind: "record",
+                    relativePath: "movies.md",
+                    recordType: "movie",
+                    emoji: "🎬",
+                    count: 10
+                ),
+            ]
+        )
+        model.plainDraft = "@mo"
+
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "@mo") }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "record")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "movies/ ")
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, "@movies/ ")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 9)
+
+        await waitUntil { self.recordLog(recordURL).contains("--next-missing-field") }
+        XCTAssertFalse(hasMutationCapture(in: recordLog(recordURL)))
+    }
+
+    func testRecordRouteRowsDoNotQuickCommitPlusOrComma() async throws {
+        for separator in ["+", ","] {
+            let recordURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+            let model = CapturePanelModel(debounceNanoseconds: 0)
+            model.processClient = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            )
+            installTargetCache(
+                on: model,
+                targets: [
+                    CaptureTarget(
+                        route: "movies/",
+                        name: "movies",
+                        label: "Movie",
+                        kind: "record",
+                        relativePath: "movies.md",
+                        recordType: "movie",
+                        emoji: "🎬",
+                        count: 10
+                    ),
+                ]
+            )
+            model.plainDraft = "@mo"
+            model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+            await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "@mo") }
+
+            let typedDraft = "@mo\(separator)"
+            model.plainDraft = typedDraft
+            model.editorTextDidChange(cursorUTF8Offset: typedDraft.utf8.count)
+
+            XCTAssertEqual(model.plainDraft, typedDraft)
+            XCTAssertTrue(model.completionVisible)
+            XCTAssertEqual(model.selectedCompletion?.kind, "record")
+            XCTAssertFalse(recordLog(recordURL).contains("--next-missing-field"))
+        }
     }
 
     func testGlobalRouteSpanSkipsCacheAndUsesBobComplete() async throws {

@@ -435,6 +435,8 @@ PY
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_parse_fixture=""
       case "${draft}" in
+        "Buy milk @movies/ "|"@movies/ ")
+          record_parse_fixture="record-parse-movie-incomplete.json" ;;
         "Ramen Nagi @eat/")
           record_parse_fixture="record-parse-incomplete.json" ;;
         $'Ramen Nagi @eat/\n- ')

@@ -3614,6 +3614,11 @@ final class CapturePanelModel: ObservableObject {
         guard selectedCompletion?.kind != "template" else {
             return false
         }
+        if selectedCompletion.map(Self.isRecordCandidate) == true {
+            // Record destinations start their field flow only through an
+            // explicit accept; `+` and `,` stay literal while the row is open.
+            return false
+        }
 
         let r = completionResponse.replacement
         guard let typedRange = stringRange(in: snapshot, byteRange: r) else {
@@ -3640,14 +3645,17 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
 
-        let hasExactTypedMatch = completionResponse.candidates.contains { candidate in
+        let exactTypedMatch = completionResponse.candidates.first { candidate in
             guard let route = candidate.route else {
                 return false
             }
             return route.caseInsensitiveCompare(typed) == .orderedSame
         }
 
-        if hasExactTypedMatch {
+        if let exactTypedMatch {
+            guard !Self.isRecordCandidate(exactTypedMatch) else {
+                return false
+            }
             guard typedKey == "+" else {
                 // An exact route plus comma should go through Bob's rewrite
                 // lane, which authors the plus and owns its eligibility.
@@ -11508,7 +11516,7 @@ final class CapturePanelModel: ObservableObject {
 
         retireAliasTipDisplayEligibility()
 
-        if Self.isRecordCompletion(completionResponse) || Self.isRecordCandidate(candidate) {
+        if Self.isRecordCompletion(completionResponse) {
             return acceptRecordCandidate(candidate)
         }
 

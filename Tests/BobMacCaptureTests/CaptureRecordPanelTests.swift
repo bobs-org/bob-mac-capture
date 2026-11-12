@@ -10,6 +10,7 @@ final class CaptureRecordPanelTests: XCTestCase {
     private let incompleteDraft = "Ramen Nagi @eat/"
     private let completeDraft =
         "Ramen Nagi @eat/\n- status:: liked\n- category:: Ramen\n- location:: Clark"
+    private let routeCompletionFixture = "capture-complete-alias-tip-route-filtered.json"
 
     private func fakeBobPath() -> String {
         URL(fileURLWithPath: #filePath)
@@ -45,6 +46,56 @@ final class CaptureRecordPanelTests: XCTestCase {
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         return model
+    }
+
+    private func makeRouteModel(recordPath: URL) -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_ALIAS_TIP_ANCHOR": "1",
+                "FAKE_BOB_CAPTURE_COMPLETE_FIXTURE": routeCompletionFixture,
+                "FAKE_BOB_RECORD_ASSIST": "1",
+                "FAKE_BOB_RECORD_PATH": recordPath.path,
+            ]
+        )
+        model.plainDraft = "Buy milk @e"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        return model
+    }
+
+    private func keyEvent(keyCode: UInt16, characters: String = "") -> NSEvent {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: keyCode
+        )!
+    }
+
+    private func selectMovieRouteRow(in model: CapturePanelModel) throws {
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        model.selectedCompletionIndex = try XCTUnwrap(
+            candidates.firstIndex(where: { $0.route == "movies/" })
+        )
+    }
+
+    private func assertMovieRouteAccepted(
+        by model: CapturePanelModel,
+        recordPath: URL
+    ) async {
+        XCTAssertEqual(model.plainDraft, "Buy milk @movies/ ")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 18)
+        await waitUntil { self.recordLog(recordPath).contains("--next-missing-field") }
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(recordPath)).isEmpty)
     }
 
     private func recordLog(_ url: URL) -> String {
@@ -480,13 +531,9 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertFalse(model.recordShowsGenericCompletionFallback)
     }
 
-    func testFilteredRouteListWithRecordRowsStaysAnOrdinaryCompletion() async {
-        let model = makeModel(
-            parseFixture: "capture-parse-alias-tip-route-filtered.json",
-            completionFixture: "capture-complete-alias-tip-route-filtered.json",
-            draft: "Buy milk @e",
-            recordPath: recordURL()
-        )
+    func testRecordRouteRowAcceptsThroughReturn() async throws {
+        let logURL = recordURL()
+        let model = makeRouteModel(recordPath: logURL)
 
         await waitUntil { model.completionVisible }
         XCTAssertEqual(model.completionResponse?.context, "route")
@@ -495,5 +542,69 @@ final class CaptureRecordPanelTests: XCTestCase {
         )
         XCTAssertFalse(model.recordShowsGenericCompletionFallback)
         XCTAssertFalse(model.recordCompletionListVisible)
+
+        try selectMovieRouteRow(in: model)
+        let router = CaptureKeyCommandRouter()
+        let command = try XCTUnwrap(
+            router.command(
+                for: keyEvent(keyCode: 36, characters: "\r"),
+                context: CaptureKeyRoutingContext(
+                    completionVisible: model.completionVisible,
+                    completionHasSelection: model.selectedCompletionIndex != nil
+                )
+            )
+        )
+        XCTAssertEqual(command, .acceptCompletion)
+        XCTAssertTrue(CapturePanelController(model: model).perform(command))
+        await assertMovieRouteAccepted(by: model, recordPath: logURL)
+    }
+
+    func testRecordRouteRowAcceptsThroughTab() async throws {
+        let logURL = recordURL()
+        let model = makeRouteModel(recordPath: logURL)
+
+        await waitUntil { model.completionVisible }
+        try selectMovieRouteRow(in: model)
+        let command = try XCTUnwrap(
+            CaptureKeyCommandRouter().command(
+                for: keyEvent(keyCode: 48, characters: "\t"),
+                context: CaptureKeyRoutingContext(
+                    completionVisible: model.completionVisible,
+                    completionHasSelection: model.selectedCompletionIndex != nil
+                )
+            )
+        )
+        XCTAssertEqual(command, .acceptCompletion)
+        XCTAssertTrue(CapturePanelController(model: model).perform(command))
+        await assertMovieRouteAccepted(by: model, recordPath: logURL)
+    }
+
+    func testRecordRouteRowAcceptsThroughClick() async throws {
+        let logURL = recordURL()
+        let model = makeRouteModel(recordPath: logURL)
+
+        await waitUntil { model.completionVisible }
+        try selectMovieRouteRow(in: model)
+
+        // CaptureCompletionListView's tap handler selects the row and calls
+        // acceptSelectedCompletion directly.
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        await assertMovieRouteAccepted(by: model, recordPath: logURL)
+    }
+
+    func testOrdinaryRouteRowKeepsGenericAcceptance() async throws {
+        let logURL = recordURL()
+        let model = makeRouteModel(recordPath: logURL)
+
+        await waitUntil { model.completionVisible }
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        let ordinaryIndex = try XCTUnwrap(candidates.firstIndex(where: { $0.kind == "area" }))
+        let ordinaryCandidate = candidates[ordinaryIndex]
+        model.selectedCompletionIndex = ordinaryIndex
+
+        XCTAssertTrue(model.acceptSelectedCompletion())
+        XCTAssertEqual(model.plainDraft, "Buy milk @\(ordinaryCandidate.replacement)")
+        XCTAssertFalse(model.recordCardActive)
+        XCTAssertFalse(recordLog(logURL).contains("--next-missing-field"))
     }
 }
