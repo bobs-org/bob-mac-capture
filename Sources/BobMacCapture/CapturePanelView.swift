@@ -1397,7 +1397,7 @@ private struct CapturePanelFooter: View {
                     guard let announcement = model.mergeInAnnouncement else { return }
                     AccessibilityNotification.Announcement(announcement).post()
                 }
-            if let rewrite = CaptureBareAlbumRefusal.rewrite(in: model.latestParse) {
+            if let rewrite = model.bareAlbumRewrite {
                 Button(rewrite.replacement) {
                     _ = model.applyDiagnosticRewrite(rewrite)
                 }

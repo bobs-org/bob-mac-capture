@@ -164,6 +164,89 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, invalidDraft)
     }
 
+    func testLiveBareAlbumShowsTeachingRefusalWithRewrite() async throws {
+        let draft = "Blaze @eat"
+        let model = try makeModel(environment: [
+            "FAKE_BOB_PARSE_FIXTURE": "record-parse-bare-album.json",
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("record-capture-bare-album.json"),
+            "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "2",
+        ])
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        // The dry-run refusal (not the parse diagnostic) carries the
+        // "capture item 1" prefix, so this waits for the live preview.
+        await waitUntil { model.statusText.contains("capture item 1") }
+
+        // The footer teaches; nothing paints the red callout, the
+        // Retry-that-submits, or a duplicated preview-pane message.
+        XCTAssertTrue(model.statusText.contains("@eat/ adds a restaurant"))
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.errorCode)
+        XCTAssertNil(model.recordRefusalPresentation)
+        XCTAssertTrue(model.previewResults.isEmpty)
+        if case .idle = model.previewState {
+        } else {
+            XCTFail("bare-album refusal must keep the preview quiet")
+        }
+        // The user keeps the entire original draft.
+        XCTAssertEqual(model.plainDraft, draft)
+
+        // The footer rewrite is the one-key fix into the record flow.
+        let rewrite = try XCTUnwrap(model.bareAlbumRewrite)
+        XCTAssertEqual(rewrite.replacement, "@eat/")
+        XCTAssertTrue(model.applyDiagnosticRewrite(rewrite))
+        XCTAssertEqual(model.plainDraft, "Blaze @eat/")
+        // The applied parse is stale for the new draft, so no fix lingers.
+        XCTAssertNil(model.bareAlbumRewrite)
+    }
+
+    func testExplicitPreviewOfBareAlbumShowsTeachingRefusal() async throws {
+        let draft = "Blaze @eat"
+        let model = try makeModel(environment: [
+            "FAKE_BOB_PARSE_FIXTURE": "record-parse-bare-album.json",
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("record-capture-bare-album.json"),
+            "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "2",
+        ])
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.bareAlbumRewrite != nil }
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+        XCTAssertTrue(model.statusText.contains("@eat/ adds a restaurant"))
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.errorCode)
+        XCTAssertNotNil(model.bareAlbumRewrite)
+        if case .idle = model.previewState {
+        } else {
+            XCTFail("bare-album refusal must keep the preview quiet")
+        }
+    }
+
+    func testBareAlbumRewriteDisappearsAfterDraftEdit() async throws {
+        let draft = "Blaze @eat"
+        let model = try makeModel(environment: [
+            "FAKE_BOB_PARSE_FIXTURE": "record-parse-bare-album.json",
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("record-capture-bare-album.json"),
+            "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "2",
+        ])
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.bareAlbumRewrite != nil }
+
+        // Editing the draft retires the rewrite even before Bob answers.
+        let edited = "Blaze @eats"
+        model.plainDraft = edited
+        model.editorTextDidChange(cursorUTF8Offset: edited.utf8.count)
+        XCTAssertNil(model.bareAlbumRewrite)
+
+        // Clearing the draft resets the parse, so nothing can resurrect it.
+        model.plainDraft = ""
+        model.editorTextDidChange(cursorUTF8Offset: 0)
+        XCTAssertNil(model.latestParse)
+        XCTAssertNil(model.bareAlbumRewrite)
+    }
+
     func testMixedBatchPreviewKeepsTaskAndRecordOrder() async throws {
         let model = try makeModel(environment: [
             "FAKE_BOB_PARSE_FIXTURE": "record-parse-mixed.json",

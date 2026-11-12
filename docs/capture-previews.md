@@ -105,7 +105,11 @@ Record Card is open, a live matching update adds a display-only
 `Changes, N lines`) between the rows and the footer; loading, stale, or
 empty diffs stay hidden. An incomplete record refuses inline with Bob's
 message, missing/invalid field details, and a selectable copyable draft
-that is never applied; mixed captures keep the other items. JSON names
+that is never applied; mixed captures keep the other items. A bare album
+route (`Blaze @eat`) refuses as a teaching footer with Bob's text and a
+one-key `@eat/` rewrite button: no red callout, no Retry, and no
+preview-pane duplicate. The rewrite offer lives only while the parse
+still describes the draft. JSON names
 and older-Bob fallbacks are in [Protocol](protocol.md#compatibility).
 
 ## Notebook notes

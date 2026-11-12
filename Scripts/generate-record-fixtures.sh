@@ -498,6 +498,7 @@ run_capture_refusal "Ramen Nagi @eat/
 - status:: nope
 - category:: Ramen
 - location:: Clark" record-capture-invalid.json 2
+run_capture_refusal "Blaze @eat" record-capture-bare-album.json 2
 run_capture_dry "Ramen Nagi @eat/
 - status:: liked
 - category:: Ramen
@@ -530,7 +531,7 @@ Generated from a real Bob; never hand-edit the JSON.
   record_target, 7+ category values, current-value named edit),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
-  records; mixed task/record; missing and invalid refusals; explicit
+  records; mixed task/record; missing, invalid, and bare-album refusals; explicit
   empty optional; existing-record note append), one capture commit,
   capture-targets
 

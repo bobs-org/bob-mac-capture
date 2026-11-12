@@ -1782,6 +1782,18 @@ final class CapturePanelModel: ObservableObject {
         return CaptureRecordRouteAdornment.all(in: parse)
     }
 
+    /// The footer bare-album one-key fix, only while the parse still
+    /// describes the current draft. The footer button and hosted tests
+    /// share this gate so a discarded or edited draft cannot resurrect
+    /// a stale rewrite; `applyDiagnosticRewrite` stays the last line
+    /// of defense.
+    var bareAlbumRewrite: CaptureDiagnosticRewrite? {
+        guard let parse = latestParse, parse.input == plainDraft else {
+            return nil
+        }
+        return CaptureBareAlbumRefusal.rewrite(in: parse)
+    }
+
     func moveGhostTitles() -> [CaptureProjectNoteMoveGhost] {
         guard let previewDraft = previewOutputsDraft,
               previewDraft == plainDraft
@@ -6156,6 +6168,7 @@ final class CapturePanelModel: ObservableObject {
         editAnalysisBaseline = plainDraft
         invalidateRewrite()
         cancelInFlightExplicitPreview()
+        latestParse = nil
         parseDiagnostics = []
         parsedTemplate = nil
         lastAppliedParseDraft = nil
@@ -16430,6 +16443,9 @@ final class CapturePanelModel: ObservableObject {
             if showRecordRefusal(failure) {
                 return
             }
+            if showBareAlbumRefusal(failure) {
+                return
+            }
             if showEmptyNotePull(failure) {
                 return
             }
@@ -16728,6 +16744,9 @@ final class CapturePanelModel: ObservableObject {
             if showRecordRefusal(failure) {
                 return
             }
+            if showBareAlbumRefusal(failure) {
+                return
+            }
             if showEmptyNotePull(failure) {
                 return
             }
@@ -17007,6 +17026,27 @@ final class CapturePanelModel: ObservableObject {
         previewState = .failed(failure.error)
         errorMessage = nil
         errorCode = nil
+        refuseStatus(failure.error)
+        return true
+    }
+
+    /// A bare album route (`Blaze @eat`) is an expected teaching state,
+    /// not a failure: the footer keeps Bob's teach text beside the
+    /// one-key `@eat/` rewrite button, with no red callout, no
+    /// Retry-that-submits, and no duplicated preview-pane message. Like
+    /// the older-Bob transfer path, the preview itself stays quiet.
+    @discardableResult
+    private func showBareAlbumRefusal(_ failure: CaptureCommandFailure) -> Bool {
+        guard failure.code == CaptureBareAlbumRefusal.code else {
+            return false
+        }
+        clearPreviewOutputs()
+        previewPullInSnapshot = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+        errorMessage = nil
+        errorCode = nil
+        previewState = .idle
         refuseStatus(failure.error)
         return true
     }
@@ -18842,6 +18882,7 @@ final class CapturePanelModel: ObservableObject {
                             failure,
                             parseMode: self?.latestParse?.mode
                         ) != true, self?.showRecordRefusal(failure) != true,
+                            self?.showBareAlbumRefusal(failure) != true,
                             self?.showEmptyNotePull(failure) != true
                         {
                             self?.previewState = .failed(failure.error)
