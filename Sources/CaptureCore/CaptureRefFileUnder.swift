@@ -120,22 +120,22 @@ public enum CaptureRefFileUnder {
         return ordered
     }
 
-    /// Rank filtered targets for a typed query, preserving the input
+    /// Rank the supplied targets for a typed query, preserving the input
     /// order inside each bucket: canonical prefix matches (route, label,
     /// or name) first, then alias-prefix matches, then every other
     /// substring match (aliases included). An empty query keeps the input
-    /// order. Callers that reorder (File under's last-used-first list)
-    /// sort with `orderedTargets` before calling.
-    public static func rankedTargets(
+    /// order. Typed `@` route completion ranks Bob's targets directly
+    /// with this helper so record rows survive; File under ranks only
+    /// its restricted parents through `rankedTargets`.
+    public static func rankedSuppliedTargets(
         _ targets: [CaptureTarget],
         query: String
     ) -> [CaptureTarget] {
-        let eligible = eligibleTargets(targets)
         let folded = query.lowercased()
         guard !folded.isEmpty else {
-            return eligible
+            return targets
         }
-        let filtered = eligible.filter { matches(target: $0, query: query) }
+        let filtered = targets.filter { matches(target: $0, query: query) }
         let prefix = filtered.filter { target in
             target.route.lowercased().hasPrefix(folded)
                 || target.label.lowercased().hasPrefix(folded)
@@ -147,6 +147,21 @@ public enum CaptureRefFileUnder {
         }
         let rest = filtered.filter { !prefix.contains($0) && !alias.contains($0) }
         return prefix + alias + rest
+    }
+
+    /// Rank filtered targets for a typed query, preserving the input
+    /// order inside each bucket: canonical prefix matches (route, label,
+    /// or name) first, then alias-prefix matches, then every other
+    /// substring match (aliases included). An empty query keeps the input
+    /// order. Callers that reorder (File under's last-used-first list)
+    /// sort with `orderedTargets` before calling. Only inbox, area, and
+    /// project targets are ranked; notebooks, records, and unknown kinds
+    /// stay out of File under.
+    public static func rankedTargets(
+        _ targets: [CaptureTarget],
+        query: String
+    ) -> [CaptureTarget] {
+        rankedSuppliedTargets(eligibleTargets(targets), query: query)
     }
 
     /// Whether a typed query names an alias of exactly one target (used to

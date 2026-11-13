@@ -5735,20 +5735,43 @@ final class CapturePanelModelTests: XCTestCase {
                 ),
             ]
         )
-        model.plainDraft = "@mo"
+        let draft = "The Little Mermaid @mo"
+        model.plainDraft = draft
 
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
-        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "@mo") }
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: draft) }
 
+        // The cached route proves it uses the target cache, not Bob: Bob's
+        // route fixture would offer `eat/ ` first and must never be consulted.
         XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "movies/")
         XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "record")
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "movies/ ")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.recordType, "movie")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 20, end: 22))
+        XCTAssertFalse(recordLog(recordURL).contains("capture-complete"))
+
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "@movies/ ")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 9)
+        XCTAssertEqual(model.plainDraft, "The Little Mermaid @movies/ ")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 28)
 
         await waitUntil { self.recordLog(recordURL).contains("--next-missing-field") }
+        let nextMissingCount = recordLog(recordURL)
+            .components(separatedBy: "\n")
+            .filter { $0.contains("--next-missing-field") }
+            .count
+        XCTAssertEqual(nextMissingCount, 1)
         XCTAssertFalse(hasMutationCapture(in: recordLog(recordURL)))
+
+        // The follow-up is Bob's real first-missing-field value menu for the
+        // title-bearing movie draft, not the overridden route fixture.
+        await waitUntil { model.completionResponse?.context == "record_value" }
+        let valueCandidates = model.completionResponse?.candidates ?? []
+        XCTAssertEqual(valueCandidates.first?.replacement, "\n- status:: to_watch")
+        XCTAssertEqual(valueCandidates.first?.display, "To watch")
+        XCTAssertEqual(valueCandidates.first?.kind, "choices")
+        XCTAssertEqual(model.completionResponse?.record?.field, "status")
+        XCTAssertEqual(model.completionResponse?.record?.title, "The Little Mermaid")
     }
 
     func testRecordRouteRowsDoNotQuickCommitPlusOrComma() async throws {
@@ -5761,6 +5784,7 @@ final class CapturePanelModelTests: XCTestCase {
                 environment: [
                     "HOME": "/tmp",
                     "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_ASSIST": "1",
                     "FAKE_BOB_RECORD_PATH": recordURL.path,
                 ]
             )
@@ -5779,18 +5803,28 @@ final class CapturePanelModelTests: XCTestCase {
                     ),
                 ]
             )
-            model.plainDraft = "@mo"
+            let draft = "The Little Mermaid @mo"
+            model.plainDraft = draft
             model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
-            await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "@mo") }
+            await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: draft) }
 
-            let typedDraft = "@mo\(separator)"
+            XCTAssertEqual(model.completionResponse?.candidates.first?.route, "movies/")
+            XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "record")
+
+            let typedDraft = "\(draft)\(separator)"
             model.plainDraft = typedDraft
             model.editorTextDidChange(cursorUTF8Offset: typedDraft.utf8.count)
 
+            // The skip decision keeps the keystroke literal: no accept, no
+            // vault mutation, and the cached record row stays offered.
             XCTAssertEqual(model.plainDraft, typedDraft)
             XCTAssertTrue(model.completionVisible)
             XCTAssertEqual(model.selectedCompletion?.kind, "record")
+            XCTAssertEqual(model.selectedCompletion?.route, "movies/")
+            XCTAssertEqual(model.selectedCompletion?.replacement, "movies/ ")
             XCTAssertFalse(recordLog(recordURL).contains("--next-missing-field"))
+            XCTAssertFalse(hasMutationCapture(in: recordLog(recordURL)))
+            XCTAssertTrue(model.completionResponse?.candidates.contains(where: { $0.kind == "record" && $0.route == "movies/" }) == true)
         }
     }
 

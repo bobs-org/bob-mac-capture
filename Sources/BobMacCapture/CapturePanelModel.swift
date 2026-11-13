@@ -20925,12 +20925,12 @@ final class CapturePanelModel: ObservableObject {
             || character == "+"
     }
 
-    /// Route completion ranking, owned by `CaptureRefFileUnder` so the
-    /// `@`-typed list filters exactly like File under: canonical prefix
-    /// matches first, then alias-prefix matches, then every other
-    /// substring match (aliases included).
+    /// Typed `@` route completion ranking over Bob's targets, including
+    /// record rows. File under keeps its restricted `rankedTargets`
+    /// wrapper so bare-URL parents still exclude records, notebooks, and
+    /// unknown kinds. Both share the same bucket order.
     private func rankedTargets(_ targets: [CaptureTarget], query: String) -> [CaptureTarget] {
-        CaptureRefFileUnder.rankedTargets(targets, query: query)
+        CaptureRefFileUnder.rankedSuppliedTargets(targets, query: query)
     }
 
     /// The alias to show beside a route row for this query (`bob-cli` for

@@ -15,17 +15,25 @@
 #     podcast (dir podcasts, label Podcast)
 #       status: required choices {to_try, subscribed}
 #       category: required suggest
+#     movie (dir movies, label Movie, emoji 🎬)
+#       status: required choices {to_watch, watched}
+#       genre: required suggest
 #   vault:
 #     eat/nagi.md (Ramen, Clark), eat/ramen_ya.md (Ramen, Westfield),
 #       eat/cafe_moo.md (Unicode title "Café Møø"), plus five more
 #       restaurants with unique categories so value lists exceed six rows
 #     podcasts/techmeme.md, mac_inbox.md, dev.md (area for mixed items)
+#     movies album only (no committed movie notes; cached tests inject the
+#       movies/ target and the follow-up uses the title-bearing
+#       "The Little Mermaid @movies/ " draft)
 #     day note 2026/20261030.md, BOB_NOW=2026-10-30 09:00:00
 #
 # Fixtures cover incomplete, complete, invalid, default, optional-empty,
 # explicit stem, Unicode, mixed items, record_field/record_value
 # (caret, next-missing first/middle/last, named field), route record rows,
-# section record_create rows, capture-targets record rows, and an older-Bob
+# section record_create rows, capture-targets record rows, movie
+# title-bearing incomplete/next-missing (mermaid, buy-milk, empty) and
+# Blaze bare/incomplete for the rewrite flow, and an older-Bob
 # fixture is checked in by hand (not generated). Commit operations affect
 # only the scratch vault.
 set -euo pipefail
@@ -49,7 +57,7 @@ config="$scratch_root/config.yml"
 cache="$scratch_root/cache"
 NOW="2026-10-30 09:00:00"
 mkdir -p "$scratch_root/config" "$scratch_root/state" "$cache"
-mkdir -p "$vault/.obsidian/plugins/obsidian-tasks-plugin" "$vault/2026" "$vault/eat" "$vault/podcasts"
+mkdir -p "$vault/.obsidian/plugins/obsidian-tasks-plugin" "$vault/2026" "$vault/eat" "$vault/podcasts" "$vault/movies"
 
 cat > "$vault/.obsidian/plugins/obsidian-tasks-plugin/data.json" <<'JSON'
 {
@@ -138,6 +146,29 @@ record:
 # Podcasts
 
 Add one with `Name @podcasts/`.
+MD
+cat > "$vault/movies.md" <<'MD'
+---
+parent: "[[body]]"
+type: "[[album]]"
+summary: Movies we have watched or want to watch.
+emoji: "🎬"
+record:
+  noun: movie
+  label: Movie
+  fields:
+    status:
+      required: true
+      values:
+        to_watch: "To watch"
+        watched: "Watched"
+    genre:
+      required: true
+      suggest: true
+---
+# Movies
+
+Add one with `Name @movies/`.
 MD
 cat > "$vault/mac_inbox.md" <<'MD'
 ---
@@ -424,6 +455,11 @@ run_parse "@eat/nagi" record-parse-existing.json
 run_parse "Went back @eat/nagi
 - status:: liked" record-parse-title-first-update.json
 run_parse "Blaze @eat" record-parse-bare-album.json
+run_parse "The Little Mermaid @movies/ " record-parse-movie-incomplete.json
+run_parse "Buy milk @movies/ " record-parse-movie-buy-milk-incomplete.json
+run_parse "@movies/ " record-parse-movie-empty-incomplete.json
+run_parse "Blaze @eat/" record-parse-blaze-incomplete.json
+run_parse "The Little Mermaid @mo" record-parse-mermaid-mo.json
 
 # Completion fixtures.
 run_complete "@" "$(cursor_of "@")" record-complete-route.json
@@ -461,6 +497,10 @@ run_complete "Ramen Nagi @eat/
 - status:: liked
 - category:: Ramen
 - location:: Clark")" record-complete-named-status-current.json -F status
+run_complete "The Little Mermaid @movies/ " "$(cursor_of "The Little Mermaid @movies/ ")" record-complete-movie-next-missing-first.json -n
+run_complete "Buy milk @movies/ " "$(cursor_of "Buy milk @movies/ ")" record-complete-movie-buy-milk-next-missing-first.json -n
+run_complete "@movies/ " "$(cursor_of "@movies/ ")" record-complete-movie-empty-next-missing-first.json -n
+run_complete "Blaze @eat/" "$(cursor_of "Blaze @eat/")" record-complete-blaze-next-missing-first.json -n
 
 # Capture fixtures (dry-run previews, one commit, and refusals). The
 # commit runs last so its scratch-vault write cannot affect earlier
@@ -499,6 +539,7 @@ run_capture_refusal "Ramen Nagi @eat/
 - category:: Ramen
 - location:: Clark" record-capture-invalid.json 2
 run_capture_refusal "Blaze @eat" record-capture-bare-album.json 2
+run_capture_refusal "Blaze @eat/" record-capture-blaze-incomplete.json 2
 run_capture_dry "Ramen Nagi @eat/
 - status:: liked
 - category:: Ramen
@@ -518,22 +559,25 @@ cat > "$fixtures/record-fixtures-README.md" <<EOF
 Generated from a real Bob; never hand-edit the JSON.
 
 - bob: $bob_commit
-- albums: eat (restaurant, 🍽️, owner body) + podcasts (podcast, 🎙️, owner dev),
+- albums: eat (restaurant, 🍽️, owner body) + podcasts (podcast, 🎙️, owner dev) + movies (movie, 🎬, owner body),
   companions default [[kelly]]; the config carries no records: block
-- vault: eat.md + podcasts.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
+- vault: eat.md + podcasts.md + movies.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
   eat/pizza_roma.md, eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md,
   eat/sushi_den.md, podcasts/techmeme.md
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
 - command shapes: capture-parse (including field/value caret drafts,
   existing-record @eat/nagi, title-first update with status:: liked,
-  bare-album Blaze @eat refusal),
+  bare-album Blaze @eat refusal, title-bearing movie incomplete
+  "The Little Mermaid @movies/ " plus buy-milk/empty variants, Blaze @eat/
+  incomplete, and the "The Little Mermaid @mo" partial-route parse),
   capture-complete (caret, -n, -F, route, section, create-route
-  record_target, 7+ category values, current-value named edit),
+  record_target, 7+ category values, current-value named edit, movie
+  next-missing (mermaid, buy-milk, empty) and Blaze next-missing),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
-  records; mixed task/record; missing, invalid, and bare-album refusals; explicit
-  empty optional; existing-record note append), one capture commit,
-  capture-targets
+  records; mixed task/record; missing, invalid, bare-album, and Blaze
+  incomplete refusals; explicit empty optional; existing-record note
+  append), one capture commit, capture-targets
 
 Older-Bob fixtures (no record keys) are checked in by hand:
 record-parse-old-bob.json, record-complete-old-bob.json,

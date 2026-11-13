@@ -435,8 +435,18 @@ PY
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_parse_fixture=""
       case "${draft}" in
-        "Buy milk @movies/ "|"@movies/ ")
+        "The Little Mermaid @movies/ ")
           record_parse_fixture="record-parse-movie-incomplete.json" ;;
+        "Buy milk @movies/ ")
+          record_parse_fixture="record-parse-movie-buy-milk-incomplete.json" ;;
+        "@movies/ ")
+          record_parse_fixture="record-parse-movie-empty-incomplete.json" ;;
+        "Blaze @eat/")
+          record_parse_fixture="record-parse-blaze-incomplete.json" ;;
+        "Blaze @eat")
+          record_parse_fixture="record-parse-bare-album.json" ;;
+        "The Little Mermaid @mo")
+          record_parse_fixture="record-parse-mermaid-mo.json" ;;
         "Ramen Nagi @eat/")
           record_parse_fixture="record-parse-incomplete.json" ;;
         $'Ramen Nagi @eat/\n- ')
@@ -2619,6 +2629,28 @@ JSON
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_complete_fixture=""
       case "${draft}" in
+        "The Little Mermaid @movies/ ")
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-movie-next-missing-first.json"
+          fi
+          ;;
+        "Buy milk @movies/ ")
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-movie-buy-milk-next-missing-first.json"
+          fi
+          ;;
+        "@movies/ ")
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-movie-empty-next-missing-first.json"
+          fi
+          ;;
+        "Blaze @eat/")
+          if [[ "${next_missing}" == "true" ]]; then
+            record_complete_fixture="record-complete-blaze-next-missing-first.json"
+          else
+            record_complete_fixture="record-complete-target-create.json"
+          fi
+          ;;
         "Ramen Nagi @eat/")
           if [[ -n "${record_field}" ]]; then
             if [[ "${record_field}" == "status" ]]; then
@@ -4893,6 +4925,18 @@ MOVE_PY
       fi
       cat "${fixtures_dir}/${sequence_fixture}"
       exit "${FAKE_BOB_CAPTURE_DRY_RUN_EXIT:-0}"
+    fi
+    if [[ "${dry_run}" == "true" && "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
+      case "${draft}" in
+        "Blaze @eat")
+          cat "${fixtures_dir}/record-capture-blaze-bare.json"
+          exit 2
+          ;;
+        "Blaze @eat/")
+          cat "${fixtures_dir}/record-capture-blaze-incomplete.json"
+          exit 2
+          ;;
+      esac
     fi
     if [[ "${dry_run}" == "true" && -n "${FAKE_BOB_CAPTURE_DRY_RUN_STDOUT:-}" ]]; then
       if [[ -n "${FAKE_BOB_CAPTURE_DRY_RUN_DELAY_SECONDS:-}" ]]; then

@@ -152,6 +152,29 @@ final class CaptureRefFileUnderTests: XCTestCase {
         XCTAssertNil(CaptureRefFileUnder.aliasOwner(candidates, query: "dev-notebook"))
     }
 
+    func testSuppliedRankingRetainsRecordsForTypedRoutes() {
+        let candidates = targets + [
+            target("movies/", kind: "record"),
+            target("dev_notes", kind: "notebook"),
+            target("future", kind: "future-kind"),
+        ]
+
+        // Typed `@` route completion ranks every supplied target so record
+        // rows survive; File under keeps its restricted wrapper.
+        XCTAssertEqual(
+            CaptureRefFileUnder.rankedSuppliedTargets(candidates, query: "").map(\.route),
+            ["mac_inbox", "bob", "sase", "movies/", "dev_notes", "future"]
+        )
+        XCTAssertEqual(
+            CaptureRefFileUnder.rankedSuppliedTargets(candidates, query: "mo").map(\.route),
+            ["movies/"]
+        )
+        XCTAssertEqual(
+            CaptureRefFileUnder.rankedTargets(candidates, query: "mo").map(\.route),
+            []
+        )
+    }
+
     // MARK: - Filtering with aliases
 
     func testEmptyQueryKeepsInputOrder() {

@@ -167,9 +167,7 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
     func testLiveBareAlbumShowsTeachingRefusalWithRewrite() async throws {
         let draft = "Blaze @eat"
         let model = try makeModel(environment: [
-            "FAKE_BOB_PARSE_FIXTURE": "record-parse-bare-album.json",
-            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("record-capture-bare-album.json"),
-            "FAKE_BOB_CAPTURE_DRY_RUN_EXIT": "2",
+            "FAKE_BOB_RECORD_ASSIST": "1",
         ])
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
@@ -196,8 +194,19 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
         XCTAssertEqual(rewrite.replacement, "@eat/")
         XCTAssertTrue(model.applyDiagnosticRewrite(rewrite))
         XCTAssertEqual(model.plainDraft, "Blaze @eat/")
-        // The applied parse is stale for the new draft, so no fix lingers.
+
+        // Bob's fresh parse for the rewritten draft actually enters record
+        // flow instead of replaying the stale bare-album parse.
+        await waitUntil { model.latestParse?.input == "Blaze @eat/" }
+        let freshParse = try XCTUnwrap(model.latestParse)
+        XCTAssertEqual(freshParse.mode, "record_note")
+        XCTAssertEqual(freshParse.record?.title, "Blaze")
+        XCTAssertEqual(freshParse.record?.missing, ["status", "category", "location"])
+        // The bare-album fix does not linger once record flow owns the draft.
         XCTAssertNil(model.bareAlbumRewrite)
+        // The missing-fields refusal for the new draft proves the flow
+        // continued past the splice instead of stalling on the old parse.
+        await waitUntil { model.recordRefusalPresentation?.missing == ["status", "category", "location"] }
     }
 
     func testExplicitPreviewOfBareAlbumShowsTeachingRefusal() async throws {
