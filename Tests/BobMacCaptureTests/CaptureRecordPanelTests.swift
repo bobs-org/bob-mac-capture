@@ -397,6 +397,10 @@ final class CaptureRecordPanelTests: XCTestCase {
         let fieldDraft = "Ramen Nagi @eat/\n- "
         let model = makeAssistModel(draft: fieldDraft, recordPath: logURL)
 
+        // Bob advertises the fresh dash through `needs: ["record_field"]`;
+        // the ordinary-edit path must request completion from that need.
+        await waitUntil { model.latestParse != nil }
+        XCTAssertTrue(model.latestParse?.needs.contains("record_field") == true)
         await waitUntil {
             model.recordCompletionListVisible
                 && model.completionResponse?.context == "record_field"
@@ -415,6 +419,17 @@ final class CaptureRecordPanelTests: XCTestCase {
         }
         XCTAssertTrue(model.plainDraft.hasPrefix("Ramen Nagi @eat/"))
         XCTAssertFalse(model.plainDraft.contains("@eat/burger_joint"))
+    }
+
+    func testCaretRevisitInsideTypedValueRequestsCompletion() async {
+        let logURL = recordURL()
+        let model = makeAssistModel(draft: completeDraft, recordPath: logURL)
+        // The completed draft reports no needs, so only the caret sitting
+        // inside the typed `location` value span may request completion.
+        XCTAssertEqual(model.plainDraft, completeDraft)
+        XCTAssertEqual(completeDraft.utf8.count, 71)
+        await waitUntil { self.recordLog(logURL).contains("capture-complete") }
+        XCTAssertTrue(self.recordLog(logURL).contains("capture-complete"))
     }
 
     func testSevenValueSuggestionsKeepTheSelectedRowVisibleAndAccepted() async throws {

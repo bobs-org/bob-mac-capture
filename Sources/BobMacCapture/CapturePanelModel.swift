@@ -18820,11 +18820,15 @@ final class CapturePanelModel: ObservableObject {
                                   let mergeIn = CaptureMergeInPresentation(capture: captures[0])
                         {
                             self?.statusText = mergeIn.statusLineText
-                        } else if self?.statusText == "Preview failed" {
+                        } else if self?.statusText == "Preview failed"
+                            || self?.statusIsRefusal == true
+                        {
                             // A successful live preview that sets no
                             // kind-specific status clears a stale failure
-                            // footer; empty reads as Ready. Any other text,
-                            // such as rewrite notices, is left untouched.
+                            // footer, including a record refusal left over
+                            // from an earlier draft; empty reads as Ready.
+                            // Any other text, such as rewrite notices, is
+                            // left untouched.
                             self?.statusText = ""
                         }
                         self?.consumeTransferOwnedStatus()
@@ -20680,6 +20684,8 @@ final class CapturePanelModel: ObservableObject {
             "task_type",
             "task_type_marker",
             "directive",
+            "record_field_key",
+            "record_field_value",
         ])
 
         return parse.spans.contains { span in

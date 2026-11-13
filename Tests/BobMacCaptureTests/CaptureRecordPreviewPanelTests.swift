@@ -164,6 +164,24 @@ final class CaptureRecordPreviewPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, invalidDraft)
     }
 
+    func testSuccessfulPreviewClearsStaleRecordRefusalFooter() async throws {
+        let model = try makeModel(environment: [
+            "FAKE_BOB_PARSE_FIXTURE": "record-parse-invalid.json",
+            "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": fixture("record-capture-restaurant.json"),
+        ])
+        model.plainDraft = invalidDraft
+        model.editorTextDidChange(cursorUTF8Offset: invalidDraft.utf8.count)
+        // The parse error paints the refusal footer first; the analysis
+        // applies the parse before the live preview runs.
+        await waitUntil(timeout: 10) { model.latestParse != nil }
+        XCTAssertEqual(model.latestParse?.diagnostics.first?.code, "record_invalid_value")
+        await waitUntil(timeout: 10) { self.isPreviewReady(model) }
+        // A successful preview of the same draft falsifies the refusal, so
+        // no stale red footer may remain.
+        XCTAssertFalse(model.statusIsRefusal)
+        XCTAssertTrue(CaptureRecordFooterMessage.isOrdinaryStatus(model.statusText))
+    }
+
     func testLiveBareAlbumShowsTeachingRefusalWithRewrite() async throws {
         let draft = "Blaze @eat"
         let model = try makeModel(environment: [
