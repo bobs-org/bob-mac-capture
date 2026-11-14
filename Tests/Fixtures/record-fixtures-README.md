@@ -3,6 +3,7 @@
 Generated from a real Bob; never hand-edit the JSON.
 
 - bob: b7f74b58
+- record-parse-optional-caret.json and record-complete-optional-caret.json: bob 0.5.0 (694b96a5)
 - albums: eat (restaurant, 🍽️, owner body) + podcasts (podcast, 🎙️, owner dev) + movies (movie, 🎬, owner body),
   companions default [[kelly]]; the config carries no records: block
 - vault: eat.md + podcasts.md + movies.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
@@ -10,6 +11,8 @@ Generated from a real Bob; never hand-edit the JSON.
   eat/sushi_den.md, podcasts/techmeme.md
 - clock: 2026-10-30 09:00:00, TZ=UTC0, isolated XDG dirs, scratch vault only
 - command shapes: capture-parse (including field/value caret drafts,
+  optional visited:: caret with all required fields set, also completed
+  at the draft's end without -n or -F,
   existing-record @eat/nagi, title-first update with status:: liked,
   bare-album Blaze @eat refusal, title-bearing movie incomplete
   "The Little Mermaid @movies/ " plus buy-milk/empty variants, Blaze @eat/

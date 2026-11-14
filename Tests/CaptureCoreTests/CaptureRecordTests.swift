@@ -387,6 +387,58 @@ final class CaptureRecordTests: XCTestCase {
         XCTAssertTrue(more.displayedRows.contains(where: { $0.key == "url" }))
     }
 
+    func testPresentationEmptyOptionalCaretExpandsMore() throws {
+        let parse = try decodeParse("record-parse-optional-empty.json")
+        XCTAssertTrue(parse.items.isEmpty, "single-record drafts use the top-level record")
+        let presentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: parse, cursor: parse.input.utf8.count))
+
+        XCTAssertEqual(presentation.activeFieldKey, "companions")
+        XCTAssertEqual(presentation.selectedRowKey, "companions")
+        XCTAssertFalse(presentation.showsMore)
+        XCTAssertTrue(presentation.isMoreExpanded)
+        XCTAssertEqual(presentation.displayedRows, presentation.rows)
+        XCTAssertEqual(presentation.displayedRows.filter { $0.key == "companions" }.count, 1)
+        XCTAssertEqual(
+            presentation.hiddenOptionalRows.map(\.key), ["companions", "visited", "url"])
+        XCTAssertEqual(presentation.moreLabel, "More (companions, visited, url)")
+    }
+
+    func testPresentationLeavingEmptyOptionalCaretFoldsMore() throws {
+        let parse = try decodeParse("record-parse-optional-empty.json")
+        let status = try XCTUnwrap(parse.record?.fields.first(where: { $0.key == "status" }))
+        let cursor = try XCTUnwrap(status.range).start
+        let presentation = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: parse, cursor: cursor))
+
+        XCTAssertEqual(presentation.activeFieldKey, "status")
+        XCTAssertEqual(presentation.selectedRowKey, "status")
+        XCTAssertFalse(presentation.showsMore)
+        XCTAssertFalse(presentation.isMoreExpanded)
+        XCTAssertEqual(presentation.displayedRows, presentation.visibleRows)
+        XCTAssertFalse(presentation.displayedRows.contains(where: { $0.key == "companions" }))
+        XCTAssertEqual(presentation.moreLabel, "More (companions, visited, url)")
+
+        let expanded = try XCTUnwrap(
+            CaptureRecordPresentation.make(parse: parse, cursor: cursor, showsMore: true))
+        XCTAssertTrue(expanded.isMoreExpanded)
+        XCTAssertEqual(expanded.displayedRows, expanded.rows)
+    }
+
+    func testPresentationActiveOptionalExpandsRowsInSchemaOrder() throws {
+        let parse = try decodeParse("record-parse-incomplete.json")
+        let record = try XCTUnwrap(parse.record)
+        for showsMore in [false, true] {
+            let presentation = CaptureRecordPresentation(
+                record: record, activeFieldKey: "url", showsMore: showsMore)
+            XCTAssertTrue(presentation.isMoreExpanded)
+            XCTAssertEqual(presentation.showsMore, showsMore)
+            XCTAssertEqual(presentation.displayedRows, presentation.rows)
+            XCTAssertEqual(presentation.displayedRows.map(\.key), record.fields.map(\.key))
+            XCTAssertEqual(presentation.displayedRows.filter { $0.key == "url" }.count, 1)
+        }
+    }
+
     func testPresentationFirstMiddleLastIntents() throws {
         let first = try decodeComplete("record-complete-next-missing-first.json")
         let firstValue = try XCTUnwrap(first.candidates.first?.recordValue)

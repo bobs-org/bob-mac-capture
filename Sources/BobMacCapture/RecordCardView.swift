@@ -402,10 +402,10 @@ struct RecordCardView: View {
 
     private var moreControl: some View {
         Button {
-            model.setRecordMoreExpanded(!presentation.showsMore)
+            model.setRecordMoreExpanded(!presentation.isMoreExpanded)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: presentation.showsMore ? "chevron.down" : "chevron.right")
+                Image(systemName: presentation.isMoreExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption.weight(.semibold))
                     .accessibilityHidden(true)
                 Text(presentation.moreLabel)
@@ -419,7 +419,7 @@ struct RecordCardView: View {
         .accessibilityIdentifier("record-more")
         .accessibilityLabel(presentation.moreLabel)
         .accessibilityHint(
-            presentation.showsMore
+            presentation.isMoreExpanded
                 ? "Hides optional fields"
                 : "Shows optional fields"
         )

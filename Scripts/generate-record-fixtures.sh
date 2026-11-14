@@ -424,6 +424,12 @@ run_parse "Ramen Nagi @eat/
 - category:: Ramen
 - location:: Clark
 - companions::" record-parse-optional-empty.json
+OPTIONAL_CARET="Ramen Nagi @eat/
+- status:: liked
+- category:: Ramen
+- location:: Clark
+- visited:: "
+run_parse "$OPTIONAL_CARET" record-parse-optional-caret.json
 run_parse "Ramen Nagi @eat/^custom-stem" record-parse-explicit-stem.json
 run_parse "Café Møø @eat/" record-parse-unicode.json
 run_parse "Ramen Nagi @eat/
@@ -462,6 +468,7 @@ run_parse "Blaze @eat/" record-parse-blaze-incomplete.json
 run_parse "The Little Mermaid @mo" record-parse-mermaid-mo.json
 
 # Completion fixtures.
+run_complete "$OPTIONAL_CARET" "$(cursor_of "$OPTIONAL_CARET")" record-complete-optional-caret.json
 run_complete "@" "$(cursor_of "@")" record-complete-route.json
 run_complete "Ramen Nagi @eat/
 - " "$(cursor_of "Ramen Nagi @eat/
@@ -566,6 +573,8 @@ Generated from a real Bob; never hand-edit the JSON.
   eat/sushi_den.md, podcasts/techmeme.md
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
 - command shapes: capture-parse (including field/value caret drafts,
+  optional visited:: caret with all required fields set, also completed
+  at the draft's end without -n or -F,
   existing-record @eat/nagi, title-first update with status:: liked,
   bare-album Blaze @eat refusal, title-bearing movie incomplete
   "The Little Mermaid @movies/ " plus buy-milk/empty variants, Blaze @eat/

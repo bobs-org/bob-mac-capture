@@ -665,13 +665,14 @@ public struct CaptureRecordPresentation: Equatable, Sendable {
         if parse.items.isEmpty {
             guard let record = parse.record else { return nil }
             let rows = record.fields.map(CaptureRecordRow.init(field:))
-            let active = activeField(for: record, cursorFieldKey: nil)
+            let cursorKey = fieldKeyContaining(cursor: cursor, fields: record.fields)
+            let active = activeField(for: record, cursorFieldKey: cursorKey)
             return CaptureRecordPresentation(
                 record: record,
                 itemIndex: nil,
                 rows: rows,
                 activeFieldKey: active,
-                selectedRowKey: selectedRowKey,
+                selectedRowKey: selectedRowKey ?? cursorKey ?? active,
                 showsMore: showsMore
             )
         }
@@ -730,7 +731,8 @@ public struct CaptureRecordPresentation: Equatable, Sendable {
     }
 
     /// Required, set, default, invalid, and missing rows stay visible.
-    /// Unset optional (`none`) rows hide under More.
+    /// Unset optional (`none`) rows hide under More unless it is expanded
+    /// explicitly or to reveal the active field.
     public var visibleRows: [CaptureRecordRow] {
         rows.filter { !$0.isOptionalHidden }
     }
@@ -739,8 +741,14 @@ public struct CaptureRecordPresentation: Equatable, Sendable {
         rows.filter(\.isOptionalHidden)
     }
 
+    /// Keep More open while the active field would otherwise be hidden.
+    /// Caret-driven expansion does not change the explicit disclosure state.
+    public var isMoreExpanded: Bool {
+        showsMore || rows.contains { $0.isOptionalHidden && $0.key == activeFieldKey }
+    }
+
     public var displayedRows: [CaptureRecordRow] {
-        showsMore ? rows : visibleRows
+        isMoreExpanded ? rows : visibleRows
     }
 
     /// First missing field key in schema order, if any.

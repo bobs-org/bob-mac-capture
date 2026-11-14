@@ -77,8 +77,11 @@ Each `%c` item renders its own Clip card beneath its preview card, built only
 A record draft occupies the picker-card slot. Header: Bob's emoji, title,
 path, note count (`+N notes` on an `@dir/stem` update). Rows keep labels
 and Bob's state: set choices show Bob's display, else capsules. Value
-lists accept candidates and keep the selected row visible. Optionals hide
-under More. An update card shows Bob's current values and each changed
+lists accept candidates and keep the selected row visible. Unset optionals hide
+under More, which expands automatically while one of those fields is active,
+so an empty `key:: ` shows its value list. More stays open while that field is
+active; moving the caret away folds it again unless you explicitly expanded it.
+An update card shows Bob's current values and each changed
 field as `before → after` with the same VoiceOver text. Existing-record
 `record_target` rows use the generic completion list with status plus up
 to two field values (for example `Ninja Sushi — Liked · Sushi · Clark`).

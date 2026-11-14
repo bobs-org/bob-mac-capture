@@ -166,6 +166,48 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }
 
+    func testCaretInEmptyOptionalFieldShowsItsValueList() async throws {
+        let logURL = recordURL()
+        let draft = completeDraft + "\n- visited:: "
+        let model = makeModel(
+            parseFixture: "record-parse-optional-caret.json",
+            completionFixture: "record-complete-optional-caret.json",
+            draft: draft,
+            recordPath: logURL
+        )
+
+        await waitUntil {
+            model.recordCompletionListVisible
+                && model.completionResponse?.record?.field == "visited"
+        }
+        let presentation = try XCTUnwrap(model.recordPresentation)
+        XCTAssertEqual(presentation.activeFieldKey, "visited")
+        XCTAssertTrue(presentation.isMoreExpanded)
+        XCTAssertFalse(presentation.showsMore)
+        XCTAssertEqual(presentation.displayedRows, presentation.rows)
+        XCTAssertEqual(presentation.displayedRows.filter { $0.key == "visited" }.count, 1)
+
+        // Collapsing cannot hide the field that owns the live value list.
+        model.setRecordMoreExpanded(false)
+        XCTAssertTrue(model.recordPresentation?.isMoreExpanded == true)
+        XCTAssertFalse(model.recordPresentation?.showsMore == true)
+
+        let response = try XCTUnwrap(model.completionResponse)
+        XCTAssertEqual(response.context, "record_value")
+        XCTAssertEqual(response.cursor, draft.utf8.count)
+        let index = try XCTUnwrap(
+            response.candidates.firstIndex(where: { $0.disabledReason == nil }))
+        model.selectedCompletionIndex = index
+        let value = try XCTUnwrap(response.candidates[index].recordValue)
+        XCTAssertFalse(value.isEmpty)
+
+        model.recordTab()
+
+        XCTAssertEqual(model.plainDraft, draft + value)
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+    }
+
     func testNamedFieldEditUsesBobsExactTextWithoutSubmitting() async {
         let logURL = recordURL()
         let (textView, window) = makeHostedTextView(incompleteDraft)
