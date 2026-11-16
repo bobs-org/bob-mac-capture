@@ -1157,12 +1157,16 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(recordURL: recordURL)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
+        )
         let textView = makeTextView("Buy milk")
         wireNativeApply(model, textView: textView)
 
         typeSeparator(".", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(model.rewriteInFlightForTesting)
+        await waitUntil { !model.rewriteInFlightForTesting }
 
         XCTAssertEqual(model.plainDraft, "Buy milk.")
         XCTAssertEqual(textView.string, "Buy milk.")
@@ -1258,13 +1262,17 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(
             recordURL: recordURL,
-            extra: ["FAKE_BOB_REWRITE_MOVE_UNCHANGED": "1"]
+            extra: [
+                "FAKE_BOB_REWRITE_MOVE_UNCHANGED": "1",
+                "FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3",
+            ]
         )
         let textView = makeTextView("@cash^goog-exit@\n- ")
         wireNativeApply(model, textView: textView)
 
         typeSeparator(".", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(model.rewriteInFlightForTesting)
+        await waitUntil { !model.rewriteInFlightForTesting }
 
         XCTAssertEqual(model.plainDraft, "@cash^goog-exit@\n- .")
         XCTAssertEqual(textView.string, "@cash^goog-exit@\n- .")
@@ -1818,12 +1826,16 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(recordURL: recordURL)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
+        )
         let textView = makeTextView("jot idea @foo")
         wireNativeApply(model, textView: textView)
 
         typeSeparator("\\", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(model.rewriteInFlightForTesting)
+        await waitUntil { !model.rewriteInFlightForTesting }
 
         XCTAssertEqual(model.plainDraft, "jot idea @foo\\")
         XCTAssertFalse(model.completionVisible)
@@ -1836,12 +1848,16 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient(recordURL: recordURL)
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"]
+        )
         let textView = makeTextView("Postgres 17 minimum @foo+bar")
         wireNativeApply(model, textView: textView)
 
         typeSeparator("\\", into: textView, model: model)
-        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(model.rewriteInFlightForTesting)
+        await waitUntil { !model.rewriteInFlightForTesting }
 
         XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar\\")
         XCTAssertFalse(model.completionVisible)

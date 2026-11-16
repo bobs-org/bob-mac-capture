@@ -706,15 +706,34 @@ final class CaptureAliasTipPanelTests: XCTestCase {
 
     func testListThenPickerSequenceShowsAtMostOneTip() async throws {
         let recordURL = makeRecordURL()
+        let draft = "Buy milk @"
         let (model, textView) = try makeModel(
             recordURL: recordURL,
-            debounceNanoseconds: 200_000_000
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.3"],
+            debounceNanoseconds: 0,
+            text: draft
         )
-        typeSigil("@", into: textView, model: model, modifiers: .shift)
+        // Establish the first tip before opening its list. The session limit
+        // should not depend on a subprocess beating the completion debounce.
+        let client = try XCTUnwrap(model.processClient)
+        let response = try await client.captureRewrite(draft, cursor: draft.utf8.count, timeout: 8)
+        model.applyAliasTipRewrite(
+            response,
+            draft: draft,
+            sigil: "@",
+            generation: model.aliasTipGenerationForTesting,
+            processClient: client
+        )
+        XCTAssertEqual(model.pendingAliasTipForTesting?.id, CaptureAliasLesson.routeAfterText)
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil {
             model.completionVisible
                 && model.presentedAliasTip?.id == CaptureAliasLesson.routeAfterText
         }
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.routeAfterText]?.tipsShown,
+            1
+        )
         model.dismissCompletion()
 
         let pickerTip = pickerTip(
@@ -739,6 +758,10 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             model.aliasTipLedgerStore.load().lessons[CaptureAliasLesson.blockIDAfterRoute]?
                 .tipsShown,
             0
+        )
+        XCTAssertEqual(
+            model.aliasTipLedgerStore.load().dropped[AliasTipDropReason.session.rawValue],
+            1
         )
     }
 
