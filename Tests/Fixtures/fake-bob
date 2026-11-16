@@ -2668,15 +2668,24 @@ JSON
             note_fixture="note-goto-complete-notes-cash.json"
           fi
           ;;
+        "//monthly")
+          note_fixture="note-goto-complete-notes-cash-full.json"
+          ;;
       esac
       if [[ -n "$note_fixture" ]]; then
-        python3 - "${fixtures_dir}/${note_fixture}" "$cursor" <<'PY'
+        python3 - "${fixtures_dir}/${note_fixture}" "$cursor" "$draft" <<'PY'
 import json
 import pathlib
 import sys
 
 payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
 payload["cursor"] = int(sys.argv[2])
+draft = sys.argv[3]
+if draft.startswith("//"):
+    end = len(draft)
+    payload["replacement"]["end"] = end
+    payload["picker"]["marker_range"]["end"] = end
+    payload["picker"]["trigger_removal_range"]["end"] = end
 json.dump(payload, sys.stdout, ensure_ascii=False)
 print()
 PY

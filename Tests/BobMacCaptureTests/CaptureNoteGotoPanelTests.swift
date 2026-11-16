@@ -188,6 +188,7 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
             router.command(
                 for: keyEvent(36),
                 context: CaptureKeyRoutingContext(
+                    pickerHasSelection: false,
                     pickerVisible: true,
                     pickerSourceIsNoteGoto: true,
                     pickerFilterIsEmpty: true
