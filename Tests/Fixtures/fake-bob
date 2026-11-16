@@ -211,6 +211,15 @@ notebook_complete_fixture() {
   esac
 }
 
+note_goto_parse_fixture() {
+  case "$1" in
+    "/") echo note-goto-parse-tasks.json ;;
+    "//") echo note-goto-parse-notes.json ;;
+    "//cash") echo note-goto-parse-notes-cash.json ;;
+    *) return 1 ;;
+  esac
+}
+
 case "${command}" in
   gcal)
     gcal_subcommand="${1:-}"
@@ -413,6 +422,13 @@ PY
     ;;
   capture-parse)
     draft="${*: -1}"
+    if [[ "${FAKE_BOB_NOTE_GOTO_FIXTURES:-}" == "1" ]]; then
+      note_fixture="$(note_goto_parse_fixture "$draft" || true)"
+      if [[ -n "$note_fixture" ]]; then
+        cat "${fixtures_dir}/${note_fixture}" | inject_parse_grammar
+        exit 0
+      fi
+    fi
     if [[ "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
       notebook_fixture="$(notebook_parse_fixture "$draft" || true)"
       if [[ -n "$notebook_fixture" ]]; then
@@ -2625,6 +2641,47 @@ JSON
     done
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS}"
+    fi
+    if [[ "${FAKE_BOB_NOTE_GOTO_FIXTURES:-}" == "1" ]]; then
+      note_fixture=""
+      case "${draft}" in
+        "/")
+          if [[ "${FAKE_BOB_NOTE_GOTO_OLD_TASKS:-}" == "1" ]]; then
+            note_fixture="note-goto-old-bob-task-complete.json"
+          else
+            note_fixture="note-goto-complete-tasks.json"
+          fi
+          if [[ -n "${FAKE_BOB_NOTE_GOTO_TASK_DELAY_SECONDS:-}" ]]; then
+            if [[ -n "${FAKE_BOB_NOTE_GOTO_TASK_DELAY_MARKER:-}" ]]; then
+              : > "${FAKE_BOB_NOTE_GOTO_TASK_DELAY_MARKER}"
+            fi
+            sleep "${FAKE_BOB_NOTE_GOTO_TASK_DELAY_SECONDS}"
+          fi
+          ;;
+        "//")
+          note_fixture="note-goto-complete-notes.json"
+          ;;
+        "//cash")
+          if [[ "$cursor" -le 2 ]]; then
+            note_fixture="note-goto-complete-notes-cash-full.json"
+          else
+            note_fixture="note-goto-complete-notes-cash.json"
+          fi
+          ;;
+      esac
+      if [[ -n "$note_fixture" ]]; then
+        python3 - "${fixtures_dir}/${note_fixture}" "$cursor" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+payload["cursor"] = int(sys.argv[2])
+json.dump(payload, sys.stdout, ensure_ascii=False)
+print()
+PY
+        exit 0
+      fi
     fi
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_complete_fixture=""

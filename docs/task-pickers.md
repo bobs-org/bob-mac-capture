@@ -1,9 +1,9 @@
 ---
 title: "Mac Capture task pickers"
-description: "Task Link, Go To, Parent Task, Active Task, and Block ID pickers in Bob Mac Capture."
+description: "Task Link, Go To Notes and Tasks, Parent Task, Active Task, and Block ID pickers in Bob Mac Capture."
 ---
 
-Every picker here browses open tasks and inserts exactly what `bob` returns. `bob` supplies one snapshot per context (rows, ranges, replacements, intents); the app filters locally, applies the server-provided byte range and `cursor_after`, and never synthesizes grammar. Return (or Tab) inserts, Command-Return inserts and captures, Control-Return inserts, captures, and opens the reported notes. Escape clears a non-empty filter first, then cancels to a reopen chip; Backspace on an empty filter removes the trigger token. While `capture-parse` reports a picker need, the app skips the doomed live dry run and shows a calm browse hint instead of a red error. What each insert previews and captures is in [Capture previews](capture-previews.md); the card is shared with the [relationship pickers](relationship-pickers.md).
+Task pickers browse open tasks and insert exactly what `bob` returns; Go To pickers open a task or note in Obsidian without capturing. `bob` supplies one snapshot per context (rows, ranges, replacements, intents); the app filters locally, applies the server-provided byte range and `cursor_after`, and never synthesizes grammar. Return (or Tab) inserts, Command-Return inserts and captures, Control-Return inserts, captures, and opens the reported notes. Escape clears a non-empty filter first, then cancels to a reopen chip; Backspace on an empty filter removes the trigger token. While `capture-parse` reports a picker need, the app skips the doomed live dry run and shows a calm browse hint instead of a red error. What each insert previews and captures is in [Capture previews](capture-previews.md); the card is shared with the [relationship pickers](relationship-pickers.md).
 
 ## Active Task Picker
 
@@ -91,8 +91,8 @@ suggestions.
 ## Go To Picker
 
 Typing `/` as the whole capture draft — or typing `\` into a blank draft,
-which Mac Capture turns into `/` — opens the Go To picker (`task_goto`
-context), the same card as `:` with scope `/` and caption Go To. When
+which Mac Capture turns into `/` — opens the Go To · Tasks picker (`task_goto`
+context), the same card as `:` with scope `/`. When
 `capture-parse` reports `task_goto` in `needs`, the app skips the doomed live
 dry run and shows "Pick a task to open — press Tab to browse".
 
@@ -127,6 +127,12 @@ Show Completed / Show Open, Shift-Return consumed, Escape Clear/Cancel, Backspac
 empty filter removes `/`, `\` on an empty filter is consumed (or types a
 literal `\` right after `\` opened Go To), Control-C discards. Command-X
 replaces the native cut shortcut only while the Go To picker is open.
+
+## Go To Notes Picker
+
+Type a second `/` in an empty Go To · Tasks filter or paste `//query` as a
+whole draft. Bob's `note_goto` results open read-only. See [Go To Notes](go-to-notes.md)
+for keys and compatibility.
 
 ## Parent Task Picker
 

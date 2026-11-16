@@ -2176,6 +2176,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .toggleGotoClosedTasks:
             model.toggleGotoClosedTasks()
             return true
+        case .showNoteGotoUpgradeHint:
+            model.showNoteGotoUpgradeHint()
+            return true
         case .cycleTaskLinkSuggestionForward:
             model.cycleTaskLinkSuggestion(forward: true)
             return true
@@ -2479,6 +2482,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.moveInboxRouteDestinationHighlight(by: -1)
             return true
         case .continuePickerOperator(let key):
+            backslashLiteralArmed = false
             model.continuePickerOperator(key)
             return true
         case .flipRelationDirection:
@@ -3224,6 +3228,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
                 pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
                 pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
+                pickerSourceIsNoteGoto: model.pickerSourceIsNoteGoto,
                 pickerSourceIsParentTask: model.pickerSourceIsParentTask,
                 pickerParentContinuationAvailable: model.pickerParentContinuationAvailable,
                 pickerSourceIsProjectTaskMove: model.pickerSourceIsProjectTaskMove,

@@ -56,7 +56,10 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
         XCTAssertEqual(response.context, "note_goto")
         XCTAssertEqual(
             response.noteGoto,
-            CaptureCompletionNoteGoto(vaultRoot: "/Users/example/Vault", listed: 12)
+            CaptureCompletionNoteGoto(
+                vaultRoot: "/tmp/bob-note-goto-fixture-vault/vault",
+                listed: 5
+            )
         )
         let cash = try XCTUnwrap(response.candidates.first { $0.notePath == "Areas/cash.md" })
         XCTAssertEqual(cash.matchKeys, ["cash", "money"])
@@ -74,6 +77,17 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
         XCTAssertNil(decoded.candidates.first?.hue)
     }
 
+    func testNotesFooterNamesOpenPeelAndCancelActions() {
+        XCTAssertEqual(
+            CapturePickerSource.noteGoto.keyHintItems().map(\.keys),
+            ["↑↓", "↩", "⌫", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerSource.noteGoto.keyHintItems().map(\.action),
+            ["Move", "Open", "Tasks", "Clear / Cancel"]
+        )
+    }
+
     func testGroupedMapUsesBobOrderAndShowsSearchHintForUngroupedNotes() throws {
         let response = try response()
         let index = NoteGotoPickerIndex(
@@ -83,33 +97,41 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
         let presentation = index.presentation(filter: "//")
 
         XCTAssertEqual(presentation.mode, .grouped)
-        XCTAssertEqual(presentation.totalCount, 12)
-        XCTAssertEqual(presentation.countText, "12 notes")
+        XCTAssertEqual(presentation.totalCount, 5)
+        XCTAssertEqual(presentation.countText, "5 notes")
         XCTAssertEqual(
             presentation.sections.map(\.title),
-            ["Today", "Inbox", "Areas", "Projects", "Notebooks", "Albums", ""]
+            ["Today", "Inbox", "Areas", ""]
         )
         XCTAssertEqual(presentation.sections.last?.kind, .noteGotoHint)
         XCTAssertEqual(
             presentation.sections.last?.rows.first?.displayText,
-            "Type to search 5 more notes"
+            "Type to search 2 more notes"
         )
         XCTAssertFalse(try XCTUnwrap(presentation.sections.last?.rows.first).isSelectable)
         XCTAssertEqual(presentation.orderedRowIDs.first, "2026/20261114.md")
 
-        let childArea = try XCTUnwrap(presentation.row(id: "Areas/north-cash.md"))
-        XCTAssertEqual(childArea.depth, 1)
+        let childArea = try XCTUnwrap(presentation.row(id: "Areas/cash.md"))
+        XCTAssertEqual(childArea.depth, 0)
         XCTAssertEqual(childArea.glyph, .noteGoto(symbol: "square.stack.3d.up", hue: .green))
-        XCTAssertEqual(childArea.noteGotoSecondaryText, "Life / Money")
+        XCTAssertNil(childArea.noteGotoSecondaryText)
         XCTAssertEqual(
             childArea.accessibilityLabel,
-            "Area, Cash planning, Life / Money, Areas/north-cash.md"
+            "Area, cash, Areas/cash.md"
         )
         XCTAssertEqual(
             index.actionLine(for: try XCTUnwrap(presentation.row(id: "Areas/cash.md"))),
             "↩ Opens cash.md in Obsidian — nothing is written"
         )
-        XCTAssertEqual(presentation.visibleRowBudget, 11)
+        XCTAssertEqual(presentation.visibleRowBudget, 7)
+        let baseView = try XCTUnwrap(
+            index.presentation(filter: "monthly").row(id: "Views/Monthly.base")
+        )
+        XCTAssertEqual(baseView.glyph, .noteGoto(symbol: "square.grid.2x2", hue: nil))
+        XCTAssertEqual(
+            baseView.noteGotoDestination?.absolutePath,
+            "/tmp/bob-note-goto-fixture-vault/vault/Views/Monthly.base"
+        )
     }
 
     func testFilteredRankingUsesPrimaryFieldsThenPathRankAndBobOrder() {

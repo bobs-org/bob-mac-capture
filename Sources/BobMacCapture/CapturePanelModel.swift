@@ -1150,6 +1150,9 @@ final class CapturePanelModel: ObservableObject {
     /// Latest parse reported the `task_goto` need. Ctrl-C uses this so a `/`
     /// draft is discarded even when the picker has already chipped.
     private var lastAnalysisNeedsTaskGoto = false
+    /// Latest parse reported `note_goto`. Ctrl-C discards a read-only
+    /// navigation draft instead of saving it to the canceled-draft stash.
+    private var lastAnalysisNeedsNoteGoto = false
     /// Replacement-range start of a `^` or block-ID token auto-open is
     /// suppressed for (set by the two-stage Escape cancel). Cleared when an
     /// `.edit` analysis leaves the token.
@@ -2011,6 +2014,11 @@ final class CapturePanelModel: ObservableObject {
         picker?.source == .taskGoto
     }
 
+    /// True when the open picker belongs to the read-only `//` source.
+    var pickerSourceIsNoteGoto: Bool {
+        picker?.source == .noteGoto
+    }
+
     /// True when the open picker belongs to the `&` source.
     var pickerSourceIsDependency: Bool {
         picker?.source == .dependency
@@ -2147,6 +2155,9 @@ final class CapturePanelModel: ObservableObject {
     var pickerOperatorContinuationKeys: [String] {
         guard pickerFilterIsEmpty else {
             return []
+        }
+        if picker?.source == .taskGoto {
+            return picker?.taskGotoContinuationKeys ?? []
         }
         if case .parentTask(let context) = picker?.source {
             return context.actionContinuationKeys
@@ -5488,17 +5499,20 @@ final class CapturePanelModel: ObservableObject {
         resetAnalysisState()
     }
 
-    private var draftIsTaskGoto: Bool {
+    private var draftIsReadOnlyGoto: Bool {
         picker?.source == .taskGoto
             || pickerChip?.source == .taskGoto
             || lastAnalysisNeedsTaskGoto
+            || picker?.source == .noteGoto
+            || pickerChip?.source == .noteGoto
+            || lastAnalysisNeedsNoteGoto
     }
 
     func stashDraftAndClose() {
         if hasDraft {
             let draft = plainDraft
             let keptTemplate = templateOrigin != nil
-            let stashed = draftIsTaskGoto ? false : canceledDraftStash.push(draft) != nil
+            let stashed = draftIsReadOnlyGoto ? false : canceledDraftStash.push(draft) != nil
             discardDraft()
             let status: String
             if stashed && keptTemplate {
@@ -5520,7 +5534,7 @@ final class CapturePanelModel: ObservableObject {
     /// process is exiting, so no status, dismissal, clearing, or analysis runs.
     @discardableResult
     func stashDraftForTermination() -> CanceledDraftEntry? {
-        guard hasDraft, !draftIsTaskGoto else {
+        guard hasDraft, !draftIsReadOnlyGoto else {
             return nil
         }
         return canceledDraftStash.push(plainDraft)
@@ -6198,6 +6212,7 @@ final class CapturePanelModel: ObservableObject {
         taskGotoDispatchInFlight = false
         invalidateTodayPomodoroGoto()
         lastAnalysisNeedsTaskGoto = false
+        lastAnalysisNeedsNoteGoto = false
         clearPickerState()
         clearInlinePrompts()
         previewState = .idle
@@ -6266,6 +6281,10 @@ final class CapturePanelModel: ObservableObject {
     private func announceStatus(_ message: String) {
         statusText = message
         statusAnnouncementTick += 1
+    }
+
+    func showNoteGotoUpgradeHint() {
+        announceStatus("Update bob to search notes")
     }
 
     /// Assigns panel status and then marks it as a Record Card refusal.
@@ -6375,7 +6394,8 @@ final class CapturePanelModel: ObservableObject {
         warnings: [String] = [],
         filter: String = "",
         draft: String = "/",
-        replacement: CaptureRange = CaptureRange(start: 0, end: 1)
+        replacement: CaptureRange = CaptureRange(start: 0, end: 1),
+        continuationKeys: [String] = ["/"]
     ) {
         let index = CapturePickerIndex.taskGoto(
             TaskLinkPickerIndex(candidates: candidates, mode: .taskGoto)
@@ -6389,7 +6409,41 @@ final class CapturePanelModel: ObservableObject {
             replacementRange: replacement,
             restoreCursor: replacement.end,
             filter: filter,
-            snapshotIsPartial: false
+            snapshotIsPartial: false,
+            taskGotoContinuationKeys: continuationKeys
+        )
+    }
+
+    /// Go To Notes preview hook: mounts the read-only catalog presentation
+    /// used by panel tests without a Bob subprocess round trip.
+    func installNoteGotoPickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        noteGoto: CaptureCompletionNoteGoto = CaptureCompletionNoteGoto(
+            vaultRoot: "/tmp/bob-note-goto-fixture-vault",
+            listed: 0
+        ),
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String = "//",
+        replacement: CaptureRange = CaptureRange(start: 0, end: 2),
+        triggerRemovalRange: CaptureRange? = nil
+    ) {
+        let removalRange = triggerRemovalRange
+            ?? CaptureRange(start: replacement.start + 1, end: replacement.end)
+        installPickerSessionForPreviews(
+            source: .noteGoto,
+            index: .noteGoto(
+                NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)
+            ),
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
+            filter: filter,
+            snapshotIsPartial: false,
+            noteGoto: noteGoto,
+            triggerRemovalRange: removalRange
         )
     }
 
@@ -6680,7 +6734,10 @@ final class CapturePanelModel: ObservableObject {
         snapshotIsPartial: Bool,
         scopeLineNumber: Int? = nil,
         dependencyOwner: DependencyOwner? = nil,
-        taskCompleteContinuationKeys: [String] = []
+        taskCompleteContinuationKeys: [String] = [],
+        taskGotoContinuationKeys: [String] = [],
+        noteGoto: CaptureCompletionNoteGoto? = nil,
+        triggerRemovalRange: CaptureRange? = nil
     ) {
         if !draftSnapshot.isEmpty {
             plainDraft = draftSnapshot
@@ -6701,7 +6758,10 @@ final class CapturePanelModel: ObservableObject {
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLineNumber,
             dependencyOwner: dependencyOwner,
-            taskCompleteContinuationKeys: taskCompleteContinuationKeys
+            taskCompleteContinuationKeys: taskCompleteContinuationKeys,
+            taskGotoContinuationKeys: taskGotoContinuationKeys,
+            noteGoto: noteGoto,
+            triggerRemovalRange: triggerRemovalRange
         )
         if source == .taskGoto {
             var gotoState = CaptureTaskGotoScopeState()
@@ -6873,6 +6933,17 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
         }
+        if completion.context == "note_goto" {
+            await handleNoteGotoCompletion(
+                completion,
+                draft: draft,
+                cursor: cursor,
+                generation: generation,
+                processClient: processClient,
+                trigger: trigger
+            )
+            return
+        }
         if let context = completion.context, context == "task_link" || context == "task_goto" {
             await handleTaskLinkCompletion(
                 completion,
@@ -6882,7 +6953,9 @@ final class CapturePanelModel: ObservableObject {
                 processClient: processClient,
                 trigger: trigger,
                 source: context == "task_goto" ? .taskGoto : .taskLink,
-                expectedContext: context
+                expectedContext: context,
+                taskGotoContinuationKeys: context == "task_goto"
+                    ? completion.picker?.actionContinuationKeys ?? [] : []
             )
             return
         }
@@ -7469,7 +7542,8 @@ final class CapturePanelModel: ObservableObject {
         processClient: BobProcessClient,
         trigger: CompletionTrigger,
         source: CapturePickerSource = .taskLink,
-        expectedContext: String = "task_link"
+        expectedContext: String = "task_link",
+        taskGotoContinuationKeys: [String] = []
     ) async {
         // A catalog response never sets `completionResponse`, even when
         // `candidates` is empty.
@@ -7492,7 +7566,8 @@ final class CapturePanelModel: ObservableObject {
                 replacementRange: r,
                 cursor: cursor,
                 candidates: completion.candidates,
-                warnings: completion.warnings
+                warnings: completion.warnings,
+                taskGotoContinuationKeys: taskGotoContinuationKeys
             )
             return
         }
@@ -7514,7 +7589,8 @@ final class CapturePanelModel: ObservableObject {
                     restoreCursor: cursor,
                     query: query,
                     snapshotIsPartial: false,
-                    opensWithoutSelection: snapshot.opensWithoutSelection
+                    opensWithoutSelection: snapshot.opensWithoutSelection,
+                    taskGotoContinuationKeys: taskGotoContinuationKeys
                 )
                 return
             }
@@ -7531,7 +7607,8 @@ final class CapturePanelModel: ObservableObject {
                 restoreCursor: cursor,
                 query: query,
                 snapshotIsPartial: true,
-                opensWithoutSelection: completion.opensWithoutSelection
+                opensWithoutSelection: completion.opensWithoutSelection,
+                taskGotoContinuationKeys: taskGotoContinuationKeys
             )
             return
         }
@@ -7545,7 +7622,118 @@ final class CapturePanelModel: ObservableObject {
             restoreCursor: cursor,
             query: query,
             snapshotIsPartial: false,
-            opensWithoutSelection: completion.opensWithoutSelection
+            opensWithoutSelection: completion.opensWithoutSelection,
+            taskGotoContinuationKeys: taskGotoContinuationKeys
+        )
+    }
+
+    /// Installs Bob's complete read-only note catalog for a `note_goto`
+    /// response. When the caret follows `//query`, refetch at the token start
+    /// so local filtering always receives the unfiltered candidate snapshot.
+    private func handleNoteGotoCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
+    ) async {
+        dismissCompletion(preservePendingAliasTip: true)
+        defer {
+            if picker == nil {
+                deferAliasTipOpportunity(reason: .unanchored)
+            }
+        }
+        let range = completion.replacement
+        guard let noteGoto = completion.noteGoto,
+              let descriptor = completion.picker,
+              descriptor.kind == "note_goto",
+              descriptor.scope == "vault",
+              descriptor.scopeToken == "//",
+              descriptor.markerRange == range,
+              stringRange(in: draft, byteRange: range) != nil,
+              stringRange(in: draft, byteRange: descriptor.triggerRemovalRange) != nil,
+              stringRange(in: draft, start: range.start, end: min(cursor, range.end)) != nil
+        else {
+            return
+        }
+        let candidates = completion.candidates
+        let query = Self.noteGotoPickerQuery(in: draft, range: range, cursor: cursor)
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != range.start else {
+            pickerChip = CapturePickerChipState(
+                source: .noteGoto,
+                draftSnapshot: draft,
+                replacementRange: range,
+                cursor: cursor,
+                candidates: candidates,
+                warnings: completion.warnings,
+                noteGoto: noteGoto,
+                triggerRemovalRange: descriptor.triggerRemovalRange
+            )
+            return
+        }
+        if cursor > range.start + 2 {
+            if let snapshot = try? await processClient.captureComplete(draft, cursor: range.start),
+               isCurrentAnalysis(generation),
+               plainDraft == draft,
+               snapshot.context == "note_goto",
+               snapshot.replacement == range,
+               let fullNoteGoto = snapshot.noteGoto,
+               let fullDescriptor = snapshot.picker,
+               fullDescriptor.kind == "note_goto",
+               fullDescriptor.scope == "vault",
+               fullDescriptor.scopeToken == "//",
+               fullDescriptor.markerRange == range,
+               stringRange(in: draft, byteRange: fullDescriptor.triggerRemovalRange) != nil
+            {
+                let fullCandidates = snapshot.candidates
+                presentPicker(
+                    source: .noteGoto,
+                    index: .noteGoto(
+                        NoteGotoPickerIndex(candidates: fullCandidates, noteGoto: fullNoteGoto)
+                    ),
+                    candidates: fullCandidates,
+                    warnings: snapshot.warnings,
+                    draft: draft,
+                    range: range,
+                    restoreCursor: cursor,
+                    query: query,
+                    snapshotIsPartial: false,
+                    noteGoto: fullNoteGoto,
+                    triggerRemovalRange: fullDescriptor.triggerRemovalRange
+                )
+                return
+            }
+            guard isCurrentAnalysis(generation), plainDraft == draft else {
+                return
+            }
+            presentPicker(
+                source: .noteGoto,
+                index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
+                candidates: candidates,
+                warnings: completion.warnings,
+                draft: draft,
+                range: range,
+                restoreCursor: cursor,
+                query: query,
+                snapshotIsPartial: true,
+                noteGoto: noteGoto,
+                triggerRemovalRange: descriptor.triggerRemovalRange
+            )
+            return
+        }
+        presentPicker(
+            source: .noteGoto,
+            index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
+            candidates: candidates,
+            warnings: completion.warnings,
+            draft: draft,
+            range: range,
+            restoreCursor: cursor,
+            query: query,
+            snapshotIsPartial: false,
+            noteGoto: noteGoto,
+            triggerRemovalRange: descriptor.triggerRemovalRange
         )
     }
 
@@ -8388,6 +8576,17 @@ final class CapturePanelModel: ObservableObject {
         return String(draft[queryRange])
     }
 
+    /// The `//` filter seed: draft bytes `(r.start + 2)..<caret`.
+    private static func noteGotoPickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
+        let start = range.start + 2
+        guard start <= range.end,
+              let queryRange = stringRange(in: draft, start: start, end: min(cursor, range.end))
+        else {
+            return ""
+        }
+        return String(draft[queryRange])
+    }
+
     /// The `!` filter seed: draft bytes `(r.start + 1)..<caret`, so the sigil
     /// itself never filters. The index also strips a leading `!`
     /// defensively.
@@ -8413,6 +8612,9 @@ final class CapturePanelModel: ObservableObject {
         snapshotIsPartial: Bool,
         dependencyOwner: DependencyOwner? = nil,
         taskCompleteContinuationKeys: [String] = [],
+        taskGotoContinuationKeys: [String] = [],
+        noteGoto: CaptureCompletionNoteGoto? = nil,
+        triggerRemovalRange: CaptureRange? = nil,
         opensWithoutSelection: Bool = false,
         includesClosedTasks: Bool = false,
         gotoDesiredIncludesClosedTasks: Bool? = nil
@@ -8457,6 +8659,9 @@ final class CapturePanelModel: ObservableObject {
             scopeLineNumber: scopeLine,
             dependencyOwner: dependencyOwner,
             taskCompleteContinuationKeys: taskCompleteContinuationKeys,
+            taskGotoContinuationKeys: taskGotoContinuationKeys,
+            noteGoto: noteGoto,
+            triggerRemovalRange: triggerRemovalRange,
             includesClosedTasks: includesClosedTasks
         )
         pickerMarkerHighlight = markerRange
@@ -9260,6 +9465,10 @@ final class CapturePanelModel: ObservableObject {
             acceptTaskGotoRow(id: id)
             return
         }
+        if picker?.source == .noteGoto {
+            acceptNoteGotoRow(id: id)
+            return
+        }
         guard let picker = picker,
               plainDraft == picker.draftSnapshot,
               let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
@@ -9708,6 +9917,43 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    /// Opens a Go To Notes row through Bob Navigation Hotkeys' established
+    /// line-less URI. Command/Control-Return share Return's read-only action.
+    func acceptNoteGotoRow(id: String) {
+        if taskGotoDispatchInFlight {
+            return
+        }
+        guard let picker = picker,
+              picker.source == .noteGoto,
+              plainDraft == picker.draftSnapshot,
+              stringRange(in: plainDraft, byteRange: picker.replacementRange) != nil
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id),
+              let destination = row.noteGotoDestination,
+              let url = destination.openURL()
+        else {
+            announceStatus("bob sent no location for this note — update bob")
+            return
+        }
+        taskGotoDispatchInFlight = true
+        announceStatus("Opening in Obsidian…")
+        taskGotoOpener(url) { [weak self] success in
+            guard let self else {
+                return
+            }
+            self.taskGotoDispatchInFlight = false
+            if success {
+                self.discardDraft()
+                self.panelDismisser()
+            } else {
+                self.announceStatus("Couldn't open Obsidian")
+            }
+        }
+    }
+
     /// Shift-Return on a `:` row: splice the link plus `=`, so the live preview
     /// shows the start before Return captures. Only the task-link source maps
     /// here; other sources keep Shift-Return consumed.
@@ -9907,6 +10153,10 @@ final class CapturePanelModel: ObservableObject {
             guard context.actionContinuationKeys.contains(key) else {
                 return
             }
+        } else if openPicker.source == .taskGoto {
+            guard openPicker.taskGotoContinuationKeys.contains(key) else {
+                return
+            }
         } else {
             return
         }
@@ -9918,8 +10168,9 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let suppressedStart = openPicker.replacementRange.start
+        let opensNotesFromTaskGoto = openPicker.source == .taskGoto && key == "/"
         closePickerForAccept()
-        pickerAutoOpenSuppressedStart = suppressedStart
+        pickerAutoOpenSuppressedStart = opensNotesFromTaskGoto ? nil : suppressedStart
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
@@ -9973,7 +10224,10 @@ final class CapturePanelModel: ObservableObject {
             includesClosedTasks: gotoSnapshot?.desiredIncludesClosedTasks
                 ?? openPicker.includesClosedTasks,
             snapshotIncludesClosedTasks: gotoSnapshot?.appliedIncludesClosedTasks
-                ?? openPicker.includesClosedTasks
+                ?? openPicker.includesClosedTasks,
+            taskGotoContinuationKeys: openPicker.taskGotoContinuationKeys,
+            noteGoto: openPicker.noteGoto,
+            triggerRemovalRange: openPicker.triggerRemovalRange
         )
         if case .projectTaskMove(let context) = openPicker.source {
             statusText = movePickerEscStatus(context: context)
@@ -10150,6 +10404,27 @@ final class CapturePanelModel: ObservableObject {
             cancelPicker()
             return
         }
+        if picker.source == .noteGoto {
+            guard let removal = picker.triggerRemovalRange,
+                  plainDraft == picker.draftSnapshot,
+                  let deleteRange = stringRange(in: plainDraft, byteRange: removal)
+            else {
+                cancelPicker()
+                return
+            }
+            var text = plainDraft
+            text.removeSubrange(deleteRange)
+            closePickerForAccept()
+            pickerAutoOpenSuppressedStart = nil
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(text, cursorUTF8Offset: removal.start, suppressSelectionCallbacks: true)
+            scheduleAnalysis(
+                cursorUTF8Offset: removal.start,
+                requestCompletion: true,
+                trigger: .edit
+            )
+            return
+        }
         if picker.source == .taskLink || picker.source == .taskGoto
             || picker.source == .dependency || picker.source == .blockedTask
             || picker.source == .linksTo || picker.source == .taskComplete
@@ -10249,6 +10524,8 @@ final class CapturePanelModel: ObservableObject {
             query = String(draft[partRange])
         } else if chip.source == .taskLink || chip.source == .taskGoto {
             query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: chip.cursor)
+        } else if chip.source == .noteGoto {
+            query = Self.noteGotoPickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else if let direction = chip.source.dependencyDirection {
             query = Self.dependencyPickerQuery(
                 in: draft,
@@ -10277,6 +10554,8 @@ final class CapturePanelModel: ObservableObject {
         let needsRefetch: Bool
         if chip.source == .taskLink || chip.source == .taskGoto || chip.source == .taskComplete {
             needsRefetch = chip.cursor > r.start + 1
+        } else if chip.source == .noteGoto {
+            needsRefetch = chip.cursor > r.start + 2
         } else if chip.source.isWikilinkTask {
             needsRefetch = chip.cursor > r.start + 2
         } else if let direction = chip.source.dependencyDirection {
@@ -10303,7 +10582,8 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: false,
                 includesClosedTasks: chip.snapshotIncludesClosedTasks,
-                gotoDesiredIncludesClosedTasks: chip.includesClosedTasks
+                gotoDesiredIncludesClosedTasks: chip.includesClosedTasks,
+                taskGotoContinuationKeys: chip.taskGotoContinuationKeys
             )
 
             guard
@@ -10333,6 +10613,86 @@ final class CapturePanelModel: ObservableObject {
                 cursor: r.start,
                 processClient: processClient
             )
+            return
+        }
+        if chip.source == .noteGoto {
+            guard let noteGoto = chip.noteGoto,
+                  let triggerRemovalRange = chip.triggerRemovalRange
+            else {
+                announceStatus("Update bob to search notes")
+                return
+            }
+            func presentSnapshot(
+                _ candidates: [CaptureCompletionCandidate],
+                _ warnings: [String],
+                _ noteGoto: CaptureCompletionNoteGoto,
+                _ triggerRemovalRange: CaptureRange,
+                _ partial: Bool
+            ) {
+                presentPicker(
+                    source: .noteGoto,
+                    index: .noteGoto(
+                        NoteGotoPickerIndex(
+                            candidates: candidates,
+                            noteGoto: noteGoto
+                        )
+                    ),
+                    candidates: candidates,
+                    warnings: warnings,
+                    draft: draft,
+                    range: r,
+                    restoreCursor: chip.cursor,
+                    query: query,
+                    snapshotIsPartial: partial,
+                    noteGoto: noteGoto,
+                    triggerRemovalRange: triggerRemovalRange
+                )
+            }
+            guard needsRefetch, let processClient else {
+                presentSnapshot(chip.candidates, chip.warnings, noteGoto, triggerRemovalRange, false)
+                return
+            }
+            let requestGeneration = analysisGeneration
+            Task { [weak self, processClient] in
+                let snapshot = try? await processClient.captureComplete(draft, cursor: r.start)
+                await MainActor.run {
+                    guard let self,
+                          self.analysisGeneration == requestGeneration,
+                          self.pickerChip?.source == .noteGoto,
+                          self.pickerChip?.draftSnapshot == draft,
+                          self.plainDraft == draft
+                    else {
+                        return
+                    }
+                    guard let snapshot,
+                          snapshot.context == "note_goto",
+                          snapshot.replacement == r,
+                          let fullNoteGoto = snapshot.noteGoto,
+                          let descriptor = snapshot.picker,
+                          descriptor.kind == "note_goto",
+                          descriptor.scope == "vault",
+                          descriptor.scopeToken == "//",
+                          descriptor.markerRange == r,
+                          stringRange(in: draft, byteRange: descriptor.triggerRemovalRange) != nil
+                    else {
+                        presentSnapshot(
+                            chip.candidates,
+                            chip.warnings,
+                            noteGoto,
+                            triggerRemovalRange,
+                            true
+                        )
+                        return
+                    }
+                    presentSnapshot(
+                        snapshot.candidates,
+                        snapshot.warnings,
+                        fullNoteGoto,
+                        descriptor.triggerRemovalRange,
+                        false
+                    )
+                }
+            }
             return
         }
         if needsRefetch, let processClient {
@@ -10406,7 +10766,35 @@ final class CapturePanelModel: ObservableObject {
                     case .taskGoto:
                         return
                     case .noteGoto:
-                        return
+                        guard let noteGoto = snapshot.noteGoto,
+                              let descriptor = snapshot.picker,
+                              descriptor.kind == "note_goto",
+                              descriptor.scope == "vault",
+                              descriptor.scopeToken == "//",
+                              descriptor.markerRange == r,
+                              stringRange(
+                                  in: draft,
+                                  byteRange: descriptor.triggerRemovalRange
+                              ) != nil
+                        else {
+                            return
+                        }
+                        let candidates = snapshot.candidates
+                        self.presentPicker(
+                            source: .noteGoto,
+                            index: .noteGoto(
+                                NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)
+                            ),
+                            candidates: candidates,
+                            warnings: snapshot.warnings,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false,
+                            noteGoto: noteGoto,
+                            triggerRemovalRange: descriptor.triggerRemovalRange
+                        )
                     case .dependency, .blockedTask, .linksTo, .linkedFrom:
                         let direction = chip.source.dependencyDirection ?? .prerequisite
                         let expectedContext: String
@@ -10652,7 +11040,7 @@ final class CapturePanelModel: ObservableObject {
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
     /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
-    /// `task_parent`, then `task_dependency`, then `blocked_task`, then
+    /// `note_goto`, then `task_parent`, then `task_dependency`, then `blocked_task`, then
     /// `task_complete`, then `dependency_target`, then `pomodoro_id`, then
     /// `block_id`, then `template_row`, then `list_item`, then `section`,
     /// then the `=<X>#` named-start incomplete, checked top-level or in any
@@ -10673,6 +11061,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("task_goto") {
             return .taskGoto
+        }
+        if needs("note_goto") {
+            return .noteGoto
         }
         if needs("merge_in_source") {
             return .mergeInSource
@@ -20207,7 +20598,9 @@ final class CapturePanelModel: ObservableObject {
         if plainDraft == draft, parse.template == nil {
             templateOrigin = nil
         }
-        lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
+        let need = Self.pickerNeed(in: parse)
+        lastAnalysisNeedsTaskGoto = need == .taskGoto
+        lastAnalysisNeedsNoteGoto = need == .noteGoto
         parseDiagnostics = parse.diagnostics
         latestParse = parse
         parsedTemplate = parse.template

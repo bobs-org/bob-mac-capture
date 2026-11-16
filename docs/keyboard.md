@@ -149,6 +149,25 @@ replacement and continuation; Escape closes it; `/` rewrites to the same `#`.
 
 Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =` (empty-filter Space/Escape restores are in [panel](capture-panel.md#inline-completion)). In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
+### Go To Notes Picker
+
+| Key | Action |
+| --- | --- |
+| `/` on an empty Go To · Tasks filter | Open Notes when Bob advertises the continuation |
+| `\` then `/` after the blank-draft alias opened Tasks | Open Notes through the same continuation |
+| `/` then `\` in Tasks | Consume; a second `\` after the blank-draft alias types one literal `\` |
+| Return / Tab / click / Command-Return / Control-Return | Open the selected note in Obsidian without writing |
+| Backspace on an empty `//` filter | Peel to Go To · Tasks (`/`) |
+| Escape | Clear the filter, then cancel to the `//` reopen chip |
+| Command-X / Shift-Return / Option-Return | Consume |
+| `/` or `\\` on an empty Notes filter | Consume |
+| Control-C | Discard the navigation draft without stashing |
+
+The Go To · Tasks footer shows a `/ Notes` keycap only when Bob advertises
+that continuation. With older Bob, the empty-filter slash is consumed and the
+status says **Update bob to search notes**. See [Go To Notes](go-to-notes.md) for
+the full picker behavior.
+
 ## Move choices
 
 A first-level `- ^^` in a sealed project-note draft opens the Move card on

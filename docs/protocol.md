@@ -11,6 +11,11 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
 
 `bob` must support these contracts before the panel can use them:
 
+- Whole-draft `//query` support: `capture-parse` reports `note_goto`; `capture-complete`
+  returns the `note_goto` catalog metadata (`vault_root`, `listed`), note candidates, and
+  a `picker` descriptor with Bob's `trigger_removal_range`. A bare `/` `task_goto`
+  response carries its descriptor and advertises `/` as the Notes continuation. The
+  app opens the selected relative `note_path` only when Bob reports `note_goto`.
 - A `bob` build that supports route-only `@@route` global destination declarations
   anywhere in the draft, `capture-rewrite` (including
   `switch_block_id_separator` for `^`, `:`, `+`, a glued `.`, and a glued `,`),
@@ -308,6 +313,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local error | Upgrade `bob` |
 | `--closed-tasks` in Go To | Command-X switches to closed rows | Older Bob keeps open rows and shows the update hint | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
+| `note_goto` context, `note_goto` object, and `note_goto` picker descriptor | Go To Notes catalog, grouped rows, and Bob-authored `//` peel range | No Notes picker; `/` stays Go To · Tasks, which asks for an updated Bob when the slash continuation is missing | Upgrade `bob` |
+| `task_goto` picker descriptor with `/` continuation | Empty-filter `/` opens Go To Notes | Slash is consumed and the picker says **Update bob to search notes** | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement`, Parent Task continuation metadata | Vault-wide `+` picks, ID-less splice, comma alias, and accept-and-continue | Inline list only; comma filters and Shift-Return stays consumed | Upgrade `bob` |
 | `pomodoro_name` completion | `#` completion after resolved markers | No rows until `bob` is upgraded | Upgrade `bob` |
 | `creates_pomodoro` | Explicit Create row | Captures without the explicit row (decoded false) | Upgrade `bob` to see it |

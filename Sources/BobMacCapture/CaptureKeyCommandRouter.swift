@@ -102,6 +102,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptPickerRowAndSubmit
     case acceptPickerRowAndSubmitAndOpen
     case toggleGotoClosedTasks
+    case showNoteGotoUpgradeHint
     case nextPickerRow
     case previousPickerRow
     case pagePickerRowsDown
@@ -186,6 +187,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
     var pickerSourceIsTaskGoto = false
+    var pickerSourceIsNoteGoto = false
     var pickerSourceIsParentTask = false
     var pickerParentContinuationAvailable = false
     var pickerSourceIsProjectTaskMove = false
@@ -1228,6 +1230,12 @@ struct CaptureKeyCommandRouter {
         // Before the keyCode switch, whose explicit backslash case would
         // otherwise swallow non-Command keys.
         if Self.isTypedBackslash(event: event, modifiers: modifiers),
+           context.pickerSourceIsNoteGoto,
+           context.pickerFilterIsEmpty
+        {
+            return .consumeKey
+        }
+        if Self.isTypedBackslash(event: event, modifiers: modifiers),
            !context.editorHasMarkedText,
            context.pickerSourceIsTaskGoto,
            context.pickerFilterIsEmpty,
@@ -1238,8 +1246,27 @@ struct CaptureKeyCommandRouter {
             }
             return context.backslashLiteralArmed ? .typeLiteralBackslash : .consumeKey
         }
+        if context.pickerFilterIsEmpty,
+           modifiers.intersection([.command, .option, .control]).isEmpty,
+           event.characters == "/"
+        {
+            if context.pickerSourceIsNoteGoto {
+                return .consumeKey
+            }
+            if context.pickerSourceIsTaskGoto {
+                if context.keyIsRepeat || event.isARepeat || context.editorHasMarkedText {
+                    return .consumeKey
+                }
+                return context.pickerOperatorContinuationKeys.contains("/")
+                    ? .continuePickerOperator("/")
+                    : .showNoteGotoUpgradeHint
+            }
+        }
         switch event.keyCode {
         case KeyCode.x:
+            if modifiers == .command, context.pickerSourceIsNoteGoto {
+                return .consumeKey
+            }
             guard modifiers == .command, context.pickerSourceIsTaskGoto else {
                 return nil
             }
@@ -1247,6 +1274,9 @@ struct CaptureKeyCommandRouter {
         case KeyCode.return, KeyCode.keypadEnter:
             let keys = Self.strippedReturnModifiers(modifiers)
             if keys.contains(.command) {
+                if context.pickerSourceIsNoteGoto {
+                    return context.pickerHasSelection ? .acceptPickerRow : .consumeKey
+                }
                 return context.pickerHasSelection ? .acceptPickerRowAndSubmit : .submitAndOpen
             }
             if keys == .control {
@@ -1254,9 +1284,13 @@ struct CaptureKeyCommandRouter {
                     return .openRelationLabelPrompt
                 }
                 if !context.pickerHasSelection {
+                    if context.pickerSourceIsNoteGoto {
+                        return .consumeKey
+                    }
                     return .submitAndOpen
                 }
-                return context.pickerSourceIsTaskGoto ? .acceptPickerRow : .acceptPickerRowAndSubmitAndOpen
+                return context.pickerSourceIsTaskGoto || context.pickerSourceIsNoteGoto
+                    ? .acceptPickerRow : .acceptPickerRowAndSubmitAndOpen
             }
             if keys.contains(.control) {
                 return .consumeKey
@@ -1282,11 +1316,17 @@ struct CaptureKeyCommandRouter {
                 return .consumeKey
             }
             if keys.isEmpty {
+                if context.pickerSourceIsNoteGoto, !context.pickerHasSelection {
+                    return .consumeKey
+                }
                 return context.pickerHasSelection ? .acceptPickerRow : .submit
             }
             return nil
         case KeyCode.tab:
             if modifiers.isEmpty {
+                if context.pickerSourceIsNoteGoto, !context.pickerHasSelection {
+                    return .consumeKey
+                }
                 return .acceptPickerRow
             }
             return modifiers == .shift ? .consumeKey : nil

@@ -53,6 +53,12 @@ struct CapturePickerState: Equatable {
     /// `true` describes the closed-only scope. New `/` sessions start
     /// open-only; Escape carries this into its chip.
     var includesClosedTasks = false
+    /// Bob's advertised `/` continuation on a bare Tasks picker.
+    var taskGotoContinuationKeys: [String] = []
+    /// Read-only note-catalog metadata returned with `note_goto`.
+    var noteGoto: CaptureCompletionNoteGoto? = nil
+    /// Bob's byte range for peeling `//query` back to `/`.
+    var triggerRemovalRange: CaptureRange? = nil
 }
 
 /// The compact reopen affordance shown instead of the picker: after a
@@ -77,6 +83,9 @@ struct CapturePickerChipState: Equatable {
     /// scope actually represented by `candidates` while a refetch is pending.
     var includesClosedTasks = false
     var snapshotIncludesClosedTasks = false
+    var taskGotoContinuationKeys: [String] = []
+    var noteGoto: CaptureCompletionNoteGoto? = nil
+    var triggerRemovalRange: CaptureRange? = nil
 }
 
 /// Whether an analysis was triggered by a draft edit or by a caret-only

@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 1,
+  "replacement": { "start": 0, "end": 1 },
+  "context": "task_goto",
+  "candidates": [
+    {
+      "replacement": "",
+      "route": "mac_inbox",
+      "task_ref": "1:fixture000",
+      "target": "/tmp/bob-note-goto-fixture-vault/mac_inbox.md",
+      "text": "Fixture task",
+      "line": 7,
+      "group": "queued",
+      "note_path": "mac_inbox.md"
+    }
+  ],
+  "warnings": []
+}

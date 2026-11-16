@@ -733,9 +733,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return [
                 ("↑↓", "Move"),
                 ("↩", "Open"),
-                ("Tab", "Open"),
-                ("⌘↩", "Open"),
-                ("⌃↩", "Open"),
+                ("⌫", "Tasks"),
                 ("esc", "Clear / Cancel"),
             ]
         case .dependency:

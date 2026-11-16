@@ -1310,6 +1310,10 @@ private struct CapturePickerDetailStrip: View {
             let line = row.taskGotoDestination?.actionLine ?? "Task location unavailable"
             return Text(line).foregroundColor(.secondary)
         }
+        if source == .noteGoto {
+            let line = model.pickerActionLine(for: row) ?? "Note location unavailable"
+            return Text(line).foregroundColor(.secondary)
+        }
         if source == .taskLink {
             if let insertion = row.insertion {
                 return Text("↩ inserts \(insertion) · ⇧↩ adds = to start it")
@@ -1476,6 +1480,7 @@ struct CapturePickerChip: View {
 struct CapturePickerKeyHints: View {
     var source: CapturePickerSource = .activeTask
     var showOperatorHint = false
+    var noteGotoContinuationAvailable = false
     var includesClosedTasks = false
 
     /// Keycap plus action pairs, in display order. Kept static so tests can
@@ -1488,7 +1493,16 @@ struct CapturePickerKeyHints: View {
     }
 
     private var hintVariants: [[(keys: String, action: String)]] {
-        source.keyHintVariants(includesClosedTasks: includesClosedTasks)
+        let variants = source.keyHintVariants(includesClosedTasks: includesClosedTasks)
+        guard source == .taskGoto, showOperatorHint, noteGotoContinuationAvailable else {
+            return variants
+        }
+        return variants.map { items in
+            var items = items
+            let insertAt = items.last?.keys == "esc" ? items.count - 1 : items.count
+            items.insert((keys: "/", action: "Notes"), at: insertAt)
+            return items
+        }
     }
 
     var body: some View {
@@ -1511,6 +1525,9 @@ struct CapturePickerKeyHints: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             source.keyHintsAccessibilityLabel(includesClosedTasks: includesClosedTasks)
+                + (source == .taskGoto && showOperatorHint && noteGotoContinuationAvailable
+                    ? " Slash opens Notes."
+                    : "")
         )
     }
 
