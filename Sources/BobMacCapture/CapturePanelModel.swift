@@ -1106,6 +1106,11 @@ final class CapturePanelModel: ObservableObject {
     /// the real `//` analysis revalidates; filled only from validated
     /// `note_goto` responses, never persisted, never logged.
     var noteGotoSnapshotStore = NoteGotoSnapshotStore()
+    /// App-local `//` open history. Injected in production through
+    /// `AppDelegate`; tests pass a temp-file store. Nil keeps every
+    /// Notes presentation without a Recent section.
+    var noteGotoOpenLogStore: NoteGotoOpenLogStore?
+    private var cachedNoteGotoOpens: [NoteGotoOpenEvent]?
     /// In-flight warm-snapshot prefetch. Best-effort only: failures stay
     /// silent and the next trigger retries.
     private var noteGotoPrefetchTask: Task<Void, Never>?
@@ -1764,7 +1769,8 @@ final class CapturePanelModel: ObservableObject {
         similarTasksSettleNanoseconds: UInt64 = 350_000_000,
         gmailPeekSettleNanoseconds: UInt64 = 350_000_000,
         canceledDraftStash: CanceledDraftStash? = nil,
-        savedTemplateShelf: SavedTemplateShelf? = nil
+        savedTemplateShelf: SavedTemplateShelf? = nil,
+        noteGotoOpenLogStore: NoteGotoOpenLogStore? = nil
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
@@ -1774,6 +1780,7 @@ final class CapturePanelModel: ObservableObject {
         self.canceledDraftStash = canceledDraftStash
         let savedTemplateShelf = savedTemplateShelf ?? SavedTemplateShelf(processClient: processClient)
         self.savedTemplateShelf = savedTemplateShelf
+        self.noteGotoOpenLogStore = noteGotoOpenLogStore
         stashCancellable = canceledDraftStash.$entries.sink { [weak self] entries in
             guard let self else {
                 return
@@ -6419,6 +6426,71 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("\(source.appearedAnnouncementPrefix), \(presentation.countText)")
     }
 
+    /// App-local Recent paths for one vault, newest first and distinct.
+    /// The log is loaded lazily and kept in memory; appends update the
+    /// copy so the next empty `//` view renders Recent immediately.
+    func recentNotePaths(for vaultRoot: String) -> [String] {
+        let opens: [NoteGotoOpenEvent]
+        if let cached = cachedNoteGotoOpens {
+            opens = cached
+        } else if let store = noteGotoOpenLogStore {
+            let loaded = store.load()
+            cachedNoteGotoOpens = loaded
+            opens = loaded
+        } else {
+            return []
+        }
+        let vault = NoteGotoOpenLogStore.vaultHash(for: vaultRoot)
+        var seen: Set<String> = []
+        var paths: [String] = []
+        for event in opens.sorted(by: { $0.at > $1.at }) {
+            guard event.vault == vault else {
+                continue
+            }
+            guard !event.notePath.isEmpty, seen.insert(event.notePath).inserted else {
+                continue
+            }
+            paths.append(event.notePath)
+        }
+        return paths
+    }
+
+    func makeNoteGotoIndex(
+        candidates: [CaptureCompletionCandidate],
+        noteGoto: CaptureCompletionNoteGoto
+    ) -> NoteGotoPickerIndex {
+        NoteGotoPickerIndex(
+            candidates: candidates,
+            noteGoto: noteGoto,
+            recentNotePaths: recentNotePaths(for: noteGoto.vaultRoot)
+        )
+    }
+
+    private func recordNoteGotoOpen(notePath: String, vaultRoot: String) {
+        guard let store = noteGotoOpenLogStore else {
+            return
+        }
+        let event = NoteGotoOpenEvent(
+            vault: NoteGotoOpenLogStore.vaultHash(for: vaultRoot),
+            notePath: notePath,
+            at: Date()
+        )
+        store.append(event)
+        if var cached = cachedNoteGotoOpens {
+            cached.append(event)
+            cachedNoteGotoOpens = cached
+        } else {
+            cachedNoteGotoOpens = store.load()
+        }
+    }
+
+    /// Clears the app-local `//` history and the in-memory copy, so the
+    /// next empty Notes view omits Recent. Wired to Settings.
+    func clearNoteGotoHistory() {
+        noteGotoOpenLogStore?.reset()
+        cachedNoteGotoOpens = []
+    }
+
     /// Presents the warm snapshot's rows immediately on continuation, so
     /// the swap never shows a blank card. The real `//` analysis (already
     /// scheduled) replaces them only when its content differs, keeping the
@@ -6435,7 +6507,7 @@ final class CapturePanelModel: ObservableObject {
         presentPicker(
             source: .noteGoto,
             index: .noteGoto(
-                NoteGotoPickerIndex(candidates: snapshot.candidates, noteGoto: snapshot.noteGoto)
+                makeNoteGotoIndex(candidates: snapshot.candidates, noteGoto: snapshot.noteGoto)
             ),
             candidates: snapshot.candidates,
             warnings: [],
@@ -6810,7 +6882,7 @@ final class CapturePanelModel: ObservableObject {
         installPickerSessionForPreviews(
             source: .noteGoto,
             index: .noteGoto(
-                NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)
+                makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)
             ),
             candidates: candidates,
             warnings: warnings,
@@ -8075,7 +8147,7 @@ final class CapturePanelModel: ObservableObject {
                 presentPicker(
                     source: .noteGoto,
                     index: .noteGoto(
-                        NoteGotoPickerIndex(candidates: fullCandidates, noteGoto: fullNoteGoto)
+                        makeNoteGotoIndex(candidates: fullCandidates, noteGoto: fullNoteGoto)
                     ),
                     candidates: fullCandidates,
                     warnings: snapshot.warnings,
@@ -8100,7 +8172,7 @@ final class CapturePanelModel: ObservableObject {
             )
             presentPicker(
                 source: .noteGoto,
-                index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
+                index: .noteGoto(makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)),
                 candidates: candidates,
                 warnings: completion.warnings,
                 draft: draft,
@@ -8121,7 +8193,7 @@ final class CapturePanelModel: ObservableObject {
         )
         presentPicker(
             source: .noteGoto,
-            index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
+            index: .noteGoto(makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)),
             candidates: candidates,
             warnings: completion.warnings,
             draft: draft,
@@ -10372,6 +10444,8 @@ final class CapturePanelModel: ObservableObject {
             announceStatus("bob sent no location for this note — update bob")
             return
         }
+        let openedNotePath = destination.notePath
+        let openedVaultRoot = picker.noteGoto?.vaultRoot ?? destination.vaultRoot
         taskGotoDispatchInFlight = true
         announceStatus("Opening in Obsidian…")
         taskGotoOpener(url) { [weak self] success in
@@ -10380,6 +10454,7 @@ final class CapturePanelModel: ObservableObject {
             }
             self.taskGotoDispatchInFlight = false
             if success {
+                self.recordNoteGotoOpen(notePath: openedNotePath, vaultRoot: openedVaultRoot)
                 self.discardDraft()
                 self.panelDismisser()
             } else {
@@ -11147,10 +11222,7 @@ final class CapturePanelModel: ObservableObject {
                 presentPicker(
                     source: .noteGoto,
                     index: .noteGoto(
-                        NoteGotoPickerIndex(
-                            candidates: candidates,
-                            noteGoto: noteGoto
-                        )
+                        makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)
                     ),
                     candidates: candidates,
                     warnings: warnings,
@@ -11298,7 +11370,7 @@ final class CapturePanelModel: ObservableObject {
                         self.presentPicker(
                             source: .noteGoto,
                             index: .noteGoto(
-                                NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)
+                                makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)
                             ),
                             candidates: candidates,
                             warnings: snapshot.warnings,

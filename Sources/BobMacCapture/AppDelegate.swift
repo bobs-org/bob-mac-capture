@@ -82,7 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     } else {
                         AliasTipLedgerStore().reset()
                     }
-                }
+                },
+                onClearNoteGotoHistory: { [weak self] in self?.panelModel?.clearNoteGotoHistory() }
             )
         }
 
@@ -103,7 +104,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = CapturePanelModel(
             processClient: processClient,
             canceledDraftStash: canceledDraftStash,
-            savedTemplateShelf: savedTemplateShelf
+            savedTemplateShelf: savedTemplateShelf,
+            noteGotoOpenLogStore: Self.makeNoteGotoOpenLogStore(settings: settings)
         )
         model.notificationService = notificationService
         panelModel = model
@@ -269,6 +271,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         } catch {
             settings.diagnosticStatus = FileCanceledDraftStashStore.saveFailureMessage(for: error)
+            return nil
+        }
+    }
+
+    private static func makeNoteGotoOpenLogStore(settings: AppSettings)
+        -> NoteGotoOpenLogStore?
+    {
+        do {
+            let fileURL = try NoteGotoOpenLogStore.defaultFileURL()
+            return NoteGotoOpenLogStore(
+                fileURL: fileURL,
+                onError: { message in
+                    Task { @MainActor in
+                        settings.diagnosticStatus = message
+                    }
+                }
+            )
+        } catch {
+            settings.diagnosticStatus = NoteGotoOpenLogStore.saveFailureMessage(for: error)
             return nil
         }
     }
@@ -1161,6 +1182,7 @@ private struct BobSettingsScene: Scene {
     let savedTemplateShelf: SavedTemplateShelf
     let onResetOpenHistory: (() -> Void)?
     let onResetTypingTips: (() -> Void)?
+    let onClearNoteGotoHistory: (() -> Void)?
 
     var body: some Scene {
         Settings {
@@ -1170,7 +1192,8 @@ private struct BobSettingsScene: Scene {
                 canceledDraftStash: canceledDraftStash,
                 savedTemplateShelf: savedTemplateShelf,
                 onResetOpenHistory: onResetOpenHistory,
-                onResetTypingTips: onResetTypingTips
+                onResetTypingTips: onResetTypingTips,
+                onClearNoteGotoHistory: onClearNoteGotoHistory
             )
         }
     }

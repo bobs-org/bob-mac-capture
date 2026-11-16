@@ -3,7 +3,7 @@ title: "Mac Capture settings"
 description: "Settings window controls for Bob, hotkeys, Refs, agenda, similar tasks, typing tips, stash, templates, launch, notifications, and diagnostics."
 ---
 
-The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Similar Tasks, Typing Tips, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
+The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
 
 Install identity and executable search are in [Install](install.md). Permission grants are in [Permissions](permissions.md). Panel keys are in [Keyboard](keyboard.md). Refs behavior is in [Bob Refs](refs.md).
 
@@ -72,6 +72,15 @@ Matching and the JSON contract belong to `bob capture-related`; the Mac app owns
 | Reset typing tips | — | Clears the per-host lesson ledger. |
 
 Behavior, fading, and `defaults read` are in [Typing tips](typing-tips.md).
+
+## Go To Notes
+
+| Control | Default | Notes |
+| --- | --- | --- |
+| Clear Go To Notes History… | — | Confirmed. Clears the Recent rows in Go To · Notes. |
+
+Recent history is app-local and never written to the vault. See
+[Go To Notes](go-to-notes.md#recent-notes).
 
 ## Canceled Draft Stash
 

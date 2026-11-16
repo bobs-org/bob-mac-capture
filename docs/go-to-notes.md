@@ -40,3 +40,10 @@ Until rows exist, a quiet "Loading notes…" placeholder shows — never a
 spinner. A failed fetch shows "Couldn't load notes", distinct from an empty
 search. Scope changes announce ("Go To Notes, 184 notes"), and filter result
 counts announce as usual.
+
+## Recent notes
+
+The empty Notes view shows up to eight recently opened notes in a Recent
+section after Today. Recent is app-local history, never written to the vault,
+and a search filters it away until the filter clears. Clear it in Settings
+under Go To Notes.

@@ -6,9 +6,15 @@ import Foundation
 public struct NoteGotoPickerIndex {
     private let entries: [NoteGotoPickerEntry]
     private let noteGoto: CaptureCompletionNoteGoto
+    private let recentNotePaths: [String]
 
-    public init(candidates: [CaptureCompletionCandidate], noteGoto: CaptureCompletionNoteGoto) {
+    public init(
+        candidates: [CaptureCompletionCandidate],
+        noteGoto: CaptureCompletionNoteGoto,
+        recentNotePaths: [String] = []
+    ) {
         self.noteGoto = noteGoto
+        self.recentNotePaths = recentNotePaths
         var seen: Set<String> = []
         var entries: [NoteGotoPickerEntry] = []
         for candidate in candidates {
@@ -111,7 +117,10 @@ public struct NoteGotoPickerIndex {
         var groupOrder: [String] = []
         var grouped: [String: [CapturePickerRow]] = [:]
         var visibleCount = 0
+        var entryByPath: [String: NoteGotoPickerEntry] = [:]
+        var todayPaths: Set<String> = []
         for entry in entries {
+            entryByPath[entry.notePath] = entry
             guard let group = entry.candidate.group, Self.groupTitle(for: group) != nil else {
                 continue
             }
@@ -121,6 +130,9 @@ public struct NoteGotoPickerIndex {
             }
             grouped[group, default: []].append(row(for: entry, depth: entry.candidate.depth ?? 0))
             visibleCount += 1
+            if group == "today" {
+                todayPaths.insert(entry.notePath)
+            }
         }
 
         let sections = groupOrder.map { group in
@@ -134,6 +146,28 @@ public struct NoteGotoPickerIndex {
             )
         }
         var allSections = sections
+        let recentRows = recentSectionRows(
+            entryByPath: entryByPath,
+            todayPaths: todayPaths
+        )
+        if !recentRows.isEmpty {
+            let recentSection = CapturePickerSection(
+                id: "note-goto-group-recent",
+                kind: .noteGotoGroup,
+                title: "Recent",
+                countText:
+                    "\(Self.groupedCount(recentRows.count)) \(recentRows.count == 1 ? "note" : "notes")",
+                rows: recentRows
+            )
+            let todayIndex = allSections.firstIndex {
+                $0.id == "note-goto-group-today"
+            }
+            if let todayIndex {
+                allSections.insert(recentSection, at: todayIndex + 1)
+            } else {
+                allSections.insert(recentSection, at: 0)
+            }
+        }
         let ungroupedCount = entries.count - visibleCount
         if ungroupedCount > 0 {
             let hint = hintRow(count: ungroupedCount, bobIndex: entries.count)
@@ -161,9 +195,64 @@ public struct NoteGotoPickerIndex {
                 "\(Self.groupedCount(entries.count)) \(entries.count == 1 ? "note" : "notes")",
             emptyState: emptyState,
             visibleRowBudget: Self.visibleRowBudget(
-                rowCount: visibleCount + (ungroupedCount > 0 ? 1 : 0),
-                sectionCount: sections.count
+                rowCount: visibleCount + recentRows.count + (ungroupedCount > 0 ? 1 : 0),
+                sectionCount: sections.count + (recentRows.isEmpty ? 0 : 1)
             )
+        )
+    }
+
+    private func recentSectionRows(
+        entryByPath: [String: NoteGotoPickerEntry],
+        todayPaths: Set<String>
+    ) -> [CapturePickerRow] {
+        var seen: Set<String> = []
+        var rows: [CapturePickerRow] = []
+        for path in recentNotePaths {
+            guard rows.count < 8 else {
+                break
+            }
+            guard !path.isEmpty, seen.insert(path).inserted else {
+                continue
+            }
+            guard !todayPaths.contains(path) else {
+                continue
+            }
+            guard let entry = entryByPath[path] else {
+                continue
+            }
+            let base = row(for: entry, depth: entry.candidate.depth ?? 0)
+            rows.append(recentRow(from: base, notePath: path))
+        }
+        return rows
+    }
+
+    private func recentRow(from base: CapturePickerRow, notePath: String) -> CapturePickerRow {
+        CapturePickerRow(
+            id: "recent:\(notePath)",
+            bobIndex: base.bobIndex,
+            glyph: base.glyph,
+            displayText: base.displayText,
+            textSegments: base.textSegments,
+            textMatchRanges: base.textMatchRanges,
+            route: base.route,
+            blockID: base.blockID,
+            routeMatchRanges: base.routeMatchRanges,
+            blockIDMatchRanges: base.blockIDMatchRanges,
+            locatorStyle: base.locatorStyle,
+            chipText: base.chipText,
+            isHidden: base.isHidden,
+            badgeText: base.badgeText,
+            depth: base.depth,
+            isSelectable: base.isSelectable,
+            insertion: base.insertion,
+            pendingBlockID: base.pendingBlockID,
+            scheduledText: base.scheduledText,
+            pullsForward: base.pullsForward,
+            taskGotoDestination: base.taskGotoDestination,
+            noteGotoDestination: base.noteGotoDestination,
+            noteGotoSecondaryText: base.noteGotoSecondaryText,
+            detail: base.detail,
+            accessibilityLabel: base.accessibilityLabel
         )
     }
 

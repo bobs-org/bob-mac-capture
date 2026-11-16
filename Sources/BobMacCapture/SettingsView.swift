@@ -12,6 +12,7 @@ struct SettingsView: View {
     @ObservedObject var savedTemplateShelf: SavedTemplateShelf
     var onResetOpenHistory: (() -> Void)? = nil
     var onResetTypingTips: (() -> Void)? = nil
+    var onClearNoteGotoHistory: (() -> Void)? = nil
     @State private var launchStatus = LaunchAtLoginController().state()
     @State private var testNotificationStatus = ""
     @State private var isConfirmingStashClear = false
@@ -19,6 +20,7 @@ struct SettingsView: View {
     @State private var isClearingTemplates = false
     @State private var templateClearStatus = ""
     @State private var isConfirmingRefsReset = false
+    @State private var isConfirmingNoteGotoClear = false
     @State private var highlightsTabsAllowed = false
     @State private var isAdHocBuild = false
 
@@ -215,6 +217,14 @@ struct SettingsView: View {
                 .disabled(onResetTypingTips == nil)
             }
 
+            Section("Go To Notes") {
+                Button("Clear Go To Notes History…", role: .destructive) {
+                    isConfirmingNoteGotoClear = true
+                }
+                .disabled(onClearNoteGotoHistory == nil)
+                .accessibilityHint("Clears the Recent rows in Go To · Notes.")
+            }
+
             Section("Canceled Draft Stash") {
                 Stepper(
                     value: Binding(
@@ -406,6 +416,17 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This clears recently-opened rows and frecency.")
+        }
+        .confirmationDialog(
+            "Clear Go To Notes history?",
+            isPresented: $isConfirmingNoteGotoClear
+        ) {
+            Button("Clear History", role: .destructive) {
+                onClearNoteGotoHistory?()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears the Recent rows in Go To · Notes.")
         }
         .task {
             refreshHighlightsTabsStatus()
