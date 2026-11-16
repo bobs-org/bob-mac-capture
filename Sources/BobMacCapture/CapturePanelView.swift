@@ -749,7 +749,8 @@ struct CapturePanelView: View {
                 source: model.picker?.source ?? .activeTask,
                 showOperatorHint: model.pickerFilterIsEmpty,
                 noteGotoContinuationAvailable: model.pickerOperatorContinuationKeys.contains("/"),
-                includesClosedTasks: model.picker?.includesClosedTasks ?? false
+                includesClosedTasks: model.picker?.includesClosedTasks ?? false,
+                includesArchivedNotes: model.picker?.includesArchivedNotes ?? false
             )
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(2)

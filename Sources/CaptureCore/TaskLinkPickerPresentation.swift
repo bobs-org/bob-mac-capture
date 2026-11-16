@@ -16,14 +16,18 @@ public enum TaskLinkPickerMode: Equatable, Sendable {
 public struct TaskLinkPickerIndex: Sendable {
     private let entries: [TaskLinkPickerIndexEntry]
     public let mode: TaskLinkPickerMode
+    /// True when this Go To snapshot is Bob's closed-only list.
+    public let includesClosedTasks: Bool
     /// Pomodoro line to its 1-based section ordinal (first-appearance order).
     private let pomodoroOrdinals: [Int: Int]
 
     public init(
         candidates: [CaptureCompletionCandidate],
-        mode: TaskLinkPickerMode = .taskLink
+        mode: TaskLinkPickerMode = .taskLink,
+        includesClosedTasks: Bool = false
     ) {
         self.mode = mode
+        self.includesClosedTasks = includesClosedTasks
         var seen: Set<String> = []
         var entries: [TaskLinkPickerIndexEntry] = []
         for candidate in candidates {
@@ -123,11 +127,17 @@ public struct TaskLinkPickerIndex: Sendable {
     }
 
     private var emptyState: CapturePickerEmptyState {
-        mode == .taskGoto ? .noTasksToOpen : .noOpenTasks
+        if mode == .taskGoto, includesClosedTasks {
+            return .noCompletedTasks
+        }
+        return mode == .taskGoto ? .noTasksToOpen : .noOpenTasks
     }
 
     private var emptyNoun: String {
-        mode == .taskGoto ? "tasks to open" : "open tasks"
+        if mode == .taskGoto, includesClosedTasks {
+            return "completed tasks"
+        }
+        return mode == .taskGoto ? "tasks to open" : "open tasks"
     }
 
     // MARK: - Grouped view

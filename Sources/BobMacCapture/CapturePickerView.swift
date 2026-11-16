@@ -529,13 +529,22 @@ private struct CapturePickerFilterBar: View {
         model.picker?.includesClosedTasks ?? false
     }
 
+    private var includesArchivedNotes: Bool {
+        model.picker?.includesArchivedNotes ?? false
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
                 Text(source.scopeSymbolText)
                     .font(.system(.body, design: .monospaced).weight(.semibold))
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
-                Text(source.scopeCaption(includesClosedTasks: includesClosedTasks))
+                Text(
+                    source.scopeCaption(
+                        includesClosedTasks: includesClosedTasks,
+                        includesArchivedNotes: includesArchivedNotes
+                    )
+                )
                     .font(.caption.weight(.semibold))
                     // A sealed project note's caption shares the editor chip's brown.
                     .foregroundStyle(
@@ -1495,18 +1504,26 @@ struct CapturePickerKeyHints: View {
     var showOperatorHint = false
     var noteGotoContinuationAvailable = false
     var includesClosedTasks = false
+    var includesArchivedNotes = false
 
     /// Keycap plus action pairs, in display order. Kept static so tests can
     /// assert the documented keyboard contract without rendering.
     static func items(
         for source: CapturePickerSource,
-        includesClosedTasks: Bool = false
+        includesClosedTasks: Bool = false,
+        includesArchivedNotes: Bool = false
     ) -> [(keys: String, action: String)] {
-        source.keyHintItems(includesClosedTasks: includesClosedTasks)
+        source.keyHintItems(
+            includesClosedTasks: includesClosedTasks,
+            includesArchivedNotes: includesArchivedNotes
+        )
     }
 
     private var hintVariants: [[(keys: String, action: String)]] {
-        let variants = source.keyHintVariants(includesClosedTasks: includesClosedTasks)
+        let variants = source.keyHintVariants(
+            includesClosedTasks: includesClosedTasks,
+            includesArchivedNotes: includesArchivedNotes
+        )
         guard source == .taskGoto, showOperatorHint, noteGotoContinuationAvailable else {
             return variants
         }
@@ -1537,7 +1554,10 @@ struct CapturePickerKeyHints: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            source.keyHintsAccessibilityLabel(includesClosedTasks: includesClosedTasks)
+            source.keyHintsAccessibilityLabel(
+                includesClosedTasks: includesClosedTasks,
+                includesArchivedNotes: includesArchivedNotes
+            )
                 + (source == .taskGoto && showOperatorHint && noteGotoContinuationAvailable
                     ? " Slash opens Notes."
                     : "")

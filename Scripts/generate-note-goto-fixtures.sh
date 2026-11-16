@@ -8,10 +8,14 @@
 #   Areas/cash.md (area, color green, alias money)
 #   Other/money.md (plain note)
 #   Views/Monthly.base (Base view; included in Bob's catalog)
+#   done/a_done.md (archive, parent: [[cash]])
+#   ref_history/blogs/old.md (archive)
+#   2026/20261114_{habit,done,poms,events}.md (satellites)
 #
-# Outputs cover capture-parse and capture-complete for `/`, `//`, and `//cash`.
-# The note-goto.json alias remains the generated full `//` catalog consumed by
-# CaptureCoreTests. Output paths use a stable synthetic root after generation.
+# Outputs cover capture-parse and capture-complete for `/`, `//`, `//cash`,
+# and the `-A` archive catalog. The note-goto.json alias remains the generated
+# full living `//` catalog consumed by CaptureCoreTests. Output paths use a
+# stable synthetic root after generation.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +33,7 @@ cache="$scratch_root/cache"
 config="$scratch_root/config.yml"
 fixtures="$repo_root/Tests/Fixtures"
 mkdir -p "$vault/2026" "$vault/Areas" "$vault/Other" "$vault/Views" \
+  "$vault/done" "$vault/ref_history/blogs" \
   "$vault/.obsidian/plugins/obsidian-tasks-plugin" "$cache"
 
 cat > "$config" <<'YAML'
@@ -91,6 +96,30 @@ cat > "$vault/Views/Monthly.base" <<'JSON'
 {"views":[{"name":"Monthly"}]}
 JSON
 
+cat > "$vault/done/a_done.md" <<'MD'
+---
+title: A
+parent: "[[cash]]"
+---
+# A
+MD
+
+cat > "$vault/ref_history/blogs/old.md" <<'MD'
+---
+title: Old blog
+---
+# Old blog
+MD
+
+for suffix in habit done poms events; do
+  cat > "$vault/2026/20261114_${suffix}.md" <<MD
+---
+type: "[[day]]"
+---
+# Saturday ${suffix}
+MD
+done
+
 export BOB_DIR="$vault"
 export BOB_CONFIG_FILE="$config"
 export BOB_DAY_FILE="$vault/2026/20261114.md"
@@ -120,7 +149,8 @@ parse() {
 
 complete() {
   local draft="$1" cursor="$2" out="$3"
-  "$bob_bin" capture-complete -b "$vault" --cursor "$cursor" --format json -- \
+  shift 3
+  "$bob_bin" capture-complete -b "$vault" "$@" --cursor "$cursor" --format json -- \
     "$draft" > "$scratch_root/raw.json"
   persist "$scratch_root/raw.json" "$out"
 }
@@ -137,6 +167,8 @@ complete "//" 2 note-goto-complete-notes.json
 complete "//" 2 note-goto.json
 complete "//cash" 6 note-goto-complete-notes-cash.json
 complete "//cash" 2 note-goto-complete-notes-cash-full.json
+complete "//" 2 note-goto-archive.json --archived-notes
+complete "//a" 3 note-goto-archive-a.json --archived-notes
 
 for fixture in \
   note-goto-parse-tasks.json \
@@ -146,7 +178,9 @@ for fixture in \
   note-goto-complete-notes.json \
   note-goto-complete-notes-cash.json \
   note-goto-complete-notes-cash-full.json \
-  note-goto.json
+  note-goto.json \
+  note-goto-archive.json \
+  note-goto-archive-a.json
 do
   assert_json "$fixture"
 done

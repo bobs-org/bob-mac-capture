@@ -99,6 +99,11 @@ if [[ "${FAKE_BOB_CLOSED_TASKS_UNSUPPORTED:-}" == "1" && " $* " == *" --closed-t
   exit 2
 fi
 
+if [[ "${FAKE_BOB_ARCHIVED_NOTES_UNSUPPORTED:-}" == "1" && " $* " == *" --archived-notes "* ]]; then
+  cat "${fixtures_dir}/note-goto-old-bob-archived-notes-stderr.txt" >&2
+  exit 2
+fi
+
 if [[ "${FAKE_BOB_ATTENDED_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" -a "* ]]; then
   printf "error: unexpected argument '-a' found\n\nUsage: bob ref scan [OPTIONS]\n" >&2
   exit 2
@@ -2620,6 +2625,7 @@ JSON
     cursor="0"
     all_tasks="false"
     closed_tasks="false"
+    archived_notes="false"
     next_missing="false"
     record_field=""
     args=("$@")
@@ -2629,6 +2635,9 @@ JSON
       fi
       if [[ "${args[$i]}" == "--all-tasks" || "${args[$i]}" == "-a" ]]; then
         all_tasks="true"
+      fi
+      if [[ "${args[$i]}" == "--archived-notes" || "${args[$i]}" == "-A" ]]; then
+        archived_notes="true"
       fi
       if [[ "${args[$i]}" == "--closed-tasks" || "${args[$i]}" == "-C" ]]; then
         closed_tasks="true"
@@ -2664,13 +2673,26 @@ JSON
           fi
           ;;
         "//")
-          note_fixture="note-goto-complete-notes.json"
+          if [[ "${archived_notes}" == "true" ]]; then
+            note_fixture="note-goto-archive.json"
+          else
+            note_fixture="note-goto-complete-notes.json"
+          fi
           ;;
         "//cash")
           if [[ "$cursor" -le 2 ]]; then
             note_fixture="note-goto-complete-notes-cash-full.json"
           else
             note_fixture="note-goto-complete-notes-cash.json"
+          fi
+          ;;
+        "//a")
+          if [[ "${archived_notes}" == "true" ]]; then
+            if [[ "$cursor" -le 2 ]]; then
+              note_fixture="note-goto-archive.json"
+            else
+              note_fixture="note-goto-archive-a.json"
+            fi
           fi
           ;;
         "//monthly")

@@ -171,6 +171,13 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
             router.command(for: keyEvent(36, modifiers: .option), context: notes), .consumeKey)
         XCTAssertEqual(
             router.command(for: keyEvent(7, modifiers: .command, characters: "x"), context: notes),
+            .toggleGotoArchivedNotes
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(7, modifiers: .command, characters: "x", isRepeat: true),
+                context: notes
+            ),
             .consumeKey
         )
         XCTAssertEqual(

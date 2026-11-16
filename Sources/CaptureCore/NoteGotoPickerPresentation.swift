@@ -51,7 +51,10 @@ public struct NoteGotoPickerIndex {
         let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
         let emptyState =
             rows.isEmpty
-            ? CapturePickerEmptyState.noMatches(query: filter, noun: "notes to open")
+            ? CapturePickerEmptyState.noMatches(
+                query: filter,
+                noun: noteGoto.archived ? "archived notes" : "notes to open"
+            )
             : nil
         return CapturePickerPresentation(
             mode: .filtered,
@@ -89,6 +92,8 @@ public struct NoteGotoPickerIndex {
         case "bank": "banknote"
         case "mail": "envelope"
         case "view": "square.grid.2x2"
+        case "archive": "archivebox"
+        case "satellite": "calendar"
         case "note": "doc.text"
         default: "doc.text"
         }
@@ -108,6 +113,8 @@ public struct NoteGotoPickerIndex {
         case "bank": "Bank note"
         case "mail": "Mail note"
         case "view": "View"
+        case "archive": "Archived note"
+        case "satellite": "Daily log"
         case "note": "Note"
         default: "Note"
         }
@@ -146,10 +153,13 @@ public struct NoteGotoPickerIndex {
             )
         }
         var allSections = sections
-        let recentRows = recentSectionRows(
-            entryByPath: entryByPath,
-            todayPaths: todayPaths
-        )
+        let recentRows =
+            noteGoto.archived
+            ? []
+            : recentSectionRows(
+                entryByPath: entryByPath,
+                todayPaths: todayPaths
+            )
         if !recentRows.isEmpty {
             let recentSection = CapturePickerSection(
                 id: "note-goto-group-recent",
@@ -183,7 +193,12 @@ public struct NoteGotoPickerIndex {
 
         let rows = allSections.flatMap(\.rows)
         let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-        let emptyState = entries.isEmpty ? CapturePickerEmptyState.noNotesToOpen : nil
+        let emptyState =
+            entries.isEmpty
+            ? (noteGoto.archived
+                ? CapturePickerEmptyState.noArchivedNotes
+                : CapturePickerEmptyState.noNotesToOpen)
+            : nil
         return CapturePickerPresentation(
             mode: .grouped,
             sections: allSections,
@@ -318,7 +333,10 @@ public struct NoteGotoPickerIndex {
     }
 
     private func hintRow(count: Int, bobIndex: Int) -> CapturePickerRow {
-        let text = "Type to search \(Self.groupedCount(count)) more notes"
+        let text =
+            noteGoto.archived
+            ? "Type to search \(Self.groupedCount(count)) more archived notes"
+            : "Type to search \(Self.groupedCount(count)) more notes"
         return CapturePickerRow(
             id: "note-goto-search-hint",
             bobIndex: bobIndex,
@@ -415,6 +433,7 @@ public struct NoteGotoPickerIndex {
         case "projects": "Projects"
         case "notebooks": "Notebooks"
         case "albums": "Albums"
+        case "done": "Done Archives"
         default: nil
         }
     }

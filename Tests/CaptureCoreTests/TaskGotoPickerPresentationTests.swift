@@ -223,6 +223,13 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
                 .first(where: { $0.keys == "⌘X" })?.action,
             "Show Open"
         )
+        let emptyCompleted = TaskLinkPickerIndex(
+            candidates: [],
+            mode: .taskGoto,
+            includesClosedTasks: true
+        ).presentation(filter: "/")
+        XCTAssertEqual(emptyCompleted.emptyState, .noCompletedTasks)
+        XCTAssertEqual(emptyCompleted.emptyState?.title, "No completed tasks")
         XCTAssertEqual(
             CapturePickerNeed.taskGoto.statusText,
             "Pick a task to open — press Tab to browse"

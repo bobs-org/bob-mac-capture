@@ -342,6 +342,19 @@ final class CapturePickerDesignTests: XCTestCase {
             "Show Open"
         )
         XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .noteGoto).map { $0.keys },
+            ["↑↓", "↩", "⌫", "⌘X", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .noteGoto).map { $0.action },
+            ["Move", "Open", "Tasks", "Show Archive", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .noteGoto, includesArchivedNotes: true)
+                .first(where: { $0.keys == "⌘X" })?.action,
+            "Show Notes"
+        )
+        XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskComplete).map { $0.action },
             ["Move", "Insert", "Insert & next", "Complete", "Complete & Open", "Clear / Cancel"]
         )

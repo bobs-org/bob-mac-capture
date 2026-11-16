@@ -2176,6 +2176,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .toggleGotoClosedTasks:
             model.toggleGotoClosedTasks()
             return true
+        case .toggleGotoArchivedNotes:
+            model.toggleGotoArchivedNotes()
+            return true
         case .showNoteGotoUpgradeHint:
             model.showNoteGotoUpgradeHint()
             return true

@@ -427,6 +427,56 @@ final class BobProcessClientTests: XCTestCase {
         )
     }
 
+    func testCaptureCompleteOptionallyIncludesArchivedNotes() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_NOTE_GOTO_FIXTURES": "1",
+            ]
+        )
+
+        let response = try await client.captureComplete(
+            "//",
+            cursor: 2,
+            includeArchivedNotes: true
+        )
+
+        XCTAssertEqual(response.context, "note_goto")
+        XCTAssertEqual(response.noteGoto?.archived, true)
+        XCTAssertEqual(response.noteGoto?.listed, 6)
+        XCTAssertTrue(response.candidates.contains { $0.notePath == "done/a_done.md" })
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --archived-notes --cursor 2 --format json -- //")
+        )
+    }
+
+    func testCaptureCompleteArchivedNotesUnsupportedOptionMapsOldBob() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_ARCHIVED_NOTES_UNSUPPORTED": "1",
+            ]
+        )
+
+        do {
+            _ = try await client.captureComplete("//", cursor: 2, includeArchivedNotes: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--archived-notes")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+    }
+
     func testCaptureCompleteClosedTasksUnsupportedOptionMapsOldBob() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

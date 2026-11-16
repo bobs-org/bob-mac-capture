@@ -25,8 +25,8 @@ discards the draft after dispatch succeeds; a failure keeps the picker open.
 No `capture` request is made. Backspace on an empty Notes filter peels Bob's
 `trigger_removal_range` back to `/`; Backspace on the empty Tasks filter then
 removes `/`. Escape clears a search first, then leaves a `//` reopen chip.
-Command-X, Shift-Return, and Option-Return are consumed. Control-C discards the
-navigation draft without stashing it.
+Command-X toggles Notes ⇄ Archive. Shift-Return and Option-Return stay
+consumed. Control-C discards the navigation draft without stashing it.
 
 The card stays mounted across the swap: the scope capsule morphs, rows
 cross-fade in about 120 ms with an ease-out curve (instant under Reduce
@@ -41,9 +41,21 @@ spinner. A failed fetch shows "Couldn't load notes", distinct from an empty
 search. Scope changes announce ("Go To Notes, 184 notes"), and filter result
 counts announce as usual.
 
+## Archive notes
+
+Command-X on Notes fetches Bob's archive catalog (`capture-complete
+--archived-notes`) and retitles the card **Go To · Archive**. The grouped view
+maps Bob's `done` group to **Done Archives**; `archive` and `satellite` rows
+use archive-box and calendar glyphs. Recent never appears in Archive, and
+opening an archived note does not record a Recent event. Toggle back renders
+the warm living snapshot immediately when it exists. `/` → `//` continuation
+and a Backspace peel always return to Notes; the `//` reopen chip keeps
+Archive, matching how `/` keeps Completed. Older Bob stays in Notes and
+announces **Update bob to show archived notes**.
+
 ## Recent notes
 
 The empty Notes view shows up to eight recently opened notes in a Recent
 section after Today. Recent is app-local history, never written to the vault,
 and a search filters it away until the filter clears. Clear it in Settings
-under Go To Notes.
+under Go To Notes. Archive opens never contribute to this history.

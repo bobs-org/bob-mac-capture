@@ -634,10 +634,12 @@ public final class BobProcessClient: @unchecked Sendable {
         return response
     }
 
-    /// `true` requests Bob's closed-only Go To list. Record parameters are
-    /// default-off: `nextMissingField` sends `--next-missing-field` and
-    /// `recordField` sends `--record-field KEY`. Callers gate named requests
-    /// on `record.assist_version` so independently installed Mac clients can
+    /// `true` `includeClosedTasks` requests Bob's closed-only Go To list.
+    /// `true` `includeArchivedNotes` appends `--archived-notes` for the
+    /// Notes archive catalog. Record parameters are default-off:
+    /// `nextMissingField` sends `--next-missing-field` and `recordField`
+    /// sends `--record-field KEY`. Callers gate named requests on
+    /// `record.assist_version` so independently installed Mac clients can
     /// leave unsupported controls unavailable while ordinary draft editing
     /// keeps working. An older Bob rejects unknown flags; that maps to
     /// `unsupportedOption` and never to an unrelated task request.
@@ -645,10 +647,14 @@ public final class BobProcessClient: @unchecked Sendable {
         _ draft: String,
         cursor: Int,
         includeClosedTasks: Bool = false,
+        includeArchivedNotes: Bool = false,
         nextMissingField: Bool = false,
         recordField: String? = nil
     ) async throws -> CaptureCompletionResponse {
         var arguments = ["capture-complete", "--all-tasks"]
+        if includeArchivedNotes {
+            arguments.append("--archived-notes")
+        }
         if includeClosedTasks {
             arguments.append("--closed-tasks")
         }
@@ -666,6 +672,14 @@ public final class BobProcessClient: @unchecked Sendable {
             )
         } catch let error as BobClientError {
             if case .processFailed(_, _, let stderr) = error {
+                if includeArchivedNotes,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--archived-notes"
+                    )
+                {
+                    throw BobClientError.unsupportedOption("--archived-notes")
+                }
                 if includeClosedTasks,
                     Self.isUnsupportedOptionFailure(
                         stderr: stderr,

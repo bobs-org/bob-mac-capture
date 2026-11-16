@@ -52,6 +52,9 @@ public struct NoteGotoSnapshotStore: Equatable, Sendable {
         bobIdentity: String,
         now: Date = Date()
     ) {
+        guard !noteGoto.archived else {
+            return
+        }
         snapshot = NoteGotoSnapshot(
             candidates: candidates,
             noteGoto: noteGoto,

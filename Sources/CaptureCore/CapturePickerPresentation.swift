@@ -336,9 +336,15 @@ public enum CapturePickerSource: Equatable, Sendable {
         scopeCaption(includesClosedTasks: false)
     }
 
-    public func scopeCaption(includesClosedTasks: Bool) -> String {
+    public func scopeCaption(
+        includesClosedTasks: Bool = false,
+        includesArchivedNotes: Bool = false
+    ) -> String {
         if self == .taskGoto, includesClosedTasks {
             return "Go To · Completed"
+        }
+        if self == .noteGoto, includesArchivedNotes {
+            return "Go To · Archive"
         }
         switch self {
         case .activeTask:
@@ -653,18 +659,31 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     /// Footer key hints in display order. Control-Return sits just before
     /// Escape so ViewThatFits can drop it first.
-    public func keyHintItems(includesClosedTasks: Bool = false) -> [(keys: String, action: String)]
-    {
-        insertingControlReturnHint(into: coreKeyHintItems(includesClosedTasks: includesClosedTasks))
+    public func keyHintItems(
+        includesClosedTasks: Bool = false,
+        includesArchivedNotes: Bool = false
+    ) -> [(keys: String, action: String)] {
+        insertingControlReturnHint(
+            into: coreKeyHintItems(
+                includesClosedTasks: includesClosedTasks,
+                includesArchivedNotes: includesArchivedNotes
+            )
+        )
     }
 
     /// Full hints, then the same list without the Control-Return *open* hint.
     /// Relation pickers keep their `⌃↩` link-with-a-relation hint in every
     /// variant, including narrow layouts.
-    public func keyHintVariants(includesClosedTasks: Bool = false) -> [[(
+    public func keyHintVariants(
+        includesClosedTasks: Bool = false,
+        includesArchivedNotes: Bool = false
+    ) -> [[(
         keys: String, action: String
     )]] {
-        let items = keyHintItems(includesClosedTasks: includesClosedTasks)
+        let items = keyHintItems(
+            includesClosedTasks: includesClosedTasks,
+            includesArchivedNotes: includesArchivedNotes
+        )
         guard let openHint = controlReturnHint else {
             return [items]
         }
@@ -701,7 +720,8 @@ public enum CapturePickerSource: Equatable, Sendable {
     }
 
     private func coreKeyHintItems(
-        includesClosedTasks: Bool
+        includesClosedTasks: Bool,
+        includesArchivedNotes: Bool = false
     ) -> [(keys: String, action: String)] {
         switch self {
         case .activeTask:
@@ -730,12 +750,15 @@ public enum CapturePickerSource: Equatable, Sendable {
             items.insert(toggleHint, at: items.count - 1)
             return items
         case .noteGoto:
-            return [
+            var items: [(keys: String, action: String)] = [
                 ("↑↓", "Move"),
                 ("↩", "Open"),
                 ("⌫", "Tasks"),
                 ("esc", "Clear / Cancel"),
             ]
+            let toggleHint = ("⌘X", includesArchivedNotes ? "Show Notes" : "Show Archive")
+            items.insert(toggleHint, at: items.count - 1)
+            return items
         case .dependency:
             // Shift-Return has no start-session behavior on this source:
             // dependencies never smuggle a Pomodoro start into the capture.
@@ -816,7 +839,10 @@ public enum CapturePickerSource: Equatable, Sendable {
         keyHintsAccessibilityLabel(includesClosedTasks: false)
     }
 
-    public func keyHintsAccessibilityLabel(includesClosedTasks: Bool) -> String {
+    public func keyHintsAccessibilityLabel(
+        includesClosedTasks: Bool = false,
+        includesArchivedNotes: Bool = false
+    ) -> String {
         switch self {
         case .activeTask:
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
@@ -830,8 +856,12 @@ public enum CapturePickerSource: Equatable, Sendable {
             return
                 "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, \(toggle), Escape to clear or cancel."
         case .noteGoto:
+            let toggle =
+                includesArchivedNotes
+                ? "Command X to show notes"
+                : "Command X to show archived notes"
             return
-                "Picker keys: up and down to move, Return, Tab, Command Return, or Control Return to open the note in Obsidian without writing, Escape to clear or cancel."
+                "Picker keys: up and down to move, Return, Tab, Command Return, or Control Return to open the note in Obsidian without writing, \(toggle), Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Control Return to use it, capture, and open, Escape to clear or cancel."
         case .blockedTask:
@@ -1468,12 +1498,33 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         )
     }
 
+    public static var noArchivedNotes: Self {
+        Self(
+            title: "No archived notes",
+            message: "No archived notes are available in this vault."
+        )
+    }
+
+    public static var noCompletedTasks: Self {
+        Self(
+            title: "No completed tasks",
+            message: "No completed tasks in your capture notes."
+        )
+    }
+
     /// Quiet placeholder while the `/` ⇄ `//` scope swap is still fetching:
     /// the card stays mounted and never shows a spinner.
     public static var loadingNotes: Self {
         Self(
             title: "Loading notes…",
             message: "Fetching the living-notes catalog from bob."
+        )
+    }
+
+    public static var loadingArchivedNotes: Self {
+        Self(
+            title: "Loading archived notes…",
+            message: "Fetching the archived-notes catalog from bob."
         )
     }
 

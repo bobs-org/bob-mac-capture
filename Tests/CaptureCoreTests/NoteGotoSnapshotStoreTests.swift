@@ -76,6 +76,25 @@ final class NoteGotoSnapshotStoreTests: XCTestCase {
         XCTAssertTrue(store.needsRefresh(bobIdentity: "bob-1"))
     }
 
+    func testArchivedCatalogNeverReplacesTheWarmLivingSnapshot() {
+        var store = NoteGotoSnapshotStore()
+        store.store(
+            candidates: [candidate("Areas/cash.md")],
+            noteGoto: noteGoto(),
+            bobIdentity: "bob-1"
+        )
+        store.store(
+            candidates: [candidate("done/a_done.md")],
+            noteGoto: CaptureCompletionNoteGoto(vaultRoot: "/vault", listed: 1, archived: true),
+            bobIdentity: "bob-1"
+        )
+        XCTAssertEqual(
+            store.rows(bobIdentity: "bob-1")?.candidates.map(\.notePath),
+            ["Areas/cash.md"]
+        )
+        XCTAssertEqual(store.rows(bobIdentity: "bob-1")?.noteGoto.archived, false)
+    }
+
     func testContentDiffDetectsReplacementVsIdenticalRows() {
         var store = NoteGotoSnapshotStore()
         let candidates = [candidate("a.md"), candidate("b.md")]

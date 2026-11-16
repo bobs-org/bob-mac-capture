@@ -53,6 +53,10 @@ struct CapturePickerState: Equatable {
     /// `true` describes the closed-only scope. New `/` sessions start
     /// open-only; Escape carries this into its chip.
     var includesClosedTasks = false
+    /// Whether this Go To Notes session shows Bob's archived catalog.
+    /// `true` describes the Archive scope. New `//` sessions start living;
+    /// Escape carries this into its chip.
+    var includesArchivedNotes = false
     /// Bob's advertised `/` continuation on a bare Tasks picker.
     var taskGotoContinuationKeys: [String] = []
     /// Read-only note-catalog metadata returned with `note_goto`.
@@ -83,6 +87,11 @@ struct CapturePickerChipState: Equatable {
     /// scope actually represented by `candidates` while a refetch is pending.
     var includesClosedTasks = false
     var snapshotIncludesClosedTasks = false
+    /// Go To Notes archive toggle for this session. `includesArchivedNotes`
+    /// is the desired scope; `snapshotIncludesArchivedNotes` records the
+    /// scope of `candidates` while a refetch is pending.
+    var includesArchivedNotes = false
+    var snapshotIncludesArchivedNotes = false
     var taskGotoContinuationKeys: [String] = []
     var noteGoto: CaptureCompletionNoteGoto? = nil
     var triggerRemovalRange: CaptureRange? = nil

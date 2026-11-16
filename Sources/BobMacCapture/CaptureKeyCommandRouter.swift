@@ -102,6 +102,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptPickerRowAndSubmit
     case acceptPickerRowAndSubmitAndOpen
     case toggleGotoClosedTasks
+    case toggleGotoArchivedNotes
     case showNoteGotoUpgradeHint
     case nextPickerRow
     case previousPickerRow
@@ -1265,7 +1266,8 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.x:
             if modifiers == .command, context.pickerSourceIsNoteGoto {
-                return .consumeKey
+                return context.keyIsRepeat || event.isARepeat
+                    ? .consumeKey : .toggleGotoArchivedNotes
             }
             guard modifiers == .command, context.pickerSourceIsTaskGoto else {
                 return nil

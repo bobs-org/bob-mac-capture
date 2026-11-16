@@ -147,7 +147,7 @@ replacement and continuation; Escape closes it; `/` rewrites to the same `#`.
 
 ## Capture picker keys
 
-Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks only in Go To (`/`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =` (empty-filter Space/Escape restores are in [panel](capture-panel.md#inline-completion)). In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+Picker cards: Return accepts; Escape cancels; Backspace on an empty filter removes its trigger. In Go To, `\` is consumed except a second `\` right after opening (types a literal). Command-X switches open/completed tasks in Go To (`/`) and Notes/Archive in Go To Notes (`//`); elsewhere it stays native. Relation pickers (`~` / `~~`) flip live on `~` / `=`; Backspace on `~~` flips back; fast `==` undoes the flip into the filter, and a live `=` opener teaches `== types =` (empty-filter Space/Escape restores are in [panel](capture-panel.md#inline-completion)). In the editor, a glued `~` / `=` at a complete token's end flips without a picker; after a label only `~` flips. The Task Wikilink picker (`((`) inserts `bob`'s link on Return; Command-Return inserts and captures, Control-Return opens it too. The Move picker (`- ^` / `- :`) inserts the ID on Return, the ID plus continuation on Shift-Return. A merge-in source picker (`< +`) accepts comma or Shift-Return to keep picking on Bob's `continuation`. A refused merge-in offers one button per Bob rewrite (`Use >`, `Move before <`, `Add spaces`); buttons apply those rewrites undoably, while Return does not. See [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ### Go To Notes Picker
 
@@ -159,7 +159,8 @@ Picker cards: Return accepts; Escape cancels; Backspace on an empty filter remov
 | Return / Tab / click / Command-Return / Control-Return | Open the selected note in Obsidian without writing |
 | Backspace on an empty `//` filter | Peel to Go To · Tasks (`/`) |
 | Escape | Clear the filter, then cancel to the `//` reopen chip |
-| Command-X / Shift-Return / Option-Return | Consume |
+| Command-X | Toggle Notes ⇄ Archive (`--archived-notes`); a key repeat is consumed |
+| Shift-Return / Option-Return | Consume |
 | `/` or `\\` on an empty Notes filter | Consume |
 | Control-C | Discard the navigation draft without stashing |
 

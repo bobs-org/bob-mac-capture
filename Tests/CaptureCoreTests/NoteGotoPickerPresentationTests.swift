@@ -77,14 +77,19 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
         XCTAssertNil(decoded.candidates.first?.hue)
     }
 
-    func testNotesFooterNamesOpenPeelAndCancelActions() {
+    func testNotesFooterNamesOpenPeelArchiveToggleAndCancelActions() {
         XCTAssertEqual(
             CapturePickerSource.noteGoto.keyHintItems().map(\.keys),
-            ["↑↓", "↩", "⌫", "esc"]
+            ["↑↓", "↩", "⌫", "⌘X", "esc"]
         )
         XCTAssertEqual(
             CapturePickerSource.noteGoto.keyHintItems().map(\.action),
-            ["Move", "Open", "Tasks", "Clear / Cancel"]
+            ["Move", "Open", "Tasks", "Show Archive", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerSource.noteGoto.keyHintItems(includesArchivedNotes: true)
+                .first(where: { $0.keys == "⌘X" })?.action,
+            "Show Notes"
         )
     }
 
@@ -261,11 +266,71 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
             "mail": "envelope",
             "view": "square.grid.2x2",
             "note": "doc.text",
+            "archive": "archivebox",
+            "satellite": "calendar",
             "future-kind": "doc.text",
         ]
         for (kind, symbol) in symbols {
             XCTAssertEqual(NoteGotoPickerIndex.symbolName(for: kind), symbol, kind)
         }
+        XCTAssertEqual(NoteGotoPickerIndex.kindLabel(for: "archive"), "Archived note")
+        XCTAssertEqual(NoteGotoPickerIndex.kindLabel(for: "satellite"), "Daily log")
+    }
+
+    func testArchiveFixtureGroupsDoneArchivesOmitsRecentAndUsesArchiveCopy() throws {
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/note-goto-archive.json")
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(contentsOf: fixture)
+        )
+        XCTAssertEqual(response.noteGoto?.archived, true)
+        XCTAssertEqual(response.noteGoto?.listed, 6)
+        let done = try XCTUnwrap(response.candidates.first { $0.notePath == "done/a_done.md" })
+        XCTAssertEqual(done.kind, "archive")
+        XCTAssertEqual(done.group, "done")
+        XCTAssertEqual(done.detail, "cash")
+        let satellite = try XCTUnwrap(
+            response.candidates.first { $0.notePath == "2026/20261114_habit.md" }
+        )
+        XCTAssertEqual(satellite.kind, "satellite")
+
+        let index = NoteGotoPickerIndex(
+            candidates: response.candidates,
+            noteGoto: try XCTUnwrap(response.noteGoto),
+            recentNotePaths: ["done/a_done.md", "Areas/cash.md"]
+        )
+        let grouped = index.presentation(filter: "//")
+        XCTAssertEqual(grouped.sections.map(\.title), ["Done Archives", ""])
+        XCTAssertEqual(grouped.orderedRowIDs.first, "done/a_done.md")
+        XCTAssertFalse(grouped.orderedRowIDs.contains { $0.hasPrefix("recent:") })
+        XCTAssertEqual(
+            grouped.sections.last?.rows.first?.displayText,
+            "Type to search 5 more archived notes"
+        )
+        let archiveRow = try XCTUnwrap(grouped.row(id: "done/a_done.md"))
+        XCTAssertEqual(archiveRow.glyph, .noteGoto(symbol: "archivebox", hue: nil))
+        XCTAssertEqual(
+            archiveRow.accessibilityLabel,
+            "Archived note, A, cash, done/a_done.md"
+        )
+        let logRow = try XCTUnwrap(
+            index.presentation(filter: "habit").row(id: "2026/20261114_habit.md")
+        )
+        XCTAssertEqual(logRow.glyph, .noteGoto(symbol: "calendar", hue: nil))
+        XCTAssertTrue(logRow.accessibilityLabel.hasPrefix("Daily log,"))
+
+        let empty = NoteGotoPickerIndex(
+            candidates: [],
+            noteGoto: CaptureCompletionNoteGoto(vaultRoot: "/vault", listed: 0, archived: true)
+        )
+        XCTAssertEqual(empty.presentation(filter: "//").emptyState, .noArchivedNotes)
+        XCTAssertEqual(
+            empty.presentation(filter: "zzz").emptyState,
+            .noMatches(query: "zzz", noun: "archived notes")
+        )
     }
 
     func testCaptionsAccessibilityAndLineLessOpenURL() throws {
@@ -278,7 +343,15 @@ final class NoteGotoPickerPresentationTests: XCTestCase {
         XCTAssertEqual(CapturePickerSource.noteGoto.triggerByte, 47)
         XCTAssertEqual(CapturePickerSource.noteGoto.scopeSymbolText, "//")
         XCTAssertEqual(CapturePickerSource.noteGoto.scopeCaption, "Go To · Notes")
+        XCTAssertEqual(
+            CapturePickerSource.noteGoto.scopeCaption(includesArchivedNotes: true),
+            "Go To · Archive"
+        )
         XCTAssertEqual(CapturePickerSource.noteGoto.cardAccessibilityLabel, "Go To Notes picker")
+        XCTAssertTrue(
+            CapturePickerSource.noteGoto.keyHintsAccessibilityLabel(includesArchivedNotes: true)
+                .contains("Command X to show notes")
+        )
         XCTAssertEqual(
             CapturePickerNeed.noteGoto.statusText,
             "Pick a note to open — press Tab to browse"

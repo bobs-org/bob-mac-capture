@@ -9378,15 +9378,27 @@ public struct CaptureCompletionResponse: Codable, Equatable {
 public struct CaptureCompletionNoteGoto: Codable, Equatable, Sendable {
     public let vaultRoot: String
     public let listed: Int
+    /// True when this catalog is Bob's archived-notes scope (`-A`). Older
+    /// Bob omits the field; missing decodes as `false`.
+    public let archived: Bool
 
-    public init(vaultRoot: String, listed: Int) {
+    public init(vaultRoot: String, listed: Int, archived: Bool = false) {
         self.vaultRoot = vaultRoot
         self.listed = listed
+        self.archived = archived
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vaultRoot = try container.decode(String.self, forKey: .vaultRoot)
+        listed = try container.decode(Int.self, forKey: .listed)
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
         case vaultRoot = "vault_root"
         case listed
+        case archived
     }
 }
 

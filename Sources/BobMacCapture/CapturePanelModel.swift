@@ -1096,6 +1096,10 @@ final class CapturePanelModel: ObservableObject {
     /// Candidate provenance and request ordering for the active Go To session.
     /// Core keeps requested scope separate from the scope of the displayed rows.
     private var gotoClosedTasksState: CaptureTaskGotoScopeState?
+    /// Candidate provenance and request ordering for the active Go To Notes
+    /// archive session. Sibling of `gotoClosedTasksState` so the tested `/`
+    /// closed-task field names stay unchanged.
+    private var gotoArchivedNotesState: CaptureNoteGotoScopeState?
     /// In-flight `/` ⇄ `//` scope swap. While set, the picker card stays
     /// mounted: the old scope's rows keep showing until the new scope's
     /// response re-presents in place, so the panel never blinks through
@@ -6462,11 +6466,14 @@ final class CapturePanelModel: ObservableObject {
         NoteGotoPickerIndex(
             candidates: candidates,
             noteGoto: noteGoto,
-            recentNotePaths: recentNotePaths(for: noteGoto.vaultRoot)
+            recentNotePaths: noteGoto.archived ? [] : recentNotePaths(for: noteGoto.vaultRoot)
         )
     }
 
     private func recordNoteGotoOpen(notePath: String, vaultRoot: String) {
+        guard picker?.includesArchivedNotes != true else {
+            return
+        }
         guard let store = noteGotoOpenLogStore else {
             return
         }
@@ -6537,7 +6544,11 @@ final class CapturePanelModel: ObservableObject {
         presentPicker(
             source: .taskGoto,
             index: .taskGoto(
-                TaskLinkPickerIndex(candidates: swap.retainedTaskCandidates, mode: .taskGoto)
+                TaskLinkPickerIndex(
+                    candidates: swap.retainedTaskCandidates,
+                    mode: .taskGoto,
+                    includesClosedTasks: swap.retainedTaskIncludesClosedTasks
+                )
             ),
             candidates: swap.retainedTaskCandidates,
             warnings: swap.retainedTaskWarnings,
@@ -6674,6 +6685,7 @@ final class CapturePanelModel: ObservableObject {
                 guard !Task.isCancelled,
                       snapshot.context == "note_goto",
                       let noteGoto = snapshot.noteGoto,
+                      !noteGoto.archived,
                       let descriptor = snapshot.picker,
                       descriptor.kind == "note_goto",
                       descriptor.scope == "vault",
@@ -7208,6 +7220,7 @@ final class CapturePanelModel: ObservableObject {
             scopeLineNumber: scopeLineNumber,
             dependencyOwner: dependencyOwner,
             taskCompleteContinuationKeys: taskCompleteContinuationKeys,
+            includesArchivedNotes: noteGoto?.archived ?? false,
             taskGotoContinuationKeys: taskGotoContinuationKeys,
             noteGoto: noteGoto,
             triggerRemovalRange: triggerRemovalRange
@@ -7221,6 +7234,16 @@ final class CapturePanelModel: ObservableObject {
             gotoClosedTasksState = gotoState
         } else {
             gotoClosedTasksState = nil
+        }
+        if source == .noteGoto {
+            var archiveState = CaptureNoteGotoScopeState()
+            archiveState.beginSession(
+                candidates: candidates,
+                appliedIncludesArchivedNotes: noteGoto?.archived ?? false
+            )
+            gotoArchivedNotesState = archiveState
+        } else {
+            gotoArchivedNotesState = nil
         }
         pickerMarkerHighlight = Self.pickerMarkerHighlightRange(
             source: source,
@@ -8111,6 +8134,9 @@ final class CapturePanelModel: ObservableObject {
         }
         let candidates = completion.candidates
         let query = Self.noteGotoPickerQuery(in: draft, range: range, cursor: cursor)
+        if gotoArchivedNotesState?.desiredIncludesArchivedNotes == true {
+            return
+        }
         guard trigger == .edit, pickerAutoOpenSuppressedStart != range.start else {
             pickerChip = CapturePickerChipState(
                 source: .noteGoto,
@@ -8139,11 +8165,13 @@ final class CapturePanelModel: ObservableObject {
                stringRange(in: draft, byteRange: fullDescriptor.triggerRemovalRange) != nil
             {
                 let fullCandidates = snapshot.candidates
-                noteGotoSnapshotStore.store(
-                    candidates: fullCandidates,
-                    noteGoto: fullNoteGoto,
-                    bobIdentity: processClient.identityToken
-                )
+                if !fullNoteGoto.archived {
+                    noteGotoSnapshotStore.store(
+                        candidates: fullCandidates,
+                        noteGoto: fullNoteGoto,
+                        bobIdentity: processClient.identityToken
+                    )
+                }
                 presentPicker(
                     source: .noteGoto,
                     index: .noteGoto(
@@ -8158,6 +8186,7 @@ final class CapturePanelModel: ObservableObject {
                     snapshotIsPartial: false,
                     noteGoto: fullNoteGoto,
                     triggerRemovalRange: fullDescriptor.triggerRemovalRange,
+                    includesArchivedNotes: fullNoteGoto.archived,
                     completingSwap: gotoScopeSwap?.target == .notes
                 )
                 return
@@ -8165,11 +8194,13 @@ final class CapturePanelModel: ObservableObject {
             guard isCurrentAnalysis(generation), plainDraft == draft else {
                 return
             }
-            noteGotoSnapshotStore.store(
-                candidates: candidates,
-                noteGoto: noteGoto,
-                bobIdentity: processClient.identityToken
-            )
+            if !noteGoto.archived {
+                noteGotoSnapshotStore.store(
+                    candidates: candidates,
+                    noteGoto: noteGoto,
+                    bobIdentity: processClient.identityToken
+                )
+            }
             presentPicker(
                 source: .noteGoto,
                 index: .noteGoto(makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)),
@@ -8182,15 +8213,18 @@ final class CapturePanelModel: ObservableObject {
                 snapshotIsPartial: true,
                 noteGoto: noteGoto,
                 triggerRemovalRange: descriptor.triggerRemovalRange,
+                includesArchivedNotes: noteGoto.archived,
                 completingSwap: gotoScopeSwap?.target == .notes
             )
             return
         }
-        noteGotoSnapshotStore.store(
-            candidates: candidates,
-            noteGoto: noteGoto,
-            bobIdentity: processClient.identityToken
-        )
+        if !noteGoto.archived {
+            noteGotoSnapshotStore.store(
+                candidates: candidates,
+                noteGoto: noteGoto,
+                bobIdentity: processClient.identityToken
+            )
+        }
         presentPicker(
             source: .noteGoto,
             index: .noteGoto(makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)),
@@ -8203,16 +8237,24 @@ final class CapturePanelModel: ObservableObject {
             snapshotIsPartial: false,
             noteGoto: noteGoto,
             triggerRemovalRange: descriptor.triggerRemovalRange,
+            includesArchivedNotes: noteGoto.archived,
             completingSwap: gotoScopeSwap?.target == .notes
         )
     }
 
     private static func taskCatalogIndex(
         source: CapturePickerSource,
-        candidates: [CaptureCompletionCandidate]
+        candidates: [CaptureCompletionCandidate],
+        includesClosedTasks: Bool = false
     ) -> CapturePickerIndex {
         if source == .taskGoto {
-            return .taskGoto(TaskLinkPickerIndex(candidates: candidates, mode: .taskGoto))
+            return .taskGoto(
+                TaskLinkPickerIndex(
+                    candidates: candidates,
+                    mode: .taskGoto,
+                    includesClosedTasks: includesClosedTasks
+                )
+            )
         }
         return .taskLink(TaskLinkPickerIndex(candidates: candidates))
     }
@@ -9088,6 +9130,8 @@ final class CapturePanelModel: ObservableObject {
         opensWithoutSelection: Bool = false,
         includesClosedTasks: Bool = false,
         gotoDesiredIncludesClosedTasks: Bool? = nil,
+        includesArchivedNotes: Bool = false,
+        gotoDesiredIncludesArchivedNotes: Bool? = nil,
         preservingBudget: Int? = nil,
         completingSwap: Bool = false
     ) {
@@ -9107,6 +9151,17 @@ final class CapturePanelModel: ObservableObject {
             gotoClosedTasksState = state
         } else {
             gotoClosedTasksState = nil
+        }
+        if source == .noteGoto {
+            var state = CaptureNoteGotoScopeState()
+            state.beginSession(
+                candidates: candidates,
+                appliedIncludesArchivedNotes: includesArchivedNotes,
+                desiredIncludesArchivedNotes: gotoDesiredIncludesArchivedNotes
+            )
+            gotoArchivedNotesState = state
+        } else {
+            gotoArchivedNotesState = nil
         }
         let presentation = index.presentation(filter: query)
         pickerIndex = index
@@ -9155,6 +9210,7 @@ final class CapturePanelModel: ObservableObject {
             dependencyOwner: dependencyOwner,
             taskCompleteContinuationKeys: taskCompleteContinuationKeys,
             includesClosedTasks: includesClosedTasks,
+            includesArchivedNotes: includesArchivedNotes,
             taskGotoContinuationKeys: taskGotoContinuationKeys,
             noteGoto: noteGoto,
             triggerRemovalRange: triggerRemovalRange
@@ -9186,6 +9242,48 @@ final class CapturePanelModel: ObservableObject {
         if source == .taskGoto, !pickerWasVisible, gotoScopeSwap == nil {
             refreshNoteGotoSnapshot()
         }
+    }
+
+    /// Toggle archived notes for the current Go To Notes session. Archive
+    /// fetches always go to Bob; toggling back renders the warm living
+    /// snapshot immediately when it exists.
+    func toggleGotoArchivedNotes() {
+        guard let openPicker = picker,
+            openPicker.source == .noteGoto,
+            plainDraft == openPicker.draftSnapshot,
+            let processClient,
+            var state = gotoArchivedNotesState,
+            let request = state.toggle()
+        else {
+            return
+        }
+        gotoArchivedNotesState = state
+        let draft = openPicker.draftSnapshot
+        let range = openPicker.replacementRange
+        if !request.includesArchivedNotes,
+            let warm = noteGotoSnapshotStore.rows(
+                bobIdentity: processClient.identityToken
+            )
+        {
+            _ = state.apply(candidates: warm.candidates, for: request)
+            gotoArchivedNotesState = state
+            applyGotoArchivedNotesSnapshot(
+                candidates: warm.candidates,
+                warnings: [],
+                noteGoto: warm.noteGoto,
+                triggerRemovalRange: openPicker.triggerRemovalRange,
+                state: state
+            )
+            return
+        }
+        startGotoArchivedNotesFetch(
+            request: request,
+            draft: draft,
+            range: range,
+            cursor: range.start,
+            processClient: processClient,
+            showPlaceholder: true
+        )
     }
 
     /// Toggle completed rows for the current Go To session. Each fetch is a
@@ -9353,7 +9451,11 @@ final class CapturePanelModel: ObservableObject {
         guard var openPicker = picker else {
             return
         }
-        let index = TaskLinkPickerIndex(candidates: snapshot.candidates, mode: .taskGoto)
+        let index = TaskLinkPickerIndex(
+            candidates: snapshot.candidates,
+            mode: .taskGoto,
+            includesClosedTasks: state.appliedIncludesClosedTasks
+        )
         let presentation = index.presentation(filter: openPicker.filterText)
         let selectedID =
             openPicker.selectedRowID.flatMap {
@@ -9376,6 +9478,247 @@ final class CapturePanelModel: ObservableObject {
             : "\(state.candidates.count) tasks"
         let scope = state.appliedIncludesClosedTasks ? "completed" : "open"
         announceStatus("Showing \(scope) tasks, \(countText)")
+    }
+
+    private func startGotoArchivedNotesFetch(
+        request: CaptureNoteGotoScopeState.Request,
+        draft: String,
+        range: CaptureRange,
+        cursor: Int,
+        processClient: BobProcessClient,
+        showPlaceholder: Bool
+    ) {
+        announceStatus(
+            request.includesArchivedNotes
+                ? "Loading archived notes…" : "Loading notes…"
+        )
+        if showPlaceholder {
+            presentNoteGotoScopeLoading(archived: request.includesArchivedNotes)
+        }
+        Task { [weak self, processClient] in
+            do {
+                let snapshot = try await processClient.captureComplete(
+                    draft,
+                    cursor: cursor,
+                    includeArchivedNotes: request.includesArchivedNotes
+                )
+                await MainActor.run {
+                    guard let self,
+                        self.isCurrentGotoArchivedNotesFetch(
+                            request: request,
+                            draft: draft,
+                            range: range
+                        )
+                    else {
+                        return
+                    }
+                    let responseRange = snapshot.replacement
+                    let archived = snapshot.noteGoto?.archived ?? false
+                    guard snapshot.context == "note_goto",
+                        archived == request.includesArchivedNotes,
+                        responseRange.start == range.start,
+                        responseRange.end >= responseRange.start,
+                        responseRange.end <= range.end,
+                        let noteGoto = snapshot.noteGoto,
+                        let descriptor = snapshot.picker,
+                        descriptor.kind == "note_goto",
+                        descriptor.scopeToken == "//"
+                    else {
+                        if self.settleFailedGotoArchivedNotesFetch(
+                            request: request,
+                            draft: draft,
+                            range: range
+                        ) {
+                            self.announceStatus("Bob returned a different Go To result")
+                        }
+                        return
+                    }
+                    guard var state = self.gotoArchivedNotesState,
+                        state.apply(candidates: snapshot.candidates, for: request)
+                    else {
+                        return
+                    }
+                    self.gotoArchivedNotesState = state
+                    self.applyGotoArchivedNotesSnapshot(
+                        candidates: snapshot.candidates,
+                        warnings: snapshot.warnings,
+                        noteGoto: noteGoto,
+                        triggerRemovalRange: descriptor.triggerRemovalRange,
+                        state: state
+                    )
+                }
+            } catch let error as BobClientError {
+                let unsupportedArchivedNotes: Bool
+                if case .unsupportedOption(let option) = error {
+                    unsupportedArchivedNotes = option == "--archived-notes"
+                } else {
+                    unsupportedArchivedNotes = false
+                }
+                let errorMessage: String
+                if case .processFailed(_, _, let stderr) = error {
+                    NSLog("%@", error.description)
+                    let trimmedStderr = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                    errorMessage = trimmedStderr.isEmpty ? error.description : trimmedStderr
+                } else {
+                    errorMessage = error.description
+                }
+                await MainActor.run {
+                    guard let self,
+                        self.settleFailedGotoArchivedNotesFetch(
+                            request: request,
+                            draft: draft,
+                            range: range
+                        )
+                    else {
+                        return
+                    }
+                    if unsupportedArchivedNotes {
+                        let updateHint = "Update bob to show archived notes"
+                        if self.picker?.warnings.contains(updateHint) != true {
+                            self.picker?.warnings.append(updateHint)
+                        }
+                        self.announceStatus(updateHint)
+                    } else {
+                        self.announceStatus(errorMessage)
+                    }
+                }
+            } catch {
+                let errorMessage = error.localizedDescription
+                await MainActor.run {
+                    guard let self,
+                        self.settleFailedGotoArchivedNotesFetch(
+                            request: request,
+                            draft: draft,
+                            range: range
+                        )
+                    else {
+                        return
+                    }
+                    self.announceStatus(errorMessage)
+                }
+            }
+        }
+    }
+
+    private func presentNoteGotoScopeLoading(archived: Bool) {
+        guard var openPicker = picker, openPicker.source == .noteGoto else {
+            return
+        }
+        let emptyState: CapturePickerEmptyState =
+            archived ? .loadingArchivedNotes : .loadingNotes
+        let empty = CapturePickerPresentation(
+            mode: .grouped,
+            sections: [],
+            orderedRowIDs: [],
+            rowsByID: [:],
+            totalCount: 0,
+            matchCount: 0,
+            countText: "0 notes",
+            emptyState: emptyState,
+            visibleRowBudget: openPicker.visibleRowBudget
+        )
+        pickerPresentation = empty
+        openPicker.selectedRowID = nil
+        picker = openPicker
+    }
+
+    private func isCurrentGotoArchivedNotesFetch(
+        request: CaptureNoteGotoScopeState.Request,
+        draft: String,
+        range: CaptureRange
+    ) -> Bool {
+        guard let state = gotoArchivedNotesState else {
+            return false
+        }
+        return state.isCurrent(request)
+            && plainDraft == draft
+            && picker?.source == .noteGoto
+            && picker?.draftSnapshot == draft
+            && picker?.replacementRange == range
+    }
+
+    private func settleFailedGotoArchivedNotesFetch(
+        request: CaptureNoteGotoScopeState.Request,
+        draft: String,
+        range: CaptureRange
+    ) -> Bool {
+        guard isCurrentGotoArchivedNotesFetch(request: request, draft: draft, range: range),
+            var state = gotoArchivedNotesState,
+            state.fail(request)
+        else {
+            return false
+        }
+        gotoArchivedNotesState = state
+        restoreGotoArchivedNotesPresentation(state: state)
+        return true
+    }
+
+    private func restoreGotoArchivedNotesPresentation(state: CaptureNoteGotoScopeState) {
+        guard var openPicker = picker, openPicker.source == .noteGoto else {
+            return
+        }
+        let noteGoto = openPicker.noteGoto ?? CaptureCompletionNoteGoto(vaultRoot: "", listed: 0)
+        let index = makeNoteGotoIndex(candidates: state.candidates, noteGoto: noteGoto)
+        let presentation = index.presentation(filter: openPicker.filterText)
+        pickerIndex = .noteGoto(index)
+        pickerPresentation = presentation
+        openPicker.candidates = state.candidates
+        openPicker.includesArchivedNotes = state.appliedIncludesArchivedNotes
+        openPicker.selectedRowID = CapturePickerNavigation.first(
+            in: presentation.orderedRowIDs
+        )
+        picker = openPicker
+    }
+
+    private func applyGotoArchivedNotesSnapshot(
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String],
+        noteGoto: CaptureCompletionNoteGoto,
+        triggerRemovalRange: CaptureRange?,
+        state: CaptureNoteGotoScopeState
+    ) {
+        guard var openPicker = picker else {
+            return
+        }
+        if !noteGoto.archived {
+            if let identity = processClient?.identityToken {
+                noteGotoSnapshotStore.store(
+                    candidates: candidates,
+                    noteGoto: noteGoto,
+                    bobIdentity: identity
+                )
+            }
+        }
+        let index = makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)
+        let presentation = index.presentation(filter: openPicker.filterText)
+        let selectedID =
+            openPicker.selectedRowID.flatMap {
+                presentation.rowsByID[$0] == nil ? nil : $0
+            } ?? CapturePickerNavigation.first(in: presentation.orderedRowIDs)
+
+        pickerIndex = .noteGoto(index)
+        pickerPresentation = presentation
+        openPicker.candidates = state.candidates
+        openPicker.warnings = warnings
+        openPicker.includesArchivedNotes = state.appliedIncludesArchivedNotes
+        openPicker.noteGoto = noteGoto
+        if let triggerRemovalRange {
+            openPicker.triggerRemovalRange = triggerRemovalRange
+        }
+        openPicker.selectedRowID = selectedID
+        openPicker.visibleRowBudget = presentation.visibleRowBudget
+        openPicker.snapshotIsPartial = false
+        picker = openPicker
+
+        let countText =
+            state.candidates.count == 1
+            ? "1 note"
+            : "\(state.candidates.count) notes"
+        if state.appliedIncludesArchivedNotes {
+            announceStatus("Showing archived notes, \(countText)")
+        } else {
+            announceStatus("Showing notes, \(countText)")
+        }
     }
 
     private func applyOwnerModeParentStatus(source: CapturePickerSource) {
@@ -10752,6 +11095,7 @@ final class CapturePanelModel: ObservableObject {
         }
         clearEqualsGestureArm()
         var gotoSnapshot: CaptureTaskGotoScopeState.Snapshot?
+        var archiveSnapshot: CaptureNoteGotoScopeState.Snapshot?
         if openPicker.source == .taskGoto {
             var state = gotoClosedTasksState ?? CaptureTaskGotoScopeState()
             if state.sessionID == nil {
@@ -10763,6 +11107,18 @@ final class CapturePanelModel: ObservableObject {
             state.invalidatePendingRequest()
             gotoClosedTasksState = state
             gotoSnapshot = state.snapshot
+        }
+        if openPicker.source == .noteGoto {
+            var state = gotoArchivedNotesState ?? CaptureNoteGotoScopeState()
+            if state.sessionID == nil {
+                state.beginSession(
+                    candidates: openPicker.candidates,
+                    appliedIncludesArchivedNotes: openPicker.includesArchivedNotes
+                )
+            }
+            state.invalidatePendingRequest()
+            gotoArchivedNotesState = state
+            archiveSnapshot = state.snapshot
         }
         let range = openPicker.replacementRange
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
@@ -10789,12 +11145,17 @@ final class CapturePanelModel: ObservableObject {
             draftSnapshot: openPicker.draftSnapshot,
             replacementRange: range,
             cursor: openPicker.restoreCursor,
-            candidates: gotoSnapshot?.candidates ?? openPicker.candidates,
+            candidates: gotoSnapshot?.candidates ?? archiveSnapshot?.candidates
+                ?? openPicker.candidates,
             warnings: openPicker.warnings,
             includesClosedTasks: gotoSnapshot?.desiredIncludesClosedTasks
                 ?? openPicker.includesClosedTasks,
             snapshotIncludesClosedTasks: gotoSnapshot?.appliedIncludesClosedTasks
                 ?? openPicker.includesClosedTasks,
+            includesArchivedNotes: archiveSnapshot?.desiredIncludesArchivedNotes
+                ?? openPicker.includesArchivedNotes,
+            snapshotIncludesArchivedNotes: archiveSnapshot?.appliedIncludesArchivedNotes
+                ?? openPicker.includesArchivedNotes,
             taskGotoContinuationKeys: openPicker.taskGotoContinuationKeys,
             noteGoto: openPicker.noteGoto,
             triggerRemovalRange: openPicker.triggerRemovalRange
@@ -11162,7 +11523,8 @@ final class CapturePanelModel: ObservableObject {
                 source: chip.source,
                 index: Self.taskCatalogIndex(
                     source: chip.source,
-                    candidates: chip.candidates
+                    candidates: chip.candidates,
+                    includesClosedTasks: chip.snapshotIncludesClosedTasks
                 ),
                 candidates: chip.candidates,
                 warnings: chip.warnings,
@@ -11212,74 +11574,52 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("Update bob to search notes")
                 return
             }
-            func presentSnapshot(
-                _ candidates: [CaptureCompletionCandidate],
-                _ warnings: [String],
-                _ noteGoto: CaptureCompletionNoteGoto,
-                _ triggerRemovalRange: CaptureRange,
-                _ partial: Bool
-            ) {
-                presentPicker(
-                    source: .noteGoto,
-                    index: .noteGoto(
-                        makeNoteGotoIndex(candidates: candidates, noteGoto: noteGoto)
-                    ),
-                    candidates: candidates,
-                    warnings: warnings,
-                    draft: draft,
-                    range: r,
-                    restoreCursor: chip.cursor,
-                    query: query,
-                    snapshotIsPartial: partial,
-                    noteGoto: noteGoto,
-                    triggerRemovalRange: triggerRemovalRange
-                )
-            }
-            guard needsRefetch, let processClient else {
-                presentSnapshot(chip.candidates, chip.warnings, noteGoto, triggerRemovalRange, false)
+            presentPicker(
+                source: .noteGoto,
+                index: .noteGoto(
+                    makeNoteGotoIndex(candidates: chip.candidates, noteGoto: noteGoto)
+                ),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false,
+                noteGoto: noteGoto,
+                triggerRemovalRange: triggerRemovalRange,
+                includesArchivedNotes: chip.snapshotIncludesArchivedNotes,
+                gotoDesiredIncludesArchivedNotes: chip.includesArchivedNotes
+            )
+
+            guard
+                needsRefetch
+                    || chip.includesArchivedNotes != chip.snapshotIncludesArchivedNotes
+            else {
                 return
             }
-            let requestGeneration = analysisGeneration
-            Task { [weak self, processClient] in
-                let snapshot = try? await processClient.captureComplete(draft, cursor: r.start)
-                await MainActor.run {
-                    guard let self,
-                          self.analysisGeneration == requestGeneration,
-                          self.pickerChip?.source == .noteGoto,
-                          self.pickerChip?.draftSnapshot == draft,
-                          self.plainDraft == draft
-                    else {
-                        return
-                    }
-                    guard let snapshot,
-                          snapshot.context == "note_goto",
-                          snapshot.replacement == r,
-                          let fullNoteGoto = snapshot.noteGoto,
-                          let descriptor = snapshot.picker,
-                          descriptor.kind == "note_goto",
-                          descriptor.scope == "vault",
-                          descriptor.scopeToken == "//",
-                          descriptor.markerRange == r,
-                          stringRange(in: draft, byteRange: descriptor.triggerRemovalRange) != nil
-                    else {
-                        presentSnapshot(
-                            chip.candidates,
-                            chip.warnings,
-                            noteGoto,
-                            triggerRemovalRange,
-                            true
-                        )
-                        return
-                    }
-                    presentSnapshot(
-                        snapshot.candidates,
-                        snapshot.warnings,
-                        fullNoteGoto,
-                        descriptor.triggerRemovalRange,
-                        false
-                    )
+            guard let processClient,
+                var state = gotoArchivedNotesState,
+                let request = state.request(includesArchivedNotes: chip.includesArchivedNotes)
+            else {
+                if var state = gotoArchivedNotesState,
+                    let request = state.request(includesArchivedNotes: chip.includesArchivedNotes)
+                {
+                    _ = state.fail(request)
+                    gotoArchivedNotesState = state
                 }
+                announceStatus("Could not refresh archived notes")
+                return
             }
+            gotoArchivedNotesState = state
+            startGotoArchivedNotesFetch(
+                request: request,
+                draft: draft,
+                range: r,
+                cursor: r.start,
+                processClient: processClient,
+                showPlaceholder: false
+            )
             return
         }
         if needsRefetch, let processClient {
