@@ -521,7 +521,7 @@ final class CaptureBackslashGotoTests: XCTestCase {
         }
     }
 
-    func testLiveBackslashAliasOpensGotoWithOneCaptureComplete() async throws {
+    func testLiveBackslashAliasOpensGotoWithAnalysisPlusWarmPrefetch() async throws {
         let (model, recordURL) = try gotoModel()
         model.plainDraft = "/"
         model.editorTextDidChange(cursorUTF8Offset: 1)
@@ -529,8 +529,14 @@ final class CaptureBackslashGotoTests: XCTestCase {
 
         XCTAssertTrue(model.pickerSourceIsTaskGoto)
         XCTAssertEqual(model.picker?.filterText, "")
+        // The fresh session also warms the Notes snapshot in the
+        // background: one analysis fetch plus one `//` prefetch.
+        await waitUntil {
+            let contents = (try? String(contentsOf: recordURL)) ?? ""
+            return contents.components(separatedBy: "-- //").count - 1 == 1
+        }
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
     }
 
     func testLiveSecondBackslashTypesLiteralAndClosesPicker() async throws {

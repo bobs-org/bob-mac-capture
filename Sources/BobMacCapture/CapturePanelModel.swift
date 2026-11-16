@@ -6334,6 +6334,30 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Update bob to search notes")
     }
 
+    /// True when this completion is the swap target's own response for the
+    /// current draft: the mounted card is stale by design, so the response
+    /// must route to its handler and re-present in place instead of being
+    /// dismissed as a stale open-picker reply.
+    private func isCurrentGotoScopeSwapResponse(
+        _ completion: CaptureCompletionResponse,
+        draft: String
+    ) -> Bool {
+        guard let swap = gotoScopeSwap,
+              plainDraft == swap.targetDraft,
+              draft == swap.targetDraft
+        else {
+            return false
+        }
+        switch (swap.target, completion.context) {
+        case (.notes, "note_goto"):
+            return true
+        case (.tasks, "task_goto"):
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Mounts the failure card when the swap's own fetch throws. Returns
     /// true when the swap consumed the error, so the generic status-text
     /// path stays quiet and the card carries the failure instead.
@@ -7281,7 +7305,7 @@ final class CapturePanelModel: ObservableObject {
         if picker != nil {
             if Self.isRecordCompletion(completion) {
                 closePickerForAccept()
-            } else {
+            } else if !isCurrentGotoScopeSwapResponse(completion, draft: draft) {
                 dismissCompletion()
                 return
             }
@@ -9082,10 +9106,12 @@ final class CapturePanelModel: ObservableObject {
         if completingSwap {
             completeGotoScopeSwapIfTarget(source: source, presentation: presentation)
         }
-        if source == .taskGoto {
-            // A `/` session shows Bob's tasks; fill the warm Notes snapshot
-            // in the background so the next continuation renders instantly.
-            // Guarded by freshness, so refetches are no-ops.
+        // A fresh `/` session (no card mounted, no swap running) fills the
+        // warm Notes snapshot in the background so the next continuation
+        // renders instantly. Refetches, chip reopens for a mounted card,
+        // and swap replaces never spawn: the store is freshness-guarded,
+        // and the swap's own analysis refills it on every real response.
+        if source == .taskGoto, !pickerWasVisible, gotoScopeSwap == nil {
             refreshNoteGotoSnapshot()
         }
     }

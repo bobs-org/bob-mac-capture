@@ -292,7 +292,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         )
     }
 
-    func testSlashOpensGotoPickerWithOneCaptureComplete() async throws {
+    func testSlashOpensGotoPickerWithAnalysisPlusWarmPrefetch() async throws {
         let (model, recordURL) = try gotoModel()
         model.plainDraft = "/"
         model.editorTextDidChange(cursorUTF8Offset: 1)
@@ -306,8 +306,11 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertNil(model.completionResponse)
         XCTAssertEqual(model.statusText, "Pick a task to open — press Tab to browse")
         XCTAssertEqual(model.previewState, .idle)
+        // The fresh session also warms the Notes snapshot in the
+        // background: one analysis fetch plus one `//` prefetch.
+        await waitUntil { Self.recordCount(recordURL, contains: "-- //") == 1 }
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
         XCTAssertFalse(record.contains("argv=capture --"))
         XCTAssertFalse(record.contains("argv=capture-task-id"))
     }
@@ -748,8 +751,12 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
 
         XCTAssertTrue(model.pickerSourceIsTaskGoto)
         XCTAssertEqual(model.picker?.candidates.count, 8)
+        // Reopening from the chip is a fresh session, so it warms the
+        // Notes snapshot once in the background: one analysis fetch plus
+        // one `//` prefetch, and no refetch for the chip itself.
+        await waitUntil { Self.recordCount(recordURL, contains: "-- //") == 1 }
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
     }
 
     func testSlashDeePresentsPartialAfterRefetchAtZero() async throws {
@@ -762,8 +769,11 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertEqual(model.picker?.filterText, "dee")
         XCTAssertEqual(model.picker?.candidates.count, 1)
         XCTAssertEqual(model.picker?.snapshotIsPartial, true)
+        // Two analysis fetches (seeded plus refetch at zero) plus the one
+        // background `//` prefetch from the fresh session open.
+        await waitUntil { Self.recordCount(recordURL, contains: "-- //") == 1 }
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 3)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 0 "))
     }
 
