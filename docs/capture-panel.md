@@ -61,6 +61,12 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
 
 Canceling or completing the prompt restores focus to the capture editor. The editor starts at one visual line, tracks rendered content up to its screen-derived budget, then scrolls internally for longer drafts.
 
+The Go To `/` ⇄ `//` scope swap never unmounts the picker card: continuation
+and peel keep the old scope's rows on screen while the new draft analyzes,
+then replace them in place with the panel height unchanged. See
+[Go To Notes](go-to-notes.md) for the warm snapshot, loading and failure
+states, and announcements.
+
 ## Editor
 
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app

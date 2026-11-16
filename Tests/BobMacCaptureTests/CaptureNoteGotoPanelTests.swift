@@ -324,6 +324,124 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
         XCTAssertEqual(model.picker?.filterText, "cash")
     }
 
+    func testContinuationKeepsCardMountedAndServesWarmSnapshot() async throws {
+        let (model, _) = try noteGotoModel()
+        // Fill the warm snapshot with a validated `//` response.
+        model.plainDraft = "//"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.pickerVisible && model.pickerSourceIsNoteGoto }
+        XCTAssertFalse(model.noteGotoSnapshotStore.isEmpty)
+
+        // Peel back to Tasks, then continue: the card must stay mounted.
+        model.removePickerTrigger()
+        await waitUntil { model.pickerVisible && model.pickerSourceIsTaskGoto }
+        let taskBudget = model.picker?.visibleRowBudget
+
+        model.continuePickerOperator("/")
+        // Synchronous: no teardown, warm rows render before the fetch lands.
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsNoteGoto)
+        XCTAssertEqual(model.picker?.draftSnapshot, "//")
+        XCTAssertEqual(model.picker?.visibleRowBudget, taskBudget)
+        XCTAssertTrue(model.pickerPresentation?.orderedRowIDs.contains("Areas/cash.md") ?? false)
+
+        await waitUntil { model.statusText.hasPrefix("Go To Notes,") }
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsNoteGoto)
+        XCTAssertEqual(model.picker?.visibleRowBudget, taskBudget)
+    }
+
+    func testContinuationWithoutWarmSnapshotShowsLoadingPlaceholder() async throws {
+        let (model, _) = try noteGotoModel(extraEnvironment: [
+            "FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS": "0.5",
+        ])
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible && model.pickerSourceIsTaskGoto }
+
+        // The prefetch is still in flight, so no warm rows exist yet: the
+        // swap mounts the quiet loading placeholder, never a spinner.
+        model.continuePickerOperator("/")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsNoteGoto)
+        XCTAssertEqual(model.pickerPresentation?.emptyState, .loadingNotes)
+        XCTAssertEqual(model.pickerPresentation?.orderedRowIDs, [])
+
+        await waitUntil { model.statusText.hasPrefix("Go To Notes,") }
+        XCTAssertTrue(model.pickerPresentation?.orderedRowIDs.contains("Areas/cash.md") ?? false)
+    }
+
+    func testSwapFailureMountsUnavailableCard() async throws {
+        let (model, _) = try noteGotoModel(extraEnvironment: [
+            "FAKE_BOB_NOTE_GOTO_FAIL_NOTES": "1",
+        ])
+        model.plainDraft = "/"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible && model.pickerSourceIsTaskGoto }
+
+        model.continuePickerOperator("/")
+        XCTAssertTrue(model.pickerVisible)
+        await waitUntil { model.pickerPresentation?.emptyState == .notesUnavailable }
+        XCTAssertEqual(model.statusText, "Couldn't load notes")
+        // The card stays mounted on the failure state; nothing is captured.
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsNoteGoto)
+        XCTAssertNotEqual(
+            model.pickerPresentation?.emptyState,
+            .noMatches(query: "cash")
+        )
+    }
+
+    func testSelectionSurvivesSwapRefresh() async throws {
+        let (model, _) = try noteGotoModel(extraEnvironment: [
+            "FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS": "0.5",
+        ])
+        model.plainDraft = "//"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.pickerVisible && model.pickerSourceIsNoteGoto }
+        let first = try XCTUnwrap(model.picker?.selectedRowID)
+        XCTAssertFalse(model.noteGotoSnapshotStore.isEmpty)
+
+        // Peel to Tasks and continue back: the warm snapshot renders first.
+        model.removePickerTrigger()
+        await waitUntil { model.pickerVisible && model.pickerSourceIsTaskGoto }
+        model.continuePickerOperator("/")
+        XCTAssertTrue(model.pickerSourceIsNoteGoto)
+
+        // Move off the first row while the real fetch is still running.
+        model.selectNextPickerRow()
+        let moved = try XCTUnwrap(model.picker?.selectedRowID)
+        XCTAssertNotEqual(moved, first)
+
+        // The real response replaces the warm rows but keeps the live row.
+        await waitUntil { model.statusText.hasPrefix("Go To Notes,") }
+        XCTAssertEqual(model.picker?.selectedRowID, moved)
+    }
+
+    func testNotesFilterTypingSpawnsNoBobProcess() async throws {
+        let (model, recordURL) = try noteGotoModel()
+        model.plainDraft = "//"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.pickerVisible && model.pickerSourceIsNoteGoto }
+        let completionsBefore = try String(contentsOf: recordURL)
+            .components(separatedBy: "\n")
+            .filter { $0.contains("argv=capture-complete") }
+            .count
+        XCTAssertGreaterThan(completionsBefore, 0)
+
+        model.updatePickerFilter("c")
+        model.updatePickerFilter("ca")
+        model.updatePickerFilter("cash")
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let completionsAfter = try String(contentsOf: recordURL)
+            .components(separatedBy: "\n")
+            .filter { $0.contains("argv=capture-complete") }
+            .count
+        XCTAssertEqual(completionsAfter, completionsBefore)
+        XCTAssertTrue(model.pickerPresentation?.orderedRowIDs.contains("Areas/cash.md") ?? false)
+    }
+
     private func noteGotoModel(
         recordURL: URL? = nil,
         stash: CanceledDraftStash? = nil,

@@ -1468,6 +1468,25 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         )
     }
 
+    /// Quiet placeholder while the `/` ⇄ `//` scope swap is still fetching:
+    /// the card stays mounted and never shows a spinner.
+    public static var loadingNotes: Self {
+        Self(
+            title: "Loading notes…",
+            message: "Fetching the living-notes catalog from bob."
+        )
+    }
+
+    /// The swap fetched but bob could not list notes. Kept distinct from
+    /// "No notes match" (a successful empty search) so a failure never
+    /// reads as an empty vault.
+    public static var notesUnavailable: Self {
+        Self(
+            title: "Couldn't load notes",
+            message: "Bob couldn't list notes — press Backspace to return to tasks and try again."
+        )
+    }
+
     public static var noCaptureNoteTasks: Self {
         Self(
             title: "No open tasks",

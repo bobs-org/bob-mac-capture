@@ -132,7 +132,7 @@ replaces the native cut shortcut only while the Go To picker is open.
 
 Type a second `/` in an empty Go To · Tasks filter or paste `//query` as a
 whole draft. Bob's `note_goto` results open read-only. See [Go To Notes](go-to-notes.md)
-for keys and compatibility.
+for keys, swap, snapshot, and compatibility.
 
 ## Parent Task Picker
 

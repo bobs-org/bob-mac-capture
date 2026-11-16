@@ -510,6 +510,38 @@ struct CapturePanelFocusRequest: Equatable {
     let target: CapturePanelFocusTarget
 }
 
+/// In-flight `/` ⇄ `//` scope swap. The card stays mounted on the old
+/// scope's rows while the new scope's analysis runs; the real response
+/// then re-presents in place, keeps the panel height (the carried budget),
+/// and keeps the live selection on the same row ID when it survives.
+private struct GotoScopeSwapState: Equatable {
+    enum Target: Equatable {
+        case notes
+        case tasks
+    }
+
+    /// Which scope the swap is moving to. Only a present of this scope
+    /// completes the swap.
+    var target: Target
+    /// The exact draft the swap is moving to (`//…` or `/…`).
+    var targetDraft: String
+    /// Token ranges for the target draft, captured at suspend time so a
+    /// failed fetch can still mount the failure card for the right token.
+    var markerRange = CaptureRange(start: 0, end: 0)
+    var triggerRemovalRange = CaptureRange(start: 0, end: 0)
+    var restoreCursor = 0
+    /// Panel height carried across the swap.
+    var budget = 4
+    /// Tasks snapshot retained when continuing to Notes, restored
+    /// instantly on the peel back.
+    var retainedTaskCandidates: [CaptureCompletionCandidate] = []
+    var retainedTaskWarnings: [String] = []
+    var retainedTaskContinuationKeys: [String] = []
+    var retainedTaskIncludesClosedTasks = false
+    var retainedTaskRange: CaptureRange?
+    var retainedTaskDraft = ""
+}
+
 private struct CapturePullInPreviewSnapshot {
     let draft: String
     let clientIdentity: String
@@ -1064,6 +1096,21 @@ final class CapturePanelModel: ObservableObject {
     /// Candidate provenance and request ordering for the active Go To session.
     /// Core keeps requested scope separate from the scope of the displayed rows.
     private var gotoClosedTasksState: CaptureTaskGotoScopeState?
+    /// In-flight `/` ⇄ `//` scope swap. While set, the picker card stays
+    /// mounted: the old scope's rows keep showing until the new scope's
+    /// response re-presents in place, so the panel never blinks through
+    /// the idle agenda. The retained task snapshot restores Tasks rows
+    /// instantly on the peel back.
+    private var gotoScopeSwap: GotoScopeSwapState?
+    /// Warm `note_goto` rows. Rendered immediately on continuation while
+    /// the real `//` analysis revalidates; filled only from validated
+    /// `note_goto` responses, never persisted, never logged.
+    var noteGotoSnapshotStore = NoteGotoSnapshotStore()
+    /// In-flight warm-snapshot prefetch. Best-effort only: failures stay
+    /// silent and the next trigger retries.
+    private var noteGotoPrefetchTask: Task<Void, Never>?
+    /// In-flight debounced vault invalidation for the warm snapshot.
+    private var noteGotoWatcherTask: Task<Void, Never>?
     private var relationLabelSuggestionGeneration: UInt64 = 0
     /// In-flight `relation_label` probe. Submit must not start a second
     /// request for the same prompt/draft/authored label: bumping generation
@@ -6287,6 +6334,312 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Update bob to search notes")
     }
 
+    /// Mounts the failure card when the swap's own fetch throws. Returns
+    /// true when the swap consumed the error, so the generic status-text
+    /// path stays quiet and the card carries the failure instead.
+    private func failGotoScopeSwapIfTarget() -> Bool {
+        guard let swap = gotoScopeSwap,
+              swap.target == .notes,
+              plainDraft == swap.targetDraft
+        else {
+            return false
+        }
+        presentNoteGotoUnavailable(
+            draft: swap.targetDraft,
+            markerRange: swap.markerRange,
+            triggerRemovalRange: swap.triggerRemovalRange,
+            restoreCursor: swap.restoreCursor,
+            budget: swap.budget
+        )
+        return true
+    }
+
+    /// Suspends the mounted picker across a `/` ⇄ `//` scope swap instead
+    /// of tearing it down. The card keeps showing the old scope's rows
+    /// until the new scope's response re-presents in place; the panel
+    /// height never changes because the carried budget survives the swap.
+    private func suspendPickerForGotoSwap(to target: GotoScopeSwapState.Target, targetDraft: String) {
+        retireAliasTipDisplayEligibility()
+        clearEqualsGestureArm()
+        if let openPicker = picker {
+            clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
+        }
+        presentedAliasTip = nil
+        pickerChip = nil
+        var swap = gotoScopeSwap ?? GotoScopeSwapState(target: target, targetDraft: targetDraft)
+        swap.target = target
+        swap.targetDraft = targetDraft
+        gotoScopeSwap = swap
+        requestFocus(.editor)
+    }
+
+    /// Completes a scope swap when the real response for the target scope
+    /// presents: announces the new scope with its row count and clears the
+    /// in-flight swap. Immediate warm/retained renders keep the swap open.
+    private func completeGotoScopeSwapIfTarget(
+        source: CapturePickerSource,
+        presentation: CapturePickerPresentation
+    ) {
+        guard let swap = gotoScopeSwap else {
+            return
+        }
+        let matches: Bool = switch (swap.target, source) {
+        case (.notes, .noteGoto): true
+        case (.tasks, .taskGoto): true
+        default: false
+        }
+        guard matches else {
+            return
+        }
+        gotoScopeSwap = nil
+        announceStatus("\(source.appearedAnnouncementPrefix), \(presentation.countText)")
+    }
+
+    /// Presents the warm snapshot's rows immediately on continuation, so
+    /// the swap never shows a blank card. The real `//` analysis (already
+    /// scheduled) replaces them only when its content differs, keeping the
+    /// live selection on the same note path.
+    private func presentWarmNoteGotoSnapshot(
+        _ snapshot: NoteGotoSnapshot,
+        draft: String,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        restoreCursor: Int,
+        budget: Int?
+    ) {
+        let query = Self.noteGotoPickerQuery(in: draft, range: markerRange, cursor: restoreCursor)
+        presentPicker(
+            source: .noteGoto,
+            index: .noteGoto(
+                NoteGotoPickerIndex(candidates: snapshot.candidates, noteGoto: snapshot.noteGoto)
+            ),
+            candidates: snapshot.candidates,
+            warnings: [],
+            draft: draft,
+            range: markerRange,
+            restoreCursor: restoreCursor,
+            query: query,
+            snapshotIsPartial: true,
+            noteGoto: snapshot.noteGoto,
+            triggerRemovalRange: triggerRemovalRange,
+            preservingBudget: budget
+        )
+    }
+
+    /// Presents the retained Tasks rows instantly on the peel back, so the
+    /// swap never shows a blank card. The real `/` analysis (already
+    /// scheduled) replaces them only when its content differs.
+    private func presentRetainedTaskGotoSnapshot(
+        draft: String,
+        range: CaptureRange,
+        restoreCursor: Int,
+        budget: Int?
+    ) {
+        guard let swap = gotoScopeSwap, !swap.retainedTaskCandidates.isEmpty else {
+            return
+        }
+        presentPicker(
+            source: .taskGoto,
+            index: .taskGoto(
+                TaskLinkPickerIndex(candidates: swap.retainedTaskCandidates, mode: .taskGoto)
+            ),
+            candidates: swap.retainedTaskCandidates,
+            warnings: swap.retainedTaskWarnings,
+            draft: draft,
+            range: range,
+            restoreCursor: restoreCursor,
+            query: "",
+            snapshotIsPartial: true,
+            taskGotoContinuationKeys: swap.retainedTaskContinuationKeys,
+            includesClosedTasks: swap.retainedTaskIncludesClosedTasks,
+            preservingBudget: budget
+        )
+    }
+
+    /// Presents the quiet loading placeholder while the swap's `//` fetch
+    /// is still running and no warm snapshot exists: the card stays
+    /// mounted with no spinner. Only call while a notes swap is in flight.
+    private func presentNoteGotoLoading(
+        draft: String,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        restoreCursor: Int,
+        budget: Int?
+    ) {
+        mountNoteGotoPlaceholder(
+            .loadingNotes,
+            draft: draft,
+            markerRange: markerRange,
+            triggerRemovalRange: triggerRemovalRange,
+            restoreCursor: restoreCursor,
+            budget: budget,
+            announcement: nil
+        )
+    }
+
+    /// Presents an empty Notes card with the failure state when the swap's
+    /// `//` fetch fails. Kept distinct from "No notes match" so a failed
+    /// fetch never reads as an empty vault; the card stays mounted either
+    /// way. Only call while a notes swap is in flight.
+    private func presentNoteGotoUnavailable(
+        draft: String,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        restoreCursor: Int,
+        budget: Int?
+    ) {
+        mountNoteGotoPlaceholder(
+            .notesUnavailable,
+            draft: draft,
+            markerRange: markerRange,
+            triggerRemovalRange: triggerRemovalRange,
+            restoreCursor: restoreCursor,
+            budget: budget,
+            announcement: "Couldn't load notes"
+        )
+    }
+
+    private func mountNoteGotoPlaceholder(
+        _ emptyState: CapturePickerEmptyState,
+        draft: String,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        restoreCursor: Int,
+        budget: Int?,
+        announcement: String?
+    ) {
+        guard gotoScopeSwap?.target == .notes else {
+            return
+        }
+        let empty = CapturePickerPresentation(
+            mode: .grouped,
+            sections: [],
+            orderedRowIDs: [],
+            rowsByID: [:],
+            totalCount: 0,
+            matchCount: 0,
+            countText: "0 notes",
+            emptyState: emptyState,
+            visibleRowBudget: budget ?? 4
+        )
+        pickerIndex = .noteGoto(
+            NoteGotoPickerIndex(
+                candidates: [],
+                noteGoto: CaptureCompletionNoteGoto(vaultRoot: "", listed: 0)
+            )
+        )
+        picker = CapturePickerState(
+            source: .noteGoto,
+            draftSnapshot: draft,
+            replacementRange: markerRange,
+            restoreCursor: restoreCursor,
+            candidates: [],
+            warnings: [],
+            filterText: "",
+            selectedRowID: nil,
+            visibleRowBudget: budget ?? empty.visibleRowBudget,
+            snapshotIsPartial: true,
+            noteGoto: nil,
+            triggerRemovalRange: triggerRemovalRange
+        )
+        pickerPresentation = empty
+        pickerChip = nil
+        editorInputLocked = true
+        requestFocus(.pickerFilter)
+        if let announcement {
+            announceStatus(announcement)
+        }
+    }
+
+    /// Background `//` fetch that fills the warm snapshot. Best-effort:
+    /// failures stay silent and the next trigger retries. Never presents,
+    /// never announces, never touches the mounted card.
+    private func refreshNoteGotoSnapshot() {
+        guard let processClient else {
+            return
+        }
+        let identity = processClient.identityToken
+        guard noteGotoSnapshotStore.needsRefresh(bobIdentity: identity),
+              noteGotoPrefetchTask == nil
+        else {
+            return
+        }
+        noteGotoPrefetchTask = Task { [weak self, processClient] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.noteGotoPrefetchTask = nil
+                }
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            do {
+                let snapshot = try await processClient.captureComplete("//", cursor: 0)
+                guard !Task.isCancelled,
+                      snapshot.context == "note_goto",
+                      let noteGoto = snapshot.noteGoto,
+                      let descriptor = snapshot.picker,
+                      descriptor.kind == "note_goto",
+                      descriptor.scope == "vault",
+                      descriptor.scopeToken == "//"
+                else {
+                    return
+                }
+                await MainActor.run { [weak self] in
+                    guard let self,
+                          self.processClient?.identityToken == identity
+                    else {
+                        return
+                    }
+                    self.noteGotoSnapshotStore.store(
+                        candidates: snapshot.candidates,
+                        noteGoto: noteGoto,
+                        bobIdentity: identity
+                    )
+                }
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Panel-show hook (stale-while-revalidate): an existing snapshot
+    /// refetches in the background while it keeps serving rows. A missing
+    /// snapshot waits for the first `/` session so showing the panel alone
+    /// never spawns bob.
+    func noteGotoSnapshotRefreshIfNeeded() {
+        guard !noteGotoSnapshotStore.isEmpty else {
+            return
+        }
+        refreshNoteGotoSnapshot()
+    }
+
+    /// Vault-watcher hook: a visible note write debounces into a
+    /// background refetch so the next continuation serves fresh rows.
+    /// Dot-paths and non-note files never invalidate the warm snapshot.
+    func noteCatalogDidChange(_ batch: VaultChangeBatch, vaultRoot: String) {
+        guard !noteGotoSnapshotStore.isEmpty,
+              NoteGotoSnapshotStore.isRelevant(batch, vaultRoot: vaultRoot)
+        else {
+            return
+        }
+        noteGotoWatcherTask?.cancel()
+        noteGotoWatcherTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            await MainActor.run { [weak self] in
+                self?.noteGotoWatcherTask = nil
+                self?.refreshNoteGotoSnapshot()
+            }
+        }
+    }
+
     /// Assigns panel status and then marks it as a Record Card refusal.
     /// Callers that assign `statusText` directly stay informational.
     private func refuseStatus(_ message: String) {
@@ -7590,7 +7943,8 @@ final class CapturePanelModel: ObservableObject {
                     query: query,
                     snapshotIsPartial: false,
                     taskGotoContinuationKeys: taskGotoContinuationKeys,
-                    opensWithoutSelection: snapshot.opensWithoutSelection
+                    opensWithoutSelection: snapshot.opensWithoutSelection,
+                    completingSwap: gotoScopeSwap?.target == .tasks
                 )
                 return
             }
@@ -7608,7 +7962,8 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: true,
                 taskGotoContinuationKeys: taskGotoContinuationKeys,
-                opensWithoutSelection: completion.opensWithoutSelection
+                opensWithoutSelection: completion.opensWithoutSelection,
+                completingSwap: gotoScopeSwap?.target == .tasks
             )
             return
         }
@@ -7623,7 +7978,8 @@ final class CapturePanelModel: ObservableObject {
             query: query,
             snapshotIsPartial: false,
             taskGotoContinuationKeys: taskGotoContinuationKeys,
-            opensWithoutSelection: completion.opensWithoutSelection
+            opensWithoutSelection: completion.opensWithoutSelection,
+            completingSwap: gotoScopeSwap?.target == .tasks
         )
     }
 
@@ -7687,6 +8043,11 @@ final class CapturePanelModel: ObservableObject {
                stringRange(in: draft, byteRange: fullDescriptor.triggerRemovalRange) != nil
             {
                 let fullCandidates = snapshot.candidates
+                noteGotoSnapshotStore.store(
+                    candidates: fullCandidates,
+                    noteGoto: fullNoteGoto,
+                    bobIdentity: processClient.identityToken
+                )
                 presentPicker(
                     source: .noteGoto,
                     index: .noteGoto(
@@ -7700,13 +8061,19 @@ final class CapturePanelModel: ObservableObject {
                     query: query,
                     snapshotIsPartial: false,
                     noteGoto: fullNoteGoto,
-                    triggerRemovalRange: fullDescriptor.triggerRemovalRange
+                    triggerRemovalRange: fullDescriptor.triggerRemovalRange,
+                    completingSwap: gotoScopeSwap?.target == .notes
                 )
                 return
             }
             guard isCurrentAnalysis(generation), plainDraft == draft else {
                 return
             }
+            noteGotoSnapshotStore.store(
+                candidates: candidates,
+                noteGoto: noteGoto,
+                bobIdentity: processClient.identityToken
+            )
             presentPicker(
                 source: .noteGoto,
                 index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
@@ -7718,10 +8085,16 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: true,
                 noteGoto: noteGoto,
-                triggerRemovalRange: descriptor.triggerRemovalRange
+                triggerRemovalRange: descriptor.triggerRemovalRange,
+                completingSwap: gotoScopeSwap?.target == .notes
             )
             return
         }
+        noteGotoSnapshotStore.store(
+            candidates: candidates,
+            noteGoto: noteGoto,
+            bobIdentity: processClient.identityToken
+        )
         presentPicker(
             source: .noteGoto,
             index: .noteGoto(NoteGotoPickerIndex(candidates: candidates, noteGoto: noteGoto)),
@@ -7733,7 +8106,8 @@ final class CapturePanelModel: ObservableObject {
             query: query,
             snapshotIsPartial: false,
             noteGoto: noteGoto,
-            triggerRemovalRange: descriptor.triggerRemovalRange
+            triggerRemovalRange: descriptor.triggerRemovalRange,
+            completingSwap: gotoScopeSwap?.target == .notes
         )
     }
 
@@ -8617,8 +8991,15 @@ final class CapturePanelModel: ObservableObject {
         triggerRemovalRange: CaptureRange? = nil,
         opensWithoutSelection: Bool = false,
         includesClosedTasks: Bool = false,
-        gotoDesiredIncludesClosedTasks: Bool? = nil
+        gotoDesiredIncludesClosedTasks: Bool? = nil,
+        preservingBudget: Int? = nil,
+        completingSwap: Bool = false
     ) {
+        // A present for any other draft retires a stale swap: the card
+        // moved on, so a late target response must not complete it.
+        if !completingSwap, let swap = gotoScopeSwap, draft != swap.targetDraft {
+            gotoScopeSwap = nil
+        }
         let pickerWasVisible = picker != nil
         if source == .taskGoto {
             var state = CaptureTaskGotoScopeState()
@@ -8643,6 +9024,26 @@ final class CapturePanelModel: ObservableObject {
         if case .blockID = source, let marker = markerRange {
             scopeLine = Self.scopeLineNumber(draft: draft, markerStart: marker.start)
         }
+        // A scope swap keeps the panel height (the carried budget) and the
+        // live selection on the same row ID when it survives the refresh;
+        // any other present keeps the existing first-row behavior. The real
+        // swap response carries the mounted budget forward, so the height
+        // never changes even when the new scope would budget differently.
+        let selectedRowID: String? = if opensWithoutSelection {
+            nil
+        } else if completingSwap {
+            CapturePickerNavigation.resolvedSelection(
+                preferred: picker?.selectedRowID,
+                in: presentation.orderedRowIDs
+            )
+        } else {
+            CapturePickerNavigation.first(in: presentation.orderedRowIDs)
+        }
+        let budget: Int = if completingSwap, let mounted = picker?.visibleRowBudget {
+            mounted
+        } else {
+            preservingBudget ?? presentation.visibleRowBudget
+        }
         picker = CapturePickerState(
             source: source,
             draftSnapshot: draft,
@@ -8651,10 +9052,8 @@ final class CapturePanelModel: ObservableObject {
             candidates: candidates,
             warnings: warnings,
             filterText: query,
-            selectedRowID: opensWithoutSelection
-                ? nil
-                : CapturePickerNavigation.first(in: presentation.orderedRowIDs),
-            visibleRowBudget: presentation.visibleRowBudget,
+            selectedRowID: selectedRowID,
+            visibleRowBudget: budget,
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLine,
             dependencyOwner: dependencyOwner,
@@ -8680,6 +9079,15 @@ final class CapturePanelModel: ObservableObject {
         editorInputLocked = true
         applyOwnerModeParentStatus(source: source)
         requestFocus(.pickerFilter)
+        if completingSwap {
+            completeGotoScopeSwapIfTarget(source: source, presentation: presentation)
+        }
+        if source == .taskGoto {
+            // A `/` session shows Bob's tasks; fill the warm Notes snapshot
+            // in the background so the next continuation renders instantly.
+            // Guarded by freshness, so refetches are no-ops.
+            refreshNoteGotoSnapshot()
+        }
     }
 
     /// Toggle completed rows for the current Go To session. Each fetch is a
@@ -10169,10 +10577,69 @@ final class CapturePanelModel: ObservableObject {
         }
         let suppressedStart = openPicker.replacementRange.start
         let opensNotesFromTaskGoto = openPicker.source == .taskGoto && key == "/"
+        if opensNotesFromTaskGoto {
+            continueTaskGotoToNotes(openPicker: openPicker, text: text, caret: caret)
+            return
+        }
         closePickerForAccept()
-        pickerAutoOpenSuppressedStart = opensNotesFromTaskGoto ? nil : suppressedStart
+        pickerAutoOpenSuppressedStart = suppressedStart
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+    }
+
+    /// Mounted `/` → `//` continuation. The Tasks rows stay on screen (the
+    /// card never unmounts) while the new draft analyzes; the warm snapshot
+    /// renders immediately when one exists, else a quiet loading
+    /// placeholder. The real `//` response then replaces in place, keeping
+    /// the panel height and the live selection.
+    private func continueTaskGotoToNotes(
+        openPicker: CapturePickerState,
+        text: String,
+        caret: Int
+    ) {
+        let tokenStart = openPicker.replacementRange.start
+        let markerRange = CaptureRange(start: tokenStart, end: tokenStart + 2)
+        let triggerRemovalRange = CaptureRange(start: tokenStart + 1, end: tokenStart + 2)
+        let budget = openPicker.visibleRowBudget
+        suspendPickerForGotoSwap(to: .notes, targetDraft: text)
+        var swap = gotoScopeSwap ?? GotoScopeSwapState(target: .notes, targetDraft: text)
+        swap.target = .notes
+        swap.targetDraft = text
+        swap.markerRange = markerRange
+        swap.triggerRemovalRange = triggerRemovalRange
+        swap.restoreCursor = caret
+        swap.budget = budget
+        swap.retainedTaskCandidates = openPicker.candidates
+        swap.retainedTaskWarnings = openPicker.warnings
+        swap.retainedTaskContinuationKeys = openPicker.taskGotoContinuationKeys
+        swap.retainedTaskIncludesClosedTasks = openPicker.includesClosedTasks
+        swap.retainedTaskRange = openPicker.replacementRange
+        swap.retainedTaskDraft = openPicker.draftSnapshot
+        gotoScopeSwap = swap
+        pickerAutoOpenSuppressedStart = nil
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        if let identity = processClient?.identityToken,
+           let warm = noteGotoSnapshotStore.rows(bobIdentity: identity)
+        {
+            presentWarmNoteGotoSnapshot(
+                warm,
+                draft: text,
+                markerRange: markerRange,
+                triggerRemovalRange: triggerRemovalRange,
+                restoreCursor: caret,
+                budget: budget
+            )
+        } else {
+            presentNoteGotoLoading(
+                draft: text,
+                markerRange: markerRange,
+                triggerRemovalRange: triggerRemovalRange,
+                restoreCursor: caret,
+                budget: budget
+            )
+        }
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
     }
 
@@ -10202,6 +10669,8 @@ final class CapturePanelModel: ObservableObject {
         presentedAliasTip = nil
         pickerPresentation = nil
         pickerIndex = nil
+        // Escaping abandons an in-flight scope swap with the card.
+        gotoScopeSwap = nil
         clearEditorInputLockIfFree()
         if plainDraft == openPicker.draftSnapshot,
            stringRange(in: plainDraft, start: openPicker.restoreCursor, end: openPicker.restoreCursor) != nil
@@ -10414,15 +10883,7 @@ final class CapturePanelModel: ObservableObject {
             }
             var text = plainDraft
             text.removeSubrange(deleteRange)
-            closePickerForAccept()
-            pickerAutoOpenSuppressedStart = nil
-            suppressedCompletionAcceptanceDraft = text
-            setPlainDraft(text, cursorUTF8Offset: removal.start, suppressSelectionCallbacks: true)
-            scheduleAnalysis(
-                cursorUTF8Offset: removal.start,
-                requestCompletion: true,
-                trigger: .edit
-            )
+            peelNoteGotoToTasks(openPicker: picker, text: text, caret: removal.start)
             return
         }
         if picker.source == .taskLink || picker.source == .taskGoto
@@ -10478,6 +10939,34 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         cancelPicker()
+    }
+
+    /// Mounted `//` → `/` peel. The Notes rows stay on screen (the card
+    /// never unmounts) while the new draft analyzes; the retained Tasks
+    /// rows render immediately when this swap continued from a Tasks
+    /// session, else the card waits on the real `/` response. The response
+    /// then replaces in place, keeping the panel height.
+    private func peelNoteGotoToTasks(
+        openPicker: CapturePickerState,
+        text: String,
+        caret: Int
+    ) {
+        let budget = openPicker.visibleRowBudget
+        suspendPickerForGotoSwap(to: .tasks, targetDraft: text)
+        pickerAutoOpenSuppressedStart = nil
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        // The `/` token covers one byte ending at the caret after the
+        // peel; without a retained snapshot the mounted Notes rows wait
+        // for the real response below.
+        let taskRange = CaptureRange(start: max(caret - 1, 0), end: caret)
+        presentRetainedTaskGotoSnapshot(
+            draft: text,
+            range: taskRange,
+            restoreCursor: caret,
+            budget: budget
+        )
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
     }
 
     /// Second `\` right after the alias: rewrites the bare `/` Go To draft
@@ -11330,6 +11819,7 @@ final class CapturePanelModel: ObservableObject {
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
+        gotoScopeSwap = nil
         pickerChip = nil
         clearEditorInputLockIfFree()
         requestFocus(.editor)
@@ -11361,6 +11851,7 @@ final class CapturePanelModel: ObservableObject {
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
+        gotoScopeSwap = nil
         clearEditorInputLockIfFree()
         requestFocus(.editor)
         announceStatus("Draft changed — reopen the task picker")
@@ -11375,6 +11866,7 @@ final class CapturePanelModel: ObservableObject {
             pickerChip = nil
             pickerAutoOpenSuppressedStart = nil
             gotoClosedTasksState = nil
+            gotoScopeSwap = nil
             return
         }
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
@@ -11384,6 +11876,7 @@ final class CapturePanelModel: ObservableObject {
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
+        gotoScopeSwap = nil
         pickerChip = nil
         pickerAutoOpenSuppressedStart = nil
         clearEditorInputLockIfFree()
@@ -11405,6 +11898,7 @@ final class CapturePanelModel: ObservableObject {
         pickerPresentation = nil
         pickerIndex = nil
         gotoClosedTasksState = nil
+        gotoScopeSwap = nil
         pickerChip = nil
         pickerAutoOpenSuppressedStart = nil
     }
@@ -17823,7 +18317,11 @@ final class CapturePanelModel: ObservableObject {
                                 guard self?.isCurrentAnalysis(generation) == true else {
                                     return
                                 }
-                                self?.statusText = String(describing: error)
+                                // A failed swap fetch mounts the failure card
+                                // instead of flashing the raw error.
+                                if self?.failGotoScopeSwapIfTarget() != true {
+                                    self?.statusText = String(describing: error)
+                                }
                                 self?.editAnalysisBaseline = draft
                             }
                         }
@@ -17853,6 +18351,7 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return
                     }
+                    self?.failGotoScopeSwapIfTarget()
                     self?.previewState = .failed(String(describing: error))
                 }
             }

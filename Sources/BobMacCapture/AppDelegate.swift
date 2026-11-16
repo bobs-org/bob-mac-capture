@@ -966,6 +966,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.refreshTargetsWhenPossible(reason: .watcher)
                     }
                     self.agendaStore?.vaultDidChange(batch)
+                    self.panelModel?.noteCatalogDidChange(batch, vaultRoot: vaultPath)
                 }
             },
             onFailure: { [weak self] message in
@@ -995,6 +996,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the model refresh as well would launch two `capture-targets` processes in
         // the same cancellation lane every time the panel opens.
         refreshTargetsWhenPossible(reason: .show)
+        // Stale-while-revalidate for the warm Notes snapshot: an existing
+        // snapshot refetches while it keeps serving rows. A missing one
+        // waits for the first `/` session, so showing the panel alone never
+        // spawns bob.
+        panelModel?.noteGotoSnapshotRefreshIfNeeded()
     }
 
     /// Ctrl+Tab hop from either panel, deferred to the next main-queue

@@ -157,6 +157,7 @@ enum CapturePickerRichText {
 struct CapturePickerCard: View {
     @ObservedObject var model: CapturePanelModel
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var budget: Int {
         model.picker?.visibleRowBudget ?? 4
@@ -245,6 +246,11 @@ struct CapturePickerCard: View {
                     }
                 }
             }
+            // A `/` ⇄ `//` scope swap replaces the rows in place (about
+            // 120 ms ease-out) instead of tearing the card down. Reduce
+            // Motion swaps instantly.
+            .id("picker-rows-\(source)")
+            .transition(.opacity)
 
             Divider()
 
@@ -259,6 +265,9 @@ struct CapturePickerCard: View {
                 )
             }
         }
+        // Scope swaps cross-fade the rows and capsule; Reduce Motion swaps
+        // instantly. Typing never changes `source`, so filtering stays still.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: source)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: CapturePanelLayout.pickerCornerRadius))
         .overlay(
@@ -540,6 +549,10 @@ private struct CapturePickerFilterBar: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // The scope capsule morphs across `/` ⇄ `//` with the card's
+            // swap animation (instant under Reduce Motion).
+            .id("goto-scope-capsule-\(source)")
+            .transition(.opacity)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.background.opacity(0.45), in: Capsule())

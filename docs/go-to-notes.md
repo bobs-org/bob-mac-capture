@@ -27,3 +27,16 @@ No `capture` request is made. Backspace on an empty Notes filter peels Bob's
 removes `/`. Escape clears a search first, then leaves a `//` reopen chip.
 Command-X, Shift-Return, and Option-Return are consumed. Control-C discards the
 navigation draft without stashing it.
+
+The card stays mounted across the swap: the scope capsule morphs, rows
+cross-fade in about 120 ms with an ease-out curve (instant under Reduce
+Motion), and the panel height never changes. Continuation renders the warm
+in-memory Notes snapshot immediately while the real `//` fetch revalidates
+and replaces only on change, keeping the live row; the peel back restores
+the retained Tasks rows the same way. The snapshot fills from a background
+`//` fetch on the first `/` session, on panel show (stale-while-revalidate),
+and on debounced visible-note vault events; it is never persisted or logged.
+Until rows exist, a quiet "Loading notes…" placeholder shows — never a
+spinner. A failed fetch shows "Couldn't load notes", distinct from an empty
+search. Scope changes announce ("Go To Notes, 184 notes"), and filter result
+counts announce as usual.

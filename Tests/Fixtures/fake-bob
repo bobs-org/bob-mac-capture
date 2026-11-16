@@ -2644,6 +2644,10 @@ JSON
       sleep "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS}"
     fi
     if [[ "${FAKE_BOB_NOTE_GOTO_FIXTURES:-}" == "1" ]]; then
+      if [[ "${draft}" == "//"* && "${FAKE_BOB_NOTE_GOTO_FAIL_NOTES:-}" == "1" ]]; then
+        printf 'fake capture-complete failure\n' >&2
+        exit 42
+      fi
       note_fixture=""
       case "${draft}" in
         "/")
