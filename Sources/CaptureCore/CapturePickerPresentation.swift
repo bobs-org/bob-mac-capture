@@ -93,6 +93,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case activeTask
     case taskLink
     case taskGoto
+    case noteGoto
     case dependency
     case blockedTask
     case linksTo
@@ -191,7 +192,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskLink:
             return 58 // `:`
         case .taskGoto:
-            return 47 // `/`
+            return 47  // `/`
+        case .noteGoto:
+            return 47  // `//`
         case .dependency:
             return 38 // `&`
         case .blockedTask:
@@ -220,6 +223,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks by text, note, or ^id"
         case .taskGoto:
             return "Search tasks to open by text, note, or ^id"
+        case .noteGoto:
+            return "Search notes by title, alias, or path"
         case .dependency:
             return "Search tasks by text, note, or ^id"
         case .blockedTask:
@@ -255,6 +260,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search open tasks"
         case .taskGoto:
             return "Search tasks to open"
+        case .noteGoto:
+            return "Search notes to open"
         case .dependency:
             return "Search tasks to depend on"
         case .blockedTask:
@@ -291,6 +298,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return ":"
         case .taskGoto:
             return "/"
+        case .noteGoto:
+            return "//"
         case .dependency:
             return "&"
         case .blockedTask:
@@ -337,7 +346,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskLink:
             return "Open Tasks"
         case .taskGoto:
-            return "Go To"
+            return "Go To · Tasks"
+        case .noteGoto:
+            return "Go To · Notes"
         case .dependency:
             return "Depends On"
         case .blockedTask:
@@ -374,6 +385,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse open tasks"
         case .taskGoto:
             return "Go to a task"
+        case .noteGoto:
+            return "Go to a note"
         case .dependency:
             return "Choose dependency"
         case .blockedTask:
@@ -413,6 +426,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "magnifyingglass"
         case .taskGoto:
             return "arrow.up.forward.square"
+        case .noteGoto:
+            return "doc.text"
         case .dependency:
             return "link"
         case .blockedTask:
@@ -441,6 +456,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the Task Link Picker for the : item (Tab)."
         case .taskGoto:
             return "Reopen the Go To picker for the / item (Tab)."
+        case .noteGoto:
+            return "Reopen the Go To Notes picker for the // item (Tab)."
         case .dependency:
             return "Reopen the dependency picker for the & item (Tab)."
         case .blockedTask:
@@ -471,6 +488,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse open tasks"
         case .taskGoto:
             return "Go to a task"
+        case .noteGoto:
+            return "Go to a note"
         case .dependency:
             return "Choose dependency"
         case .blockedTask:
@@ -501,6 +520,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the Task Link Picker for the current item."
         case .taskGoto:
             return "Opens the Go To picker for the current draft."
+        case .noteGoto:
+            return "Opens the Go To Notes picker for the current draft."
         case .dependency:
             return "Opens the dependency picker for the current item."
         case .blockedTask:
@@ -530,7 +551,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskLink:
             return "Task link picker"
         case .taskGoto:
-            return "Go To picker"
+            return "Go To Tasks picker"
+        case .noteGoto:
+            return "Go To Notes picker"
         case .dependency:
             return "Dependency picker"
         case .blockedTask:
@@ -566,7 +589,11 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskLink:
             return "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Control-Return inserts, captures, and opens, Escape cancels."
         case .taskGoto:
-            return "Arrow keys move, Return or Command-Return opens the task in Obsidian, Escape cancels."
+            return
+                "Arrow keys move, Return or Command-Return opens the task in Obsidian, Escape cancels."
+        case .noteGoto:
+            return
+                "Arrow keys move, Return, Tab, Command-Return, or Control-Return opens the note in Obsidian without writing, Escape cancels."
         case .dependency:
             return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Control-Return inserts, captures, and opens, Escape cancels."
         case .blockedTask:
@@ -597,7 +624,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .taskLink:
             return "Open tasks"
         case .taskGoto:
-            return "Go To"
+            return "Go To Tasks"
+        case .noteGoto:
+            return "Go To Notes"
         case .dependency:
             return "Prerequisites"
         case .blockedTask:
@@ -650,7 +679,7 @@ public enum CapturePickerSource: Equatable, Sendable {
 
     private var controlReturnHint: (keys: String, action: String)? {
         switch self {
-        case .taskGoto, .linksTo, .linkedFrom:
+        case .taskGoto, .noteGoto, .linksTo, .linkedFrom:
             return nil
         case .taskComplete:
             return ("⌃↩", "Complete & Open")
@@ -700,6 +729,15 @@ public enum CapturePickerSource: Equatable, Sendable {
             let toggleHint = ("⌘X", includesClosedTasks ? "Show Open" : "Show Completed")
             items.insert(toggleHint, at: items.count - 1)
             return items
+        case .noteGoto:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Open"),
+                ("Tab", "Open"),
+                ("⌘↩", "Open"),
+                ("⌃↩", "Open"),
+                ("esc", "Clear / Cancel"),
+            ]
         case .dependency:
             // Shift-Return has no start-session behavior on this source:
             // dependencies never smuggle a Pomodoro start into the capture.
@@ -793,6 +831,9 @@ public enum CapturePickerSource: Equatable, Sendable {
                 : "Command X to show completed tasks"
             return
                 "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, \(toggle), Escape to clear or cancel."
+        case .noteGoto:
+            return
+                "Picker keys: up and down to move, Return, Tab, Command Return, or Control Return to open the note in Obsidian without writing, Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Control Return to use it, capture, and open, Escape to clear or cancel."
         case .blockedTask:
@@ -825,6 +866,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.task-link-picker-used"
         case .taskGoto:
             return "org.bobs.bob-mac-capture.task-goto-picker-used"
+        case .noteGoto:
+            return "org.bobs.bob-mac-capture.note-goto-picker-used"
         case .dependency:
             return "org.bobs.bob-mac-capture.dependency-picker-used"
         case .blockedTask:
@@ -872,7 +915,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return context.marker
         case .wikilinkTask(_):
             return "#^"
-        case .activeTask, .taskLink, .taskGoto, .dependency, .blockedTask, .linksTo, .linkedFrom,
+        case .activeTask, .taskLink, .taskGoto, .noteGoto, .dependency, .blockedTask, .linksTo,
+            .linkedFrom,
             .taskComplete:
             return ":"
         }
@@ -891,6 +935,7 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
     case taskLink
     case taskGoto
+    case noteGoto
     case taskParent
     case mergeInSource
     case dependency
@@ -922,6 +967,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick any open task — press Tab to browse"
         case .taskGoto:
             return "Pick a task to open — press Tab to browse"
+        case .noteGoto:
+            return "Pick a note to open — press Tab to browse"
         case .taskParent:
             return "Choose a task to append to — press Tab to browse"
         case .mergeInSource:
@@ -1064,6 +1111,8 @@ public enum CapturePickerGlyph: Equatable, Sendable {
     case task(CapturePickerTaskStatus)
     case anchor
     case note
+    case noteGoto(symbol: String, hue: PomodoroHomeHue?)
+    case noteGotoHint
     case newID(CapturePickerAvailability)
     case alternativeID
     case suggestion
@@ -1096,6 +1145,8 @@ public enum CapturePickerSectionKind: Equatable, Sendable {
     case usedIDs
     case note
     case thisNote
+    case noteGotoGroup
+    case noteGotoHint
 }
 
 /// One picker section: a queued Pomodoro entry, an unqueued status bucket, or
@@ -1204,6 +1255,44 @@ public struct CaptureTaskGotoDestination: Equatable, Sendable {
     }
 }
 
+/// Read-only destination for a Go To Notes row. The app never writes this
+/// path; `openURL()` builds the established one-note, line-less Bob protocol.
+public struct CaptureNoteGotoDestination: Equatable, Sendable {
+    public let vaultRoot: String
+    public let notePath: String
+    public let absolutePath: String
+
+    public init?(vaultRoot: String, notePath: String) {
+        guard vaultRoot.hasPrefix("/"),
+            !notePath.isEmpty,
+            !notePath.hasPrefix("/"),
+            !notePath.split(separator: "/").contains("..")
+        else {
+            return nil
+        }
+        let rootURL = URL(fileURLWithPath: vaultRoot, isDirectory: true).standardizedFileURL
+        let noteURL = rootURL.appendingPathComponent(notePath).standardizedFileURL
+        let rootPath = rootURL.path.hasSuffix("/") ? rootURL.path : rootURL.path + "/"
+        guard noteURL.path.hasPrefix(rootPath) else {
+            return nil
+        }
+        self.vaultRoot = rootURL.path
+        self.notePath = notePath
+        self.absolutePath = noteURL.path
+    }
+
+    public func openURL() -> URL? {
+        let note = CaptureOpenNote(
+            path: absolutePath,
+            relativePath: notePath,
+            role: .note,
+            label: URL(fileURLWithPath: notePath).lastPathComponent
+        )
+        let plan = CaptureOpenPlan(openNotes: [note], captures: [])
+        return ObsidianOpenURL.openNotesURL(for: plan)
+    }
+}
+
 /// An ID-less `:` row's pending block-ID assignment: the routed note, the
 /// stale-safe task ref for `bob capture-task-id`, and Bob's ID suggestions
 /// (possibly empty). Nil on every other row.
@@ -1269,6 +1358,10 @@ public struct CapturePickerRow: Equatable, Sendable {
     public let pullsForward: Bool
     /// Destination present only for rows in the read-only Go To picker.
     public let taskGotoDestination: CaptureTaskGotoDestination?
+    /// Destination present only for rows in the read-only Go To Notes picker.
+    public let noteGotoDestination: CaptureNoteGotoDestination?
+    /// Bob-authored secondary line for a Go To Notes row.
+    public let noteGotoSecondaryText: String?
     public let detail: CapturePickerRowDetail
     public let accessibilityLabel: String
 
@@ -1294,6 +1387,8 @@ public struct CapturePickerRow: Equatable, Sendable {
         scheduledText: String? = nil,
         pullsForward: Bool = false,
         taskGotoDestination: CaptureTaskGotoDestination? = nil,
+        noteGotoDestination: CaptureNoteGotoDestination? = nil,
+        noteGotoSecondaryText: String? = nil,
         detail: CapturePickerRowDetail,
         accessibilityLabel: String
     ) {
@@ -1318,6 +1413,8 @@ public struct CapturePickerRow: Equatable, Sendable {
         self.scheduledText = scheduledText
         self.pullsForward = pullsForward
         self.taskGotoDestination = taskGotoDestination
+        self.noteGotoDestination = noteGotoDestination
+        self.noteGotoSecondaryText = noteGotoSecondaryText
         self.detail = detail
         self.accessibilityLabel = accessibilityLabel
     }
@@ -1363,6 +1460,13 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         Self(
             title: "No tasks to open",
             message: "No open tasks in your capture notes."
+        )
+    }
+
+    public static var noNotesToOpen: Self {
+        Self(
+            title: "No notes to open",
+            message: "No living notes are available in this vault."
         )
     }
 

@@ -70,7 +70,7 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
             CapturePickerNeed.taskGoto.statusText,
             "Pick a task to open — press Tab to browse"
         )
-        XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To")
+        XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To · Tasks")
         XCTAssertEqual(CapturePickerSource.taskGoto.triggerByte, 47)
     }
 

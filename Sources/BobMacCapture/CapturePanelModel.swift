@@ -8700,6 +8700,9 @@ final class CapturePanelModel: ObservableObject {
         case .taskGoto:
             // Bob's `task_goto` replacement already includes the `/` sigil.
             return replacementRange
+        case .noteGoto:
+            // Bob's `note_goto` replacement includes the `//` scope token.
+            return replacementRange
         case .dependency, .blockedTask, .linksTo, .linkedFrom:
             // Bob's directional replacement includes `&`, `*`, `~`, or `~~`,
             // with any quoted note included.
@@ -10402,6 +10405,8 @@ final class CapturePanelModel: ObservableObject {
                         )
                     case .taskGoto:
                         return
+                    case .noteGoto:
+                        return
                     case .dependency, .blockedTask, .linksTo, .linkedFrom:
                         let direction = chip.source.dependencyDirection ?? .prerequisite
                         let expectedContext: String
@@ -10526,6 +10531,8 @@ final class CapturePanelModel: ObservableObject {
                 snapshotIsPartial: false
             )
         case .taskGoto:
+            return
+        case .noteGoto:
             return
         case .dependency, .blockedTask, .linksTo, .linkedFrom:
             let direction = chip.source.dependencyDirection ?? .prerequisite
@@ -11728,6 +11735,8 @@ final class CapturePanelModel: ObservableObject {
                 index = .taskGoto(
                     TaskLinkPickerIndex(candidates: returnPicker.candidates, mode: .taskGoto)
                 )
+            case .noteGoto:
+                return
             case .taskComplete:
                 index = .taskComplete(TaskCompletePickerIndex(candidates: returnPicker.candidates))
             case .wikilinkTask(_):

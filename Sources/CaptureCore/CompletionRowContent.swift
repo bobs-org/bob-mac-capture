@@ -314,6 +314,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case activeTask
     case taskLink
     case taskGoto
+    case noteGoto
     case taskParent
     case taskDependency
     case blockedTask
@@ -353,6 +354,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
         case "task_goto": self = .taskGoto
+        case "note_goto": self = .noteGoto
         case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
         case "blocked_task": self = .blockedTask
@@ -903,6 +905,16 @@ public func completionRowContent(
         }
         accessibilityHint = "Opens this task in Obsidian without changing the vault."
 
+    case .noteGoto:
+        category = .blockID
+        symbolName = NoteGotoPickerIndex.symbolName(for: candidate.kind ?? "note")
+        contextLabel = "Note to open"
+        primaryText = candidate.title ?? candidate.notePath ?? candidate.replacement
+        let detail = candidate.detail.flatMap { $0.isEmpty ? nil : $0 }
+        let path = candidate.notePath.flatMap { $0.isEmpty ? nil : $0 }
+        secondaryText = [detail, path].compactMap { $0 }.joined(separator: " · ")
+        accessibilityHint = "Opens this note in Obsidian without writing to the vault."
+
     case .taskDependency:
         // The `&` picker owns the card; this is only the stray inline
         // rendering, which reads as a prerequisite rather than neutral
@@ -1399,7 +1411,8 @@ private func bookSymbolName(
         return nil
     }
     switch context {
-    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete, .wikilinkTask, .projectTaskMove:
+    case .activeTask, .taskLink, .taskGoto, .noteGoto, .task, .taskParent, .taskDependency,
+        .blockedTask, .taskComplete, .wikilinkTask, .projectTaskMove:
         return "book"
     default:
         return nil

@@ -92,6 +92,7 @@ enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
     case taskLink(TaskLinkPickerIndex)
     case taskGoto(TaskLinkPickerIndex)
+    case noteGoto(NoteGotoPickerIndex)
     case dependency(DependencyPickerIndex)
     case blockedTask(DependencyPickerIndex)
     case linksTo(DependencyPickerIndex)
@@ -109,6 +110,8 @@ enum CapturePickerIndex {
         case .taskLink(let index):
             return index.presentation(filter: filter)
         case .taskGoto(let index):
+            return index.presentation(filter: filter)
+        case .noteGoto(let index):
             return index.presentation(filter: filter)
         case .dependency(let index):
             return index.presentation(filter: filter)
@@ -140,6 +143,8 @@ enum CapturePickerIndex {
         case .wikilinkTask(let index):
             return index.actionLine(for: row)
         case .taskGoto(let index):
+            return index.actionLine(for: row)
+        case .noteGoto(let index):
             return index.actionLine(for: row)
         case .dependency(let index), .blockedTask(let index), .linksTo(let index),
             .linkedFrom(let index):

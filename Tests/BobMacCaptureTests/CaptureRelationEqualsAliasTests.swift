@@ -751,11 +751,16 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
 
     func testFastDoubleEqualsBeforeReplyCollapsesToOne() async throws {
         let recordURL = makeRecordURL()
+        let rewriteReleaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer {
+            FileManager.default.createFile(atPath: rewriteReleaseURL.path, contents: Data())
+        }
         let (model, controller, textView, panel) = makeHostedEditor(text: "Fix it ")
         defer { panel.orderOut(nil) }
         model.processClient = try processClient(
             recordURL: recordURL,
-            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+            extra: ["FAKE_BOB_REWRITE_RELEASE_PATH": rewriteReleaseURL.path]
         )
 
         XCTAssertNotNil(typeKey(
@@ -765,6 +770,12 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
             controller: controller
         ))
         XCTAssertEqual(textView.string, "Fix it =")
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.split(separator: "\n").filter {
+                $0.hasPrefix("argv=capture-rewrite") && $0.hasSuffix("-- Fix it =")
+            }.count == 1
+        }
         XCTAssertNotNil(typeKey(
             equalsEvent(timestamp: 1.1),
             into: textView,
@@ -775,6 +786,13 @@ final class CaptureRelationEqualsAliasTests: XCTestCase {
 
         // The probe re-asks Bob about the first draft; the alias answer
         // collapses the pair without ever opening the picker.
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.split(separator: "\n").filter {
+                $0.hasPrefix("argv=capture-rewrite") && $0.hasSuffix("-- Fix it =")
+            }.count == 2
+        }
+        try Data().write(to: rewriteReleaseURL)
         await waitUntil {
             textView.string == "Fix it =" && model.equalsProbe == nil
         }

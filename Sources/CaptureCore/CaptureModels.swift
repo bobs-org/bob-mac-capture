@@ -9221,6 +9221,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// Additive record metadata on `record_field`/`record_value` responses.
     /// Older Bob and every other context omit it.
     public let record: CaptureRecordCompletionMeta?
+    /// Additive read-only Go To Notes catalog metadata. Older Bob responses
+    /// omit it; the note picker is only installed when Bob reports this.
+    public let noteGoto: CaptureCompletionNoteGoto?
 
     /// Whether Bob asked for this menu to open with no selected row. Any other value,
     /// including a future one this client does not know, keeps the default selection.
@@ -9252,7 +9255,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         target: CaptureDrawerTarget? = nil,
         placeMenu: CapturePlaceMenu? = nil,
         projectTaskMove: CaptureProjectTaskMoveHeader? = nil,
-        record: CaptureRecordCompletionMeta? = nil
+        record: CaptureRecordCompletionMeta? = nil,
+        noteGoto: CaptureCompletionNoteGoto? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -9280,6 +9284,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.placeMenu = placeMenu
         self.projectTaskMove = projectTaskMove
         self.record = record
+        self.noteGoto = noteGoto
     }
 
     public init(from decoder: Decoder) throws {
@@ -9327,8 +9332,13 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         subject = (try? container.decodeIfPresent(String.self, forKey: .subject)) ?? nil
         target = (try? container.decodeIfPresent(CaptureDrawerTarget.self, forKey: .target)) ?? nil
         placeMenu = (try? container.decodeIfPresent(CapturePlaceMenu.self, forKey: .placeMenu)) ?? nil
-        projectTaskMove = (try? container.decodeIfPresent(CaptureProjectTaskMoveHeader.self, forKey: .projectTaskMove)) ?? nil
-        record = (try? container.decodeIfPresent(CaptureRecordCompletionMeta.self, forKey: .record)) ?? nil
+        projectTaskMove =
+            (try? container.decodeIfPresent(
+                CaptureProjectTaskMoveHeader.self, forKey: .projectTaskMove)) ?? nil
+        record =
+            (try? container.decodeIfPresent(CaptureRecordCompletionMeta.self, forKey: .record))
+            ?? nil
+        noteGoto = try container.decodeIfPresent(CaptureCompletionNoteGoto.self, forKey: .noteGoto)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -9358,8 +9368,26 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case placeMenu = "place_menu"
         case projectTaskMove = "project_task_move"
         case record
+        case noteGoto = "note_goto"
     }
 
+}
+
+/// Bob's read-only Go To Notes catalog metadata. Paths in rows are relative
+/// to `vaultRoot`; Swift joins them only when preparing an Obsidian URL.
+public struct CaptureCompletionNoteGoto: Codable, Equatable, Sendable {
+    public let vaultRoot: String
+    public let listed: Int
+
+    public init(vaultRoot: String, listed: Int) {
+        self.vaultRoot = vaultRoot
+        self.listed = listed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case vaultRoot = "vault_root"
+        case listed
+    }
 }
 
 /// The task a `drawer` completion menu lists drawers for. `route` is Bob's
@@ -10546,6 +10574,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let route: String?
     public let label: String?
     public let kind: String?
+    /// Bob-authored primary search fields for `note_goto`, ordered with the
+    /// displayed title first. Other completion contexts omit this field.
+    public let matchKeys: [String]?
+    /// Bob-authored kind tier used only to break equal note-match scores.
+    public let rank: Int?
+    /// Bob's area hue for the note row. Other contexts omit it.
+    public let hue: PomodoroHomeHue?
     /// Additive target role for the + picker; note rows are notebook bullets.
     public let itemKind: String?
     public let status: String?
@@ -10768,6 +10803,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         route: String? = nil,
         label: String? = nil,
         kind: String? = nil,
+        matchKeys: [String]? = nil,
+        rank: Int? = nil,
+        hue: PomodoroHomeHue? = nil,
         itemKind: String? = nil,
         status: String? = nil,
         title: String? = nil,
@@ -10869,6 +10907,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.route = route
         self.label = label
         self.kind = kind
+        self.matchKeys = matchKeys
+        self.rank = rank
+        self.hue = hue
         self.itemKind = itemKind
         self.status = status
         self.title = title
@@ -10973,6 +11014,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         route = try container.decodeIfPresent(String.self, forKey: .route)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        matchKeys = try container.decodeIfPresent([String].self, forKey: .matchKeys)
+        rank = try container.decodeIfPresent(Int.self, forKey: .rank)
+        hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
         itemKind = (try? container.decodeIfPresent(String.self, forKey: .itemKind)) ?? nil
         status = try container.decodeIfPresent(String.self, forKey: .status)
         title = try container.decodeIfPresent(String.self, forKey: .title)
@@ -11090,6 +11134,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case route
         case label
         case kind
+        case matchKeys = "match_keys"
+        case rank
+        case hue
         case itemKind = "item_kind"
         case status
         case title

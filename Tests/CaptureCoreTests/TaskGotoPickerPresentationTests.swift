@@ -208,7 +208,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
     func testTaskGotoSourceNeedAndCompletionContextStrings() throws {
         XCTAssertEqual(CapturePickerSource.taskGoto.triggerByte, 47)
         XCTAssertEqual(CapturePickerSource.taskGoto.scopeSymbolText, "/")
-        XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To")
+        XCTAssertEqual(CapturePickerSource.taskGoto.scopeCaption, "Go To · Tasks")
         XCTAssertEqual(
             CapturePickerSource.taskGoto.scopeCaption(includesClosedTasks: true),
             "Go To · Completed"
@@ -217,7 +217,7 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
             CapturePickerSource.taskGoto.filterPlaceholder,
             "Search tasks to open by text, note, or ^id"
         )
-        XCTAssertEqual(CapturePickerSource.taskGoto.appearedAnnouncementPrefix, "Go To")
+        XCTAssertEqual(CapturePickerSource.taskGoto.appearedAnnouncementPrefix, "Go To Tasks")
         XCTAssertEqual(
             CapturePickerSource.taskGoto.keyHintItems(includesClosedTasks: true)
                 .first(where: { $0.keys == "⌘X" })?.action,

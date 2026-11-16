@@ -1,0 +1,134 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 2,
+  "replacement": { "start": 0, "end": 2 },
+  "context": "note_goto",
+  "note_goto": {
+    "vault_root": "/Users/example/Vault",
+    "listed": 12
+  },
+  "candidates": [
+    {
+      "replacement": "",
+      "note_path": "2026/20261114.md",
+      "kind": "daily",
+      "title": "November 14",
+      "match_keys": ["November 14", "2026-11-14"],
+      "detail": "Saturday · Week 46",
+      "rank": 7,
+      "group": "today"
+    },
+    {
+      "replacement": "",
+      "note_path": "mac_inbox.md",
+      "kind": "inbox",
+      "title": "mac_inbox",
+      "match_keys": ["mac_inbox", "capture inbox"],
+      "detail": "Capture inbox",
+      "rank": 0,
+      "group": "inbox"
+    },
+    {
+      "replacement": "",
+      "note_path": "Areas/cash.md",
+      "kind": "area",
+      "title": "cash",
+      "match_keys": ["cash", "money"],
+      "detail": "Life",
+      "status": "Area",
+      "hue": "green",
+      "rank": 1,
+      "group": "areas"
+    },
+    {
+      "replacement": "",
+      "note_path": "Areas/north-cash.md",
+      "kind": "area",
+      "title": "Cash planning",
+      "match_keys": ["Cash planning", "cashflow"],
+      "detail": "Life / Money",
+      "hue": "green",
+      "rank": 1,
+      "group": "areas",
+      "depth": 1
+    },
+    {
+      "replacement": "",
+      "note_path": "Projects/Launch.md",
+      "kind": "project",
+      "title": "Launch",
+      "match_keys": ["Launch", "Product launch"],
+      "detail": "Work",
+      "status": "Next",
+      "rank": 2,
+      "group": "projects"
+    },
+    {
+      "replacement": "",
+      "note_path": "Notebooks/Ideas.md",
+      "kind": "notebook",
+      "title": "Ideas",
+      "match_keys": ["Ideas"],
+      "detail": "Product thoughts",
+      "rank": 3,
+      "group": "notebooks"
+    },
+    {
+      "replacement": "",
+      "note_path": "Albums/Photos.md",
+      "kind": "album",
+      "title": "Photos",
+      "match_keys": ["Photos"],
+      "detail": "24 records",
+      "rank": 4,
+      "group": "albums"
+    },
+    {
+      "replacement": "",
+      "note_path": "2026/20261114_habit.md",
+      "kind": "daily",
+      "title": "November 14 habit",
+      "match_keys": ["November 14 habit", "2026-11-14"],
+      "detail": "Saturday habit",
+      "rank": 7
+    },
+    {
+      "replacement": "",
+      "note_path": "ref/papers/cash-review.md",
+      "kind": "ref",
+      "title": "Cash review",
+      "match_keys": ["Cash review"],
+      "detail": "Read",
+      "status": "Read",
+      "rank": 8
+    },
+    {
+      "replacement": "",
+      "note_path": "Views/Monthly.base",
+      "kind": "view",
+      "title": "Monthly review",
+      "match_keys": ["Monthly review", "month view"],
+      "detail": "Obsidian Base",
+      "rank": 8
+    },
+    {
+      "replacement": "",
+      "note_path": "Other/sase_notes.md",
+      "kind": "note",
+      "title": "Reference notes",
+      "match_keys": ["Reference notes"],
+      "detail": "SASE documentation",
+      "rank": 8
+    },
+    {
+      "replacement": "",
+      "note_path": "Other/money.md",
+      "kind": "note",
+      "title": "Money plan",
+      "match_keys": ["Money plan", "money"],
+      "detail": "Personal",
+      "rank": 8
+    }
+  ]
+}

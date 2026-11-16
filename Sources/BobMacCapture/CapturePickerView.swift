@@ -219,11 +219,12 @@ struct CapturePickerCard: View {
                                             showsChip: presentation.mode == .filtered
                                                 || model.picker?.source.isWikilinkTask == true,
                                             isInfoRow: section.kind == .usedIDs
+                                                || section.kind == .noteGotoHint
                                         )
                                         .id(row.id)
                                     }
                                 } header: {
-                                    if section.kind != .matches {
+                                    if section.kind != .matches && section.kind != .noteGotoHint {
                                         CapturePickerSectionHeader(section: section)
                                     }
                                 }
@@ -645,6 +646,8 @@ private struct CapturePickerSectionHeader: View {
             return AnyView(taskCompleteFilteredHeader)
         }
         switch section.kind {
+        case .noteGotoHint:
+            return AnyView(EmptyView())
         case .noteHeading:
             return AnyView(noteHeadingHeader)
         case .suggestions:
@@ -653,7 +656,8 @@ private struct CapturePickerSectionHeader: View {
             return AnyView(usedIDsHeader)
         case .taskCompleteFiltered, .thisNote:
             return AnyView(taskCompleteFilteredHeader)
-        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note:
+        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note,
+            .noteGotoGroup:
             return AnyView(standardHeader)
         }
     }
@@ -777,7 +781,9 @@ private struct CapturePickerSectionHeader: View {
                 Text("· \(subtitle)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if section.kind != .pomodoro, section.kind != .note {
+            } else if section.kind != .pomodoro, section.kind != .note,
+                section.kind != .noteGotoGroup
+            {
                 Text("Not in a Pomodoro")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -825,6 +831,7 @@ private struct CapturePickerRowView: View {
     /// True for dim 28pt "In use" info rows, which are never selectable.
     var isInfoRow: Bool = false
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
     private var isSelected: Bool {
@@ -854,67 +861,173 @@ private struct CapturePickerRowView: View {
         .opacity(row.isHidden ? 0.55 : (isInfoRow || row.isGuarded ? 0.8 : 1.0))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
+        .accessibilityHint(row.noteGotoDestination == nil ? "" : "Opens in Obsidian")
     }
 
+    @ViewBuilder
     private var rowContent: some View {
-        HStack(spacing: 8) {
-            Image(systemName: statusStyle.symbol)
-                .foregroundStyle(statusStyle.color)
-                .frame(width: 16)
-            Text(displayRichText)
-                .font(.body)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(1)
-            if showsChip, let chip = row.chipText {
-                let isQuietWikilinkChip = model.picker?.source.isWikilinkTask == true
-                    && (chip == "Hidden" || chip == "Done" || chip == "Cancelled")
-                Text(chip)
-                    .font(.caption2)
-                    .foregroundStyle(
-                        isQuietWikilinkChip ? Color.secondary : Color.pink
-                    )
+        if case .noteGoto(let symbol, let hue) = row.glyph {
+            noteGotoRowContent(symbol: symbol, hue: hue)
+        } else if case .noteGotoHint = row.glyph {
+            noteGotoHintRowContent
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: statusStyle.symbol)
+                    .foregroundStyle(statusStyle.color)
+                    .frame(width: 16)
+                Text(displayRichText)
+                    .font(.body)
                     .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        isQuietWikilinkChip
-                            ? Color.secondary.opacity(0.15)
-                            : Color.pink.opacity(0.12),
-                        in: Capsule()
-                    )
-            }
-            if let badge = row.badgeText {
-                Text(badge)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
+                if showsChip, let chip = row.chipText {
+                    let isQuietWikilinkChip =
+                        model.picker?.source.isWikilinkTask == true
+                        && (chip == "Hidden" || chip == "Done" || chip == "Cancelled")
+                    Text(chip)
+                        .font(.caption2)
+                        .foregroundStyle(isQuietWikilinkChip ? Color.secondary : Color.pink)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            isQuietWikilinkChip
+                                ? Color.secondary.opacity(0.15)
+                                : Color.pink.opacity(0.12),
+                            in: Capsule()
+                        )
+                }
+                if let badge = row.badgeText {
+                    Text(badge)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.background.opacity(0.6), in: Capsule())
+                }
+                if let scheduled = row.scheduledText {
+                    HStack(spacing: 2) {
+                        Image(systemName: "calendar")
+                        Text(scheduled)
+                    }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.background.opacity(0.6), in: Capsule())
-            }
-            if let scheduled = row.scheduledText {
-                HStack(spacing: 2) {
-                    Image(systemName: "calendar")
-                    Text(scheduled)
+                    .background(.secondary.opacity(0.12), in: Capsule())
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.secondary.opacity(0.12), in: Capsule())
+                Spacer(minLength: 8)
+                locatorText
+                    .frame(maxWidth: 260, alignment: .trailing)
             }
-            Spacer(minLength: 8)
-            locatorText
-                .frame(maxWidth: 260, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(
+                height: isInfoRow
+                    ? CapturePanelLayout.pickerInfoRowHeight
+                    : CapturePanelLayout.pickerRowHeight
+            )
+            .padding(.horizontal, 8)
+            .padding(.leading, CGFloat(min(row.depth, 2)) * 14)
+            .background(rowBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private func noteGotoRowContent(symbol: String, hue: PomodoroHomeHue?) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .foregroundStyle(noteGotoHueColor(hue))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(displayRichText)
+                        .font(.body)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                    if let status = row.chipText, !status.isEmpty {
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.secondary.opacity(0.12), in: Capsule())
+                    }
+                    if let badge = row.badgeText {
+                        Text(badge)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.background.opacity(0.6), in: Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 4) {
+                    if let detail = row.noteGotoSecondaryText, !detail.isEmpty {
+                        Text(detail)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    if let path = row.route, !path.isEmpty {
+                        if let detail = row.noteGotoSecondaryText, !detail.isEmpty {
+                            Text("·")
+                        }
+                        Text(
+                            CapturePickerRichText.displayText(
+                                path,
+                                segments: [],
+                                matches: row.routeMatchRanges
+                            )
+                        )
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                    }
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: isInfoRow ? CapturePanelLayout.pickerInfoRowHeight : CapturePanelLayout.pickerRowHeight)
+        .frame(
+            height: row.noteGotoSecondaryText == nil
+                ? CapturePanelLayout.pickerRowHeight : CapturePanelLayout.pickerRowHeight + 8
+        )
         .padding(.horizontal, 8)
         .padding(.leading, CGFloat(min(row.depth, 2)) * 14)
         .background(rowBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var noteGotoHintRowContent: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(row.displayText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: CapturePanelLayout.pickerInfoRowHeight)
+        .padding(.horizontal, 8)
+        .padding(.leading, CGFloat(min(row.depth, 2)) * 14)
+    }
+
+    private func noteGotoHueColor(_ hue: PomodoroHomeHue?) -> Color {
+        guard let hue else { return .secondary }
+        if case .other = hue {
+            return .secondary
+        }
+        return PomodoroHomeColor.color(for: hue, scheme: colorScheme)
     }
 
     private var statusStyle: (symbol: String, color: Color) {
@@ -925,6 +1038,10 @@ private struct CapturePickerRowView: View {
             return ("paragraphsign", .secondary)
         case .note:
             return ("book.closed", .secondary)
+        case .noteGoto(let symbol, let hue):
+            return (symbol, noteGotoHueColor(hue))
+        case .noteGotoHint:
+            return ("magnifyingglass", .secondary)
         case .newID(let availability):
             switch availability {
             case .available:
@@ -1170,6 +1287,8 @@ private struct CapturePickerDetailStrip: View {
             return nil
         case .taskGoto:
             return "Pick a task to open it in Obsidian — nothing is written"
+        case .noteGoto:
+            return "Pick a note to open it in Obsidian — nothing is written"
         case .dependency, .blockedTask, .linksTo, .linkedFrom:
             // The detail strip teaches the direction-specific insertion token.
             return nil
