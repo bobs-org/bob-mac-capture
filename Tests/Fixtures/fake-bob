@@ -216,6 +216,7 @@ note_goto_parse_fixture() {
     "/") echo note-goto-parse-tasks.json ;;
     "//") echo note-goto-parse-notes.json ;;
     "//cash") echo note-goto-parse-notes-cash.json ;;
+    "//monthly") echo note-goto-parse-notes-monthly.json ;;
     *) return 1 ;;
   esac
 }
