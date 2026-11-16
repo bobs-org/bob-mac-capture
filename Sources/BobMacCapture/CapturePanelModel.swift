@@ -7589,8 +7589,8 @@ final class CapturePanelModel: ObservableObject {
                     restoreCursor: cursor,
                     query: query,
                     snapshotIsPartial: false,
-                    opensWithoutSelection: snapshot.opensWithoutSelection,
-                    taskGotoContinuationKeys: taskGotoContinuationKeys
+                    taskGotoContinuationKeys: taskGotoContinuationKeys,
+                    opensWithoutSelection: snapshot.opensWithoutSelection
                 )
                 return
             }
@@ -7607,8 +7607,8 @@ final class CapturePanelModel: ObservableObject {
                 restoreCursor: cursor,
                 query: query,
                 snapshotIsPartial: true,
-                opensWithoutSelection: completion.opensWithoutSelection,
-                taskGotoContinuationKeys: taskGotoContinuationKeys
+                taskGotoContinuationKeys: taskGotoContinuationKeys,
+                opensWithoutSelection: completion.opensWithoutSelection
             )
             return
         }
@@ -7622,8 +7622,8 @@ final class CapturePanelModel: ObservableObject {
             restoreCursor: cursor,
             query: query,
             snapshotIsPartial: false,
-            opensWithoutSelection: completion.opensWithoutSelection,
-            taskGotoContinuationKeys: taskGotoContinuationKeys
+            taskGotoContinuationKeys: taskGotoContinuationKeys,
+            opensWithoutSelection: completion.opensWithoutSelection
         )
     }
 
@@ -8659,10 +8659,10 @@ final class CapturePanelModel: ObservableObject {
             scopeLineNumber: scopeLine,
             dependencyOwner: dependencyOwner,
             taskCompleteContinuationKeys: taskCompleteContinuationKeys,
+            includesClosedTasks: includesClosedTasks,
             taskGotoContinuationKeys: taskGotoContinuationKeys,
             noteGoto: noteGoto,
-            triggerRemovalRange: triggerRemovalRange,
-            includesClosedTasks: includesClosedTasks
+            triggerRemovalRange: triggerRemovalRange
         )
         pickerMarkerHighlight = markerRange
         applyPickerMarkerHighlight()
@@ -10581,9 +10581,9 @@ final class CapturePanelModel: ObservableObject {
                 restoreCursor: chip.cursor,
                 query: query,
                 snapshotIsPartial: false,
+                taskGotoContinuationKeys: chip.taskGotoContinuationKeys,
                 includesClosedTasks: chip.snapshotIncludesClosedTasks,
-                gotoDesiredIncludesClosedTasks: chip.includesClosedTasks,
-                taskGotoContinuationKeys: chip.taskGotoContinuationKeys
+                gotoDesiredIncludesClosedTasks: chip.includesClosedTasks
             )
 
             guard

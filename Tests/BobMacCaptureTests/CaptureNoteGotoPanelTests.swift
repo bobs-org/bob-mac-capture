@@ -150,10 +150,10 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
     func testRouterReservesNotesKeysAndUsesAdvertisedTaskContinuation() {
         let router = CaptureKeyCommandRouter()
         let notes = CaptureKeyRoutingContext(
-            pickerVisible: true,
             pickerHasSelection: true,
-            pickerFilterIsEmpty: true,
-            pickerSourceIsNoteGoto: true
+            pickerVisible: true,
+            pickerSourceIsNoteGoto: true,
+            pickerFilterIsEmpty: true
         )
         XCTAssertEqual(router.command(for: keyEvent(36), context: notes), .acceptPickerRow)
         XCTAssertEqual(router.command(for: keyEvent(48), context: notes), .acceptPickerRow)
@@ -189,8 +189,8 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(36),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
-                    pickerSourceIsNoteGoto: true
+                    pickerSourceIsNoteGoto: true,
+                    pickerFilterIsEmpty: true
                 )
             ),
             .consumeKey
@@ -198,10 +198,10 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
 
         let tasks = CaptureKeyRoutingContext(
             pickerVisible: true,
-            pickerFilterIsEmpty: true,
             pickerSourceIsTaskGoto: true,
-            draftIsBareGotoSigil: true,
-            pickerOperatorContinuationKeys: ["/"]
+            pickerFilterIsEmpty: true,
+            pickerOperatorContinuationKeys: ["/"],
+            draftIsBareGotoSigil: true
         )
         XCTAssertEqual(
             router.command(for: keyEvent(44, characters: "/"), context: tasks),
@@ -212,8 +212,8 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(44, characters: "/"),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
                     pickerSourceIsTaskGoto: true,
+                    pickerFilterIsEmpty: true,
                     draftIsBareGotoSigil: true
                 )
             ),
@@ -224,8 +224,8 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(42, characters: "\\"),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
                     pickerSourceIsTaskGoto: true,
+                    pickerFilterIsEmpty: true,
                     draftIsBareGotoSigil: true
                 )
             ),
@@ -236,8 +236,8 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(42, characters: "\\"),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
                     pickerSourceIsTaskGoto: true,
+                    pickerFilterIsEmpty: true,
                     draftIsBareGotoSigil: true,
                     backslashLiteralArmed: true
                 )
@@ -256,11 +256,11 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(44, characters: "/"),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
                     pickerSourceIsTaskGoto: true,
+                    pickerFilterIsEmpty: true,
+                    pickerOperatorContinuationKeys: ["/"],
                     draftIsBareGotoSigil: true,
-                    editorHasMarkedText: true,
-                    pickerOperatorContinuationKeys: ["/"]
+                    editorHasMarkedText: true
                 )
             ),
             .consumeKey
@@ -282,10 +282,10 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
                 for: keyEvent(44, characters: "/"),
                 context: CaptureKeyRoutingContext(
                     pickerVisible: true,
-                    pickerFilterIsEmpty: true,
                     pickerSourceIsTaskGoto: true,
-                    draftIsBareGotoSigil: true,
-                    pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys
+                    pickerFilterIsEmpty: true,
+                    pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys,
+                    draftIsBareGotoSigil: true
                 )
             ),
             .showNoteGotoUpgradeHint
@@ -312,7 +312,7 @@ final class CaptureNoteGotoPanelTests: XCTestCase {
         )
         model.plainDraft = "/"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { markerExists(marker) }
+        await waitUntil { self.markerExists(marker) }
         model.plainDraft = "//cash"
         model.editorTextDidChange(cursorUTF8Offset: 6)
         await waitUntil { model.pickerVisible && model.pickerSourceIsNoteGoto }

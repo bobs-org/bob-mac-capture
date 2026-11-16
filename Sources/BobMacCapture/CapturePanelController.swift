@@ -2482,7 +2482,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.moveInboxRouteDestinationHighlight(by: -1)
             return true
         case .continuePickerOperator(let key):
-            backslashLiteralArmed = false
+            model.clearBackslashLiteralArm()
             model.continuePickerOperator(key)
             return true
         case .flipRelationDirection:
