@@ -196,7 +196,7 @@ struct CaptureAgendaRowsView: View {
 }
 
 /// Row-kind structure of a plan's render list: standalone rows (title,
-/// saved budget, warning, state, strip) stay flat, while a group header or one-row
+/// headline, saved budget, warning, state, strip) stay flat, while a group header or one-row
 /// summary starts a group that owns the rows up to the next header,
 /// one-row summary, or strip. Group metadata (role, insets, card,
 /// accessibility label) comes from matching the opening row against
@@ -215,7 +215,7 @@ enum CaptureAgendaSectionBlock {
         case .calendarHeader, .calendarRail, .calendarAllDay, .calendarRow,
              .calendarGap, .calendarConflict, .calendarMore, .calendarClear:
             return true
-        case .title, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
+        case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
              .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup,
              .truncation, .groupOneRow, .strip:
@@ -318,7 +318,7 @@ enum CaptureAgendaChipMap {
                 targets[index] = .strip
                 continue
             }
-            if row.kind == .planBudget {
+            if row.kind == .planBudget || row.kind == .headline {
                 continue
             }
             if let calendar = presentation.calendar {
@@ -532,7 +532,7 @@ struct CaptureAgendaRowView: View {
         switch row.kind {
         case .strip, .truncation, .groupOneRow, .calendarMore:
             return true
-        case .title, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
+        case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine,
              .logHeader, .logEntry, .warning, .duplicate, .struck,
              .retired, .emptyGroup, .calendarHeader, .calendarRail,
@@ -566,7 +566,7 @@ struct CaptureAgendaRowView: View {
 
     private var bottomPad: CGFloat {
         switch row.kind {
-        case .title, .groupHeader, .planBudget, .calendarHeader:
+        case .title, .headline, .groupHeader, .planBudget, .calendarHeader:
             return CGFloat(CaptureAgendaLayoutMetrics.headerBottomSpacing)
         case .stateLine, .strip, .calendarRail:
             return 0
@@ -584,6 +584,8 @@ struct CaptureAgendaRowView: View {
         switch row.kind {
         case .title:
             titleView
+        case .headline:
+            dailyHeadlineView
         case .planBudget:
             if let budget = row.planBudget {
                 CapturePlanBudgetMeterRow(budget: budget)
@@ -788,6 +790,24 @@ struct CaptureAgendaRowView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: - Daily Headline
+
+    /// The Daily Headline directly under the Today title: newspaper
+    /// hierarchy with no chrome, icon, or card. One type step above the
+    /// task-row text, semibold, primary, at most two lines with tail
+    /// truncation. The text is bob's display string verbatim; the app
+    /// never parses Markdown here.
+    private var dailyHeadlineView: some View {
+        Text(row.text)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(row.lineLimit)
+            .truncationMode(.tail)
+            .help(row.text)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(row.accessibilityLabel ?? row.text)
     }
 
     // MARK: - Quiet lines

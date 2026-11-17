@@ -92,7 +92,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         ),
         entries: [CaptureAgendaPomodoro] = [],
         warnings: [String] = [],
-        planBudget: CapturePlanBudget? = nil
+        planBudget: CapturePlanBudget? = nil,
+        headline: String? = nil
     ) -> CaptureAgendaSnapshot {
         CaptureAgendaSnapshot(
             ok: true,
@@ -101,7 +102,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             completedSummary: summary,
             pomodoros: entries,
             warnings: warnings,
-            planBudget: planBudget
+            planBudget: planBudget,
+            headline: headline
         )
     }
 
@@ -1143,5 +1145,68 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             XCTAssertFalse(text.contains("Open in Google Calendar"))
             XCTAssertFalse(text.contains("Join call"))
         }
+    }
+
+    func testHeadlineRowBuildsOnlyForSameDaySnapshot() throws {
+        let headline = "Converge take-home submitted"
+        let sameDay = present(
+            makeSnapshot(
+                entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])],
+                headline: headline
+            )
+        )
+        let headlineRow = try XCTUnwrap(sameDay.headlineRow)
+        XCTAssertEqual(headlineRow.kind, .headline)
+        XCTAssertEqual(headlineRow.text, headline)
+        XCTAssertEqual(headlineRow.depth, 0)
+        XCTAssertEqual(
+            headlineRow.lineLimit,
+            CaptureAgendaLayoutMetrics.dailyHeadlineLineLimit
+        )
+        XCTAssertEqual(headlineRow.accessibilityLabel, "Today's headline, \(headline)")
+
+        let otherDay = CaptureAgendaPresentation(
+            snapshot: makeSnapshot(
+                date: "2026-08-27",
+                entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])],
+                headline: headline
+            ),
+            today: today,
+            locale: locale
+        )
+        XCTAssertNil(otherDay.headlineRow)
+        XCTAssertEqual(otherDay.state, .loading)
+
+        let noHeadline = present(
+            makeSnapshot(entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])])
+        )
+        XCTAssertNil(noHeadline.headlineRow)
+    }
+
+    func testHeadlineRowStaysOnStaleAndShowsWithNoOpen() {
+        let headline = "Ship the alias"
+        let stale = CaptureAgendaPresentation(
+            snapshot: makeSnapshot(headline: headline),
+            today: today,
+            locale: locale,
+            isStale: true
+        )
+        XCTAssertEqual(stale.headlineRow?.text, headline)
+        XCTAssertEqual(stale.state, .noOpen)
+
+        let noOpen = present(makeSnapshot(headline: headline))
+        XCTAssertEqual(noOpen.state, .noOpen)
+        XCTAssertEqual(noOpen.headlineRow?.text, headline)
+    }
+
+    func testHeadlineFixtureBuildsVerbatimRow() throws {
+        let presentation = present(try fixture("agenda-headline.json"))
+        let headlineRow = try XCTUnwrap(presentation.headlineRow)
+        XCTAssertEqual(headlineRow.kind, .headline)
+        XCTAssertEqual(
+            headlineRow.text,
+            "Converge take-home submitted and the zettel album's first draft published for Friday review"
+        )
+        XCTAssertEqual(headlineRow.accessibilityLabel, "Today's headline, \(headlineRow.text)")
     }
 }

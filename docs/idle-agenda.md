@@ -27,11 +27,18 @@ off-clock pill to the Now header. The title line keeps its Worked summary and ad
 dashed `◌ 1h off-clock` chip when Bob reports off-clock minutes in
 `completed_summary.off_clock`.
 
-The row directly under `Today` shows the single saved `TODAY N/C` badge; its cap
-comes from bob's plan config. An older `bob` that omits
-`plan_budget` simply omits this row. A typed capture preview still shows the proposed
-budget for that draft. Plan-config edits appear on the next ordinary agenda refresh,
-including the next panel show.
+Directly under `Today` sits today's Daily Headline when bob supplies one: bob's
+`headline` display text from `capture-pomodoros --tasks`, verbatim, semibold, at
+most two lines. It shows whether or not Pomodoros exist, stays on a
+stale-but-same-day snapshot, and never shows yesterday's headline ("Loading
+today…" until the refresh lands). An older bob that omits `headline` draws no
+headline row.
+
+Below the headline sits the single saved `TODAY N/C` badge; its cap comes from
+bob's plan config. An older `bob` that omits `plan_budget` simply omits this row.
+A typed capture preview still shows the proposed budget for that draft.
+Plan-config edits appear on the next ordinary agenda refresh, including the next
+panel show.
 
 - Freshness and caching. `bob` owns every fact via
   `bob capture-pomodoros --format json --tasks`; the app caches the last good

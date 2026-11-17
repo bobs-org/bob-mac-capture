@@ -7,6 +7,7 @@ final class CaptureAgendaModelsTests: XCTestCase {
         "agenda-current.json",
         "agenda-current-12.json",
         "agenda-empty.json",
+        "agenda-headline.json",
         "agenda-heavy.json",
         "agenda-multiple-timed.json",
         "agenda-no-daily-note.json",
@@ -431,5 +432,43 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertTrue(snapshot.pomodoros.allSatisfy({ $0.notes.isEmpty }))
         XCTAssertTrue(snapshot.pomodoros.allSatisfy({ $0.role == .open }))
         XCTAssertEqual(snapshot.completedSummary, CaptureAgendaCompletedSummary())
+    }
+
+    func testHeadlineDecodesPresentAbsentNullAndBlank() throws {
+        let present = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","headline":"Ship it"}"#.utf8)
+        )
+        XCTAssertEqual(present.headline, "Ship it")
+
+        let trimmed = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","headline":"  Ship it  "}"#.utf8)
+        )
+        XCTAssertEqual(trimmed.headline, "Ship it")
+
+        let absent = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28"}"#.utf8)
+        )
+        XCTAssertNil(absent.headline)
+
+        let null = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","headline":null}"#.utf8)
+        )
+        XCTAssertNil(null.headline)
+
+        let blank = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","headline":"   "}"#.utf8)
+        )
+        XCTAssertNil(blank.headline)
+
+        let headlineFixture = try decodeFixture("agenda-headline.json")
+        XCTAssertEqual(
+            headlineFixture.headline,
+            "Converge take-home submitted and the zettel album's first draft published for Friday review"
+        )
     }
 }

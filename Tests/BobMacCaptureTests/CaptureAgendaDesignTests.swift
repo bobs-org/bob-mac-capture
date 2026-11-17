@@ -31,6 +31,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
         // rest render unfolded.
         let cases: [(base: String, budget: Double)] = [
             ("agenda-current", 2_000),
+            ("agenda-headline", 2_000),
             ("agenda-nothing-running", 2_000),
             ("agenda-heavy", 533),
             ("agenda-empty", 2_000),
@@ -276,7 +277,10 @@ final class CaptureAgendaDesignTests: XCTestCase {
             planBudget: CapturePlanBudget(
                 status: "ok",
                 links: links
-            )
+            ),
+            events: snapshot.events,
+            maxTaskLinkCount: snapshot.maxTaskLinkCount,
+            headline: snapshot.headline
         )
     }
 }

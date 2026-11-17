@@ -16,6 +16,7 @@ public enum CaptureAgendaUnitID: Hashable, Equatable, Sendable {
 /// change always re-measures.
 public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
     case title
+    case headline
     case planBudget
     case multiOpenWarning
     case stateLine
@@ -318,6 +319,12 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
 
     public let state: State
     public let titleRow: CaptureAgendaRow
+    /// Today's Daily Headline, decoded verbatim from bob's display
+    /// string. Present only for a same-day snapshot with a headline;
+    /// nil while the agenda reads "Loading today…", so yesterday's
+    /// headline never shows. It stays on a stale-but-same-day snapshot
+    /// and shows whether or not Pomodoros exist (`.noOpen` included).
+    public let headlineRow: CaptureAgendaRow?
     public let summaryText: String?
     /// True when the last refresh failed but the previous snapshot is
     /// still today: the agenda paints with a "Couldn't refresh" marker
@@ -388,12 +395,14 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         stripFullRow = Self.makeStripRow(names: laterNames, spokenNames: laterSpoken)
         guard snapshot.date == today else {
             state = .loading
+            headlineRow = nil
             planBudgetRow = nil
             groups = []
             calendar = nil
             stateRow = Self.makeStateRow(text: "Loading today…")
             return
         }
+        headlineRow = snapshot.headline.map(Self.makeHeadlineRow)
         planBudgetRow = snapshot.planBudget.map(Self.makePlanBudgetRow)
         calendar = Self.makeCalendar(
             events: snapshot.events,
@@ -473,6 +482,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         return CaptureAgendaPresentation(
             state: .loading,
             titleRow: titleRow,
+            headlineRow: nil,
             summaryText: nil,
             isStale: false,
             hasLiveCountdown: false,
@@ -487,6 +497,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     private init(
         state: State,
         titleRow: CaptureAgendaRow,
+        headlineRow: CaptureAgendaRow? = nil,
         summaryText: String?,
         isStale: Bool,
         hasLiveCountdown: Bool,
@@ -499,6 +510,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     ) {
         self.state = state
         self.titleRow = titleRow
+        self.headlineRow = headlineRow
         self.summaryText = summaryText
         self.isStale = isStale
         self.hasLiveCountdown = hasLiveCountdown
@@ -551,6 +563,19 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             accessoryText: accessory,
             accessibilityLabel: spokenAccessory.isEmpty ? text : "\(text). \(spokenAccessory)",
             titleOffClockText: offClockChipText
+        )
+    }
+
+    /// The Daily Headline row directly under the Today title. The text
+    /// is bob's display string verbatim; the app never parses Markdown
+    /// here.
+    static func makeHeadlineRow(_ text: String) -> CaptureAgendaRow {
+        CaptureAgendaRow(
+            kind: .headline,
+            text: text,
+            depth: 0,
+            lineLimit: CaptureAgendaLayoutMetrics.dailyHeadlineLineLimit,
+            accessibilityLabel: "Today's headline, \(text)"
         )
     }
 

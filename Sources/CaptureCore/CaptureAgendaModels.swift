@@ -129,6 +129,10 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     /// (`capture-pomodoros --tasks` `events`). Nil on an older bob, so
     /// the band stays hidden.
     public let events: CaptureAgendaEvents?
+    /// Today's Daily Headline display text from bob
+    /// (`capture-pomodoros --tasks` `headline`). Trimmed; blank becomes
+    /// nil. Absent (older bob) and `null` both mean "no headline".
+    public let headline: String?
 
     public init(
         ok: Bool = false,
@@ -139,7 +143,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         warnings: [String] = [],
         planBudget: CapturePlanBudget? = nil,
         events: CaptureAgendaEvents? = nil,
-        maxTaskLinkCount: Int? = nil
+        maxTaskLinkCount: Int? = nil,
+        headline: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -150,6 +155,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         self.planBudget = planBudget
         self.events = events
         self.maxTaskLinkCount = maxTaskLinkCount
+        let trimmed = headline?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.headline = (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
     public init(from decoder: Decoder) throws {
@@ -172,6 +179,9 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
             forKey: .events
         )
         maxTaskLinkCount = try container.decodeIfPresent(Int.self, forKey: .maxTaskLinkCount)
+        let rawHeadline = try container.decodeIfPresent(String.self, forKey: .headline)
+        let trimmedHeadline = rawHeadline?.trimmingCharacters(in: .whitespacesAndNewlines)
+        headline = (trimmedHeadline?.isEmpty == false) ? trimmedHeadline : nil
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -191,6 +201,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case planBudget = "plan_budget"
         case events
         case maxTaskLinkCount = "max_task_link_count"
+        case headline
     }
 }
 

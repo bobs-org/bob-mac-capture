@@ -295,6 +295,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `block_id` object, `picker` descriptor, `parent_replacement`, Parent Task continuation metadata, `pomodoro_start_name` context
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
+- `headline` on `capture-pomodoros --tasks` (today's Daily Headline display text)
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
 - `place_menu` chrome; notebook section candidates (`group`, `detail`, `refused`, `consequence`, `creates`, `cursor_after`); span `notebook` / `section_action` / `title`
@@ -362,6 +363,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `vault-sync -q` | Background Refs pull | Pull failure is logged only; list stays | Upgrade `bob` for pull |
 | `marker_id` | Copy-card `I` row | `I` asks for a newer `bob`; other copy rows still work | Upgrade `bob` for marker IDs |
 | `open_notes` | Control-Return lands on captured lines | Tabs open without landing | Upgrade `bob`; needs plugin 2.44.1+ |
+| `headline` on `capture-pomodoros --tasks` | Headline row under the Today title | No headline row; agenda otherwise unchanged | Upgrade `bob` for the headline |
 | `--tasks` on `capture-pomodoros` | Agenda, counts, `=name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
 | `pomodoro_start_name` | Start list for `=name` | No rows | Upgrade `bob` |
 | Template spans, `%t` | Template rows, shelf, preview capsule | Ordinary drafts keep working; `%t` may be refused before writing | Upgrade `bob` for templates |

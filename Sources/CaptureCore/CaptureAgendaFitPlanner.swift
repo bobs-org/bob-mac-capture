@@ -452,6 +452,9 @@ public enum CaptureAgendaFitPlanner {
             heights[row.key] ?? CaptureAgendaLayoutMetrics.defaultRowHeight
         }
         var rows = [presentation.titleRow]
+        if let headline = presentation.headlineRow {
+            rows.append(headline)
+        }
         if let planBudget = presentation.planBudgetRow {
             rows.append(planBudget)
         }
@@ -465,6 +468,9 @@ public enum CaptureAgendaFitPlanner {
         var taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState] = [:]
         var stripIDs: [CaptureAgendaUnitID] = []
         var total = height(presentation.titleRow)
+        if let headline = presentation.headlineRow {
+            total += height(headline)
+        }
         if let planBudget = presentation.planBudgetRow {
             total += height(planBudget)
         }
@@ -589,7 +595,7 @@ public enum CaptureAgendaFitPlanner {
         var shown = 0
         for row in render.rows {
             switch row.kind {
-            case .title, .planBudget, .multiOpenWarning, .stateLine, .strip:
+            case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .strip:
                 break
             case .groupHeader, .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
                  .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup, .truncation,

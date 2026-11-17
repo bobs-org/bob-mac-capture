@@ -35,6 +35,9 @@ public enum CaptureAgendaLayoutMetrics {
     public static let childLineLimit = 4
     public static let oneLineLimit = 1
     public static let stripLineLimit = 3
+    /// Daily Headline clamp: the headline row wraps to at most two
+    /// lines with tail truncation.
+    public static let dailyHeadlineLineLimit = 2
     /// Height used when the measurer has no entry for a row key.
     /// Matches the acceptance row-height model (19 pt per row).
     public static let defaultRowHeight: Double = 19

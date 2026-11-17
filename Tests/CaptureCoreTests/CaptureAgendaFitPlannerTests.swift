@@ -77,7 +77,8 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
 
     private func makePresentation(
         entries: [CaptureAgendaPomodoro],
-        planBudget: CapturePlanBudget? = nil
+        planBudget: CapturePlanBudget? = nil,
+        headline: String? = nil
     ) -> CaptureAgendaPresentation {
         let snapshot = CaptureAgendaSnapshot(
             ok: true,
@@ -86,7 +87,8 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             completedSummary: CaptureAgendaCompletedSummary(),
             pomodoros: entries,
             warnings: [],
-            planBudget: planBudget
+            planBudget: planBudget,
+            headline: headline
         )
         return CaptureAgendaPresentation(snapshot: snapshot, today: today, locale: locale)
     }
@@ -158,6 +160,9 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             heights[row.key] = height
         }
         add(presentation.titleRow)
+        if let headline = presentation.headlineRow {
+            add(headline)
+        }
         if let planBudget = presentation.planBudgetRow {
             add(planBudget)
         }
@@ -484,6 +489,46 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
         }
     }
 
+    func testHeadlineRowOrdersUnderTitleAndStaysOutsideFolding() throws {
+        let baseline = standardPresentation()
+        let withHeadline = makePresentation(
+            entries: [
+                makeEntry(
+                    line: 3,
+                    name: "NOW",
+                    role: .current,
+                    items: [
+                        makeItem(
+                            ledgerLine: 4,
+                            blockID: "now",
+                            lines: logLines(prefix: "now", count: 2)
+                        ),
+                    ]
+                ),
+            ],
+            headline: "Converge take-home submitted"
+        )
+        let headlineRow = try XCTUnwrap(withHeadline.headlineRow)
+        let headlineHeight = 32.0
+        var heights = uniformHeights(withHeadline)
+        heights[headlineRow.key] = headlineHeight
+
+        let result = plan(withHeadline, heights: heights, budget: 100_000)
+        XCTAssertEqual(result.rows.prefix(2).map(\.kind), [.title, .headline])
+        XCTAssertEqual(result.rows.filter { $0.kind == .headline }.count, 1)
+        XCTAssertEqual(result.hiddenCount, 0)
+
+        for fitBudget in stride(from: 1.0, through: 500.0, by: 10.0) {
+            let step = plan(withHeadline, heights: heights, budget: fitBudget)
+            XCTAssertEqual(step.rows.filter { $0.kind == .headline }.count, 1)
+        }
+
+        let baselineHeights = uniformHeights(baseline)
+        let baselinePlan = plan(baseline, heights: baselineHeights, budget: 100_000)
+        XCTAssertGreaterThan(result.totalHeight, 0)
+        XCTAssertGreaterThan(baselinePlan.totalHeight, 0)
+    }
+
     func testIdenticalInputsPlanIdentically() {
         let presentation = standardPresentation()
         let heights = uniformHeights(presentation)
@@ -516,6 +561,9 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             heights[row.key] = 19 + 15 * Double(lines - 1)
         }
         add(presentation.titleRow)
+        if let headline = presentation.headlineRow {
+            add(headline)
+        }
         if let planBudget = presentation.planBudgetRow {
             add(planBudget)
         }

@@ -75,6 +75,12 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 budget: 2_000,
                 expanded: []
             )
+            try assertConsistent(
+                fixture: "agenda-headline.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
             let lightbulb = try agendaSnapshot("agenda-lightbulb.json")
             let lightbulbPresentation = CaptureAgendaPresentation(
                 snapshot: lightbulb,
@@ -158,6 +164,49 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
         XCTAssertNil(targets[budgetIndex])
     }
 
+    func testHeadlineRowStaysFlatAndHasNoExpansionTarget() throws {
+        let snapshot = try agendaSnapshot("agenda-headline.json")
+        let presentation = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: snapshot.date ?? "",
+            now: nil
+        )
+        let headlineRow = try XCTUnwrap(presentation.headlineRow)
+        XCTAssertEqual(headlineRow.kind, .headline)
+        let rowsWidth = 724 - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+        let plan = CaptureAgendaHeightResolver.resolve(
+            presentation: presentation,
+            budget: 2_000,
+            expanded: [],
+            width: rowsWidth,
+            measurer: CaptureAgendaRowMeasurer()
+        )
+        let headlineIndex = try XCTUnwrap(plan.rows.firstIndex { $0.kind == .headline })
+        XCTAssertEqual(plan.rows[headlineIndex].text, headlineRow.text)
+        let blocks = CaptureAgendaSections.make(rows: plan.rows, presentation: presentation)
+        let flatIndices = blocks.compactMap { block -> Int? in
+            guard case let .row(index) = block else {
+                return nil
+            }
+            return index
+        }
+        let groupedIndices = blocks.flatMap { block -> [Int] in
+            guard case let .group(_, indices, _) = block else {
+                return []
+            }
+            return indices
+        }
+        let targets = CaptureAgendaChipMap.targets(
+            presentation: presentation,
+            plan: plan
+        )
+
+        XCTAssertTrue(flatIndices.contains(headlineIndex))
+        XCTAssertFalse(groupedIndices.contains(headlineIndex))
+        XCTAssertNil(targets[headlineIndex])
+        XCTAssertFalse(CaptureAgendaRowView.showsChip(for: headlineRow))
+    }
+
     private func assertConsistent(
         fixture: String,
         contentWidth: CGFloat,
@@ -226,7 +275,10 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             planBudget: CapturePlanBudget(
                 status: "ok",
                 links: links
-            )
+            ),
+            events: snapshot.events,
+            maxTaskLinkCount: snapshot.maxTaskLinkCount,
+            headline: snapshot.headline
         )
     }
 
