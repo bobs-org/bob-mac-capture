@@ -63,14 +63,20 @@ Showing the panel refreshes the preview. While the panel is key with a
 
 Each `%c` item renders its own Clip card beneath its preview card, built only
   from that item's `clip` object: a kind header, Bob's exact child lines,
-  the snippet destination, one summary row per attachment with a thumbnail
-  for readable images, and entry dividers for `%c<N>` history. A history
+  the snippet destination, one summary row per attachment, and entry dividers
+  for `%c<N>` history. The header counts files, then images, then videos
+  (`1 image · 1 video`) from Bob's `kind`. Readable images get a thumbnail;
+  `kind: "video"` rows get a cancellable cached poster with a play glyph and
+  duration badge. Summaries append `size_bytes` in Bob's one-decimal binary
+  units when present (`vid/x.mp4 · video · 242.8 KiB`). A history
   card names the manager Bob read and appends each entry's age and app
   (`command` for a history command, verbatim otherwise); without
-  `clip.history` it keeps the header and dividers. A missing or unreadable image source keeps its summary
-  row. A `clip` Bob did not read (`status: "not_read"`) shows a quiet
-  placeholder. Clip lines never enter a task block; dedup matches them through
-  the item's verbatim `previewBlockLines`.
+  `clip.history` it keeps the header and dividers. A missing or unreadable
+  image or video source keeps its summary row. Unknown structured capture
+  warnings (for example `attachment_large`) render Bob's `message`. A `clip`
+  Bob did not read (`status: "not_read"`) shows a quiet placeholder. Clip
+  lines never enter a task block; dedup matches them through the item's
+  verbatim `previewBlockLines`.
 
 ## Record Card
 

@@ -597,6 +597,32 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(mixed.attachments.map(\.kind), ["image", "file"])
         XCTAssertEqual(mixed.attachments.map(\.saved), ["img/shot.png", "file/notes.pdf"])
         XCTAssertEqual(mixed.lines, ["\t- ![[img/shot.png|400]]", "\t- [[file/notes.pdf]]"])
+        XCTAssertTrue(image.attachments.allSatisfy { $0.sizeBytes == nil })
+        XCTAssertTrue(mixed.attachments.allSatisfy { $0.sizeBytes == nil })
+    }
+
+    func testCaptureCommandResponseDecodesVideoAttachmentsAndSizeBytes() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+            "relative_target":"mac_inbox.md","target":"/tmp/vault/mac_inbox.md","text":"jot idea",
+            "task_line":"- [ ] #task jot idea","kind":"task","created":"2026-11-16",
+            "scheduled":null,"placement":"inserted",
+            "clip":{"status":"read","mode":"attachments",
+            "lines":["\\t- ![[vid/x.mp4|400]]"],
+            "attachments":[{"source":"/tmp/x.mp4","saved":"vid/x.mp4","kind":"video",
+            "reused":false,"size_bytes":248678}],"entries":[]},
+            "warnings":[{"code":"attachment_large",
+            "message":"vid/x.mp4 is 62.3 MiB; vault sync warns at 50 MiB and refuses 95 MiB"}]}
+            """
+        )
+        let clip = try XCTUnwrap(success.clip)
+        XCTAssertEqual(clip.attachments.map(\.kind), ["video"])
+        XCTAssertEqual(clip.attachments.map(\.saved), ["vid/x.mp4"])
+        XCTAssertEqual(clip.attachments.map(\.sizeBytes), [248_678])
+        XCTAssertEqual(
+            success.warnings.map(\.message),
+            ["vid/x.mp4 is 62.3 MiB; vault sync warns at 50 MiB and refuses 95 MiB"])
     }
 
     func testCaptureCommandResponseDecodesSnippetClips() throws {

@@ -6688,6 +6688,7 @@ struct PreviewPane: View {
 
         let previewWarnings = CaptureRelationCancelPresentation.previewWarningRows(for: success)
             + CaptureRelationCompletePresentation.previewWarningRows(for: success)
+            + CapturePreviewWarningRow.leftoverRows(for: success)
         if !previewWarnings.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(previewWarnings.enumerated()), id: \.offset) { _, warning in

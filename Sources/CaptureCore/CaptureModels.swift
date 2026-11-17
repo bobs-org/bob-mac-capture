@@ -8788,12 +8788,47 @@ public struct CaptureAttachmentOutput: Codable, Equatable, Sendable {
     public let saved: String
     public let kind: String
     public let reused: Bool
+    /// Additive byte size Bob reported. Older Bob omits `size_bytes`.
+    public let sizeBytes: UInt64?
 
-    public init(source: String, saved: String, kind: String, reused: Bool) {
+    public init(
+        source: String,
+        saved: String,
+        kind: String,
+        reused: Bool,
+        sizeBytes: UInt64? = nil
+    ) {
         self.source = source
         self.saved = saved
         self.kind = kind
         self.reused = reused
+        self.sizeBytes = sizeBytes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decode(String.self, forKey: .source)
+        saved = try container.decode(String.self, forKey: .saved)
+        kind = try container.decode(String.self, forKey: .kind)
+        reused = try container.decode(Bool.self, forKey: .reused)
+        sizeBytes = try container.decodeIfPresent(UInt64.self, forKey: .sizeBytes)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        try container.encode(saved, forKey: .saved)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(reused, forKey: .reused)
+        try container.encodeIfPresent(sizeBytes, forKey: .sizeBytes)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case saved
+        case kind
+        case reused
+        case sizeBytes = "size_bytes"
     }
 }
 

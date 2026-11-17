@@ -38,6 +38,27 @@ public struct CapturePreviewWarningRow: Equatable, Sendable {
         self.style = style
         self.accessibilityLabel = accessibilityLabel ?? text
     }
+
+    /// Unknown structured warnings (for example `attachment_large`) and leftover
+    /// text warnings, rendered with Bob's authored `message`. Dedicated
+    /// surfaces already cover theme-not-configured, relation hide, leftover
+    /// cancel, and leftover complete.
+    public static func leftoverRows(
+        for capture: CaptureCommandSuccess
+    ) -> [CapturePreviewWarningRow] {
+        capture.warnings.compactMap { warning in
+            if warning.isThemeNotConfigured || warning.isRelationHideWarning
+                || warning.isRelationCancelledSource || warning.isRelationCompletedSource
+            {
+                return nil
+            }
+            return CapturePreviewWarningRow(
+                text: warning.message,
+                style: .amber,
+                accessibilityLabel: "Warning: \(warning.message)"
+            )
+        }
+    }
 }
 
 /// Thin-client helpers for Bob's cancel-label flags and strings. Swift

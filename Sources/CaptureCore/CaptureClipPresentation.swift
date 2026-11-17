@@ -14,20 +14,25 @@ import Foundation
 /// the capture carries no `clip` object at all (a draft without `%c`).
 public struct CaptureClipPresentation: Equatable, Sendable {
     /// One clipboard file Bob saved: its `saved` vault path, `kind`
-    /// (`image` or `file`), the pasteboard `source` it was read from, and
-    /// whether Bob reused an earlier save. The card renders one summary row
-    /// per attachment, plus a thumbnail for images whose source is readable.
-    /// A missing or unreadable source keeps its summary row.
+    /// (`image`, `video`, or `file`), the pasteboard `source` it was read
+    /// from, optional `size_bytes`, and whether Bob reused an earlier save.
+    /// Kind comes from Bob, never the file extension. The card renders one
+    /// summary row per attachment, plus a thumbnail for images and a poster
+    /// for videos whose source is readable. A missing or unreadable source
+    /// keeps its summary row.
     public struct AttachmentRow: Equatable, Sendable {
-        /// `"img/shot.png · image"` (`" · reused"` appended when reused).
+        /// `"vid/x.mp4 · video · 242.8 KiB"` (`" · reused"` appended when reused).
         public let summaryText: String
-        /// Pasteboard path Bob read the bytes from; the thumbnail source.
+        /// Pasteboard path Bob read the bytes from; the thumbnail/poster source.
         public let source: String
         /// Bob's `saved` vault path.
         public let savedPath: String
         public let kind: String
         public let isImage: Bool
+        public let isVideo: Bool
         public let reused: Bool
+        /// Bob's additive `size_bytes`; nil when an older Bob omitted it.
+        public let sizeBytes: UInt64?
 
         public init(
             summaryText: String,
@@ -35,14 +40,45 @@ public struct CaptureClipPresentation: Equatable, Sendable {
             savedPath: String,
             kind: String,
             isImage: Bool,
-            reused: Bool
+            reused: Bool,
+            isVideo: Bool = false,
+            sizeBytes: UInt64? = nil
         ) {
             self.summaryText = summaryText
             self.source = source
             self.savedPath = savedPath
             self.kind = kind
             self.isImage = isImage
+            self.isVideo = isVideo
             self.reused = reused
+            self.sizeBytes = sizeBytes
+        }
+
+        /// VoiceOver for a video row once duration is known
+        /// (`"Video, 6 seconds, vid/x.mp4"`).
+        public func videoAccessibilityLabel(durationSeconds: Double) -> String {
+            Self.videoAccessibilityLabel(
+                savedPath: savedPath, durationSeconds: durationSeconds)
+        }
+
+        public static func videoAccessibilityLabel(
+            savedPath: String, durationSeconds: Double
+        ) -> String {
+            let seconds = max(0, Int(durationSeconds.rounded()))
+            let unit = seconds == 1 ? "second" : "seconds"
+            return "Video, \(seconds) \(unit), \(savedPath)"
+        }
+
+        /// Compact duration badge (`0:06`, `1:01:06` from an hour up).
+        public static func videoDurationBadge(seconds: Double) -> String {
+            let total = max(0, Int(seconds.rounded()))
+            let hours = total / 3600
+            let minutes = (total % 3600) / 60
+            let remainder = total % 60
+            if hours > 0 {
+                return String(format: "%d:%02d:%02d", hours, minutes, remainder)
+            }
+            return String(format: "%d:%02d", minutes, remainder)
         }
     }
 
@@ -159,13 +195,17 @@ public struct CaptureClipPresentation: Equatable, Sendable {
             )
         case "attachments":
             let images = clip.attachments.filter { $0.kind == "image" }.count
-            let files = clip.attachments.count - images
+            let videos = clip.attachments.filter { $0.kind == "video" }.count
+            let files = clip.attachments.count - images - videos
             var parts: [String] = []
             if files > 0 {
                 parts.append(pluralCount(files, unit: "file"))
             }
             if images > 0 {
                 parts.append(pluralCount(images, unit: "image"))
+            }
+            if videos > 0 {
+                parts.append(pluralCount(videos, unit: "video"))
             }
             let header = parts.isEmpty ? "Clipboard · attachments" : parts.joined(separator: " · ")
             self.init(
@@ -312,6 +352,9 @@ public struct CaptureClipPresentation: Equatable, Sendable {
 
     private static func attachmentRow(for attachment: CaptureAttachmentOutput) -> AttachmentRow {
         var summary = "\(attachment.saved) · \(attachment.kind)"
+        if let sizeBytes = attachment.sizeBytes {
+            summary += " · \(humanBytes(sizeBytes))"
+        }
         if attachment.reused {
             summary += " · reused"
         }
@@ -321,8 +364,22 @@ public struct CaptureClipPresentation: Equatable, Sendable {
             savedPath: attachment.saved,
             kind: attachment.kind,
             isImage: attachment.kind == "image",
-            reused: attachment.reused
+            reused: attachment.reused,
+            isVideo: attachment.kind == "video",
+            sizeBytes: attachment.sizeBytes
         )
+    }
+
+    /// Bob's one-decimal binary units (`242.8 KiB`, `2.0 MiB`, `512 B`).
+    static func humanBytes(_ bytes: UInt64) -> String {
+        let mib = 1024.0 * 1024.0
+        if bytes >= 1024 * 1024 {
+            return String(format: "%.1f MiB", Double(bytes) / mib)
+        }
+        if bytes >= 1024 {
+            return String(format: "%.1f KiB", Double(bytes) / 1024.0)
+        }
+        return "\(bytes) B"
     }
 }
 
