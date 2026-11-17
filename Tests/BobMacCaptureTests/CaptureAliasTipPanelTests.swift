@@ -516,10 +516,17 @@ final class CaptureAliasTipPanelTests: XCTestCase {
     }
 
     func testChangedSeparatorReplyDoesNotDisableTheNextTipRequest() async throws {
+        // Hosted separator rewrite stays on its own lane. The follow-up @
+        // list still needs rewrite to beat capture-complete, or CI load
+        // drops the tip as late_reply on the first frame.
         let recordURL = makeRecordURL()
         let (model, textView) = try makeHostedModel(
             recordURL: recordURL,
-            extra: ["FAKE_BOB_SEPARATOR_TOGGLE_REPLY": "1"],
+            extra: [
+                "FAKE_BOB_SEPARATOR_TOGGLE_REPLY": "1",
+                "FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS": "0.15",
+            ],
+            debounceNanoseconds: 200_000_000,
             text: "@cash:task"
         )
         CapturePanelController.noteSeparatorToggleIntentIfEligible(
@@ -885,12 +892,13 @@ final class CaptureAliasTipPanelTests: XCTestCase {
     private func makeHostedModel(
         recordURL: URL,
         extra: [String: String] = [:],
+        debounceNanoseconds: UInt64 = 0,
         text: String = "Buy milk "
     ) throws -> (CapturePanelModel, NSTextView) {
         let (model, textView) = try makeModel(
             recordURL: recordURL,
             extra: extra,
-            debounceNanoseconds: 0,
+            debounceNanoseconds: debounceNanoseconds,
             text: text
         )
         let window = NSWindow(
