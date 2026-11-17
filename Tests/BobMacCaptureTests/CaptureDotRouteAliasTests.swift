@@ -729,4 +729,220 @@ final class CaptureDotRouteAliasTests: XCTestCase {
             timestamp: 1.1
         ))
     }
+
+    private func openItemStartAlias() async throws -> (
+        CapturePanelModel,
+        CapturePanelController,
+        NSTextView,
+        NSPanel,
+        URL
+    ) {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "")
+        model.processClient = try processClient(recordURL: recordURL)
+        XCTAssertNotNil(typeKey(dotEvent(), into: textView, model: model, controller: controller))
+        await waitUntil {
+            textView.string == "@" && model.completionVisible
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
+        return (model, controller, textView, panel, recordURL)
+    }
+
+    private func openTimestampedItemStartAlias(
+        firstTimestamp: TimeInterval
+    ) async throws -> (
+        CapturePanelModel,
+        CapturePanelController,
+        NSTextView,
+        NSPanel
+    ) {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "")
+        model.processClient = try processClient(recordURL: recordURL)
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: firstTimestamp),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        await waitUntil {
+            textView.string == "@" && model.completionVisible
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
+        return (model, controller, textView, panel)
+    }
+
+    func testRouteItemStartLessonIsKnownCompletionListHost() {
+        XCTAssertTrue(CaptureAliasLesson.isKnown(id: CaptureAliasLesson.routeItemStart))
+        XCTAssertEqual(
+            CaptureAliasLesson.host(for: CaptureAliasLesson.routeItemStart),
+            .completionList
+        )
+    }
+
+    func testItemStartDotAliasAppliesAndOpensRouteList() async throws {
+        let (model, _, _, panel, recordURL) = try await openItemStartAlias()
+        defer { panel.orderOut(nil) }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.equalsGestureArm?.key, ".")
+        XCTAssertEqual(model.equalsGestureArm?.sigil, "@")
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
+        let record = try String(contentsOf: recordURL)
+        let rewrite = try XCTUnwrap(record.range(of: "argv=capture-rewrite --cursor 1 --format json -- ."))
+        let complete = try XCTUnwrap(record.range(of: "argv=capture-complete --all-tasks --cursor 1 --format json -- @"))
+        XCTAssertLessThan(rewrite.lowerBound, complete.lowerBound)
+    }
+
+    func testItemStartSpaceRestoresDotAndUndoRestoresTheAliasDraft() async throws {
+        let (model, controller, textView, panel, _) = try await openItemStartAlias()
+        defer { panel.orderOut(nil) }
+
+        XCTAssertNil(typeKey(spaceEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, ". ")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 2, length: 0))
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "@")
+    }
+
+    func testItemStartEscapeRestoresDotInsteadOfClosingThePanel() async throws {
+        let (model, controller, textView, panel, _) = try await openItemStartAlias()
+        defer { panel.orderOut(nil) }
+
+        XCTAssertNil(typeKey(escapeEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, ".")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+        XCTAssertFalse(panel.isVisible)
+    }
+
+    func testItemStartFastSecondDotUndoesOpenerAfterReply() async throws {
+        let (model, controller, textView, panel) = try await openTimestampedItemStartAlias(
+            firstTimestamp: 1.0
+        )
+        defer { panel.orderOut(nil) }
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
+
+        XCTAssertNil(controller.routeKeyDown(dotEvent(timestamp: 1.350)))
+        XCTAssertEqual(textView.string, ".")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "@")
+    }
+
+    func testItemStartFastDoubleDotBeforeReplyCollapsesToOne() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4"]
+        )
+
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, ".")
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: 1.1),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, "..")
+
+        await waitUntil {
+            textView.string == "." && model.equalsProbe == nil
+        }
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+        let record = try String(contentsOf: recordURL)
+        let asks = record.split(separator: "\n").filter {
+            $0.hasPrefix("argv=capture-rewrite") && $0.hasSuffix("-- .")
+        }
+        XCTAssertEqual(asks.count, 2)
+
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "..")
+    }
+
+    func testItemStartFastDoubleDotBeforeReplyLeavesPairWhenBobIsUnchanged() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: [
+                "FAKE_BOB_REWRITE_DELAY_SECONDS": "0.4",
+                "FAKE_BOB_REWRITE_DOT_ITEM_START_UNCHANGED": "1",
+            ]
+        )
+
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: 1.0),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertNotNil(typeKey(
+            dotEvent(timestamp: 1.1),
+            into: textView,
+            model: model,
+            controller: controller
+        ))
+        XCTAssertEqual(textView.string, "..")
+
+        await waitUntil { model.equalsProbe == nil }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(textView.string, "..")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testItemStartOlderBobLeavesDotLiteralWithoutOpeningRouteList() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(
+            recordURL: recordURL,
+            extra: ["FAKE_BOB_REWRITE_DOT_ITEM_START_UNCHANGED": "1"]
+        )
+
+        XCTAssertNotNil(typeKey(dotEvent(), into: textView, model: model, controller: controller))
+        await waitUntil {
+            textView.string == "."
+                && (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") == true
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.equalsGestureArm)
+    }
+
+    func testLaterItemStartDotAliasAppliesAndOpensRouteList() async throws {
+        let recordURL = makeRecordURL()
+        let (model, controller, textView, panel) = makeHostedEditor(text: "Buy milk\n\n")
+        defer { panel.orderOut(nil) }
+        model.processClient = try processClient(recordURL: recordURL)
+
+        XCTAssertNotNil(typeKey(dotEvent(), into: textView, model: model, controller: controller))
+        await waitUntil {
+            textView.string == "Buy milk\n\n@" && model.completionVisible
+        } detail: {
+            aliasOpenDetail(textView: textView, model: model, recordURL: recordURL)
+        }
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.equalsGestureArm?.key, ".")
+        XCTAssertEqual(model.equalsGestureArm?.sigil, "@")
+        XCTAssertEqual(model.equalsGestureArm?.isOpener, true)
+    }
 }

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Buy milk\n\n.","text":"Buy milk\n\n@","changed":true,"cursor":11,"rule":"expand_sigil_alias","edits":[{"range":{"start":10,"end":11},"replacement":"@"}],"summary":"Typed @ for .","alias":{"id":"route_item_start","key":".","sigil":"@"}}

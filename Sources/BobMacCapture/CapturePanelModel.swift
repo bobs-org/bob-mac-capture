@@ -3249,6 +3249,32 @@ final class CapturePanelModel: ObservableObject {
                     caretUTF8: expectedCursorUTF8,
                     timestamp: timestamp
                 )
+            } else if typed == "." {
+                // Item-start `.` mirrors Bob's new position: every byte from
+                // the caret's line start (or draft start) to the caret is a
+                // space or tab. `;` keeps its previousIsBlank-only prefilter.
+                var lineStart = 0
+                var index = caretUTF8Count - 1
+                while index >= 0 {
+                    guard index < caretBytes.count else { break }
+                    let byte = caretBytes[index]
+                    if byte == 0x0A || byte == 0x0D {
+                        lineStart = index + 1
+                        break
+                    }
+                    index -= 1
+                }
+                let allBlank = lineStart <= caretUTF8Count
+                    && caretBytes[lineStart..<min(caretUTF8Count, caretBytes.count)]
+                        .allSatisfy { $0 == 0x20 || $0 == 0x09 }
+                if allBlank {
+                    pendingEqualsFirstKey = (
+                        key: typed,
+                        draft: expectedDraft,
+                        caretUTF8: expectedCursorUTF8,
+                        timestamp: timestamp
+                    )
+                }
             }
         }
         if typed == "\\" || typed == "/" {
@@ -19539,8 +19565,7 @@ final class CapturePanelModel: ObservableObject {
            let edit = response.edits.first,
            edit.range.end == edit.range.start + 1,
            edit.range.start == triggerPositionUTF8,
-           edit.range.start > 0,
-           inputBytes[edit.range.start - 1] != 0x7E,
+           edit.range.start == 0 || inputBytes[edit.range.start - 1] != 0x7E,
            let inputRange = stringRange(
                in: response.input,
                start: edit.range.start,

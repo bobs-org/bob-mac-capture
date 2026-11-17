@@ -32,6 +32,7 @@ on the surface Bob's rewrite opens for that sigil.
 | Lesson | Unshifted key | Sigil | Phrase | Surface |
 | --- | --- | --- | --- | --- |
 | `route_after_text` | `.` | `@` | after a word | Completion list |
+| `route_item_start` | `.` | `@` | at an item start | Completion list |
 | `hash_menu` | `/` | `#` | after a word, right after a non-album route, or in a notebook section bullet (`/` after an album route stays `@eat/`) | Completion list |
 | `directive_menu` | `\` | `%` | after a word | Completion list |
 | `block_id_after_route` | `.` | `^` | right after a route | Picker |

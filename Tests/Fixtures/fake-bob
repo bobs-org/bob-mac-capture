@@ -1604,6 +1604,8 @@ JSON
       cat "${fixtures_dir}/blocked-task-parse-project.json" | inject_parse_grammar
     elif [[ "${draft}" == "Buy milk @" ]]; then
       cat "${fixtures_dir}/dot-route-parse.json" | inject_parse_grammar
+    elif [[ "${draft}" == "@" ]]; then
+      cat "${fixtures_dir}/dot-route-item-start-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~" ]]; then
       cat "${fixtures_dir}/relation-parse-need-dash.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~~" ]]; then
@@ -2193,6 +2195,12 @@ JSON
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ ("${draft}" == "." || "${draft}" == $'Buy milk\n\n.') && "${FAKE_BOB_REWRITE_DOT_ITEM_START_UNCHANGED:-}" == "1" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
     elif [[ "${draft}" == "x=2-" ]]; then
       if [[ "${FAKE_BOB_PAST_SEGMENT_REWRITE_UNCHANGED:-}" == "1" ]]; then
         printf '{"ok":true,"schema_version":1,"input":'
@@ -2286,12 +2294,23 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-blocked-task.json"
     elif [[ "${draft}" == "Buy milk ." ]]; then
       cat "${fixtures_dir}/capture-rewrite-sigil-alias-route.json"
+    elif [[ "${draft}" == "." ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-route-item-start.json"
+    elif [[ "${draft}" == $'Buy milk\n\n.' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-sigil-alias-route-item-start-later.json"
     elif [[ "${draft}" == "Buy milk @" ]]; then
       case "${FAKE_BOB_ALIAS_TIP:-}" in
         old) cat "${fixtures_dir}/capture-rewrite-alias-tip-old.json" ;;
         null) cat "${fixtures_dir}/capture-rewrite-alias-tip-null.json" ;;
         unknown) cat "${fixtures_dir}/capture-rewrite-alias-tip-unknown.json" ;;
         *) cat "${fixtures_dir}/capture-rewrite-alias-tip-route.json" ;;
+      esac
+    elif [[ "${draft}" == "@" ]]; then
+      case "${FAKE_BOB_ALIAS_TIP:-}" in
+        old) cat "${fixtures_dir}/capture-rewrite-alias-tip-old.json" ;;
+        null) cat "${fixtures_dir}/capture-rewrite-alias-tip-null.json" ;;
+        unknown) cat "${fixtures_dir}/capture-rewrite-alias-tip-unknown.json" ;;
+        *) cat "${fixtures_dir}/capture-rewrite-alias-tip-route-item-start.json" ;;
       esac
     elif [[ "${FAKE_BOB_ALIAS_TIP_ANCHOR:-}" == "1" && "${draft}" == "@file:" ]]; then
       cat "${fixtures_dir}/capture-rewrite-alias-tip-link-after-route.json"
@@ -3922,6 +3941,8 @@ JSON
       cat "${fixtures_dir}/relation-label-complete-from-follow.json"
     elif [[ "${draft}" == "Buy milk @" ]]; then
       cat "${fixtures_dir}/dot-route-complete.json"
+    elif [[ "${draft}" == "@" ]]; then
+      cat "${fixtures_dir}/dot-route-item-start-complete.json"
     elif [[ "${draft}" == "Fix it ~" ]]; then
       cat "${fixtures_dir}/relation-complete-to-dash.json"
     elif [[ "${draft}" == "Fix it ~~" ]]; then

@@ -258,7 +258,7 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   literal at line start, glued to a word, or after another `\`). Same-key
   press types one literal and closes the menu. Before Bob replies, the app
   re-asks the first key and drops the extra only if it would become `#` or
-  `%`; Undo restores both. Older Bob's `\` → `#` still arms that double-tap.
+  `%`; Undo restores both. Older Bob's `\` → `#` still arms it.
   A fast `==` (350 ms) restores literal `=` in the
   editor, picker, or label card; other keys, caret moves, paste, Undo, or
   dismissal clear that arm, and a slow second press flips twice. After spaced
@@ -266,7 +266,7 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   literal key; Space/Escape restores on an empty route list or picker. Caret
   moves, navigation, modifiers, and other keys clear either arm.
   Thus `...` after body text takes four presses (as `===` gives `==`); item-start
-  `.bashrc` and `.5` stay literal.
+  `.` gives `@`, `..` types `.bashrc`.
   Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
   Bob glues the pipe to the token when spaces or tabs separate them, then the
   completion response opens the relation card. Undo restores the literal

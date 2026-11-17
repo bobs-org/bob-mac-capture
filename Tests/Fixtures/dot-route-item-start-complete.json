@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"cursor":1,"replacement":{"start":1,"end":1},"context":"route","candidates":[{"replacement":"sase","route":"sase","label":"sase.md","kind":"project","status":"wip"},{"replacement":"cash","route":"cash","label":"cash.md","kind":"area","status":null}]}

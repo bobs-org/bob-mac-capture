@@ -17,6 +17,7 @@ public struct CaptureAliasLesson: Equatable, Sendable {
     }
 
     public static let routeAfterText = "route_after_text"
+    public static let routeItemStart = "route_item_start"
     public static let hashMenu = "hash_menu"
     public static let directiveMenu = "directive_menu"
     public static let blockIDAfterRoute = "block_id_after_route"
@@ -31,6 +32,7 @@ public struct CaptureAliasLesson: Equatable, Sendable {
 
     public static let all: [CaptureAliasLesson] = [
         CaptureAliasLesson(id: routeAfterText, host: .completionList),
+        CaptureAliasLesson(id: routeItemStart, host: .completionList),
         CaptureAliasLesson(id: hashMenu, host: .completionList),
         CaptureAliasLesson(id: directiveMenu, host: .completionList),
         CaptureAliasLesson(id: blockIDAfterRoute, host: .picker),

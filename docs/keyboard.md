@@ -97,14 +97,14 @@ as Command-Y L does.
 | Command-V | Insert plain clipboard text; on an empty bullet row receiving a Markdown list, consume the first marker and align the list | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | @ | Insert `@`; Bob may return route completion when the draft declares a global `@@route` | Insert `@` and refresh Bob's completion for the edited draft | Native text-field behavior | Native text-field behavior |
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else an unused `- ` row in one action (native Backspace otherwise, including modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
-| 1–9 | Right after a task number in a close list (`x`, `x*`, `x!` and `*`/`!`/`~` groups, incl. `=x` closes and sized `Nx` closes like `2x1`), insert `,` before the digit (`x1`+`2`→`x1,2`) when the running Pomodoro has under 10 numbered Task Links; else the digit types normally. Typing a digit right after the `x` in `12x` never inserts a comma (the size stays one number) | Native text-field behavior | Native text-field behavior | Native text-field behavior |
+| 1–9 | Right after a task number in a close list (`x`, `x*`, `x!` and `*`/`!`/`~` groups, incl. `=x` closes and sized `Nx` closes like `2x1`), insert `,` before the digit (`x1`+`2`→`x1,2`) when the running Pomodoro has under 10 numbered Task Links; else it types normally. A digit right after the `x` in `12x` never inserts a comma (the size stays one number) | Native text-field behavior | Native text-field behavior | Native text-field behavior |
 | + | Insert `+` | While route completion is visible, right after the completed route: accept it, keep `+`, open task completion | Native text-field behavior | Native text-field behavior |
 | , | Insert `,`; where Parent Task completion applies, Bob maps it to `+` (or ` +` after a complete target run); glued to a complete `@route:id` / `@route^id`, switches it to `@route+id` | Empty `+` filter: use Bob's alias; selected row with `continuation`: accept and continue | Native text-field behavior | Native text-field behavior |
-| . | After `@route`, `.` → `^` opens Block ID; glued to a complete `@route:id` / `@route^id`, it toggles the separator; glued to `@route+id`, it switches to `@route^id`. Sealed `- .` opens Move. After body text + space/tab, `.` → `@` for route completion, or `&` first once the item is routed (falls back to `@` only where `&` cannot open). Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
-| .. | Fast `..`/`;;` (350 ms) types one literal `.`/`;`. Space/Escape restores on an empty route list/picker; item-start `.bashrc`/`.5` stay literal | The same escape and restore behavior | Native text-field behavior | Native text-field behavior |
+| . | After `@route`, `.` → `^` opens Block ID; glued to a complete `@route:id` / `@route^id`, it toggles the separator; glued to `@route+id`, it switches to `@route^id`. Sealed `- .` opens Move. At an item start or after body text + space/tab, `.` → `@` for route completion, or `&` first once the item is routed (falls back to `@` only where `&` cannot open). Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
+| .. | Fast `..`/`;;` (350 ms) types one literal `.`/`;`. Space/Escape restores on an empty route list/picker; item-start `..` types `.bashrc` | The same escape and restore behavior | Native text-field behavior | Native text-field behavior |
 | ; | After `@route`, `;` → `:` opens Block ID; lone `;` opens Task Link; sealed `- ;` opens Move. After text/marker + space/tab, `;` → `*` where Bob opens Blocks unless `:` applies. Undo restores `;` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
 | - | Literal after a space; Bob maps it to `~` in past segment `x=2-` | The same past-segment rewrite | Native text-field behavior | Native text-field behavior |
-| x / s | In close slots, `x`/`s` become `!`/`*` (sized too: `2xx`→`2x!`, `12xs`→`12x*`, `--1 2xx`→`--1 2x!`, `^r:id=2xs`→`^r:id=2x*`); `Plan 2xx`, `x made 2xx`, and `2Xx` stay literal prose. Time goes before `x`, task numbers after it; see [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size) | Same | Native text-field behavior | Native text-field behavior |
+| x / s | In close slots, `x`/`s` become `!`/`*` (sized too: `2xx`→`2x!`, `12xs`→`12x*`, `--1 2xx`→`--1 2x!`, `^r:id=2xs`→`^r:id=2x*`); `Plan 2xx`, `x made 2xx`, and `2Xx` stay literal prose. Time goes before `x`, numbers after it; see [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size) | Same | Native text-field behavior | Native text-field behavior |
 | = | After space/tab, `=` → `~` opens Links To; after bare `~`/`~~` or a relation token, flips direction. Fast `==` (350 ms) types one `=` | In a relation picker, flips Links To ↔ Linked From; fast `==` undoes into the filter | Native text-field behavior | Native text-field behavior |
 | \\ or / | Blank-draft `\` → `/` opens Go To. Else `/` → `#` and `\` → `%` when eligible (`Buy milk \` → `Buy milk %`); `\` stays literal at line start, glued to a word, or after another `\`. `/` stays literal right after an album route (`@eat/`); type `#` for the section menu. `/` also stays literal in `=/`, `[[folder/`, section and Pomodoro names. Same-key double-tap types one literal, closes the menu; Undo restores it | The same rewrite and menu behavior | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
@@ -193,7 +193,7 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X opens the Cancel reason, Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
+Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X opens Cancel reason, Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Inbox routing
 
@@ -305,7 +305,7 @@ transposes text.
 
 `Command-\` is both the global Capture alias and the in-panel key. From another app,
 the first press opens (or focuses) Capture, and a press while Capture is focused opens
-today's Pomodoro. So `Command-\` `Command-\` from anywhere lands on today's Pomodoro.
+today's Pomodoro. So `Command-\` `Command-\` from anywhere lands there.
 With Settings › Hotkey › **Also open Capture with Command-\\** off, `Command-\` works
 only inside the panel, and other apps receive it. Control plus backslash is no longer
 bound in Capture. Each press runs a fresh
