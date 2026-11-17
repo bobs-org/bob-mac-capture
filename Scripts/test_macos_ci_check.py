@@ -818,7 +818,14 @@ class GateTests(unittest.TestCase):
         raise AssertionError(f"timed out waiting for {needle!r}: {buf}")
 
     def test_sigint_after_push(self) -> None:
-        env = {**self.env, "GH_MODE": "stall", "STALL_SECONDS": "6", "BOB_MACOS_CI_COMMAND_SECONDS": "5"}
+        env = {
+            **self.env,
+            "GH_MODE": "stall",
+            "STALL_SECONDS": "6",
+            "BOB_MACOS_CI_COMMAND_SECONDS": "5",
+            "BOB_MACOS_CI_TOTAL_SECONDS": "20",
+            "BOB_MACOS_CI_CLEANUP_SECONDS": "5",
+        }
         proc = subprocess.Popen(
             [sys.executable, "-B", str(self.script)],
             cwd=self.root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -826,8 +833,10 @@ class GateTests(unittest.TestCase):
         output = self._wait_for(proc, "remote branch", 4)
         time.sleep(0.2)
         os.kill(proc.pid, signal.SIGINT)
+        # communicate() may run to the 5s command cap before the handler
+        # returns; leave room for terminate grace plus cleanup.
         try:
-            rest, _ = proc.communicate(timeout=6)
+            rest, _ = proc.communicate(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
             rest, _ = proc.communicate()
@@ -841,6 +850,8 @@ class GateTests(unittest.TestCase):
             "GIT_MODE": "stall-push",
             "STALL_SECONDS": "6",
             "BOB_MACOS_CI_COMMAND_SECONDS": "5",
+            "BOB_MACOS_CI_TOTAL_SECONDS": "20",
+            "BOB_MACOS_CI_CLEANUP_SECONDS": "5",
         }
         proc = subprocess.Popen(
             [sys.executable, "-B", str(self.script)],
@@ -848,8 +859,10 @@ class GateTests(unittest.TestCase):
         )
         output = self._wait_for(proc, "pushing", 4)
         os.kill(proc.pid, signal.SIGTERM)
+        # Master CI on 991c877e SIGKILL'd this wait at 6s (-9) after the
+        # stalled push hit the 5s command cap; cleanup had not finished.
         try:
-            rest, _ = proc.communicate(timeout=6)
+            rest, _ = proc.communicate(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
             rest, _ = proc.communicate()
