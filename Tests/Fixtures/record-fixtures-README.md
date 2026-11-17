@@ -4,6 +4,7 @@ Generated from a real Bob; never hand-edit the JSON.
 
 - bob: b7f74b58
 - record-parse-optional-caret.json and record-complete-optional-caret.json: bob 0.5.0 (694b96a5)
+- record-parse-eat-bare.json, record-complete-target-bare.json, capture-rewrite-eat-bare.json: bob f6924787
 - albums: eat (restaurant, 🍽️, owner body) + podcasts (podcast, 🎙️, owner dev) + movies (movie, 🎬, owner body),
   companions default [[kelly]]; the config carries no records: block
 - vault: eat.md + podcasts.md + movies.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
@@ -14,12 +15,15 @@ Generated from a real Bob; never hand-edit the JSON.
   optional visited:: caret with all required fields set, also completed
   at the draft's end without -n or -F,
   existing-record @eat/nagi, title-first update with status:: liked,
-  bare-album Blaze @eat refusal, title-bearing movie incomplete
-  "The Little Mermaid @movies/ " plus buy-milk/empty variants, Blaze @eat/
-  incomplete, and the "The Little Mermaid @mo" partial-route parse),
+  bare-album Blaze @eat refusal, title-less @eat/ record route, title-bearing
+  movie incomplete "The Little Mermaid @movies/ " plus buy-milk/empty
+  variants, Blaze @eat/ incomplete, and the "The Little Mermaid @mo"
+  partial-route parse),
   capture-complete (caret, -n, -F, route, section, create-route
-  record_target, 7+ category values, current-value named edit, movie
-  next-missing (mermaid, buy-milk, empty) and Blaze next-missing),
+  record_target including title-less @eat/, 7+ category values,
+  current-value named edit, movie next-missing (mermaid, buy-milk, empty)
+  and Blaze next-missing), capture-rewrite (title-less @eat/ stays
+  literal),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
   records; mixed task/record; missing, invalid, bare-album, and Blaze

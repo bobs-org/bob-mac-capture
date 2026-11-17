@@ -5774,6 +5774,83 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.completionResponse?.record?.title, "The Little Mermaid")
     }
 
+    func testBareAlbumSlashSkipsCachedRouteAndListsRecordTargets() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_ASSIST": "1",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(on: model, targets: [eatAlbumTarget()])
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.allowsUndo = true
+        textView.string = "@eat"
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        model.plainDraft = "@eat"
+        wireNativeApply(model, textView: textView)
+
+        typeSlash(into: textView, model: model)
+        await waitUntil {
+            model.plainDraft == "@eat/"
+                && model.completionResponse?.context == "record_target"
+        }
+
+        XCTAssertEqual(model.plainDraft, "@eat/")
+        XCTAssertEqual(textView.string, "@eat/")
+        XCTAssertEqual(model.completionResponse?.context, "record_target")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.title, "Burger Joint")
+        XCTAssertEqual(
+            model.completionResponse?.candidates.first?.replacement,
+            "@eat/burger_joint"
+        )
+        XCTAssertTrue(recordLog(recordURL).contains("capture-complete"))
+        XCTAssertTrue(
+            recordLog(recordURL).contains(
+                "argv=capture-rewrite --cursor 5 --format json -- @eat/"
+            )
+        )
+        XCTAssertFalse(
+            model.completionResponse?.candidates.contains(where: {
+                $0.kind == "record" && $0.route == "eat/"
+            }) == true
+        )
+    }
+
+    func testTitleBearingAlbumSlashStillUsesCachedRecordRoute() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_ASSIST": "1",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(on: model, targets: [eatAlbumTarget()])
+        let draft = "Ramen Nagi @eat/"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            self.analysisSettled(for: model, recordURL: recordURL, draft: draft)
+        }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "eat/")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "record")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "eat/ ")
+        XCTAssertFalse(recordLog(recordURL).contains("capture-complete"))
+    }
+
     func testRecordRouteRowsDoNotQuickCommitPlusOrComma() async throws {
         for separator in ["+", ","] {
             let recordURL = FileManager.default.temporaryDirectory
@@ -8388,6 +8465,45 @@ final class CapturePanelModelTests: XCTestCase {
                 firstResponder: textView
             )
         }
+    }
+
+    private func eatAlbumTarget() -> CaptureTarget {
+        CaptureTarget(
+            route: "eat/",
+            name: "eat/",
+            label: "Restaurant",
+            kind: "record",
+            relativePath: "eat/",
+            recordType: "restaurant",
+            emoji: "🍽️",
+            count: 9
+        )
+    }
+
+    private func typeSlash(into textView: NSTextView, model: CapturePanelModel) {
+        CapturePanelController.noteSeparatorToggleIntentIfEligible(
+            event: NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "/",
+                charactersIgnoringModifiers: "/",
+                isARepeat: false,
+                keyCode: 44
+            )!,
+            firstResponder: textView,
+            model: model,
+            modalFieldActive: false
+        )
+        textView.insertText("/", replacementRange: textView.selectedRange())
+        model.plainDraft = textView.string
+        let caretUTF16 = textView.selectedRange().location
+        let caretUTF8 = utf8Offset(in: textView.string, utf16Offset: caretUTF16)
+            ?? textView.string.utf8.count
+        model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
     }
 
     /// Mirrors the real panel's SwiftUI draft binding: a programmatic model

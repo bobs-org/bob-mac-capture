@@ -465,6 +465,8 @@ PY
           record_parse_fixture="record-parse-movie-empty-incomplete.json" ;;
         "Blaze @eat/")
           record_parse_fixture="record-parse-blaze-incomplete.json" ;;
+        "@eat/")
+          record_parse_fixture="record-parse-eat-bare.json" ;;
         "Blaze @eat")
           record_parse_fixture="record-parse-bare-album.json" ;;
         "The Little Mermaid @mo")
@@ -2325,6 +2327,8 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-backslash-alias-drawer-unchanged.json"
     elif [[ "${draft}" == 'jot idea /' ]]; then
       cat "${fixtures_dir}/capture-rewrite-slash-alias-task-type.json"
+    elif [[ "${draft}" == '@eat/' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-eat-bare.json"
     elif [[ "${draft}" == 'jot idea @foo/' ]]; then
       cat "${fixtures_dir}/capture-rewrite-slash-alias-section.json"
     elif [[ "${draft}" == 'More @dev_nvim/' && "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
@@ -2743,6 +2747,9 @@ PY
           else
             record_complete_fixture="record-complete-target-create.json"
           fi
+          ;;
+        "@eat/")
+          record_complete_fixture="record-complete-target-bare.json"
           ;;
         "Ramen Nagi @eat/")
           if [[ -n "${record_field}" ]]; then

@@ -32,10 +32,11 @@
 # explicit stem, Unicode, mixed items, record_field/record_value
 # (caret, next-missing first/middle/last, named field), route record rows,
 # section record_create rows, capture-targets record rows, movie
-# title-bearing incomplete/next-missing (mermaid, buy-milk, empty) and
-# Blaze bare/incomplete for the rewrite flow, and an older-Bob
-# fixture is checked in by hand (not generated). Commit operations affect
-# only the scratch vault.
+# title-bearing incomplete/next-missing (mermaid, buy-milk, empty),
+# Blaze bare/incomplete for the rewrite flow, a title-less `@eat/`
+# parse/complete/rewrite (literal slash, record_target list), and an
+# older-Bob fixture is checked in by hand (not generated). Commit
+# operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bob_bin="${BOB_BIN:-}"
@@ -365,6 +366,16 @@ run_complete() {
   assert_json "$out"
 }
 
+run_rewrite() {
+  local draft="$1"
+  local cursor="$2"
+  local out="$3"
+  bob capture-rewrite --cursor "$cursor" --format json -- "$draft" \
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+  assert_json "$out"
+}
+
 run_targets() {
   local out="$1"
   bob capture-targets --format json > "$scratch_root/raw.json"
@@ -461,6 +472,7 @@ run_parse "@eat/nagi" record-parse-existing.json
 run_parse "Went back @eat/nagi
 - status:: liked" record-parse-title-first-update.json
 run_parse "Blaze @eat" record-parse-bare-album.json
+run_parse "@eat/" record-parse-eat-bare.json
 run_parse "The Little Mermaid @movies/ " record-parse-movie-incomplete.json
 run_parse "Buy milk @movies/ " record-parse-movie-buy-milk-incomplete.json
 run_parse "@movies/ " record-parse-movie-empty-incomplete.json
@@ -490,6 +502,7 @@ run_complete "Ramen Nagi @eat/" "$(cursor_of "Ramen Nagi @eat/")" record-complet
 run_complete "@eat#" 5 record-complete-section-create.json
 # Ordinary caret-at-create-route complete (no -n): record_target rows.
 run_complete "Ramen Nagi @eat/" "$(cursor_of "Ramen Nagi @eat/")" record-complete-target-create.json
+run_complete "@eat/" 5 record-complete-target-bare.json
 # Seven or more category values from the extra restaurants.
 run_complete "Ramen Nagi @eat/
 - status:: liked
@@ -508,6 +521,7 @@ run_complete "The Little Mermaid @movies/ " "$(cursor_of "The Little Mermaid @mo
 run_complete "Buy milk @movies/ " "$(cursor_of "Buy milk @movies/ ")" record-complete-movie-buy-milk-next-missing-first.json -n
 run_complete "@movies/ " "$(cursor_of "@movies/ ")" record-complete-movie-empty-next-missing-first.json -n
 run_complete "Blaze @eat/" "$(cursor_of "Blaze @eat/")" record-complete-blaze-next-missing-first.json -n
+run_rewrite "@eat/" 5 capture-rewrite-eat-bare.json
 
 # Capture fixtures (dry-run previews, one commit, and refusals). The
 # commit runs last so its scratch-vault write cannot affect earlier
@@ -576,12 +590,15 @@ Generated from a real Bob; never hand-edit the JSON.
   optional visited:: caret with all required fields set, also completed
   at the draft's end without -n or -F,
   existing-record @eat/nagi, title-first update with status:: liked,
-  bare-album Blaze @eat refusal, title-bearing movie incomplete
-  "The Little Mermaid @movies/ " plus buy-milk/empty variants, Blaze @eat/
-  incomplete, and the "The Little Mermaid @mo" partial-route parse),
+  bare-album Blaze @eat refusal, title-less @eat/ record route, title-bearing
+  movie incomplete "The Little Mermaid @movies/ " plus buy-milk/empty
+  variants, Blaze @eat/ incomplete, and the "The Little Mermaid @mo"
+  partial-route parse),
   capture-complete (caret, -n, -F, route, section, create-route
-  record_target, 7+ category values, current-value named edit, movie
-  next-missing (mermaid, buy-milk, empty) and Blaze next-missing),
+  record_target including title-less @eat/, 7+ category values,
+  current-value named edit, movie next-missing (mermaid, buy-milk, empty)
+  and Blaze next-missing), capture-rewrite (title-less @eat/ stays
+  literal),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
   records; mixed task/record; missing, invalid, bare-album, and Blaze

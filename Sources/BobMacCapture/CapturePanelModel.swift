@@ -22043,6 +22043,17 @@ final class CapturePanelModel: ObservableObject {
         if parse.spans.contains(where: { $0.kind == "global_route" && cursor >= $0.start && cursor <= $0.end }) {
             return nil
         }
+        // A whole-draft `record_route` with the caret at its end is bob's
+        // record list (`@eat/`), not the cached album-create row. Defer to
+        // capture-complete so existing records appear after the `/`.
+        if parse.spans.contains(where: { span in
+            span.kind == "record_route"
+                && span.start == 0
+                && span.end == draft.utf8.count
+                && cursor == span.end
+        }) {
+            return nil
+        }
         guard let targets = targetCacheSnapshot.targets?.targets, !targets.isEmpty else {
             return nil
         }

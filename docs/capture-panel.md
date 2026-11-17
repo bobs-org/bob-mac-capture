@@ -178,7 +178,8 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   Notebook route rows use Bob's `title`, `summary`, `owner`, and `breadcrumb`
   for display while preserving the route as the insertion identity. Record route
   rows keep Bob's emoji, label, and count and add the album title, the owner
-  breadcrumb, and the dimmed `summary`. A bare album route refuses with
+  breadcrumb, and the dimmed `summary`. A draft of only `@eat/` lists that
+  album's existing records. A bare album route refuses with
   `album_holds_no_tasks` and offers the one-key `@stem/` rewrite as a footer
   button. In a notebook
   `@route+` picker, `item_kind: "note"` rows use a book icon and note count, omit
@@ -250,7 +251,9 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   Blocks. Bob decides; the app
   applies the edit and requests completion; Undo restores the key. Blank-draft
   `\` becomes `/` for Go To. Else `/` aliases `#` where Bob opens its menu,
-  staying literal in `=/`, `[[folder/`, section, and Pomodoro names. `\`
+  staying literal right after an album route (`@eat/` is the record route;
+  type `#` for the section menu) and in `=/`, `[[folder/`, section, and
+  Pomodoro names. `\`
   aliases `%` where the directive menu opens (`Buy milk \` → `Buy milk %`;
   literal at line start, glued to a word, or after another `\`). Same-key
   press types one literal and closes the menu. Before Bob replies, the app
