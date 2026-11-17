@@ -84,9 +84,15 @@ final class CaptureAliasTipPanelTests: XCTestCase {
     }
 
     func testFilteringKeepsTheShownTipAnchoredToTheSigil() async throws {
+        // Rewrite has to beat capture-complete, or the list's first frame
+        // drops the tip as late_reply under CI load.
         let (model, textView) = try makeModel(
             recordURL: makeRecordURL(),
-            extra: ["FAKE_BOB_ALIAS_TIP_ANCHOR": "1"]
+            extra: [
+                "FAKE_BOB_ALIAS_TIP_ANCHOR": "1",
+                "FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS": "0.15",
+            ],
+            debounceNanoseconds: 200_000_000
         )
         typeSigil("@", into: textView, model: model, modifiers: .shift)
         await waitUntil {
