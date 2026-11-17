@@ -48,14 +48,14 @@ for that executable.
   and updated note, the intake moves, held PDFs, and per-PDF failures or a
   coded hard failure. Additive fields (`generated_at`, `summary.held`,
   `held[]`, `notes[].marker_write`) decode as empty on an older `bob`. The
-  app decodes every field except `schema_version` loosely, ignores unknown
-  fields, and rejects any other schema version like any other scan
-  failure. After a writing scan, `bob` rewrites
-  `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else
-  `~/.local/state`) and, on macOS, posts the Darwin notification
-  `org.bobs.bob.ref.scan-finished`. Bob Refs observes that ping, reads the
-  receipt off the main thread (bounded at 4 MB), and ignores a duplicate
-  content hash. Launch never reads a receipt.
+  app decodes loosely except `schema_version`, ignoring unknown fields
+  and rejecting other versions as failures. After a mutating scan,
+  `bob` rewrites `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`,
+  else `~/.local/state`) and posts the Darwin notification
+  `org.bobs.bob.ref.scan-finished`. No-work and prelock failures leave
+  the receipt alone; recovery-only keeps output distinct. Bob Refs
+  observes the ping, reading the receipt off-main-thread (4 MB cap),
+  ignoring duplicates. Launch never reads a receipt.
 - The snapshot (with git-added dates and instants) and the last Today
   value persist
   in `refs-snapshot.json` under `~/Library/Application Support/`
