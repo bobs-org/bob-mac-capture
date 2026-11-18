@@ -147,13 +147,14 @@ struct RecordNotePreviewView: View {
     @ViewBuilder
     private var noteBody: some View {
         if file.action == "update", let lines = file.lines {
-            let changed = lines.filter { $0.change != "unchanged" }
-            if changed.isEmpty {
+            let rawChanged = lines.filter { $0.change != "unchanged" }
+            if rawChanged.isEmpty {
                 Text("No changes")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("No changes")
             } else {
+                let changed = file.previewChangedLines ?? rawChanged
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Array(changed.enumerated()), id: \.offset) { _, line in
                         RecordChangeLineView(line: line)

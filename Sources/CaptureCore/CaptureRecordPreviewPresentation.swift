@@ -121,6 +121,16 @@ public struct CaptureNoteFileLine: Codable, Equatable, Sendable {
         case depth
         case change
     }
+
+    /// True when this row is blank scaffolding around the real edit: an
+    /// added or removed row whose text is only whitespace. A `changed`
+    /// row never counts as a spacer.
+    public var isBlankSpacer: Bool {
+        guard change == "added" || change == "removed" else {
+            return false
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
 /// One planned record file in top-level `note_files`, in item order.
@@ -214,6 +224,23 @@ public struct CaptureNoteFile: Codable, Equatable, Sendable {
             return nil
         }
         return lines.filter { $0.change != "unchanged" }
+    }
+
+    /// Display list for changed lines: `changedLines` without blank
+    /// spacer rows. `nil` when older Bob omitted the `lines` key, so the
+    /// older-Bob fallback is unchanged. When dropping spacers would empty
+    /// a non-empty list, the raw list is returned unchanged, so a
+    /// whitespace-only diff never looks like "no changes". `changedLines`
+    /// keeps its raw meaning.
+    public var previewChangedLines: [CaptureNoteFileLine]? {
+        guard let changed = changedLines else {
+            return nil
+        }
+        let filtered = changed.filter { !$0.isBlankSpacer }
+        if filtered.isEmpty && !changed.isEmpty {
+            return changed
+        }
+        return filtered
     }
 }
 
@@ -515,10 +542,11 @@ public enum CaptureRecordPreviewPresentation {
         }
     }
 
-    /// Changed lines for the Record Card's live update section. Nil unless
-    /// the ready preview belongs to this draft, the paired file is an
-    /// update for `path`, and at least one line changed. Loading, stale,
-    /// or empty diffs omit the section so old data never flashes.
+    /// Changed lines for the Record Card's live update section, without
+    /// blank spacer rows. Nil unless the ready preview belongs to this
+    /// draft, the paired file is an update for `path`, and at least one
+    /// display line changed. Loading, stale, or empty diffs omit the
+    /// section so old data never flashes.
     public static func liveUpdateChangedLines(
         path: String?,
         previewDraft: String?,
@@ -539,7 +567,7 @@ public enum CaptureRecordPreviewPresentation {
         let file =
             paired
             ?? preview.noteFiles.first { $0.path == path && $0.action == "update" }
-        guard let file, let lines = file.changedLines, !lines.isEmpty else {
+        guard let file, let lines = file.previewChangedLines, !lines.isEmpty else {
             return nil
         }
         return lines

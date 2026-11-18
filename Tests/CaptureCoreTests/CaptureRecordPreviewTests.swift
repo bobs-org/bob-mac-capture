@@ -560,4 +560,111 @@ final class CaptureRecordPreviewTests: XCTestCase {
             )
         )
     }
+
+    func testPreviewChangedLinesSkipsBlankSpacersKeepsHeading() {
+        let bullet = "- 2026-11-18: Maybe Fable is ready?"
+        let file = CaptureNoteFile(
+            path: "blog/fable.md",
+            action: "update",
+            markdown: "# Fable\n",
+            lines: [
+                CaptureNoteFileLine(text: "---", depth: 0, change: "unchanged"),
+                CaptureNoteFileLine(text: "title: Fable", depth: 0, change: "unchanged"),
+                CaptureNoteFileLine(text: "", depth: 0, change: "added"),
+                CaptureNoteFileLine(text: "## Notes", depth: 0, change: "added"),
+                CaptureNoteFileLine(text: "", depth: 0, change: "added"),
+                CaptureNoteFileLine(text: bullet, depth: 0, change: "added"),
+            ]
+        )
+        XCTAssertEqual(
+            file.changedLines?.map(\.text),
+            ["", "## Notes", "", bullet]
+        )
+        XCTAssertEqual(
+            file.previewChangedLines?.map(\.text),
+            ["## Notes", bullet]
+        )
+        let preview = CaptureCommandSuccess(
+            ok: true, dryRun: true, routed: true, routeLabel: "blog",
+            relativeTarget: "blog/fable.md", target: "/vault/blog/fable.md",
+            text: "Fable", taskLine: "", kind: "record_update",
+            created: "2026-11-18", placement: "updated",
+            noteFiles: [file],
+            recordNote: CaptureRecordNoteSummary(action: "update", path: "blog/fable.md")
+        )
+        let draft = "@blog/fable\n- Maybe Fable is ready?"
+        XCTAssertEqual(
+            CaptureRecordPreviewPresentation.liveUpdateChangedLines(
+                path: "blog/fable.md",
+                previewDraft: draft,
+                plainDraft: draft,
+                isPreviewing: false,
+                preview: preview
+            )?.map(\.text),
+            ["## Notes", bullet]
+        )
+    }
+
+    func testPreviewChangedLinesForUpdateFixtureSkipsBlank() throws {
+        let success = try decodeSuccess("record-capture-update.json")
+        let file = try XCTUnwrap(success.noteFiles.first)
+        XCTAssertEqual(file.changedLines?.count, 2)
+        XCTAssertEqual(
+            file.previewChangedLines?.map(\.text),
+            ["- 2026-10-30: Went back"]
+        )
+    }
+
+    func testBlankSpacerRuleKeepsChangedEmptyText() {
+        let spaced = CaptureNoteFileLine(text: "   ", depth: 0, change: "added")
+        let tabbed = CaptureNoteFileLine(text: "\t", depth: 0, change: "removed")
+        let changedBlank = CaptureNoteFileLine(text: "", depth: 0, change: "changed")
+        let kept = CaptureNoteFileLine(text: "- note", depth: 0, change: "added")
+        XCTAssertTrue(spaced.isBlankSpacer)
+        XCTAssertTrue(tabbed.isBlankSpacer)
+        XCTAssertFalse(changedBlank.isBlankSpacer)
+        XCTAssertFalse(kept.isBlankSpacer)
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n",
+            lines: [spaced, tabbed, changedBlank, kept]
+        )
+        XCTAssertEqual(
+            file.previewChangedLines?.map(\.text),
+            ["", "- note"]
+        )
+    }
+
+    func testPreviewChangedLinesFallbackKeepsWhitespaceOnlyDiff() {
+        let file = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n",
+            lines: [
+                CaptureNoteFileLine(text: "", depth: 0, change: "added"),
+                CaptureNoteFileLine(text: "  ", depth: 0, change: "added"),
+            ]
+        )
+        XCTAssertEqual(file.changedLines?.count, 2)
+        XCTAssertEqual(file.previewChangedLines?.map(\.text), ["", "  "])
+    }
+
+    func testPreviewChangedLinesOlderBob() {
+        let missing = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n"
+        )
+        XCTAssertNil(missing.changedLines)
+        XCTAssertNil(missing.previewChangedLines)
+        let empty = CaptureNoteFile(
+            path: "eat/nagi.md",
+            action: "update",
+            markdown: "# Nagi\n",
+            lines: []
+        )
+        XCTAssertEqual(empty.changedLines, [])
+        XCTAssertEqual(empty.previewChangedLines, [])
+    }
 }
