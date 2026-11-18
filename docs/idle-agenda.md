@@ -5,8 +5,8 @@ description: "Today's Pomodoro agenda in an empty Bob Mac Capture draft: caching
 
 ## Idle agenda
 
-[![Idle agenda showing the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda.png#only-light)](images/capture-agenda.png)
-[![Idle agenda showing the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda-dark.png#only-dark)](images/capture-agenda-dark.png)
+[![Idle agenda showing today's labeled headline, the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda.png#only-light)](images/capture-agenda.png)
+[![Idle agenda showing today's labeled headline, the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda-dark.png#only-dark)](images/capture-agenda-dark.png)
 
 Synthetic CI render. Open the image for full-size text.
 
@@ -47,12 +47,15 @@ change, and Recheck Bob refresh immediately. A failed refresh keeps the last goo
 same-day marks; Settings reports the error. Older Bob versions without `walks` show
 no marks and report "Upgrade bob for walk marks" in Settings.
 
-Directly under `Today` sits today's Daily Headline when bob supplies one: bob's
-`headline` display text from `capture-pomodoros --tasks`, verbatim, semibold, at
-most two lines. It shows whether or not Pomodoros exist, stays on a
-stale-but-same-day snapshot, and never shows yesterday's headline ("Loading
-today…" until the refresh lands). An older bob that omits `headline` draws no
-headline row.
+Directly under `Today` sits today's Daily Headline when bob supplies one: a
+small-caps `HEADLINE` label leads the headline — the same word as the daily
+note's `**Headline:**` slot — followed by bob's `headline` display text from
+`capture-pomodoros --tasks`, verbatim and semibold. The text wraps under
+itself, never under the label, to at most two lines with tail truncation;
+hovering shows the full text. It shows whether or not Pomodoros exist, stays
+on a stale-but-same-day snapshot, and never shows yesterday's headline
+("Loading today…" until the refresh lands). An older bob that omits
+`headline` draws no headline row.
 
 Below the headline sits the single saved `TODAY N/C` badge; its cap comes from
 bob's plan config. An older `bob` that omits `plan_budget` simply omits this row.

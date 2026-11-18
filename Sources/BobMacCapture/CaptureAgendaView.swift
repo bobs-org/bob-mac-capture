@@ -800,20 +800,30 @@ struct CaptureAgendaRowView: View {
 
     // MARK: - Daily Headline
 
-    /// The Daily Headline directly under the Today title: newspaper
-    /// hierarchy with no chrome, icon, or card. One type step above the
-    /// task-row text, semibold, primary, at most two lines with tail
-    /// truncation. The text is bob's display string verbatim; the app
-    /// never parses Markdown here.
+    /// The Daily Headline directly under the Today title: a run-in
+    /// small-caps HEADLINE label leads the headline's first line, with
+    /// wrapped text hanging under the headline, never under the label.
     private var dailyHeadlineView: some View {
-        Text(row.text)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(row.lineLimit)
-            .truncationMode(.tail)
-            .help(row.text)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(row.accessibilityLabel ?? row.text)
+        HStack(
+            alignment: .firstTextBaseline,
+            spacing: CGFloat(CaptureAgendaLayoutMetrics.dailyHeadlineLabelSpacing)
+        ) {
+            // The TODAY badge's small-caps recipe, unboxed and secondary.
+            Text(CaptureAgendaPresentation.headlineLabel)
+                .font(.callout.weight(.semibold).smallCaps().uppercaseSmallCaps())
+                .tracking(0.5)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+            Text(row.text)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(row.lineLimit)
+                .truncationMode(.tail)
+        }
+        .help(row.text)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
     }
 
     // MARK: - Quiet lines

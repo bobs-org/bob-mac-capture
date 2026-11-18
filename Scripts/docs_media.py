@@ -15,8 +15,8 @@ import zlib
 REPO = "bobs-org/bob-mac-capture"
 # Artifact stem, stable documentation stem, synthetic fixture identity.
 CURATED = (
-    ("agenda-agenda-current-760", "capture-agenda",
-     "CaptureAgendaDesignTests / Tests/Fixtures/agenda-current.json"),
+    ("agenda-agenda-headline-760", "capture-agenda",
+     "CaptureAgendaDesignTests / Tests/Fixtures/agenda-headline.json"),
     ("task-complete-task-complete-strike-760", "task-completion",
      "TaskCompleteDesignTests / Tests/Fixtures/task-complete-strike.json"),
     ("refs-browse-880", "refs-browse",

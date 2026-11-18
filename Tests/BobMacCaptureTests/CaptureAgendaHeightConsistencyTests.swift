@@ -292,6 +292,66 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
         XCTAssertFalse(CaptureAgendaRowView.showsChip(for: headlineRow))
     }
 
+    func testHeadlineLabelKeepsShortHeadlinesOnOneLineAndClampsLongOnesToTwo() throws {
+        let base = try agendaSnapshot("agenda-headline.json")
+        func headlineSnapshot(_ headline: String) -> CaptureAgendaSnapshot {
+            CaptureAgendaSnapshot(
+                ok: base.ok,
+                schemaVersion: base.schemaVersion,
+                date: base.date,
+                completedSummary: base.completedSummary,
+                pomodoros: base.pomodoros,
+                warnings: base.warnings,
+                planBudget: base.planBudget,
+                events: base.events,
+                maxTaskLinkCount: base.maxTaskLinkCount,
+                headline: headline
+            )
+        }
+        let longHeadline = String(repeating: "Converge take-home submitted ", count: 14)
+        let fixtureRow = try XCTUnwrap(
+            CaptureAgendaPresentation(
+                snapshot: base,
+                today: base.date ?? "",
+                now: nil
+            ).headlineRow
+        )
+        let narrowRowsWidth =
+            620 - 36 - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+        let twoLineHeight = CaptureAgendaRowMeasurer().height(
+            for: fixtureRow,
+            role: .later,
+            at: narrowRowsWidth
+        )
+        for panelWidth in [760, 620] as [CGFloat] {
+            let rowsWidth =
+                panelWidth - 36 - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+            let measurer = CaptureAgendaRowMeasurer()
+            func height(_ headline: String) throws -> CGFloat {
+                let presentation = CaptureAgendaPresentation(
+                    snapshot: headlineSnapshot(headline),
+                    today: base.date ?? "",
+                    now: nil
+                )
+                let row = try XCTUnwrap(presentation.headlineRow)
+                return measurer.height(for: row, role: .later, at: rowsWidth)
+            }
+            let shortHeight = try height("Ship it")
+            let oneCharHeight = try height("A")
+            XCTAssertEqual(shortHeight, oneCharHeight, accuracy: 1)
+            let longHeight = try height(longHeadline)
+            XCTAssertGreaterThan(longHeight, shortHeight)
+            XCTAssertEqual(longHeight, twoLineHeight, accuracy: 1)
+            try assertConsistent(
+                snapshot: headlineSnapshot(longHeadline),
+                fixture: "agenda-headline-long",
+                contentWidth: panelWidth - 36,
+                budget: 2_000,
+                expanded: []
+            )
+        }
+    }
+
     private func assertConsistent(
         fixture: String,
         contentWidth: CGFloat,

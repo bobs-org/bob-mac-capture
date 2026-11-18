@@ -45,7 +45,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
                 snapshot: snapshot,
                 today: snapshot.date ?? "",
                 now: nil,
-                walks: base == "agenda-current" ? walkFixture(date: snapshot.date) : nil
+                walks: base == "agenda-current" || base == "agenda-headline"
+                    ? walkFixture(date: snapshot.date) : nil
             )
             try render(presentation: presentation, base: base, budget: budget)
         }

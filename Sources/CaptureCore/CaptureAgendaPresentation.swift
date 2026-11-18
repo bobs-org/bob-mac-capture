@@ -385,6 +385,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// The title row's stale suffix, shared by the presentation and the
     /// view's stale-icon split. Never a ledger fact, only wording.
     public static let staleSuffix = "Couldn't refresh"
+    /// The run-in label the view draws before the Daily Headline. It
+    /// echoes the daily note's `**Headline:**` slot.
+    public static let headlineLabel = "HEADLINE"
     /// Walk attention marks for the title row's trailing edge, in `s`,
     /// `w`, `b` order. Empty when the walks snapshot is nil, from
     /// another day, or unsupported.

@@ -1163,6 +1163,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             headlineRow.lineLimit,
             CaptureAgendaLayoutMetrics.dailyHeadlineLineLimit
         )
+        XCTAssertEqual(CaptureAgendaPresentation.headlineLabel, "HEADLINE")
+        XCTAssertFalse(headlineRow.text.contains(CaptureAgendaPresentation.headlineLabel))
         XCTAssertEqual(headlineRow.accessibilityLabel, "Today's headline, \(headline)")
 
         let otherDay = CaptureAgendaPresentation(
