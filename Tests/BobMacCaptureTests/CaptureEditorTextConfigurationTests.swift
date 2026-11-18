@@ -125,4 +125,33 @@ final class CaptureEditorTextConfigurationTests: XCTestCase {
             )
         )
     }
+
+    @MainActor
+    func testPullInReasonFieldUsesAppKitFirstResponderLookup() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let field = CapturePickerFilterNSTextField()
+        field.setAccessibilityIdentifier(pullInReasonFieldAccessibilityIdentifier)
+        panel.contentView?.addSubview(field)
+        XCTAssertTrue(panel.makeFirstResponder(field))
+        XCTAssertTrue(field.holdsFirstResponder)
+
+        XCTAssertTrue(
+            CapturePanelController.pickerFilterField(
+                fromFirstResponder: panel.firstResponder,
+                identifier: pullInReasonFieldAccessibilityIdentifier
+            ) === field
+        )
+        XCTAssertTrue(
+            CapturePanelController.findPickerFilterField(
+                in: panel.contentView,
+                identifier: pullInReasonFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
+            ) === field
+        )
+    }
 }

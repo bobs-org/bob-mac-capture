@@ -1179,8 +1179,9 @@ struct CapturePanelView: View {
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
         // Only `.editor` is resolved by SwiftUI. Prompt and filter targets are
         // owned by AppKit (`BlockIDField` / `PomodoroNameField` /
-        // `CapturePickerFilterField`), so SwiftUI's stored focus value is cleared
-        // while the AppKit field claims first responder directly.
+        // `CapturePickerFilterField`), including the Pull-In reason editor, so
+        // SwiftUI's stored focus value is cleared while the AppKit field claims
+        // first responder directly.
         focusedControl =
             request.target == .editor || request.target == .pullInOfferList
                 || request.target == .inboxRouteRows || request.target == .moveChoiceRows

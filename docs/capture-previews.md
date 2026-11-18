@@ -470,16 +470,16 @@ task they start after and never use dependency wording; missing copy keeps
 the legacy presentation. Project offers show the new project and its `^prj`
 task beside the offered rows.
 
-Nothing starts selected. Each row is Leave, Pull in, Done, or Cancel.
-Control-X stages Done; Control-Shift-X opens the Cancel reason. Shift-Return
-keeps verdicts; two Esc presses discard them. Buttons read `Pull In {a}`,
-`Close {n}`, or both. Done shows `✓ Done`, Cancel `⊘ Cancel`. The strip shows
-Bob's consequence; refusals reopen with choices intact. `@route` previews up
-to five offers with tag, lane, destination, and fold. Shift-Return returns
-without writing; status changes continue to routing. `nothing_to_pull_in`
-shows `Nothing ready in ‹route›`. Without a chooser, muted lines explain
-started, waiting, blocked, or hidden rows. Relation picks notify once; diffs
-carry `link`, successors unlock, and project picks count as Task Links.
+Rows start unselected: Leave, Pull in, Done, or Cancel. Control-X stages Done;
+Control-Shift-X opens/focuses Cancel reason and scrolls it into view; Return
+confirms; Esc restores the prior outcome. Shift-Return keeps verdicts; two Esc
+presses discard them. Buttons read `Pull In {a}`, `Close {n}`, or both; outcomes
+show `✓ Done` or `⊘ Cancel`. The strip shows Bob's consequence or refusal reason;
+choices persist. `@route` previews up to five offers with tag, lane, destination,
+and fold. Shift-Return returns without writing; status changes route.
+`nothing_to_pull_in` shows `Nothing ready in ‹route›`. Without a chooser, muted
+lines explain status. Relation picks notify once; diffs link, successors unlock,
+and project picks count as Task Links.
 
 ## Project-note moves
 

@@ -394,6 +394,37 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(CapturePullInChoiceHeightPolicy(choice: one), onePolicy)
     }
 
+    func testReasonEditorAddsTransientHeightWithinTheExistingViewportCap() {
+        let key = "opaque#1^suffix"
+        let base = choiceState(offers: [offer(n: 1, group: "hand_off")])
+        let basePolicy = CapturePullInChoiceHeightPolicy(choice: base)
+        var editing = base
+        editing.activeReasonKey = key
+        let editingPolicy = CapturePullInChoiceHeightPolicy(choice: editing)
+        let fieldHeight = CapturePanelLayout.pullInReasonFieldHeight
+
+        XCTAssertEqual(
+            editingPolicy.listContentHeight,
+            basePolicy.listContentHeight + fieldHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            editingPolicy.listViewportHeight,
+            basePolicy.listViewportHeight + fieldHeight,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            editingPolicy.idealHeight,
+            basePolicy.idealHeight + fieldHeight,
+            accuracy: 0.001
+        )
+
+        var many = choiceState(offers: offers(count: 20))
+        many.activeReasonKey = many.highlightedKey
+        let manyPolicy = CapturePullInChoiceHeightPolicy(choice: many)
+        XCTAssertEqual(manyPolicy.listViewportHeight, manyPolicy.maxListHeight, accuracy: 0.001)
+    }
+
     func testMetaDetailsOmitsRecoveredCaptionAndHeaderRepeat() {
         func row(
             n: Int, group: String, trigger: String?, hideRemoved: Bool

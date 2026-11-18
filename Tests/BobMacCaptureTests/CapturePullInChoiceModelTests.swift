@@ -858,6 +858,92 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testReasonFieldFocusBlurReturnAndEscSettleOnce() async throws {
+        let model = try await openOfferCloseChoice(record: temporaryRecordURL())
+        model.beginPullInCancelForRow(Self.alphaKey)
+        XCTAssertEqual(model.focusRequest.target, .pullInReasonField)
+        model.updatePullInReasonText("blur confirmed")
+        model.pullInReasonFieldDidBlur()
+
+        XCTAssertEqual(model.pullInChoice?.stagedCancelReason(Self.alphaKey), "blur confirmed")
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, Self.betaKey)
+        let afterBlurSequence = model.focusRequest.sequence
+        model.pullInReasonFieldDidBlur()
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, Self.betaKey)
+        XCTAssertEqual(model.focusRequest.sequence, afterBlurSequence)
+
+        model.beginPullInCancelForRow(Self.betaKey)
+        model.updatePullInReasonText("discarded")
+        model.restorePullInReason()
+        model.pullInReasonFieldDidBlur()
+        XCTAssertNil(model.pullInChoice?.stagedCancelReason(Self.betaKey))
+
+        model.beginPullInCancelForRow(Self.betaKey)
+        model.updatePullInReasonText("return confirmed")
+        model.confirmPullInReason()
+        XCTAssertEqual(model.pullInChoice?.stagedCancelReason(Self.betaKey), "return confirmed")
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, Self.betaKey)
+        let afterReturnSequence = model.focusRequest.sequence
+        model.pullInReasonFieldDidBlur()
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, Self.betaKey)
+        XCTAssertEqual(model.focusRequest.sequence, afterReturnSequence)
+    }
+
+    func testIneligibleCloseChordsShowAndClearRefusalWithoutVerdicts() {
+        let model = CapturePanelModel()
+        let key = "opaque#1^suffix"
+        model.installPullInChoiceForPreviews(
+            offers: [
+                cardOffer(
+                    n: 1,
+                    text: "Recurring task",
+                    close: TaskCompleteOfferClose(
+                        complete: false,
+                        cancel: false,
+                        why: "Recurring tasks cannot close here"
+                    )
+                )
+            ],
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 1,
+                close: CapturePullInClose(supported: true)
+            ),
+            draft: "!task"
+        )
+
+        model.stagePullInDoneForRow(key)
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage,
+            "Recurring tasks cannot close here"
+        )
+        model.beginPullInCancelForRow(key)
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage,
+            "Recurring tasks cannot close here"
+        )
+        model.stagePullInDoneForHighlight()
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage,
+            "Recurring tasks cannot close here"
+        )
+        model.beginPullInCancelForHighlight()
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage,
+            "Recurring tasks cannot close here"
+        )
+        XCTAssertTrue(model.pullInChoice?.verdicts.isEmpty == true)
+
+        model.movePullInChoiceHighlight(by: 1)
+        XCTAssertNil(model.pullInChoice?.verdictRefusalMessage)
+        model.beginPullInCancelForHighlight()
+        model.updatePullInChoiceFilter("recurring")
+        XCTAssertNil(model.pullInChoice?.verdictRefusalMessage)
+        model.beginPullInCancelForHighlight()
+        model.togglePullInOffer(key)
+        XCTAssertNil(model.pullInChoice?.verdictRefusalMessage)
+    }
+
     func testTwoStepEscArmsDisarmsAndDiscardsWithoutWriting() async throws {
         let record = temporaryRecordURL()
         let model = try await openOfferCloseChoice(record: record)
@@ -1015,6 +1101,10 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         model.stagePullInDoneForHighlight()
         model.beginPullInCancelForHighlight()
         XCTAssertTrue(model.pullInChoice?.verdicts.isEmpty == true)
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage,
+            "Closing offers needs a newer bob"
+        )
         XCTAssertEqual(model.statusText, "Closing offers needs a newer bob")
 
         model.confirmPullInChoice()

@@ -5268,12 +5268,18 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.closeSupported else {
-            announceStatus("Closing offers needs a newer bob")
+            let refusal = "Closing offers needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
         guard choice.outcomes.isEligible(.done, for: key) || choice.verdicts[key] == .done else {
-            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            let refusal = choice.refusalReason(for: key) ?? "This offer cannot close here"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5298,7 +5304,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.closeSupported else {
-            announceStatus("Closing offers needs a newer bob")
+            let refusal = "Closing offers needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5310,7 +5319,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.outcomes.isEligible(.cancel(""), for: key) else {
-            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            let refusal = choice.refusalReason(for: key) ?? "This offer cannot close here"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5326,6 +5338,7 @@ final class CapturePanelModel: ObservableObject {
         let highlight = choice.highlightedKey
         _ = choice.outcomes.clearVerdict(for: key)
         choice.consequenceMessage = nil
+        choice.verdictRefusalMessage = nil
         if highlight != key {
             choice.highlightedKey = highlight
         }
@@ -5342,12 +5355,18 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.closeSupported else {
-            announceStatus("Closing offers needs a newer bob")
+            let refusal = "Closing offers needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
         guard choice.outcomes.isEligible(.done, for: key) || choice.verdicts[key] == .done else {
-            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            let refusal = choice.refusalReason(for: key) ?? "This offer cannot close here"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5369,7 +5388,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.closeSupported else {
-            announceStatus("Closing offers needs a newer bob")
+            let refusal = "Closing offers needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5382,7 +5404,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard choice.outcomes.isEligible(.cancel(""), for: key) else {
-            announceStatus(choice.refusalReason(for: key) ?? "This offer cannot close here")
+            let refusal = choice.refusalReason(for: key) ?? "This offer cannot close here"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
             NSSound.beep()
             return
         }
@@ -5408,6 +5433,20 @@ final class CapturePanelModel: ObservableObject {
         choice.restoreOfferCancel()
         pullInChoice = choice
         requestFocus(.pullInOfferList)
+    }
+
+    func pullInReasonFieldDidBlur() {
+        guard pullInChoice?.activeReasonKey != nil else {
+            return
+        }
+        confirmPullInReason()
+    }
+
+    func focusPullInReasonField() {
+        guard pullInChoice?.activeReasonKey != nil else {
+            return
+        }
+        requestFocus(.pullInReasonField)
     }
 
     func updatePullInReasonText(_ text: String) {

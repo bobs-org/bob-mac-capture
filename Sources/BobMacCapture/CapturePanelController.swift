@@ -3712,6 +3712,20 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             CaptureSignpost.event("pull-in-filter-focus-repaired")
             return
         }
+        if model.pullInChoiceVisible,
+            model.focusRequest.target == .pullInReasonField,
+            model.pullInChoice?.activeReasonKey != nil,
+            let field = Self.findPickerFilterField(
+                in: panel.contentView,
+                identifier: pullInReasonFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
+            ),
+            !field.holdsFirstResponder
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("pull-in-reason-focus-repaired")
+            return
+        }
         if model.inboxRouteChoiceVisible,
            model.focusRequest.target == .inboxRouteFilter,
            let field = Self.findPickerFilterField(

@@ -1135,6 +1135,7 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     mutating func moveHighlight(by delta: Int) {
+        verdictRefusalMessage = nil
         let keys = visibleSelectableKeys
         guard !keys.isEmpty else {
             highlightedKey = nil
@@ -1259,6 +1260,7 @@ struct CapturePullInChoiceState: Equatable {
         activeReasonKey = nil
         activeReasonText = ""
         savedPriorVerdict = nil
+        verdictRefusalMessage = nil
     }
 
     mutating func updateReasonText(_ text: String) {
@@ -1278,6 +1280,7 @@ struct CapturePullInChoiceState: Equatable {
         guard let highlighted = highlightedKey else {
             return
         }
+        verdictRefusalMessage = nil
         _ = outcomes.clearVerdict(for: highlighted)
         if consequenceMessage != nil {
             consequenceMessage = nil

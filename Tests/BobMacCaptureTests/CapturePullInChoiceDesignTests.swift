@@ -379,6 +379,13 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         }
     }
 
+    func testRenderActiveReasonEditorOnLastRow() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-reason-editor-last-row") { model in
+            installCloseCard(model)
+            model.beginPullInCancelForRow("opaque#2^suffix")
+        }
+    }
+
     func testRenderMixedFooterCounts() throws {
         try writeCardFixtures(name: "capture-pull-in-choice-mixed-footer") { model in
             installCloseCard(model, extra: true)
@@ -407,6 +414,31 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
             }
             choice.verdictRefusalMessage = "offer 1 cannot be marked done: the row changed"
             model.pullInChoice = choice
+        }
+    }
+
+    func testRenderRefusalStripWithoutStagedVerdicts() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-refusal-empty") { model in
+            model.installPullInChoiceForPreviews(
+                offers: [
+                    cardOffer(
+                        n: 1,
+                        text: "Recurring task",
+                        close: TaskCompleteOfferClose(
+                            complete: false,
+                            cancel: false,
+                            why: "Recurring tasks cannot close here"
+                        )
+                    )
+                ],
+                pullIn: CapturePullIn(
+                    supported: true,
+                    offerCount: 1,
+                    close: CapturePullInClose(supported: true)
+                ),
+                draft: "!task"
+            )
+            model.beginPullInCancelForRow("opaque#1^suffix")
         }
     }
 

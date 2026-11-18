@@ -62,6 +62,7 @@ struct CapturePickerFilterField: NSViewRepresentable {
     let onTextChange: (String) -> Void
     var fieldIdentifier = pickerFilterFieldAccessibilityIdentifier
     var focusTarget: CapturePanelFocusTarget = .pickerFilter
+    var fontSize: CGFloat = 15
     var onFocusChange: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> CapturePickerFilterNSTextField {
@@ -74,7 +75,7 @@ struct CapturePickerFilterField: NSViewRepresentable {
         field.usesSingleLineMode = true
         field.lineBreakMode = .byClipping
         field.placeholderString = placeholder
-        field.font = NSFont.systemFont(ofSize: 15)
+        field.font = NSFont.systemFont(ofSize: fontSize)
         field.delegate = context.coordinator
         field.setAccessibilityIdentifier(fieldIdentifier)
         field.setAccessibilityLabel(accessibilityLabel)

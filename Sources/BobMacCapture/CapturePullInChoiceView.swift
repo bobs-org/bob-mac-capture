@@ -15,17 +15,19 @@ extension CapturePanelLayout {
     static let pullInListPadding: CGFloat = 6
     static let pullInMaxVisibleRows = 6
     static let pullInMinVisibleRows = 2
+    static let pullInReasonFieldHeight: CGFloat = 28
 }
 
 /// Fixed-height sizing policy for the pull-in choice card. The budget is
 /// fixed at open from the full choice state, so filtering or collapsing
-/// never resizes the panel, matching the picker's contract.
+/// never resizes the panel. The transient reason editor alone adds height.
 struct CapturePullInChoiceHeightPolicy: Equatable {
     var sectionCount: Int
     var captionSectionCount: Int
     var foldRowCount: Int
     var rowCount: Int
     var hasContextLine: Bool
+    var hasActiveReasonEditor = false
     var displayScale: CGFloat = 1
 
     init(
@@ -33,6 +35,7 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         foldRowCount: Int,
         rowCount: Int,
         hasContextLine: Bool,
+        hasActiveReasonEditor: Bool = false,
         captionSectionCount: Int = 0,
         displayScale: CGFloat = 1
     ) {
@@ -41,6 +44,7 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         self.foldRowCount = foldRowCount
         self.rowCount = rowCount
         self.hasContextLine = hasContextLine
+        self.hasActiveReasonEditor = hasActiveReasonEditor
         self.displayScale = displayScale
     }
 
@@ -53,6 +57,7 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
             foldRowCount: folds,
             rowCount: choice.rows.count,
             hasContextLine: hasContext,
+            hasActiveReasonEditor: choice.activeReasonKey != nil,
             captionSectionCount: sections.filter { $0.caption != nil }.count,
             displayScale: displayScale
         )
@@ -67,6 +72,7 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
                     - CapturePanelLayout.pullInSectionHeaderHeight)
                 + CGFloat(foldRowCount) * CapturePanelLayout.pullInFoldRowHeight
                 + CGFloat(rowCount) * CapturePanelLayout.pullInRowHeight
+                + (hasActiveReasonEditor ? CapturePanelLayout.pullInReasonFieldHeight : 0)
         )
     }
 
@@ -183,6 +189,21 @@ struct CapturePullInChoiceCard: View {
                             return
                         }
                         proxy.scrollTo(key, anchor: nil)
+                    }
+                    .onChange(of: choice.activeReasonKey) { _, key in
+                        guard let key else {
+                            return
+                        }
+                        let reasonID = "reason:" + key
+                        DispatchQueue.main.async {
+                            if reduceMotion {
+                                proxy.scrollTo(reasonID, anchor: nil)
+                            } else {
+                                withAnimation(.snappy(duration: 0.15)) {
+                                    proxy.scrollTo(reasonID, anchor: nil)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -414,7 +435,7 @@ struct CapturePullInChoiceCard: View {
                 }
                 ForEach(choice.visibleRows(in: section)) { row in
                     if let key = row.offerKey {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 0) {
                             Button {
                                 model.togglePullInOffer(key)
                             } label: {
@@ -463,7 +484,9 @@ struct CapturePullInChoiceCard: View {
                                 CapturePullInReasonField(
                                     model: model,
                                     choice: choice,
-                                    rowKey: key)
+                                    rowKey: key
+                                )
+                                .id("reason:" + key)
                             }
                         }
                     } else {
@@ -513,13 +536,23 @@ struct CapturePullInChoiceCard: View {
                         .padding(.leading, 22)
                 }
                 ForEach(choice.visibleRows(in: section)) { row in
-                    if row.offerKey != nil {
-                        CapturePullInOfferRow(
-                            choice: choice,
-                            row: row,
-                            isHighlighted: choice.highlightedKey == row.offerKey,
-                            isMarked: row.offerKey.map { choice.markedKeys.contains($0) } ?? false
-                        )
+                    if let key = row.offerKey {
+                        VStack(alignment: .leading, spacing: 0) {
+                            CapturePullInOfferRow(
+                                choice: choice,
+                                row: row,
+                                isHighlighted: choice.highlightedKey == key,
+                                isMarked: choice.markedKeys.contains(key)
+                            )
+                            if choice.activeReasonKey == key {
+                                CapturePullInReasonField(
+                                    model: model,
+                                    choice: choice,
+                                    rowKey: key,
+                                    previewMode: true
+                                )
+                            }
+                        }
                     } else {
                         CapturePullInMutedRow(row: row)
                     }
@@ -949,6 +982,7 @@ struct CapturePullInReasonField: View {
     @ObservedObject var model: CapturePanelModel
     let choice: CapturePullInChoiceState
     let rowKey: String
+    var previewMode = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -956,20 +990,8 @@ struct CapturePullInReasonField: View {
             Text("⊘ Why cancel?")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField(
-                "Why cancel? (optional)",
-                text: Binding(
-                    get: { choice.activeReasonText },
-                    set: { model.updatePullInReasonText($0) }))
-            .textFieldStyle(.plain)
-            .font(.body)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .onSubmit {
-                model.confirmPullInReason()
-            }
-            .accessibilityIdentifier(pullInReasonFieldAccessibilityIdentifier)
-            .accessibilityLabel("Why cancel? optional reason")
+            reasonTextField
+                .frame(maxWidth: .infinity)
             Text("↵ · Esc back")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -977,9 +999,49 @@ struct CapturePullInReasonField: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+        .padding(.top, 2)
         .padding(.leading, 30)
+        .frame(height: CapturePanelLayout.pullInReasonFieldHeight)
         .transition(.opacity)
         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: choice.activeReasonKey)
+    }
+
+    @ViewBuilder
+    private var reasonTextField: some View {
+        if previewMode {
+            TextField(
+                "Why cancel? (optional)",
+                text: Binding(
+                    get: { choice.activeReasonText },
+                    set: {
+                        model.updatePullInReasonText($0)
+                    }
+                )
+            )
+            .textFieldStyle(.plain)
+            .font(.body)
+            .lineLimit(1)
+            .accessibilityIdentifier(pullInReasonFieldAccessibilityIdentifier)
+            .accessibilityLabel("Why cancel? optional reason")
+        } else {
+            CapturePickerFilterField(
+                text: choice.activeReasonText,
+                placeholder: "Why cancel? (optional)",
+                accessibilityLabel: "Why cancel? optional reason",
+                focusRequest: model.focusRequest,
+                onTextChange: { model.updatePullInReasonText($0) },
+                fieldIdentifier: pullInReasonFieldAccessibilityIdentifier,
+                focusTarget: .pullInReasonField,
+                fontSize: NSFont.preferredFont(forTextStyle: .body).pointSize,
+                onFocusChange: { focused in
+                    if focused {
+                        model.focusPullInReasonField()
+                    } else {
+                        model.pullInReasonFieldDidBlur()
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -1209,11 +1271,13 @@ struct CapturePullInChoiceFooter: View {
         if let armed = choice.outcomes.escArmedText {
             return (armed, .yellow)
         }
-        if let refusal = choice.verdictRefusalMessage ?? choice.errorMessage,
-            !refusal.isEmpty,
+        if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+            return (refusal, .red)
+        }
+        if let error = choice.errorMessage, !error.isEmpty,
             hasVerdicts || choice.activeReasonKey != nil
         {
-            return (refusal, .red)
+            return (error, .red)
         }
         if let message = choice.consequenceMessage, !message.isEmpty {
             return (message, .secondary)
