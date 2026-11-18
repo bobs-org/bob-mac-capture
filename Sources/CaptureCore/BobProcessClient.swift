@@ -604,6 +604,75 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    /// Walk attention from `bob walks --format json` on its own lane, so
+    /// it never cancels or delays the agenda lane. Byte-identical stdout
+    /// is a no-op: when `previous` matches the fresh output bytes, nothing
+    /// is decoded and `.unchanged` is returned. An older bob without the
+    /// `walks` subcommand fails with clap's unrecognized-subcommand error,
+    /// which maps to `BobClientError.unsupportedCommand`.
+    public func walkAttention(previous: Data? = nil) async throws -> WalkAttentionFetch {
+        let arguments = ["walks", "--format", "json"]
+        let result = try await run(arguments: arguments, lane: "walks")
+        let command = [executablePath] + arguments
+        let stderr = boundedProcessText(result.stderr)
+
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedWalksFailure(stderr: stderr) {
+                throw BobClientError.unsupportedCommand("walks")
+            }
+            throw BobClientError.processFailed(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        let bytes = Data(result.stdout.utf8)
+        if let previous, previous == bytes {
+            return .unchanged
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let snapshot = try decoder.decode(
+                WalkAttentionSnapshot.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard snapshot.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: command,
+                    expected: 1,
+                    actual: snapshot.schemaVersion
+                )
+            }
+            return .changed(snapshot: snapshot, bytes: bytes)
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    static func isUnsupportedWalksFailure(stderr: String) -> Bool {
+        guard stderr.contains("unrecognized subcommand") else {
+            return false
+        }
+        return stderr.contains("walks")
+    }
+
     /// Clap reports an unknown flag as `error: unexpected argument
     /// '<flag>' found` on stderr: that is an old bob, not a broken vault.
     static func isUnsupportedOptionFailure(stderr: String, option: String) -> Bool {

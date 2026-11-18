@@ -6602,6 +6602,27 @@ JSON
     fi
     exit 0
     ;;
+  walks)
+    # `bob walks --format json` for the walks attention lane.
+    # FAKE_BOB_WALKS_FIXTURE names a fixture in this directory (default
+    # walks-all.json), FAKE_BOB_WALKS_UNSUPPORTED=1 prints clap's
+    # unrecognized-subcommand failure (an old bob without `walks`), and
+    # FAKE_BOB_WALKS_FAIL=1 exits 1.
+    if [[ "${FAKE_BOB_WALKS_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'walks'\n\nUsage: bob [COMMAND]\n\nFor more information, try '--help'.\n" >&2
+      exit 2
+    fi
+    if [[ "${FAKE_BOB_WALKS_FAIL:-}" == "1" ]]; then
+      printf 'fake walks failed\n' >&2
+      exit 1
+    fi
+    walks_fixture="${FAKE_BOB_WALKS_FIXTURE:-walks-all.json}"
+    if [[ "${walks_fixture}" == */* ]]; then
+      cat "${walks_fixture}"
+    else
+      cat "${fixtures_dir}/${walks_fixture}"
+    fi
+    ;;
   *)
     printf 'unknown fake command: %s\n' "${command}" >&2
     exit 64

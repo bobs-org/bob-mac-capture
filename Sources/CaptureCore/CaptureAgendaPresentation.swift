@@ -45,6 +45,26 @@ public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
     case calendarClear
 }
 
+/// One walk attention mark for the title row's trailing edge: a single
+/// monospaced lowercase family letter (`s`, `w`, `b`) with its tier hue
+/// dot. `count` carries the display count for `s` (commitments) and `b`
+/// (waiting); `w` stays a bare mark. Counts come from bob's `walks` JSON,
+/// never from the app. Bare frame (no `[[` brackets): the letter plus dot
+/// is already the selector's glyph.
+public struct CaptureAgendaWalkMark: Hashable, Equatable, Sendable {
+    public let family: String
+    public let tier: String
+    public let label: String
+    public let count: Int?
+
+    public init(family: String, tier: String, label: String, count: Int? = nil) {
+        self.family = family
+        self.tier = tier
+        self.label = label
+        self.count = count
+    }
+}
+
 /// Cache key for a measured row: kind, display text, depth, line limit,
 /// and accessory presence. Unchanged rows across snapshots are never
 /// re-measured.
@@ -74,6 +94,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// view paints tertiary. Explicit so later rows dim `=bugs` the same
     /// way they dim a legacy `=#slug`.
     public let hintDimmed: Bool
+    /// Walk attention marks on the title row. Part of the measure key so
+    /// the height cache invalidates when marks change.
+    public let walkMarks: [CaptureAgendaWalkMark]
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -91,7 +114,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
         sessionOffClock: Bool = false,
-        hintDimmed: Bool = false
+        hintDimmed: Bool = false,
+        walkMarks: [CaptureAgendaWalkMark] = []
     ) {
         self.kind = kind
         self.text = text
@@ -109,6 +133,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.calendarRail = calendarRail
         self.sessionOffClock = sessionOffClock
         self.hintDimmed = hintDimmed
+        self.walkMarks = walkMarks
     }
 }
 
@@ -159,6 +184,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// True when `accessoryText` is a later-row start hint that the view
     /// paints tertiary. The view never infers this from the token prefix.
     public let hintDimmed: Bool
+    /// Walk attention marks for the title row's trailing edge. Empty for
+    /// every other row.
+    public let walkMarks: [CaptureAgendaWalkMark]
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -181,7 +209,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         calendar: CaptureAgendaCalendarRowData? = nil,
         calendarRail: CaptureAgendaRailData? = nil,
         sessionOffClock: Bool = false,
-        hintDimmed: Bool = false
+        hintDimmed: Bool = false,
+        walkMarks: [CaptureAgendaWalkMark] = []
     ) {
         self.kind = kind
         self.text = text
@@ -204,13 +233,14 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.calendarRail = calendarRail
         self.sessionOffClock = sessionOffClock
         self.hintDimmed = hintDimmed
+        self.walkMarks = walkMarks
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
             hasAccessory: numberBadge != nil || accessoryText != nil
-                || titleOffClockText != nil || sessionOffClock,
+                || titleOffClockText != nil || sessionOffClock || !walkMarks.isEmpty,
             notesChip: notesChip,
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
@@ -221,7 +251,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             calendar: calendar,
             calendarRail: calendarRail,
             sessionOffClock: sessionOffClock,
-            hintDimmed: hintDimmed
+            hintDimmed: hintDimmed,
+            walkMarks: walkMarks
         )
     }
 
@@ -354,6 +385,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// The title row's stale suffix, shared by the presentation and the
     /// view's stale-icon split. Never a ledger fact, only wording.
     public static let staleSuffix = "Couldn't refresh"
+    /// Walk attention marks for the title row's trailing edge, in `s`,
+    /// `w`, `b` order. Empty when the walks snapshot is nil, from
+    /// another day, or unsupported.
+    public let walkMarks: [CaptureAgendaWalkMark]
     /// The strip with every Later name: the unmeasured fallback for
     /// budgeting the strip; the rendered strip lists the current
     /// members.
@@ -364,9 +399,11 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         today: String,
         now: Date? = nil,
         locale: Locale = Locale.current,
-        isStale: Bool = false
+        isStale: Bool = false,
+        walks: WalkAttentionSnapshot? = nil
     ) {
         self.isStale = isStale
+        walkMarks = Self.makeWalkMarks(walks: walks, today: today)
         summaryText = CaptureAgendaClock.summaryText(
             count: snapshot.completedSummary.count,
             minutes: snapshot.completedSummary.minutes
@@ -385,7 +422,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             summaryText: summaryText,
             offClockMinutes: snapshot.completedSummary.offClock.minutes,
             locale: locale,
-            stale: isStale
+            stale: isStale,
+            walkMarks: walkMarks
         )
         let ordered = Self.orderEntries(entries)
         warningRow = openCount >= 2 ? Self.makeMultiOpenWarningRow() : nil
@@ -471,13 +509,16 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// while the setting is on and the store has nothing current yet.
     public static func loading(
         today: String,
-        locale: Locale = Locale.current
+        locale: Locale = Locale.current,
+        walks: WalkAttentionSnapshot? = nil
     ) -> CaptureAgendaPresentation {
+        let marks = makeWalkMarks(walks: walks, today: today)
         let titleRow = makeTitleRow(
             rawDate: today,
             nothingRunning: false,
             summaryText: nil,
-            locale: locale
+            locale: locale,
+            walkMarks: marks
         )
         return CaptureAgendaPresentation(
             state: .loading,
@@ -490,7 +531,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             warningRow: nil,
             groups: [],
             stateRow: makeStateRow(text: "Loading today…"),
-            stripFullRow: makeStripRow(names: [])
+            stripFullRow: makeStripRow(names: []),
+            walkMarks: marks
         )
     }
 
@@ -506,7 +548,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         groups: [CaptureAgendaGroup],
         calendar: CaptureAgendaCalendar? = nil,
         stateRow: CaptureAgendaRow?,
-        stripFullRow: CaptureAgendaRow
+        stripFullRow: CaptureAgendaRow,
+        walkMarks: [CaptureAgendaWalkMark] = []
     ) {
         self.state = state
         self.titleRow = titleRow
@@ -520,6 +563,43 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         self.calendar = calendar
         self.stateRow = stateRow
         self.stripFullRow = stripFullRow
+        self.walkMarks = walkMarks
+    }
+
+    /// Walk marks in selector order (`s`, `w`, `b`) for entries that are
+    /// `available` with `attention`. Empty when the snapshot is nil, from
+    /// another day, or carries no attention.
+    static func makeWalkMarks(
+        walks: WalkAttentionSnapshot?,
+        today: String
+    ) -> [CaptureAgendaWalkMark] {
+        guard let walks, walks.date == today else {
+            return []
+        }
+        let order = ["s": 0, "w": 1, "b": 2]
+        return walks.walks
+            .filter { $0.available && $0.attention }
+            .compactMap { entry -> (Int, CaptureAgendaWalkMark)? in
+                let letter: String
+                switch entry.family {
+                case .review: letter = "s"
+                case .lanes: letter = "w"
+                case .bank: letter = "b"
+                case .other: return nil
+                }
+                guard let tier = entry.tier, let label = entry.label else {
+                    return nil
+                }
+                let mark = CaptureAgendaWalkMark(
+                    family: letter,
+                    tier: tier,
+                    label: label,
+                    count: entry.count
+                )
+                return (order[letter] ?? 99, mark)
+            }
+            .sorted { $0.0 < $1.0 }
+            .map(\.1)
     }
 
     static func makeTitleRow(
@@ -528,7 +608,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         summaryText: String?,
         offClockMinutes: Int = 0,
         locale: Locale,
-        stale: Bool = false
+        stale: Bool = false,
+        walkMarks: [CaptureAgendaWalkMark] = []
     ) -> CaptureAgendaRow {
         let dateText = CaptureAgendaClock.titleDateText(rawDate: rawDate, locale: locale)
         var text = "Today"
@@ -550,11 +631,17 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             ? CaptureAgendaClock.offClockDurationText(minutes: offClockMinutes)
             : nil
         let offClockChipText = offClockDuration.map { "◌ \($0) off-clock" }
-        let spokenAccessory = [
+        var spokenAccessory = [
             summaryText,
             offClockDuration.map { "\($0) off-clock" },
             stale ? staleSuffix : nil,
         ].compactMap { $0 }.joined(separator: ", ")
+        if !walkMarks.isEmpty {
+            let walksSpoken = "Walks needing attention: "
+                + walkMarks.map(\.label).joined(separator: "; ")
+            spokenAccessory = spokenAccessory.isEmpty
+                ? walksSpoken : "\(spokenAccessory), \(walksSpoken)"
+        }
         return CaptureAgendaRow(
             kind: .title,
             text: text,
@@ -562,7 +649,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             lineLimit: 1,
             accessoryText: accessory,
             accessibilityLabel: spokenAccessory.isEmpty ? text : "\(text). \(spokenAccessory)",
-            titleOffClockText: offClockChipText
+            titleOffClockText: offClockChipText,
+            walkMarks: walkMarks
         )
     }
 

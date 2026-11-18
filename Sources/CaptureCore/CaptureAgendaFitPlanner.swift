@@ -421,7 +421,8 @@ public enum CaptureAgendaFitPlanner {
             homeChip: base.homeChip,
             homeHue: base.homeHue,
             homeIsForecast: base.homeIsForecast,
-            hintDimmed: base.hintDimmed
+            hintDimmed: base.hintDimmed,
+            walkMarks: base.walkMarks
         )
     }
 
