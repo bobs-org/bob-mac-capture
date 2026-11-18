@@ -1,26 +1,26 @@
 {
   "images/capture-agenda.png": {
-    "source": "Synthetic CI render fixture; CaptureAgendaDesignTests / Tests/Fixtures/agenda-current.json; artifact render-fixtures/agenda-agenda-current-760-light.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; CaptureAgendaDesignTests / Tests/Fixtures/agenda-current.json; artifact render-fixtures/agenda-agenda-current-760-light.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   },
   "images/capture-agenda-dark.png": {
-    "source": "Synthetic CI render fixture; CaptureAgendaDesignTests / Tests/Fixtures/agenda-current.json; artifact render-fixtures/agenda-agenda-current-760-dark.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; CaptureAgendaDesignTests / Tests/Fixtures/agenda-current.json; artifact render-fixtures/agenda-agenda-current-760-dark.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   },
   "images/task-completion.png": {
-    "source": "Synthetic CI render fixture; TaskCompleteDesignTests / Tests/Fixtures/task-complete-strike.json; artifact render-fixtures/task-complete-task-complete-strike-760-light.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; TaskCompleteDesignTests / Tests/Fixtures/task-complete-strike.json; artifact render-fixtures/task-complete-task-complete-strike-760-light.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   },
   "images/task-completion-dark.png": {
-    "source": "Synthetic CI render fixture; TaskCompleteDesignTests / Tests/Fixtures/task-complete-strike.json; artifact render-fixtures/task-complete-task-complete-strike-760-dark.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; TaskCompleteDesignTests / Tests/Fixtures/task-complete-strike.json; artifact render-fixtures/task-complete-task-complete-strike-760-dark.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   },
   "images/refs-browse.png": {
-    "source": "Synthetic CI render fixture; RefsPanelDesignTests / makeFixture(now:) / renderBrowse; artifact render-fixtures/refs-browse-880-light.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; RefsPanelDesignTests / makeFixture(now:) / renderBrowse; artifact render-fixtures/refs-browse-880-light.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   },
   "images/refs-browse-dark.png": {
-    "source": "Synthetic CI render fixture; RefsPanelDesignTests / makeFixture(now:) / renderBrowse; artifact render-fixtures/refs-browse-880-dark.png; run 40545781911 https://github.com/bobs-org/bob-mac-capture/actions/runs/40545781911; commit de57e2b7ef06e4421d6e0f07fbacffaf776f2f39; created 2026-10-27T16:56:19Z",
-    "date": "2026-10-27"
+    "source": "Synthetic CI render fixture; RefsPanelDesignTests / makeFixture(now:) / renderBrowse; artifact render-fixtures/refs-browse-880-dark.png; run 44240009172 https://github.com/bobs-org/bob-mac-capture/actions/runs/44240009172; commit a19bdd0a4d9802d5eb1fd5b2a0429b478f6398f9; created 2026-11-18T04:49:47Z",
+    "date": "2026-11-18"
   }
 }
