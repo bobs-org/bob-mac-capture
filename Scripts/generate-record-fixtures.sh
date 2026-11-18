@@ -22,7 +22,8 @@
 #     eat/nagi.md (Ramen, Clark), eat/ramen_ya.md (Ramen, Westfield),
 #       eat/cafe_moo.md (Unicode title "Café Møø"), plus five more
 #       restaurants with unique categories so value lists exceed six rows
-#     podcasts/techmeme.md, mac_inbox.md, dev.md (area for mixed items)
+#     podcasts/techmeme.md, mac_inbox.md, dev.md (area for mixed items,
+#       with one ID-bearing and one ID-less task for Task Wikilink picks)
 #     movies album only (no committed movie notes; cached tests inject the
 #       movies/ target and the follow-up uses the title-bearing
 #       "The Little Mermaid @movies/ " draft)
@@ -35,7 +36,9 @@
 # title-bearing incomplete/next-missing (mermaid, buy-milk, empty),
 # Blaze bare/incomplete for the rewrite flow, a title-less `@eat/`
 # parse/complete/rewrite (literal slash, record_target list), and an
-# older-Bob fixture is checked in by hand (not generated). Commit
+# create/update note links, refreshed/accepted note lists, Task Wikilink
+# pickers (including ID-less rows), and an older-Bob fixture checked in
+# by hand (not generated). Commit
 # operations affect only the scratch vault.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -186,6 +189,9 @@ type: "[[area]]"
 # Dev
 
 ## Tasks
+
+- [ ] Plan dinner #task ^dinner
+- [ ] Book a table #task
 MD
 cat > "$vault/eat/nagi.md" <<'MD'
 ---
@@ -523,6 +529,29 @@ run_complete "@movies/ " "$(cursor_of "@movies/ ")" record-complete-movie-empty-
 run_complete "Blaze @eat/" "$(cursor_of "Blaze @eat/")" record-complete-blaze-next-missing-first.json -n
 run_rewrite "@eat/" 5 capture-rewrite-eat-bare.json
 
+# Editor assists on create and update records. Keep each response truthful
+# at its exact draft/caret, including the next keystroke and accepted note.
+for action in create update; do
+  if [[ "$action" == create ]]; then
+    record_title="Ramen Nagi @eat/"
+  else
+    record_title="@eat/nagi"
+  fi
+  for stage in note note-filtered note-accepted task; do
+    case "$stage" in
+      note) token="[[d" ;;
+      note-filtered) token="[[de" ;;
+      note-accepted) token="[[dev]]" ;;
+      task) token="((" ;;
+    esac
+    record_draft="$record_title
+- See the $token"
+    run_parse "$record_draft" "record-parse-$action-$stage.json"
+    run_complete "$record_draft" "$(cursor_of "$record_draft")" \
+      "record-complete-$action-$stage.json" --all-tasks
+  done
+done
+
 # Capture fixtures (dry-run previews, one commit, and refusals). The
 # commit runs last so its scratch-vault write cannot affect earlier
 # fixtures; commit operations affect only the scratch vault.
@@ -584,7 +613,8 @@ Generated from a real Bob; never hand-edit the JSON.
   companions default [[kelly]]; the config carries no records: block
 - vault: eat.md + podcasts.md + movies.md album notes, eat/nagi.md, eat/ramen_ya.md, eat/cafe_moo.md,
   eat/pizza_roma.md, eat/taco_luna.md, eat/thai_orchid.md, eat/burger_joint.md,
-  eat/sushi_den.md, podcasts/techmeme.md
+  eat/sushi_den.md, podcasts/techmeme.md; dev.md has ID-bearing Plan dinner
+  and ID-less Book a table tasks
 - clock: $NOW, TZ=UTC0, isolated XDG dirs, scratch vault only
 - command shapes: capture-parse (including field/value caret drafts,
   optional visited:: caret with all required fields set, also completed
@@ -593,17 +623,24 @@ Generated from a real Bob; never hand-edit the JSON.
   bare-album Blaze @eat refusal, title-less @eat/ record route, title-bearing
   movie incomplete "The Little Mermaid @movies/ " plus buy-milk/empty
   variants, Blaze @eat/ incomplete, and the "The Little Mermaid @mo"
-  partial-route parse),
+  partial-route parse, plus create/update editor-assist drafts),
   capture-complete (caret, -n, -F, route, section, create-route
   record_target including title-less @eat/, 7+ category values,
   current-value named edit, movie next-missing (mermaid, buy-milk, empty)
-  and Blaze next-missing), capture-rewrite (title-less @eat/ stays
+  and Blaze next-missing); create/update note bullets with [[d, [[de,
+  accepted [[dev]], and (( (with --all-tasks for Task Wikilink rows),
+  capture-rewrite (title-less @eat/ stays
   literal),
   capture --dry-run (restaurant with choice glyphs, aliased link,
   Unicode/quotes/colons, nested notes; podcast with no notes; two
   records; mixed task/record; missing, invalid, bare-album, and Blaze
   incomplete refusals; explicit empty optional; existing-record note
   append), one capture commit, capture-targets
+
+Regeneration also refreshes older fixtures to the current Bob output:
+grammar 28, album-index previews, omitted empty Notes headings, the movies
+route/target, and current category suggestion ordering. The scratch tasks
+shift the mixed capture's task locator.
 
 Older-Bob fixtures (no record keys) are checked in by hand:
 record-parse-old-bob.json, record-complete-old-bob.json,

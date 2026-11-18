@@ -90,6 +90,41 @@ final class CaptureRecordInteractionTests: XCTestCase {
         )
     }
 
+    func testEditorListAcceptsTabAndSelectedReturnOnARecordCard() {
+        let router = CaptureKeyCommandRouter()
+        var list = CaptureKeyRoutingContext(
+            completionVisible: true,
+            recordCardActive: true,
+            recordAssistAvailable: true,
+            recordEditorListVisible: true,
+            recordShowsGenericCompletionFallback: true,
+            completionHasSelection: true
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: list), .acceptCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: list), .acceptCompletion)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .shift), context: list),
+            .recordShiftTab
+        )
+        list.completionHasSelection = false
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36), context: list),
+            .recordReturn(openAfterCapture: false)
+        )
+    }
+
+    func testRecordCardTabReopensPickerChip() {
+        let context = CaptureKeyRoutingContext(
+            recordCardActive: true,
+            recordAssistAvailable: true,
+            pickerChipVisible: true
+        )
+        XCTAssertEqual(
+            CaptureKeyCommandRouter().command(for: keyEvent(keyCode: 48), context: context),
+            .openPickerFromChip
+        )
+    }
+
     func testEscapeClosesCompletionBeforeRecordCard() {
         let router = CaptureKeyCommandRouter()
         let escape = keyEvent(keyCode: 53)

@@ -916,6 +916,50 @@ final class CaptureRecordTests: XCTestCase {
         )
     }
 
+    func testEditorListsOwnTheSlotWithoutARecordCompletionSnapshot() throws {
+        for action in ["create", "update"] {
+            let response = try decodeComplete("record-complete-\(action)-note.json")
+            XCTAssertEqual(response.context, "wikilink_note")
+            XCTAssertNil(response.record)
+            XCTAssertFalse(response.candidates.isEmpty)
+            let surface = CaptureRecordCompletionSurface.make(
+                context: response.context,
+                candidateCount: response.candidates.count,
+                snapshotCurrent: false,
+                isRecordCompletion: false,
+                editorListVisible: true
+            )
+            XCTAssertEqual(surface, .editorList)
+            XCTAssertTrue(surface.showsGenericFallback)
+            XCTAssertTrue(surface.tabAcceptsVisibleList)
+            XCTAssertFalse(surface.listVisibleOnCard)
+            XCTAssertEqual(
+                CaptureRecordCompletionSurface.make(
+                    context: response.context,
+                    candidateCount: response.candidates.count,
+                    snapshotCurrent: true,
+                    isRecordCompletion: false
+                ),
+                .none
+            )
+        }
+        XCTAssertTrue(CaptureRecordCompletionSurface.cardField.tabAcceptsVisibleList)
+        XCTAssertTrue(CaptureRecordCompletionSurface.cardValue.tabAcceptsVisibleList)
+        XCTAssertFalse(CaptureRecordCompletionSurface.genericFallback.tabAcceptsVisibleList)
+        XCTAssertFalse(CaptureRecordCompletionSurface.none.tabAcceptsVisibleList)
+        // A stale record list cannot become an editor list.
+        XCTAssertEqual(
+            CaptureRecordCompletionSurface.make(
+                context: "record_value",
+                candidateCount: 2,
+                snapshotCurrent: false,
+                isRecordCompletion: true,
+                editorListVisible: true
+            ),
+            .none
+        )
+    }
+
     func testFooterMessageTreatsReadyAsOrdinaryHint() {
         let hint = "⇥ next field · ⏎ Needs Status · Esc back to draft"
         let ready = CaptureRecordFooterMessage.copy(

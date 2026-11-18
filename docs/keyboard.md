@@ -135,6 +135,13 @@ readiness; otherwise it focuses the first missing field and says
 `Needs <field>`. Escape closes suggestions, then the card. Next Escape
 behaves normally.
 
+While an editor assist occupies the card's slot, its normal keys apply.
+Tab and Return accept a selected ordinary completion (such as a `[[`
+note link) without capturing the record. Tab on a picker reopen chip
+opens that picker; Escape dismisses the chip before the card. `((` uses
+the normal Task Wikilink picker, including Add block ID for an ID-less
+task. Shift-Tab and the existing-record list's Tab behavior stay the same.
+
 ### Notebook note rows
 
 In a notebook `@route+` picker, rows select note bullets rather than tasks.

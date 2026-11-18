@@ -837,6 +837,14 @@ struct CapturePanelView: View {
                 } action: { height in
                     updateMeasuredAuxiliaryContentHeight(height)
                 }
+        } else if model.pickerVisible {
+            CapturePickerCard(model: model)
+                .layoutPriority(0)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
         } else if model.recordShowsGenericCompletionFallback {
             CompletionList(model: model)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -847,16 +855,9 @@ struct CapturePanelView: View {
                 } action: { height in
                     updateMeasuredAuxiliaryContentHeight(height)
                 }
-        } else if let presentation = model.recordPresentation {
+        } else if let presentation = model.recordPresentation, !model.recordCardYieldsToEditorAssist
+        {
             RecordCardView(model: model, presentation: presentation)
-                .layoutPriority(0)
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                } action: { height in
-                    updateMeasuredAuxiliaryContentHeight(height)
-                }
-        } else if model.pickerVisible {
-            CapturePickerCard(model: model)
                 .layoutPriority(0)
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height
@@ -1235,6 +1236,20 @@ struct CapturePanelView: View {
             )
         }
 
+        if model.pickerVisible {
+            let explicit = CapturePickerHeightPolicy(
+                visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
+                tipRowHeight: model.presentedAliasTip == nil
+                    ? 0
+                    : CapturePanelLayout.aliasTipRowHeight,
+                displayScale: displayScale
+            ).auxiliaryHeight
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: explicit.minimumVisibleHeight
+            )
+        }
+
         if model.recordShowsGenericCompletionFallback {
             let height = CapturePanelLayout.completionViewportHeight
             return CapturePanelAuxiliaryHeight(
@@ -1243,7 +1258,7 @@ struct CapturePanelView: View {
             )
         }
 
-        if let presentation = model.recordPresentation {
+        if let presentation = model.recordPresentation, !model.recordCardYieldsToEditorAssist {
             let fieldListVisible = model.recordCompletionListVisible
                 && model.completionResponse?.context == "record_field"
             let fieldCount = fieldListVisible
@@ -1265,20 +1280,6 @@ struct CapturePanelView: View {
                     changeLineCount: changeCount
                 ).auxiliaryHeight
             }
-            return CapturePanelAuxiliaryHeight(
-                idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
-                minimumVisibleHeight: explicit.minimumVisibleHeight
-            )
-        }
-
-        if model.pickerVisible {
-            let explicit = CapturePickerHeightPolicy(
-                visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
-                tipRowHeight: model.presentedAliasTip == nil
-                    ? 0
-                    : CapturePanelLayout.aliasTipRowHeight,
-                displayScale: displayScale
-            ).auxiliaryHeight
             return CapturePanelAuxiliaryHeight(
                 idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
                 minimumVisibleHeight: explicit.minimumVisibleHeight

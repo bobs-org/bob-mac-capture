@@ -91,6 +91,15 @@ An update card shows Bob's current values and each changed
 field as `before → after` with the same VoiceOver text. Existing-record
 `record_target` rows use the generic completion list with status plus up
 to two field values (for example `Ninja Sushi — Liked · Sushi · Clark`).
+
+Editor assists replace the card: completion lists, pickers, reopen chips,
+and Add block ID, relation-label, or Pomodoro-name prompts. In titles and
+note bullets, `[[` completes notes/headings/blocks; `((` opens the Task
+Wikilink picker, including Add block ID for ID-less tasks. Accepting or
+dismissing restores the unsaved card; canceling a picker leaves its reopen
+chip until dismissed. Lists stay mounted during refresh. Record field
+values retain their menus.
+
 Type emoji replaces the `@` and never enters the draft. Footer red is
 refusals and diagnostics.
 

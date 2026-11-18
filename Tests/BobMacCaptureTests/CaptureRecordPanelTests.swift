@@ -552,6 +552,161 @@ final class CaptureRecordPanelTests: XCTestCase {
         XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
     }
 
+    func testRecordNoteLinkReturnInsertsWithoutCapturingAndRestoresCard() async throws {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let draft = title + "\n- See the [[d"
+            let model = makeAssistModel(draft: draft, recordPath: logURL)
+            await waitUntil { model.recordEditorListVisible }
+            XCTAssertEqual(model.completionResponse?.context, "wikilink_note")
+            XCTAssertTrue(model.recordShowsGenericCompletionFallback)
+            XCTAssertFalse(model.recordCompletionListVisible)
+            XCTAssertNotNil(model.recordPresentation)
+            let response = try XCTUnwrap(model.completionResponse)
+            let candidate = try XCTUnwrap(response.candidates.first)
+            XCTAssertEqual(candidate.replacement, "dev]]")
+
+            // Exercise the model's Return path as well as the router tests.
+            model.recordReturn()
+
+            XCTAssertEqual(model.plainDraft, title + "\n- See the [[dev]]")
+            XCTAssertEqual(model.collapsedSelectionUTF8Offset(), candidate.cursorAfter)
+            await waitUntil {
+                model.recordPresentation != nil && !model.recordEditorListVisible
+                    && model.latestParse?.input == model.plainDraft
+            }
+            XCTAssertTrue(model.recordCardActive)
+            XCTAssertFalse(model.isSubmitting)
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
+    func testRecordNoteLinkTabInsertsWithoutCapturing() async throws {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let model = makeAssistModel(draft: title + "\n- See the [[d", recordPath: logURL)
+            await waitUntil { model.recordEditorListVisible }
+            let command = try XCTUnwrap(
+                CaptureKeyCommandRouter().command(
+                    for: keyEvent(keyCode: 48),
+                    context: CaptureKeyRoutingContext(
+                        completionVisible: model.completionVisible,
+                        recordCardActive: model.recordCardActive,
+                        recordAssistAvailable: model.recordAssistAvailable,
+                        recordCompletionListVisible: model.recordCompletionListVisible,
+                        recordEditorListVisible: model.recordEditorListVisible,
+                        recordShowsGenericCompletionFallback: model
+                            .recordShowsGenericCompletionFallback,
+                        completionHasSelection: model.selectedCompletionIndex != nil
+                    )
+                )
+            )
+            XCTAssertEqual(command, .acceptCompletion)
+            XCTAssertTrue(CapturePanelController(model: model).perform(command))
+            XCTAssertEqual(model.plainDraft, title + "\n- See the [[dev]]")
+            await waitUntil { model.recordPresentation != nil && !model.recordEditorListVisible }
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
+    func testRecordNoteListKeepsItsSlotWhileAnalysisRestarts() async {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let model = makeAssistModel(draft: title + "\n- See the [[d", recordPath: logURL)
+            await waitUntil { model.recordEditorListVisible }
+            model.plainDraft += "e"
+            model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+            XCTAssertNil(model.recordPresentation)
+            XCTAssertTrue(model.recordCardActive)
+            XCTAssertTrue(model.completionVisible)
+            XCTAssertTrue(model.recordEditorListVisible)
+            XCTAssertTrue(model.recordShowsGenericCompletionFallback)
+            await waitUntil {
+                model.completionResponse?.cursor == model.plainDraft.utf8.count
+                    && model.recordPresentation != nil
+            }
+            XCTAssertTrue(model.recordEditorListVisible)
+            XCTAssertEqual(model.completionResponse?.context, "wikilink_note")
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
+    func testRecordNoteLinkEscapeRestoresCardThenDismissesIt() async {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let draft = title + "\n- See the [[d"
+            let model = makeAssistModel(draft: draft, recordPath: logURL)
+            await waitUntil { model.recordEditorListVisible }
+            let controller = CapturePanelController(model: model)
+            XCTAssertTrue(controller.perform(.escape))
+            XCTAssertFalse(model.recordEditorListVisible)
+            XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+            XCTAssertNotNil(model.recordPresentation)
+            XCTAssertTrue(controller.perform(.escape))
+            XCTAssertFalse(model.recordCardActive)
+            XCTAssertEqual(model.plainDraft, draft)
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
+    func testRecordTaskPickerYieldsToChipThenRestoresCard() async {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let draft = title + "\n- See the (("
+            let model = makeAssistModel(draft: draft, recordPath: logURL)
+            await waitUntil { model.pickerVisible }
+            XCTAssertTrue(model.pickerSourceIsWikilinkTask)
+            XCTAssertTrue(model.recordCardYieldsToEditorAssist)
+            XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+            XCTAssertFalse(model.recordEditorListVisible)
+            XCTAssertNotNil(model.recordPresentation)
+            let controller = CapturePanelController(model: model)
+            XCTAssertTrue(controller.perform(.escapePicker))
+            XCTAssertFalse(model.pickerVisible)
+            XCTAssertTrue(model.pickerChipVisible)
+            XCTAssertTrue(model.recordCardYieldsToEditorAssist)
+            // Tab reopens the chip without entering the record's fields.
+            XCTAssertTrue(controller.perform(.openPickerFromChip))
+            XCTAssertTrue(model.pickerVisible)
+            model.cancelPicker()
+            XCTAssertTrue(controller.perform(.escape))
+            XCTAssertFalse(model.pickerChipVisible)
+            XCTAssertFalse(model.recordCardYieldsToEditorAssist)
+            XCTAssertNotNil(model.recordPresentation)
+            XCTAssertTrue(model.recordCardActive)
+            XCTAssertEqual(model.plainDraft, draft)
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
+    func testRecordTaskPickerShowsAddBlockIDAndCancelsBackToPicker() async throws {
+        for title in ["Ramen Nagi @eat/", "@eat/nagi"] {
+            let logURL = recordURL()
+            let draft = title + "\n- See the (("
+            let model = makeAssistModel(draft: draft, recordPath: logURL)
+            await waitUntil { model.pickerVisible }
+            let candidate = try XCTUnwrap(
+                model.picker?.candidates.first(where: { $0.requiresBlockID })
+            )
+            let path = try XCTUnwrap(candidate.notePath)
+            let ref = try XCTUnwrap(candidate.taskRef)
+            model.acceptPickerRow(id: "\(path)|\(ref)", submitAfterInsert: false)
+            XCTAssertTrue(model.taskIDPromptVisible)
+            XCTAssertTrue(model.recordCardYieldsToEditorAssist)
+            XCTAssertFalse(model.pickerVisible)
+            XCTAssertFalse(model.recordShowsGenericCompletionFallback)
+            model.cancelTaskIDPrompt()
+            XCTAssertFalse(model.taskIDPromptVisible)
+            XCTAssertTrue(model.pickerVisible)
+            model.cancelPicker()
+            model.dismissPickerChip()
+            XCTAssertFalse(model.recordCardYieldsToEditorAssist)
+            XCTAssertNotNil(model.recordPresentation)
+            XCTAssertEqual(model.plainDraft, draft)
+            XCTAssertTrue(mutationCaptureCalls(in: recordLog(logURL)).isEmpty)
+        }
+    }
+
     func testEscapeDismissesCompletionThenRecordCard() async {
         let logURL = recordURL()
         let model = makeAssistModel(draft: incompleteDraft, recordPath: logURL)

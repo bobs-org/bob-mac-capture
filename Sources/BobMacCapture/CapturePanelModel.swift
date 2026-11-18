@@ -1938,7 +1938,8 @@ final class CapturePanelModel: ObservableObject {
             context: completionResponse?.context,
             candidateCount: completionResponse?.candidates.count ?? 0,
             snapshotCurrent: recordCompletionSnapshotIsCurrent,
-            isRecordCompletion: completionResponse.map(Self.isRecordCompletion) ?? false
+            isRecordCompletion: completionResponse.map(Self.isRecordCompletion) ?? false,
+            editorListVisible: recordCardActive && completionVisible && !pickerVisible
         )
     }
 
@@ -1948,6 +1949,16 @@ final class CapturePanelModel: ObservableObject {
 
     var recordShowsGenericCompletionFallback: Bool {
         recordCompletionSurface.showsGenericFallback
+    }
+
+    var recordEditorListVisible: Bool {
+        recordCompletionSurface == .editorList
+    }
+
+    var recordCardYieldsToEditorAssist: Bool {
+        recordCardActive
+            && (pickerVisible || taskIDPromptVisible || relationLabelPromptVisible
+                || pomodoroNamePromptVisible || pickerChipVisible)
     }
 
     var recordEditAvailable: Bool {
@@ -12527,7 +12538,7 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        if recordCompletionListVisible {
+        if recordCompletionSurface.tabAcceptsVisibleList {
             _ = acceptSelectedCompletion()
             return
         }

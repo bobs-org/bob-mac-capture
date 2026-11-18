@@ -457,6 +457,22 @@ PY
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_parse_fixture=""
       case "${draft}" in
+        $'Ramen Nagi @eat/\n- See the [[d')
+          record_parse_fixture="record-parse-create-note.json" ;;
+        $'Ramen Nagi @eat/\n- See the [[de')
+          record_parse_fixture="record-parse-create-note-filtered.json" ;;
+        $'Ramen Nagi @eat/\n- See the [[dev]]')
+          record_parse_fixture="record-parse-create-note-accepted.json" ;;
+        $'Ramen Nagi @eat/\n- See the ((')
+          record_parse_fixture="record-parse-create-task.json" ;;
+        $'@eat/nagi\n- See the [[d')
+          record_parse_fixture="record-parse-update-note.json" ;;
+        $'@eat/nagi\n- See the [[de')
+          record_parse_fixture="record-parse-update-note-filtered.json" ;;
+        $'@eat/nagi\n- See the [[dev]]')
+          record_parse_fixture="record-parse-update-note-accepted.json" ;;
+        $'@eat/nagi\n- See the ((')
+          record_parse_fixture="record-parse-update-task.json" ;;
         "The Little Mermaid @movies/ ")
           record_parse_fixture="record-parse-movie-incomplete.json" ;;
         "Buy milk @movies/ ")
@@ -2747,6 +2763,22 @@ PY
     if [[ "${FAKE_BOB_RECORD_ASSIST:-}" == "1" ]]; then
       record_complete_fixture=""
       case "${draft}" in
+        $'Ramen Nagi @eat/\n- See the [[d')
+          record_complete_fixture="record-complete-create-note.json" ;;
+        $'Ramen Nagi @eat/\n- See the [[de')
+          record_complete_fixture="record-complete-create-note-filtered.json" ;;
+        $'Ramen Nagi @eat/\n- See the [[dev]]')
+          record_complete_fixture="record-complete-create-note-accepted.json" ;;
+        $'Ramen Nagi @eat/\n- See the ((')
+          record_complete_fixture="record-complete-create-task.json" ;;
+        $'@eat/nagi\n- See the [[d')
+          record_complete_fixture="record-complete-update-note.json" ;;
+        $'@eat/nagi\n- See the [[de')
+          record_complete_fixture="record-complete-update-note-filtered.json" ;;
+        $'@eat/nagi\n- See the [[dev]]')
+          record_complete_fixture="record-complete-update-note-accepted.json" ;;
+        $'@eat/nagi\n- See the ((')
+          record_complete_fixture="record-complete-update-task.json" ;;
         "The Little Mermaid @movies/ ")
           if [[ "${next_missing}" == "true" ]]; then
             record_complete_fixture="record-complete-movie-next-missing-first.json"

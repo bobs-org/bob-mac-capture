@@ -2126,10 +2126,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model.unfocusSimilarRow()
             } else if model.completionVisible {
                 model.dismissCompletion()
-            } else if model.recordCardActive {
-                model.dismissRecordCard()
             } else if model.pickerChipVisible {
                 model.dismissPickerChip()
+            } else if model.recordCardActive {
+                model.dismissRecordCard()
             } else {
                 model.closeRetainingDraft()
             }
@@ -3180,6 +3180,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 recordCardActive: model.recordCardActive,
                 recordAssistAvailable: model.recordAssistAvailable,
                 recordCompletionListVisible: model.recordCompletionListVisible,
+                recordEditorListVisible: model.recordEditorListVisible,
                 recordShowsGenericCompletionFallback: model.recordShowsGenericCompletionFallback,
                 completionHasSelection: model.selectedCompletionIndex != nil,
                 completionHasSelectedHistoryTheme: model.completionHasSelectedHistoryTheme,

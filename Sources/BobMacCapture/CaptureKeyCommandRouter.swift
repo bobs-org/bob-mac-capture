@@ -152,6 +152,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var recordCardActive = false
     var recordAssistAvailable = false
     var recordCompletionListVisible = false
+    var recordEditorListVisible = false
     var recordShowsGenericCompletionFallback = false
     /// Defaults true so omitted flags keep selected-row Return/Tab behavior.
     var completionHasSelection = true
@@ -728,8 +729,11 @@ struct CaptureKeyCommandRouter {
             // the picker instead.
             if modifiers.isEmpty {
                 if context.recordCardActive, context.recordAssistAvailable {
-                    if context.recordCompletionListVisible {
+                    if context.recordCompletionListVisible || context.recordEditorListVisible {
                         return .acceptCompletion
+                    }
+                    if context.pickerChipVisible {
+                        return .openPickerFromChip
                     }
                     return .recordTab
                 }

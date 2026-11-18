@@ -1063,23 +1063,30 @@ public enum CaptureBareAlbumRefusal {
 
 // MARK: - Completion surface and editor route adornments
 
-/// Where a current record completion may be accepted. Card value/field
-/// lists render on the Record Card; every other current record context
-/// (especially `record_target`) uses the generic completion list so Tab
-/// cannot silently accept a hidden existing-record row.
+/// Where a completion on a record draft may be accepted. Card value/field
+/// lists render on the Record Card; editor lists take its slot and accept
+/// Tab and Return. Other record contexts (especially `record_target`) use
+/// the generic list, but keep Tab for the first missing field.
 public enum CaptureRecordCompletionSurface: Equatable, Sendable {
     case none
     case cardValue
     case cardField
     case genericFallback
+    case editorList
 
     public static func make(
         context: String?,
         candidateCount: Int,
         snapshotCurrent: Bool,
-        isRecordCompletion: Bool
+        isRecordCompletion: Bool,
+        editorListVisible: Bool = false
     ) -> CaptureRecordCompletionSurface {
-        guard snapshotCurrent, candidateCount > 0, isRecordCompletion else {
+        // Ordinary lists follow editor visibility, including while refreshed
+        // analysis is pending; they have no record completion snapshot.
+        if !isRecordCompletion {
+            return editorListVisible ? .editorList : .none
+        }
+        guard snapshotCurrent, candidateCount > 0 else {
             return .none
         }
         switch context {
@@ -1097,7 +1104,11 @@ public enum CaptureRecordCompletionSurface: Equatable, Sendable {
     }
 
     public var showsGenericFallback: Bool {
-        self == .genericFallback
+        self == .genericFallback || self == .editorList
+    }
+
+    public var tabAcceptsVisibleList: Bool {
+        listVisibleOnCard || self == .editorList
     }
 }
 
