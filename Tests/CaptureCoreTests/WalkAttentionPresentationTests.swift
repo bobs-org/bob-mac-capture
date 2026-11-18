@@ -33,9 +33,9 @@ final class WalkAttentionPresentationTests: XCTestCase {
         let marks = CaptureAgendaPresentation.makeWalkMarks(walks: walks, today: today)
         XCTAssertEqual(marks.map(\.family), ["s", "w", "b"])
         XCTAssertEqual(marks.map(\.tier), ["next", "over", "waiting"])
-        // mark_counts = yes: s carries commitments, b carries waiting,
+        // mark_counts = yes: s carries walk landings, b carries waiting,
         // w stays a bare mark.
-        XCTAssertEqual(marks[0].count, 16)
+        XCTAssertEqual(marks[0].count, 18)
         XCTAssertNil(marks[1].count)
         XCTAssertEqual(marks[2].count, 3)
     }

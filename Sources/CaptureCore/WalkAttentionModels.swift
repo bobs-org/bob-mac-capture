@@ -30,7 +30,7 @@ public enum WalkAttentionFamily: Hashable, Equatable, Sendable {
 }
 
 /// One family's attention row from `bob walks --format json`. `counts`
-/// carries the display count for the `s` (commitments) and `b` (waiting)
+/// carries the display count for the `s` (walk landings) and `b` (waiting)
 /// marks; `w` stays a bare mark because its label already lists the over
 /// lanes. Counts come from bob's JSON, never from the app.
 public struct WalkAttention: Decodable, Equatable, Sendable {
@@ -41,7 +41,7 @@ public struct WalkAttention: Decodable, Equatable, Sendable {
     public let tier: String?
     public let label: String?
     public let reason: String?
-    /// Display count for the `s` (commitments) and `b` (waiting) marks.
+    /// Display count for the `s` (walk landings) and `b` (waiting) marks.
     /// Nil for `w` and when bob omits the field.
     public let count: Int?
 
@@ -75,13 +75,14 @@ public struct WalkAttention: Decodable, Equatable, Sendable {
         tier = try container.decodeIfPresent(String.self, forKey: .tier)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
-        // Counts live under `counts` with per-family keys: `commitments`
-        // for `s`, `waiting` for `b`. A missing block means no count.
+        // Counts live under `counts` with per-family keys: `walk` for `s`
+        // (falling back to legacy `commitments`) and `waiting` for `b`.
+        // A missing block means no count.
         if let counts = try? container.decodeIfPresent(
             WalkAttentionCounts.self, forKey: .counts)
         {
             switch family {
-            case .review: count = counts.commitments
+            case .review: count = counts.walk ?? counts.commitments
             case .bank: count = counts.waiting
             case .lanes, .other: count = nil
             }

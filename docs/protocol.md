@@ -297,7 +297,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `headline` on `capture-pomodoros --tasks` (today's Daily Headline display text)
-- `walks` `counts` (`commitments` for s, `waiting` for b), `tier`/`label`/`reason`; unknown families ignored
+- `walks` `counts` (s=`walk`, legacy fallback=`commitments`; b=`waiting`), `tier`/`label`/`reason`; unknown families ignored
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
 - `place_menu` chrome; notebook section candidates (`group`, `detail`, `refused`, `consequence`, `creates`, `cursor_after`); span `notebook` / `section_action` / `title`

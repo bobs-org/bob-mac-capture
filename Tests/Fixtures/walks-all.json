@@ -8,10 +8,10 @@
       "available": true,
       "counts": {
         "commitments": 16,
-        "walk": 16
+        "walk": 18
       },
       "family": "s",
-      "label": "Review: 16 due · 16 commitments — NEXT first",
+      "label": "Review: 18 due · 16 commitments — NEXT first",
       "name": "review",
       "tier": "next"
     },

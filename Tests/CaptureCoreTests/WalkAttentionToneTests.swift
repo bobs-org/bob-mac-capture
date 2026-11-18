@@ -14,6 +14,8 @@ final class WalkAttentionToneTests: XCTestCase {
             "tickler": ("#086ddd", "#027aff"),
             "over": ("#e93147", "#fb464c"),
             "waiting": ("#ec7500", "#e9973f"),
+            "rotten": ("#ec7500", "#e9973f"),
+            "post": ("#00bfbc", "#53dfdd"),
         ]
         for (tier, hexes) in expected {
             XCTAssertEqual(WalkAttentionTone.lightHex(for: tier), hexes.light, tier)
@@ -40,6 +42,12 @@ final class WalkAttentionToneTests: XCTestCase {
             WalkAttentionTone.lightHex(for: "waiting"), WorkBadgeTone.orange.lightHex)
         XCTAssertEqual(
             WalkAttentionTone.darkHex(for: "waiting"), WorkBadgeTone.orange.darkHex)
+        XCTAssertEqual(
+            WalkAttentionTone.lightHex(for: "rotten"), WorkBadgeTone.orange.lightHex)
+        XCTAssertEqual(
+            WalkAttentionTone.darkHex(for: "rotten"), WorkBadgeTone.orange.darkHex)
+        XCTAssertEqual(WalkAttentionTone.lightHex(for: "post"), "#00bfbc")
+        XCTAssertEqual(WalkAttentionTone.darkHex(for: "post"), "#53dfdd")
     }
 
     func testUnknownTierReturnsNil() {

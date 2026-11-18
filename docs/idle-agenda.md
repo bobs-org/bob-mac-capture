@@ -33,9 +33,10 @@ The title row's trailing edge can show bare monospaced `s`, `w`, and `b` marks
 with small hue dots for review, lane, and bank attention. Bob's `walks` report
 decides whether each mark appears: the family must be available and need attention
 for today. The dots use the same default tier hues as the Obsidian walker selector.
-The `s` mark shows Bob's due-commitment count and `b` shows its waiting-row count;
-`w` stays bare because its label already names the over-limit lanes. Calm or
-unavailable families leave no placeholder. Marks can appear with any idle title
+The `s` mark shows Bob's walk count (falling back to the commitment count from older
+Bob versions) and `b` shows its waiting-row count; `w` stays bare because its label
+already names the over-limit lanes. Calm or unavailable families leave no placeholder.
+Marks can appear with any idle title
 row, including while today's agenda is loading.
 
 The walks request has its own Bob process lane, so it does not delay the agenda.

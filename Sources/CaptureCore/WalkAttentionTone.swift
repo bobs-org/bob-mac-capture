@@ -19,6 +19,8 @@ public enum WalkAttentionTone {
         case "tickler": return WorkBadgeTone.blue.lightHex
         case "over": return WorkBadgeTone.red.lightHex
         case "waiting": return WorkBadgeTone.orange.lightHex
+        case "rotten": return WorkBadgeTone.orange.lightHex
+        case "post": return "#00bfbc"
         default: return nil
         }
     }
@@ -35,6 +37,8 @@ public enum WalkAttentionTone {
         case "tickler": return WorkBadgeTone.blue.darkHex
         case "over": return WorkBadgeTone.red.darkHex
         case "waiting": return WorkBadgeTone.orange.darkHex
+        case "rotten": return WorkBadgeTone.orange.darkHex
+        case "post": return "#53dfdd"
         default: return nil
         }
     }
