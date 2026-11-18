@@ -24,6 +24,14 @@ final class WalkAttentionToneTests: XCTestCase {
     }
 
     func testCoincidentHuesReuseWorkBadgeTone() {
+        XCTAssertEqual(
+            WalkAttentionTone.lightHex(for: "post"),
+            WalkAttentionTone.lightHex(for: "pre")
+        )
+        XCTAssertEqual(
+            WalkAttentionTone.darkHex(for: "post"),
+            WalkAttentionTone.darkHex(for: "pre")
+        )
         XCTAssertEqual(WalkAttentionTone.lightHex(for: "new"), WorkBadgeTone.red.lightHex)
         XCTAssertEqual(WalkAttentionTone.darkHex(for: "new"), WorkBadgeTone.red.darkHex)
         XCTAssertEqual(WalkAttentionTone.lightHex(for: "over"), WorkBadgeTone.red.lightHex)

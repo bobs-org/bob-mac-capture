@@ -28,6 +28,89 @@ final class WalkAttentionPresentationTests: XCTestCase {
         )
     }
 
+    private func reviewWalksFixture(
+        date: String,
+        tier: String,
+        label: String
+    ) throws -> WalkAttentionSnapshot {
+        let json = """
+        {
+          "schema_version": 1,
+          "date": "\(date)",
+          "walks": [{
+            "family": "s",
+            "available": true,
+            "attention": true,
+            "tier": "\(tier)",
+            "label": "\(label)",
+            "counts": {"walk": 1, "commitments": 0}
+          }]
+        }
+        """
+        return try JSONDecoder().decode(
+            WalkAttentionSnapshot.self,
+            from: Data(json.utf8)
+        )
+    }
+
+    private func assertUpkeepOnlyMark(tier: String, label: String) throws {
+        let date = "2026-08-28"
+        let walks = try reviewWalksFixture(date: date, tier: tier, label: label)
+        let presentation = CaptureAgendaPresentation(
+            snapshot: try agendaFixture("agenda-empty.json"),
+            today: date,
+            locale: locale,
+            walks: walks
+        )
+        let mark = try XCTUnwrap(presentation.titleRow.walkMarks.first)
+        XCTAssertEqual(presentation.walkMarks.count, 1)
+        XCTAssertEqual(presentation.titleRow.walkMarks.count, 1)
+        XCTAssertEqual(mark.family, "s")
+        XCTAssertEqual(mark.tier, tier)
+        XCTAssertEqual(mark.count, 1)
+        XCTAssertEqual(mark.label, label)
+        XCTAssertTrue(
+            presentation.titleRow.accessibilityLabel?.contains(
+                "Walks needing attention: \(label)"
+            ) == true
+        )
+        let expectedTone = tier == "post" ? "#00bfbc" : "#ec7500"
+        XCTAssertEqual(WalkAttentionTone.lightHex(for: mark.tier), expectedTone)
+    }
+
+    func testPostOnlyReportKeepsWalkLandingCountAndPresentation() throws {
+        try assertUpkeepOnlyMark(
+            tier: "post",
+            label: "Review: 1 due · commitments done — POST first"
+        )
+    }
+
+    func testRottenOnlyReportKeepsWalkLandingCountAndPresentation() throws {
+        try assertUpkeepOnlyMark(
+            tier: "rotten",
+            label: "Review: 1 due · commitments done — ROTTEN first"
+        )
+    }
+
+    func testPostOnlyMarkCoexistsWithFixtureDailyHeadline() throws {
+        let date = "2026-08-28"
+        let label = "Review: 1 due · commitments done — POST first"
+        let presentation = CaptureAgendaPresentation(
+            snapshot: try agendaFixture("agenda-headline.json"),
+            today: date,
+            locale: locale,
+            walks: try reviewWalksFixture(date: date, tier: "post", label: label)
+        )
+        XCTAssertEqual(
+            presentation.headlineRow?.text,
+            "Converge take-home submitted and the zettel album's first draft published for Friday review"
+        )
+        XCTAssertEqual(presentation.titleRow.walkMarks.map(\.family), ["s"])
+        XCTAssertEqual(presentation.titleRow.walkMarks.first?.tier, "post")
+        XCTAssertEqual(presentation.titleRow.walkMarks.first?.count, 1)
+        XCTAssertEqual(presentation.titleRow.walkMarks.first?.label, label)
+    }
+
     func testMarksAreInSelectorOrderWithCounts() throws {
         let walks = try walksFixture("walks-all.json")
         let marks = CaptureAgendaPresentation.makeWalkMarks(walks: walks, today: today)
