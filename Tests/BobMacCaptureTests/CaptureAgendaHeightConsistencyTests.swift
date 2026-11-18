@@ -122,6 +122,91 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
         }
     }
 
+    func testBusiestTitleWithWalkMarksStaysOnOneLineAtBothWidths() throws {
+        let base = try agendaSnapshot("agenda-current.json")
+        let snapshot = CaptureAgendaSnapshot(
+            ok: base.ok,
+            schemaVersion: base.schemaVersion,
+            date: base.date,
+            completedSummary: CaptureAgendaCompletedSummary(
+                count: base.completedSummary.count,
+                minutes: base.completedSummary.minutes,
+                offClock: CaptureAgendaOffClockSummary(count: 2, minutes: 45)
+            ),
+            pomodoros: base.pomodoros,
+            warnings: base.warnings,
+            planBudget: base.planBudget,
+            events: base.events,
+            maxTaskLinkCount: base.maxTaskLinkCount,
+            headline: base.headline
+        )
+        let walks = WalkAttentionSnapshot(
+            date: snapshot.date,
+            walks: [
+                WalkAttention(
+                    family: .review,
+                    name: "review",
+                    available: true,
+                    attention: true,
+                    tier: "next",
+                    label: "Review: 16 due · 16 commitments — NEXT first",
+                    count: 16
+                ),
+                WalkAttention(
+                    family: .lanes,
+                    name: "lanes",
+                    available: true,
+                    attention: true,
+                    tier: "over",
+                    label: "Lanes over limit: NEXT 16/15"
+                ),
+                WalkAttention(
+                    family: .bank,
+                    name: "bank",
+                    available: true,
+                    attention: true,
+                    tier: "waiting",
+                    label: "Bank: 3 waiting · oldest Tue Nov 3",
+                    count: 3
+                ),
+            ]
+        )
+        let presentation = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: snapshot.date ?? "",
+            isStale: true,
+            walks: walks
+        )
+
+        XCTAssertNotNil(presentation.titleRow.titleOffClockText)
+        XCTAssertTrue(presentation.titleRow.accessoryText?.contains("Couldn't refresh") == true)
+        XCTAssertEqual(presentation.titleRow.walkMarks.count, 3)
+
+        var firstTitleHeight: CGFloat?
+        for contentWidth in [724, 584] as [CGFloat] {
+            let rowsWidth =
+                contentWidth
+                - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+            let titleHeight = CaptureAgendaRowMeasurer().height(
+                for: presentation.titleRow,
+                role: .later,
+                at: rowsWidth
+            )
+            if let firstTitleHeight {
+                XCTAssertEqual(titleHeight, firstTitleHeight, accuracy: 2)
+            } else {
+                firstTitleHeight = titleHeight
+            }
+            try assertConsistent(
+                presentation: presentation,
+                fixture: "agenda-current-walk-marks",
+                contentWidth: contentWidth,
+                budget: 2_000,
+                expanded: []
+            )
+        }
+    }
+
     func testSavedBudgetRowStaysFlatAndHasNoExpansionTarget() throws {
         let snapshot = try budgetedSnapshot(
             "agenda-current.json",
@@ -234,7 +319,24 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             today: snapshot.date ?? "",
             now: nil
         )
-        let rowsWidth = contentWidth
+        try assertConsistent(
+            presentation: presentation,
+            fixture: fixture,
+            contentWidth: contentWidth,
+            budget: budget,
+            expanded: expanded
+        )
+    }
+
+    private func assertConsistent(
+        presentation: CaptureAgendaPresentation,
+        fixture: String,
+        contentWidth: CGFloat,
+        budget: Double,
+        expanded: Set<CaptureAgendaUnitID>
+    ) throws {
+        let rowsWidth =
+            contentWidth
             - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
         let measurer = CaptureAgendaRowMeasurer()
         let plan = CaptureAgendaHeightResolver.resolve(

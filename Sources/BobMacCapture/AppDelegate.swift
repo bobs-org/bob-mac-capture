@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var eventNotePanelModel: GcalNotePanelModel?
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
+    private var walkAttentionStore: WalkAttentionStore?
     private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
     private let targetsCache = CaptureTargetsCache()
@@ -116,6 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.agendaStore = agendaStore
         model.agendaStore = agendaStore
+        let walkAttentionStore = WalkAttentionStore(
+            processClient: processClient,
+            vaultRootPath: Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
+        )
+        self.walkAttentionStore = walkAttentionStore
+        model.walkAttentionStore = walkAttentionStore
         let eventNotePanelModel = GcalNotePanelModel(processClient: processClient) { [weak self] in
             self?.agendaStore?.refresh(reason: .show)
         }
@@ -163,11 +170,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     )
             }
             .store(in: &agendaCancellables)
+        settings.walksDiagnostic = walkAttentionStore.diagnosticLine()
+        walkAttentionStore.$status
+            .combineLatest(walkAttentionStore.$lastRefreshedAt)
+            .dropFirst()
+            .sink { [weak self] status, lastRefreshedAt in
+                self?.settings.walksDiagnostic =
+                    WalkAttentionStore.diagnosticLine(
+                        status: status,
+                        lastRefreshedAt: lastRefreshedAt
+                    )
+            }
+            .store(in: &agendaCancellables)
         panelController = CapturePanelController(model: model, eventNotes: eventNotePanelModel)
         panelController?.prewarm()
         // Prefetch after prewarm so the first hotkey after login already
         // has agenda data without slowing the show path.
         agendaStore.refresh(reason: .launch)
+        // Walks scans the whole vault; keep it on its own process lane and
+        // start it only after the agenda's first request has been launched.
+        walkAttentionStore.refresh(reason: .launch)
         // A capture-landed pulse per successful submit, plus a Today
         // refresh with the snapshot marked stale so the next Refs open
         // re-reads it. A dedicated set: the stash-capacity observer guards
@@ -960,6 +982,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refsLibrary?.refreshToday(reason: .captureSuccess)
         refsLibrary?.markStale()
         agendaStore?.refresh(reason: .submit)
+        walkAttentionStore?.refresh(reason: .submit)
     }
 
     /// Recheck Bob's Refs half: re-pointing the fetcher happens in
@@ -974,6 +997,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         vaultWatcher?.invalidate()
         let vaultPath = Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
         agendaStore?.vaultRootPath = vaultPath
+        walkAttentionStore?.vaultRootPath = vaultPath
 
         vaultWatcher = VaultTargetWatcher(
             path: vaultPath,
@@ -987,6 +1011,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.refreshTargetsWhenPossible(reason: .watcher)
                     }
                     self.agendaStore?.vaultDidChange(batch)
+                    self.walkAttentionStore?.vaultDidChange(batch)
                     self.panelModel?.noteCatalogDidChange(batch, vaultRoot: vaultPath)
                 }
             },
@@ -1122,6 +1147,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelModel?.processClient = processClient
         agendaStore?.processClient = processClient
         agendaStore?.reset()
+        walkAttentionStore?.processClient = processClient
+        walkAttentionStore?.reset()
         configureVaultWatcher()
         refreshTargetsWhenPossible(reason: .recheck)
     }

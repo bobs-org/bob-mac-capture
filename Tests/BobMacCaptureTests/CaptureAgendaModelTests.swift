@@ -268,6 +268,52 @@ final class CaptureAgendaModelTests: XCTestCase {
         XCTAssertTrue(model.agendaVisible)
     }
 
+    func testWalkAttentionStoreReplansTheTitleMarks() async throws {
+        let fixtureURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        let walksJSON =
+            #"{"schema_version":1,"date":"2026-08-28","walks":[{"family":"s","name":"review","available":true,"attention":true,"tier":"next","label":"Review: 2 due · 2 commitments — NEXT first","counts":{"commitments":2}}]}"#
+        try Data(walksJSON.utf8).write(to: fixtureURL)
+        defer { try? FileManager.default.removeItem(at: fixtureURL) }
+
+        let executable = try fakeBobPath()
+        let environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        let agendaStore = CaptureAgendaStore(
+            processClient: BobProcessClient(
+                executablePath: executable,
+                environment: environment
+            ),
+            vaultRootPath: "/tmp",
+            today: { "2026-08-28" },
+            workspaceCenter: NotificationCenter(),
+            defaultCenter: NotificationCenter()
+        )
+        var walksEnvironment = environment
+        walksEnvironment["FAKE_BOB_WALKS_FIXTURE"] = fixtureURL.path
+        let walksStore = WalkAttentionStore(
+            processClient: BobProcessClient(
+                executablePath: executable,
+                environment: walksEnvironment
+            ),
+            vaultRootPath: "/tmp",
+            today: { "2026-08-28" },
+            debounceInterval: { _ in 0.01 },
+            workspaceCenter: NotificationCenter(),
+            defaultCenter: NotificationCenter()
+        )
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.agendaStore = agendaStore
+        model.walkAttentionStore = walksStore
+
+        agendaStore.refresh(reason: .launch)
+        walksStore.refresh(reason: .launch)
+        await waitUntil { agendaStore.snapshot != nil && walksStore.snapshot != nil }
+        await waitUntil { model.agendaPresentation?.walkMarks.map(\.family) == ["s"] }
+
+        XCTAssertEqual(model.agendaPresentation?.titleRow.key.walkMarks.map(\.family), ["s"])
+        XCTAssertTrue(model.agendaVisible)
+    }
+
     func testStaleRecoversOnNextSuccess() async throws {
         let model = try refreshModel()
         await waitUntil { model.agendaStore?.snapshot != nil }

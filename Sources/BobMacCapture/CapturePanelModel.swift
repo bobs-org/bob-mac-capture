@@ -1243,6 +1243,15 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    /// Independent whole-vault attention lane, supplied by AppDelegate.
+    /// Its snapshot only affects the title accessory and never the agenda facts.
+    var walkAttentionStore: WalkAttentionStore? {
+        didSet {
+            subscribeToWalkAttentionStore()
+            walkAttentionStore?.panelVisibilityDidChange(panelVisible)
+        }
+    }
+
     private var agendaCancellable: AnyCancellable?
     private var agendaMaxTaskLinkCountCancellable: AnyCancellable?
 
@@ -1411,12 +1420,14 @@ final class CapturePanelModel: ObservableObject {
     private let agendaMeasurer = CaptureAgendaRowMeasurer()
     private var agendaSnapshotCancellable: AnyCancellable?
     private var agendaDayChangeCancellable: AnyCancellable?
+    private var walkAttentionSnapshotCancellable: AnyCancellable?
 
     /// Whether the panel itself is ordered front. The countdown
     /// ticker mounts only while this is true, so a hidden panel never
     /// re-plans every minute.
     @Published private(set) var panelVisible = false {
         didSet {
+            walkAttentionStore?.panelVisibilityDidChange(panelVisible)
             if oldValue && !panelVisible {
                 resetCalendarBoundaryRefresh()
             }
@@ -1565,6 +1576,7 @@ final class CapturePanelModel: ObservableObject {
     /// them.
     private var agendaSourceSnapshot: CaptureAgendaSnapshot?
     private var agendaSourceStatus: CaptureAgendaStoreStatus = .idle
+    private var walkAttentionSourceSnapshot: WalkAttentionSnapshot?
     private var agendaLastFiredBoundary: Date?
 
     /// Measures what is missing, plans, and publishes. Runs on store
@@ -1602,7 +1614,8 @@ final class CapturePanelModel: ObservableObject {
             snapshot: snapshot,
             today: day,
             now: Date(),
-            isStale: stale
+            isStale: stale,
+            walks: walkAttentionSourceSnapshot
         )
         publishAgendaPlan(presentation)
         scheduleCalendarBoundaryRefresh()
@@ -1676,7 +1689,12 @@ final class CapturePanelModel: ObservableObject {
             agendaPlan = nil
             return
         }
-        publishAgendaPlan(CaptureAgendaPresentation.loading(today: today))
+        publishAgendaPlan(
+            CaptureAgendaPresentation.loading(
+                today: today,
+                walks: walkAttentionSourceSnapshot
+            )
+        )
     }
 
     private func publishAgendaPlan(_ presentation: CaptureAgendaPresentation) {
@@ -2927,6 +2945,27 @@ final class CapturePanelModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.noteAgendaDayChanged()
+            }
+    }
+
+    /// Re-plans the title row from Bob's emitted same-day walks snapshot.
+    /// Published properties emit in `willSet`, so the sink uses the values
+    /// from the publisher instead of reading ahead from the store.
+    private func subscribeToWalkAttentionStore() {
+        walkAttentionSnapshotCancellable = nil
+        guard let walkAttentionStore else {
+            walkAttentionSourceSnapshot = nil
+            refreshAgendaPlan()
+            return
+        }
+        walkAttentionSnapshotCancellable = walkAttentionStore.$snapshot
+            .combineLatest(walkAttentionStore.$status)
+            .sink { [weak self] snapshot, _ in
+                guard let self else {
+                    return
+                }
+                self.walkAttentionSourceSnapshot = snapshot
+                self.refreshAgendaPlan()
             }
     }
 

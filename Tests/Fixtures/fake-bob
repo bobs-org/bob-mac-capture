@@ -1604,6 +1604,8 @@ JSON
       cat "${fixtures_dir}/blocked-task-parse-project.json" | inject_parse_grammar
     elif [[ "${draft}" == "Buy milk @" ]]; then
       cat "${fixtures_dir}/dot-route-parse.json" | inject_parse_grammar
+    elif [[ "${draft}" == $'Buy milk\n\n@' ]]; then
+      cat "${fixtures_dir}/dot-route-item-start-later-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "@" ]]; then
       cat "${fixtures_dir}/dot-route-item-start-parse.json" | inject_parse_grammar
     elif [[ "${draft}" == "Fix it ~" ]]; then
@@ -3941,6 +3943,8 @@ JSON
       cat "${fixtures_dir}/relation-label-complete-from-follow.json"
     elif [[ "${draft}" == "Buy milk @" ]]; then
       cat "${fixtures_dir}/dot-route-complete.json"
+    elif [[ "${draft}" == $'Buy milk\n\n@' ]]; then
+      cat "${fixtures_dir}/dot-route-item-start-later-complete.json"
     elif [[ "${draft}" == "@" ]]; then
       cat "${fixtures_dir}/dot-route-item-start-complete.json"
     elif [[ "${draft}" == "Fix it ~" ]]; then

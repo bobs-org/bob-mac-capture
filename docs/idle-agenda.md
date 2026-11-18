@@ -27,6 +27,26 @@ off-clock pill to the Now header. The title line keeps its Worked summary and ad
 dashed `◌ 1h off-clock` chip when Bob reports off-clock minutes in
 `completed_summary.off_clock`.
 
+## Walk attention
+
+The title row's trailing edge can show bare monospaced `s`, `w`, and `b` marks
+with small hue dots for review, lane, and bank attention. Bob's `walks` report
+decides whether each mark appears: the family must be available and need attention
+for today. The dots use the same default tier hues as the Obsidian walker selector.
+The `s` mark shows Bob's due-commitment count and `b` shows its waiting-row count;
+`w` stays bare because its label already names the over-limit lanes. Calm or
+unavailable families leave no placeholder. Marks can appear with any idle title
+row, including while today's agenda is loading.
+
+The walks request has its own Bob process lane, so it does not delay the agenda.
+The app prefetches it after the agenda request, reuses fresh cached marks on show,
+and refreshes on show when dirty, never fetched, or at least 60 seconds old. Relevant
+vault changes use the agenda's filter and a trailing delay of 2 seconds while the
+panel is visible or 10 seconds while hidden. Submit, wake, unlock, day or clock
+change, and Recheck Bob refresh immediately. A failed refresh keeps the last good
+same-day marks; Settings reports the error. Older Bob versions without `walks` show
+no marks and report "Upgrade bob for walk marks" in Settings.
+
 Directly under `Today` sits today's Daily Headline when bob supplies one: bob's
 `headline` display text from `capture-pomodoros --tasks`, verbatim, semibold, at
 most two lines. It shows whether or not Pomodoros exist, stays on a

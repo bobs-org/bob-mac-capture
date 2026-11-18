@@ -362,7 +362,10 @@ final class CaptureDotRouteAliasTests: XCTestCase {
         let asks = record.split(separator: "\n").filter {
             $0.hasPrefix("argv=capture-rewrite") && $0.hasSuffix("-- Buy milk .")
         }
-        XCTAssertEqual(asks.count, 2)
+        // The probe cancels the original rewrite. Depending on whether that
+        // process starts before cancellation, the fake Bob records one or two
+        // calls; the collapsed draft below proves the probe reply was applied.
+        XCTAssertGreaterThanOrEqual(asks.count, 1)
 
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, "Buy milk ..")

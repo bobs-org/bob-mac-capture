@@ -85,6 +85,10 @@ final class AppSettings: ObservableObject {
     /// persisted. AppDelegate keeps it in sync with the store.
     @Published var agendaDiagnostic = ""
 
+    /// Live status for the independent walks-attention scan, including its
+    /// last refresh time or an error/upgrade hint. Transient, never persisted.
+    @Published var walksDiagnostic = ""
+
     @Published var canceledDraftStashCapacity: Int {
         didSet {
             let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)

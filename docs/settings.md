@@ -52,9 +52,10 @@ Toggling these controls re-registers the Refs bindings immediately. Opening, Tab
 | Control | Default | Notes |
 | --- | --- | --- |
 | Show today's Pomodoros when the draft is empty | on | Off hides the idle agenda. |
-| Agenda status | empty | Transient. Never persisted. Shows strings such as "Last refreshed 14:32", a refresh failure, or an old-bob hint. |
+| Agenda status and walk attention status | empty | Transient. Never persisted. Shows the agenda's last refresh or failure, and the walks scan's last refresh, failure, or Bob-upgrade hint. |
 
 Agenda facts come from `bob capture-pomodoros --tasks`. Layout and folding are in [Idle agenda](idle-agenda.md).
+Walk marks come from the independent `bob walks` request; this section also shows its last refresh, failure, or Bob-upgrade status.
 
 ## Similar Tasks
 

@@ -195,6 +195,14 @@ struct SettingsView: View {
                             "Agenda status, \(settings.agendaDiagnostic)"
                         )
                 }
+                if !settings.walksDiagnostic.isEmpty {
+                    Text(settings.walksDiagnostic)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(
+                            "Walk attention status, \(settings.walksDiagnostic)"
+                        )
+                }
             }
 
             Section("Similar Tasks") {

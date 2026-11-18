@@ -703,8 +703,14 @@ struct CaptureAgendaRowView: View {
     private var titleView: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             titleLeadingView
-            Spacer(minLength: 12)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
+            Spacer(minLength: 4)
             titleAccessoryView
+            WalkMarksView(marks: row.walkMarks)
+                .fixedSize()
+                .layoutPriority(1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(row.accessibilityLabel ?? row.text)
@@ -1474,6 +1480,95 @@ struct CaptureAgendaRowView: View {
                     onExpand(chipUnit)
                 }
             }
+        )
+    }
+}
+
+/// The title-row selector glyphs: a fixed monospaced letter with a small
+/// tier dot, plus Bob's optional `s`/`b` count. This view has no controls or
+/// VoiceOver children; the title row speaks the full Bob-provided labels.
+private struct WalkMarksView: View {
+    let marks: [CaptureAgendaWalkMark]
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    private var increaseContrast: Bool {
+        colorSchemeContrast == .increased
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(marks, id: \.family) { mark in
+                markCell(mark)
+                    .transition(
+                        reduceMotion
+                            ? .identity
+                            : .opacity.combined(
+                                with: .scale(scale: 0.6, anchor: .topTrailing)
+                            )
+                    )
+            }
+        }
+        .fixedSize()
+        .help(marks.map(\.label).joined(separator: "\n"))
+        .accessibilityHidden(true)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.16),
+            value: marks
+        )
+    }
+
+    private func markCell(_ mark: CaptureAgendaWalkMark) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
+            ZStack(alignment: .topTrailing) {
+                Text(mark.family)
+                    .font(.system(.caption, design: .monospaced))
+                    .fontWeight(.medium)
+                    .foregroundStyle(increaseContrast ? Color.primary : Color.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Circle()
+                    .fill(tierColor(mark.tier))
+                    .frame(width: increaseContrast ? 6 : 5, height: increaseContrast ? 6 : 5)
+                    .overlay {
+                        if increaseContrast {
+                            Circle()
+                                .stroke(Color.primary.opacity(0.35), lineWidth: 0.5)
+                        }
+                    }
+                    .offset(x: 1, y: -1)
+                    .accessibilityHidden(true)
+            }
+            .frame(width: 13, height: 15)
+            if let count = mark.count {
+                Text(String(count))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+        }
+        .fixedSize()
+    }
+
+    private func tierColor(_ tier: String) -> Color {
+        let hex =
+            colorScheme == .dark
+            ? WalkAttentionTone.darkHex(for: tier)
+            : WalkAttentionTone.lightHex(for: tier)
+        guard let hex else {
+            return .accentColor
+        }
+        let digits = hex.dropFirst()
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else {
+            return .accentColor
+        }
+        return Color(
+            .sRGB,
+            red: Double((value >> 16) & 0xff) / 255,
+            green: Double((value >> 8) & 0xff) / 255,
+            blue: Double(value & 0xff) / 255,
+            opacity: 1
         )
     }
 }

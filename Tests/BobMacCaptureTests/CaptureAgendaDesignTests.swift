@@ -44,7 +44,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
             let presentation = CaptureAgendaPresentation(
                 snapshot: snapshot,
                 today: snapshot.date ?? "",
-                now: nil
+                now: nil,
+                walks: base == "agenda-current" ? walkFixture(date: snapshot.date) : nil
             )
             try render(presentation: presentation, base: base, budget: budget)
         }
@@ -78,7 +79,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
                 snapshot: current,
                 today: current.date ?? "",
                 now: nil,
-                isStale: true
+                isStale: true,
+                walks: walkFixture(date: current.date)
             ),
             base: "agenda-current-stale",
             budget: 2_000
@@ -259,6 +261,40 @@ final class CaptureAgendaDesignTests: XCTestCase {
         return try JSONDecoder().decode(
             CaptureAgendaSnapshot.self,
             from: Data(contentsOf: url)
+        )
+    }
+
+    private func walkFixture(date: String?) -> WalkAttentionSnapshot {
+        WalkAttentionSnapshot(
+            date: date,
+            walks: [
+                WalkAttention(
+                    family: .review,
+                    name: "review",
+                    available: true,
+                    attention: true,
+                    tier: "next",
+                    label: "Review: 16 due · 16 commitments — NEXT first",
+                    count: 16
+                ),
+                WalkAttention(
+                    family: .lanes,
+                    name: "lanes",
+                    available: true,
+                    attention: true,
+                    tier: "over",
+                    label: "Lanes over limit: NEXT 16/15"
+                ),
+                WalkAttention(
+                    family: .bank,
+                    name: "bank",
+                    available: true,
+                    attention: true,
+                    tier: "waiting",
+                    label: "Bank: 3 waiting · oldest Tue Nov 3",
+                    count: 3
+                ),
+            ]
         )
     }
 
