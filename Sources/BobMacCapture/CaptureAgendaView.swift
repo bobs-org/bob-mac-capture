@@ -1495,7 +1495,7 @@ struct CaptureAgendaRowView: View {
 }
 
 /// The title-row selector glyphs: a fixed monospaced letter with a small
-/// tier dot, plus Bob's optional `s`/`b` count. This view has no controls or
+/// tier dot, plus Bob's optional `s`/`w`/`b` count. This view has no controls or
 /// VoiceOver children; the title row speaks the full Bob-provided labels.
 private struct WalkMarksView: View {
     let marks: [CaptureAgendaWalkMark]

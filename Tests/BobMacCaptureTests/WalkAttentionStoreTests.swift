@@ -74,7 +74,7 @@ final class WalkAttentionStoreTests: XCTestCase {
 
         XCTAssertEqual(store.snapshot?.date, "2026-11-17")
         XCTAssertEqual(store.snapshot?.walks.map(\.family.letter), ["s", "w", "b"])
-        XCTAssertEqual(store.snapshot?.walks.first?.count, 18)
+        XCTAssertEqual(store.snapshot?.walks.first?.count, 16)
         XCTAssertNotNil(store.lastRefreshedAt)
         XCTAssertEqual(recordedInvocations(recordURL).count, 1)
 

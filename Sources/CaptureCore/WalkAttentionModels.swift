@@ -31,8 +31,9 @@ public enum WalkAttentionFamily: Hashable, Equatable, Sendable {
 
 /// One family's attention row from `bob walks --format json`. `counts`
 /// carries the display count for the `s` (walk landings) and `b` (waiting)
-/// marks; `w` stays a bare mark because its label already lists the over
-/// lanes. Counts come from bob's JSON, never from the app.
+/// marks; `w` carries Bob's lane excess (`counts.excess`). An older bob
+/// without that count keeps a bare `w`. Counts come from bob's JSON, never
+/// from the app.
 public struct WalkAttention: Decodable, Equatable, Sendable {
     public let family: WalkAttentionFamily
     public let name: String
@@ -41,8 +42,8 @@ public struct WalkAttention: Decodable, Equatable, Sendable {
     public let tier: String?
     public let label: String?
     public let reason: String?
-    /// Display count for the `s` (walk landings) and `b` (waiting) marks.
-    /// Nil for `w` and when bob omits the field.
+    /// Display count for `s` (walk landings), `w` (Bob's lane excess), and
+    /// `b` (waiting). Nil when bob omits the field, including older `w` data.
     public let count: Int?
 
     public init(
@@ -76,15 +77,16 @@ public struct WalkAttention: Decodable, Equatable, Sendable {
         label = try container.decodeIfPresent(String.self, forKey: .label)
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         // Counts live under `counts` with per-family keys: `walk` for `s`
-        // (falling back to legacy `commitments`) and `waiting` for `b`.
-        // A missing block means no count.
+        // (falling back to legacy `commitments`), `excess` for `w`, and
+        // `waiting` for `b`. An older bob without `excess` leaves `w` bare.
         if let counts = try? container.decodeIfPresent(
             WalkAttentionCounts.self, forKey: .counts)
         {
             switch family {
             case .review: count = counts.walk ?? counts.commitments
+            case .lanes: count = counts.excess
             case .bank: count = counts.waiting
-            case .lanes, .other: count = nil
+            case .other: count = nil
             }
         } else {
             count = nil
@@ -106,6 +108,7 @@ public struct WalkAttention: Decodable, Equatable, Sendable {
 private struct WalkAttentionCounts: Decodable {
     let walk: Int?
     let commitments: Int?
+    let excess: Int?
     let waiting: Int?
 }
 

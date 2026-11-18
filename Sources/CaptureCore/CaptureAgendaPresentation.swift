@@ -47,10 +47,11 @@ public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
 
 /// One walk attention mark for the title row's trailing edge: a single
 /// monospaced lowercase family letter (`s`, `w`, `b`) with its tier hue
-/// dot. `count` carries the display count for `s` (walk landings) and `b`
-/// (waiting); `w` stays a bare mark. Counts come from bob's `walks` JSON,
-/// never from the app. Bare frame (no `[[` brackets): the letter plus dot
-/// is already the selector's glyph.
+/// dot. `count` carries the display count for `s` (walk landings), `w`
+/// (Bob's lane excess), and `b` (waiting). An older bob without the `w`
+/// count keeps a bare mark. Counts come from bob's `walks` JSON, never from
+/// the app. Bare frame (no `[[` brackets): the letter plus dot is already
+/// the selector's glyph.
 public struct CaptureAgendaWalkMark: Hashable, Equatable, Sendable {
     public let family: String
     public let tier: String

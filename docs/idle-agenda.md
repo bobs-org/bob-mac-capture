@@ -36,10 +36,12 @@ for today. The dots use the same default tier hues as the Obsidian walker select
 The `s` mark appears whenever today's available review walk has a row `]s` can land on,
 including ROTTEN upkeep and the POST closeout. Its dot uses the first due tier's hue:
 PRE and POST are cyan, and ROTTEN is orange. It shows Bob's walk count (falling back to
-the commitment count from older Bob versions); `b` shows its waiting-row count, and `w`
-stays bare because its label already names the over-limit lanes. Calm or unavailable
-families leave no placeholder. Marks can appear with any idle title row, including
-while today's agenda is loading.
+the commitment count from older Bob versions); `b` shows its waiting-row count. `w`
+shows how many lane tasks sit over their caps: Bob's `counts.excess`, the fewest task
+changes that silence `w`. For example, WIP 11/10 and NEXT 22/20 show `w 3`. Older Bob
+versions without that count show a bare `w`. Calm or unavailable families leave no
+placeholder. Marks can appear with any idle title row, including while today's agenda
+is loading.
 
 The walks request has its own Bob process lane, so it does not delay the agenda.
 The app prefetches it after the agenda request, reuses fresh cached marks on show,

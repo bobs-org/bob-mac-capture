@@ -284,7 +284,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
                     available: true,
                     attention: true,
                     tier: "over",
-                    label: "Lanes over limit: NEXT 16/15"
+                    label: "Lanes over limit: NEXT 16/15",
+                    count: 1
                 ),
                 WalkAttention(
                     family: .bank,

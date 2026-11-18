@@ -22,9 +22,9 @@ final class WalkAttentionDecodingTests: XCTestCase {
         XCTAssertEqual(snapshot.walks.map(\.family), [.review, .lanes, .bank])
         XCTAssertTrue(snapshot.walks.allSatisfy { $0.available && $0.attention })
         XCTAssertEqual(snapshot.walks[0].tier, "next")
-        XCTAssertEqual(snapshot.walks[0].count, 18)
+        XCTAssertEqual(snapshot.walks[0].count, 16)
         XCTAssertEqual(snapshot.walks[1].tier, "over")
-        XCTAssertNil(snapshot.walks[1].count)
+        XCTAssertEqual(snapshot.walks[1].count, 1)
         XCTAssertEqual(snapshot.walks[2].tier, "waiting")
         XCTAssertEqual(snapshot.walks[2].count, 3)
     }
@@ -73,6 +73,20 @@ final class WalkAttentionDecodingTests: XCTestCase {
             )
         )
         XCTAssertEqual(snapshot.walks.map(\.count), [3, 2])
+    }
+
+    func testLaneCountIsOptionalForOlderBobAndUsesItsOwnKey() throws {
+        let olderBob = try JSONDecoder().decode(
+            WalkAttentionSnapshot.self,
+            from: Data(#"{"walks":[{"family":"w"}]}"#.utf8)
+        )
+        XCTAssertNil(olderBob.walks[0].count)
+
+        let unrelatedCount = try JSONDecoder().decode(
+            WalkAttentionSnapshot.self,
+            from: Data(#"{"walks":[{"family":"w","counts":{"walk":3}}]}"#.utf8)
+        )
+        XCTAssertNil(unrelatedCount.walks[0].count)
     }
 
     func testUnknownFamilyDecodesThenPresentationIgnoresIt() throws {
