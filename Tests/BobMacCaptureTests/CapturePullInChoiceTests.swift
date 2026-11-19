@@ -76,6 +76,30 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertNil(state.highlightedKey)
     }
 
+    func testToggleHighlightedAndAdvanceHandlesMissingRowsAndVerdicts() {
+        var noHighlight = choiceState(offers: offers(count: 3))
+        noHighlight.highlightedKey = nil
+        noHighlight.toggleHighlightedAndAdvance()
+        XCTAssertTrue(noHighlight.markedKeys.isEmpty)
+        XCTAssertEqual(noHighlight.highlightedKey, noHighlight.visibleSelectableKeys.first)
+
+        var noMatches = choiceState(offers: offers(count: 3))
+        noMatches.updateFilter("No matching offer")
+        noMatches.toggleHighlightedAndAdvance()
+        XCTAssertTrue(noMatches.markedKeys.isEmpty)
+        XCTAssertNil(noMatches.highlightedKey)
+
+        var verdict = verdictChoiceState()
+        verdict.markedKeys = []
+        verdict.highlightedKey = "k1"
+        verdict.toggleOfferDone("k1")
+        XCTAssertEqual(verdict.verdicts["k1"], .done)
+        verdict.toggleHighlightedAndAdvance()
+        XCTAssertNil(verdict.verdicts["k1"])
+        XCTAssertTrue(verdict.markedKeys.contains("k1"))
+        XCTAssertEqual(verdict.highlightedKey, "k1", "the last row remains highlighted")
+    }
+
     func testMutedResidentsAndFoldedProjectCountsAreNeverSelectable() throws {
         let projectPath = "projects/sase_foo.md"
         let state = choiceState(
@@ -194,6 +218,54 @@ final class CapturePullInChoiceTests: XCTestCase {
             ),
             .consumeKey)
         XCTAssertEqual(
+            router.command(for: keyEvent(48), context: context),
+            .togglePullInOfferAndAdvance(keepFilterFocus: false))
+        XCTAssertEqual(
+            router.command(for: keyEvent(48, repeat: true), context: context), .consumeKey)
+        for isEmpty in [true, false] {
+            XCTAssertEqual(
+                router.command(
+                    for: keyEvent(48),
+                    context: CaptureKeyRoutingContext(
+                        pullInChoiceVisible: true,
+                        pullInFilterFocused: true,
+                        pullInFilterIsEmpty: isEmpty
+                    )),
+                .togglePullInOfferAndAdvance(keepFilterFocus: true))
+        }
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(48, modifiers: .shift), context: context),
+            .previousPullInOfferFromTab(keepFilterFocus: false))
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(48, modifiers: [.shift], repeat: true),
+                context: CaptureKeyRoutingContext(
+                    pullInChoiceVisible: true, pullInFilterFocused: true)),
+            .previousPullInOfferFromTab(keepFilterFocus: true))
+        XCTAssertNil(router.command(for: keyEvent(48, modifiers: .option), context: context))
+        XCTAssertNil(router.command(for: keyEvent(48, modifiers: .command), context: context))
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(48),
+                context: CaptureKeyRoutingContext(
+                    pullInChoiceVisible: true, pullInReasonFocused: true)))
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(48, modifiers: .shift),
+                context: CaptureKeyRoutingContext(
+                    pullInChoiceVisible: true, pullInReasonFocused: true)))
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(48, modifiers: .control),
+                context: CaptureKeyRoutingContext(pullInChoiceVisible: true)),
+            .switchPanel)
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(48, modifiers: [.control, .shift]),
+                context: CaptureKeyRoutingContext(pullInChoiceVisible: true)),
+            .switchPanel)
+        XCTAssertEqual(
             router.command(for: keyEvent(0, modifiers: .command), context: context),
             .markAllPullInOffers)
         XCTAssertEqual(
@@ -307,6 +379,74 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
         XCTAssertTrue(controller.perform(.nextPullInOffer))
         XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
+    }
+
+    @MainActor
+    func testControllerTabMarksAndAdvancesWithFilterFocusAndShiftTabMovesBack() {
+        let offers = offers(count: 3)
+        let model = CapturePanelModel()
+        model.installPullInChoiceForPreviews(
+            offers: offers,
+            pullIn: CapturePullIn(supported: true, offerCount: offers.count),
+            draft: "draft"
+        )
+        let controller = CapturePanelController(model: model)
+
+        XCTAssertTrue(
+            controller.perform(.togglePullInOfferAndAdvance(keepFilterFocus: false)))
+        XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#1^suffix"])
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#3^suffix")
+        XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
+
+        XCTAssertTrue(
+            controller.perform(.togglePullInOfferAndAdvance(keepFilterFocus: false)))
+        XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#1^suffix", "opaque#3^suffix"])
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#3^suffix")
+
+        XCTAssertTrue(
+            controller.perform(.previousPullInOfferFromTab(keepFilterFocus: true)))
+        XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#1^suffix", "opaque#3^suffix"])
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#1^suffix")
+        XCTAssertEqual(model.focusRequest.target, .pullInFilter)
+        XCTAssertTrue(
+            controller.perform(.previousPullInOfferFromTab(keepFilterFocus: true)))
+        XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#2^suffix")
+        XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#1^suffix", "opaque#3^suffix"])
+        XCTAssertEqual(model.focusRequest.target, .pullInFilter)
+
+        let unmarkModel = CapturePanelModel()
+        unmarkModel.installPullInChoiceForPreviews(
+            offers: offers,
+            pullIn: CapturePullIn(supported: true, offerCount: offers.count),
+            draft: "draft"
+        )
+        unmarkModel.togglePullInOffer("opaque#1^suffix")
+        let unmarkController = CapturePanelController(model: unmarkModel)
+        XCTAssertTrue(
+            unmarkController.perform(.togglePullInOfferAndAdvance(keepFilterFocus: false)))
+        XCTAssertTrue(unmarkModel.pullInChoice?.markedKeys.isEmpty == true)
+        XCTAssertEqual(unmarkModel.pullInChoice?.highlightedKey, "opaque#3^suffix")
+
+        let filteredModel = CapturePanelModel()
+        filteredModel.installPullInChoiceForPreviews(
+            offers: offers,
+            pullIn: CapturePullIn(supported: true, offerCount: offers.count),
+            draft: "draft"
+        )
+        filteredModel.updatePullInChoiceFilter("Task 2")
+        filteredModel.focusPullInChoiceFilter()
+        let filteredController = CapturePanelController(model: filteredModel)
+        XCTAssertTrue(
+            filteredController.perform(.togglePullInOfferAndAdvance(keepFilterFocus: true)))
+        XCTAssertEqual(filteredModel.pullInChoice?.visibleSelectableKeys, ["opaque#2^suffix"])
+        XCTAssertEqual(filteredModel.pullInChoice?.markedKeys, ["opaque#2^suffix"])
+        XCTAssertEqual(filteredModel.pullInChoice?.highlightedKey, "opaque#2^suffix")
+        XCTAssertEqual(filteredModel.focusRequest.target, .pullInFilter)
+        XCTAssertTrue(
+            filteredController.perform(.togglePullInOfferAndAdvance(keepFilterFocus: true)))
+        XCTAssertEqual(filteredModel.pullInChoice?.markedKeys, [])
+        XCTAssertEqual(filteredModel.pullInChoice?.highlightedKey, "opaque#2^suffix")
+        XCTAssertEqual(filteredModel.focusRequest.target, .pullInFilter)
     }
 
     func testHeightPolicyContentMaxMinContextAndFilterStability() {
@@ -1236,23 +1376,27 @@ final class CapturePullInChoiceTests: XCTestCase {
     func testFooterContractPinsHintsAndAccessibilityText() {
         let items = CapturePullInChoiceFooter.hintItems
         XCTAssertEqual(
-            items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "⌃X", "⌃⇧X", "esc", "⌃↩"])
+            items.map { $0.keys },
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "esc", "⌃↩"])
         XCTAssertEqual(
             items.map { $0.action },
-            ["Move", "Mark", "All", "Done", "Cancel", "Back", "Pull In & Open"])
+            [
+                "Move", "Mark", "Mark & Next", "All", "Done", "Cancel", "Back",
+                "Pull In & Open",
+            ])
         XCTAssertEqual(
             CapturePullInChoiceFooter.hintItems(openAfterCapture: true, closeSupported: true)
                 .map { $0.keys },
-            ["⌃N ⌃P", "space", "⌘A", "⌃X", "⌃⇧X", "esc"]
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "esc"]
         )
         XCTAssertEqual(
             CapturePullInChoiceFooter.hintItems(openAfterCapture: false, closeSupported: false)
                 .map { $0.keys },
-            ["⌃N ⌃P", "space", "⌘A", "esc", "⌃↩"])
+            ["⌃N ⌃P", "space", "tab", "⌘A", "esc", "⌃↩"])
         let label = CapturePullInChoiceFooter.accessibilityText
         for phrase in [
             "Control-N", "Space", "Command-A", "Control-X", "Control-Shift-X", "Return",
-            "Shift-Return", "Control-Return", "Escape",
+            "Shift-Return", "Control-Return", "Escape", "Tab", "Shift-Tab",
         ] {
             XCTAssertTrue(label.contains(phrase), "Footer label mentions \(phrase)")
         }

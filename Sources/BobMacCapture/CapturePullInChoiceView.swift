@@ -1126,6 +1126,7 @@ struct CapturePullInChoiceFooter: View {
     static let hintItems: [(keys: String, action: String)] = [
         ("⌃N ⌃P", "Move"),
         ("space", "Mark"),
+        ("tab", "Mark & Next"),
         ("⌘A", "All"),
         ("⌃X", "Done"),
         ("⌃⇧X", "Cancel"),
@@ -1147,10 +1148,20 @@ struct CapturePullInChoiceFooter: View {
     }
 
     static let accessibilityText =
-        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel with an optional reason. Return applies every staged choice. Shift-Return skips pull-ins and applies verdicts. Control-Return applies everything and opens the reported notes. Escape needs two presses while verdicts are staged."
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. "
+        + "Tab marks it and moves to the next offer. Shift-Tab moves to the previous offer. "
+        + "Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel "
+        + "with an optional reason. Return applies every staged choice. Shift-Return skips "
+        + "pull-ins and applies verdicts. Control-Return applies everything and opens the "
+        + "reported notes. Escape needs two presses while verdicts are staged."
 
     static let openIntentAccessibilityText =
-        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel with an optional reason. Return applies every staged choice, then opens the reported notes. Shift-Return skips pull-ins and applies verdicts. Escape needs two presses while verdicts are staged."
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. "
+        + "Tab marks it and moves to the next offer. Shift-Tab moves to the previous offer. "
+        + "Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel "
+        + "with an optional reason. Return applies every staged choice, then opens the reported "
+        + "notes. Shift-Return skips pull-ins and applies verdicts. Escape needs two presses "
+        + "while verdicts are staged."
 
     private var openAfterCapture: Bool {
         model.pullInChoice?.openAfterCapture == true

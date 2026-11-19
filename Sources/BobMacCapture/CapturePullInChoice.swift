@@ -1157,6 +1157,12 @@ struct CapturePullInChoiceState: Equatable {
         updateConsequenceForHighlight()
     }
 
+    mutating func toggleHighlightedAndAdvance() {
+        toggleHighlighted()
+        moveHighlight(by: 1)
+        updateConsequenceForHighlight()
+    }
+
     mutating func toggleOffer(_ key: String) {
         guard selectableKeys.contains(key) else {
             return

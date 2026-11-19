@@ -463,20 +463,20 @@ background; the app never touches the network.
 
 ## Successor offers
 
-For `!` completion, `x` close, and project captures, Bob can return successor
-offers, and Return opens the grouped choice card before capture writes. Bob's
-group order and copy control headings and captions; relation groups name the
-task they start after and never use dependency wording; missing copy keeps
-the legacy presentation. Project offers show the new project and its `^prj`
-task beside the offered rows.
+On `!` completion, `x` close, and project captures, Bob returns successor
+offers. Return opens the grouped card before writing. Group order and copy set
+headings and captions; relation groups name the next task and avoid dependency
+language. Missing copy uses legacy presentation. Project offers show the new
+project and its `^prj` task.
 
 Rows start unselected: Leave, Pull in, Done, or Cancel. Control-X stages Done;
-Control-Shift-X opens/focuses Cancel reason and scrolls it into view; Return
-confirms; Esc restores the prior outcome. Shift-Return keeps verdicts; two Esc
-presses discard them. Buttons read `Pull In {a}`, `Close {n}`, or both; outcomes
-show `✓ Done` or `⊘ Cancel`. The strip shows Bob's consequence or refusal reason;
-choices persist. `@route` previews up to five offers with tag, lane, destination,
-and fold. Shift-Return returns without writing; status changes route.
+Control-Shift-X opens Cancel reason; Return confirms; Esc restores. Shift-Return
+keeps verdicts, while two Esc presses discard them. Buttons show `Pull In {a}`,
+`Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`. The strip shows Bob's
+consequence or refusal reason. `@route` previews up to five offers with tag, lane,
+destination, and fold; Shift-Return returns without writing, while status changes
+route. Space toggles the row; Tab toggles and advances through visible offers
+with filter focus. Shift-Tab moves back.
 `nothing_to_pull_in` shows `Nothing ready in ‹route›`. Without a chooser, muted
 lines explain status. Relation picks notify once; diffs link, successors unlock,
 and project picks count as Task Links.

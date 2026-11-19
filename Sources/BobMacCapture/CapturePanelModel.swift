@@ -5457,7 +5457,7 @@ final class CapturePanelModel: ObservableObject {
         pullInChoice = choice
     }
 
-    func movePullInChoiceHighlight(by delta: Int) {
+    func movePullInChoiceHighlight(by delta: Int, keepFilterFocus: Bool = false) {
         guard var choice = pullInChoice else {
             return
         }
@@ -5465,7 +5465,7 @@ final class CapturePanelModel: ObservableObject {
         choice.moveHighlight(by: delta)
         choice.updateConsequenceForHighlight()
         pullInChoice = choice
-        requestFocus(.pullInOfferList)
+        requestFocus(keepFilterFocus ? .pullInFilter : .pullInOfferList)
     }
 
     func toggleHighlightedPullInOffer() {
@@ -5475,6 +5475,16 @@ final class CapturePanelModel: ObservableObject {
         choice.toggleHighlighted()
         pullInChoice = choice
         requestFocus(.pullInOfferList)
+    }
+
+    func toggleHighlightedPullInOfferAndAdvance(keepFilterFocus: Bool) {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.disarmEscDiscard()
+        choice.toggleHighlightedAndAdvance()
+        pullInChoice = choice
+        requestFocus(keepFilterFocus ? .pullInFilter : .pullInOfferList)
     }
 
     func togglePullInOffer(_ key: String) {

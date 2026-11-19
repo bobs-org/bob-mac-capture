@@ -200,7 +200,7 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-Space marks, Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses the Cancel reason, Return confirms it, and Esc restores the prior outcome. Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
+Space marks, Tab marks and moves to the next offer (staying on the last), and Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses the Cancel reason, Return confirms it, and Esc restores the prior outcome. Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Inbox routing
 

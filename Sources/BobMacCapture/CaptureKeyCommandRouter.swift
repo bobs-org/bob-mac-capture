@@ -84,6 +84,8 @@ enum CaptureKeyCommand: Equatable {
     case nextPullInOffer
     case previousPullInOffer
     case togglePullInOffer
+    case togglePullInOfferAndAdvance(keepFilterFocus: Bool)
+    case previousPullInOfferFromTab(keepFilterFocus: Bool)
     case markAllPullInOffers
     case stagePullInDone
     case beginPullInCancel
@@ -888,6 +890,16 @@ struct CaptureKeyCommandRouter {
                 return .consumeKey
             }
             return (!filterFocused || filterIsEmpty) ? .togglePullInOffer : nil
+        case KeyCode.tab:
+            if modifiers.isEmpty {
+                return isRepeat
+                    ? .consumeKey
+                    : .togglePullInOfferAndAdvance(keepFilterFocus: filterFocused)
+            }
+            if modifiers == .shift {
+                return .previousPullInOfferFromTab(keepFilterFocus: filterFocused)
+            }
+            return nil
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
         case KeyCode.x:
