@@ -37,7 +37,8 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         hasContextLine: Bool,
         hasActiveReasonEditor: Bool = false,
         captionSectionCount: Int = 0,
-        displayScale: CGFloat = 1
+        displayScale: CGFloat = 1,
+        recallBandHeight: CGFloat = 0
     ) {
         self.sectionCount = sectionCount
         self.captionSectionCount = captionSectionCount
@@ -46,9 +47,13 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         self.hasContextLine = hasContextLine
         self.hasActiveReasonEditor = hasActiveReasonEditor
         self.displayScale = displayScale
+        self.recallBandHeight = recallBandHeight
     }
 
-    init(choice: CapturePullInChoiceState, displayScale: CGFloat = 1) {
+    init(
+        choice: CapturePullInChoiceState, displayScale: CGFloat = 1,
+        recallBandHeight: CGFloat = 0
+    ) {
         let sections = choice.sections
         let folds = sections.filter { $0.foldText != nil }.count
         let hasContext = choice.contextText != nil || choice.planBudget != nil
@@ -59,7 +64,8 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
             hasContextLine: hasContext,
             hasActiveReasonEditor: choice.activeReasonKey != nil,
             captionSectionCount: sections.filter { $0.caption != nil }.count,
-            displayScale: displayScale
+            displayScale: displayScale,
+            recallBandHeight: recallBandHeight
         )
     }
 
@@ -73,8 +79,12 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
                 + CGFloat(foldRowCount) * CapturePanelLayout.pullInFoldRowHeight
                 + CGFloat(rowCount) * CapturePanelLayout.pullInRowHeight
                 + (hasActiveReasonEditor ? CapturePanelLayout.pullInReasonFieldHeight : 0)
+                + recallBandHeight
         )
     }
+
+    /// `USED BEFORE` recall band height, added while the band is visible.
+    var recallBandHeight: CGFloat = 0
 
     var maxListHeight: CGFloat {
         roundedToPixel(
@@ -156,7 +166,19 @@ struct CapturePullInChoiceCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var policy: CapturePullInChoiceHeightPolicy {
-        CapturePullInChoiceHeightPolicy(choice: choice, displayScale: displayScale)
+        CapturePullInChoiceHeightPolicy(
+            choice: choice, displayScale: displayScale,
+            recallBandHeight: recallBandHeight)
+    }
+
+    private var recallBandHeight: CGFloat {
+        guard choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand
+        else {
+            return 0
+        }
+        return CGFloat(
+            LogRecallBandPresentation.bandHeight(
+                rowCount: model.pullInRecall.visibleRows.count))
     }
 
     var body: some View {
@@ -986,22 +1008,28 @@ struct CapturePullInReasonField: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text("⊘ Why cancel?")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            reasonTextField
-                .frame(maxWidth: .infinity)
-            Text("↵ · Esc back")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text("⊘ Why cancel?")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                reasonTextField
+                    .frame(maxWidth: .infinity)
+                Text("↵ · Esc back")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.top, 2)
+            .padding(.leading, 30)
+            .frame(height: CapturePanelLayout.pullInReasonFieldHeight)
+            if !previewMode, model.pullInRecall.shouldShowBand {
+                CapturePullInRecallBand(model: model)
+                    .padding(.leading, 30)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-        .padding(.top, 2)
-        .padding(.leading, 30)
-        .frame(height: CapturePanelLayout.pullInReasonFieldHeight)
         .transition(.opacity)
         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: choice.activeReasonKey)
     }

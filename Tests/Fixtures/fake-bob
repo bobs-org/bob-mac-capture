@@ -6659,6 +6659,27 @@ JSON
       cat "${fixtures_dir}/${walks_fixture}"
     fi
     ;;
+  logs)
+    # `bob logs list -l cancel -f json` for the log-history lane.
+    # FAKE_BOB_LOGS_FIXTURE names a fixture in this directory (default
+    # log-recall-cancel.json), FAKE_BOB_LOGS_UNSUPPORTED=1 prints clap's
+    # unrecognized-subcommand failure (an old bob without `logs`), and
+    # FAKE_BOB_LOGS_FAIL=1 exits 1.
+    if [[ "${FAKE_BOB_LOGS_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'logs'\n\nUsage: bob [COMMAND]\n\nFor more information, try '--help'.\n" >&2
+      exit 2
+    fi
+    if [[ "${FAKE_BOB_LOGS_FAIL:-}" == "1" ]]; then
+      printf 'fake logs failed\n' >&2
+      exit 1
+    fi
+    logs_fixture="${FAKE_BOB_LOGS_FIXTURE:-log-recall-cancel.json}"
+    if [[ "${logs_fixture}" == */* ]]; then
+      cat "${logs_fixture}"
+    else
+      cat "${fixtures_dir}/${logs_fixture}"
+    fi
+    ;;
   *)
     printf 'unknown fake command: %s\n' "${command}" >&2
     exit 64

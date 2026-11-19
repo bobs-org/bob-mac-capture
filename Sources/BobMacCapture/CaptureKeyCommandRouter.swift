@@ -91,6 +91,8 @@ enum CaptureKeyCommand: Equatable {
     case beginPullInCancel
     case confirmPullInReason
     case restorePullInReason
+    case recallNextPullInReason
+    case recallPreviousPullInReason
     case togglePullInOfferAt(String)
     case confirmInboxRouteChoice
     case confirmInboxRouteChoiceAndOpen
@@ -851,6 +853,14 @@ struct CaptureKeyCommandRouter {
                 return .restorePullInReason
             case KeyCode.leftBracket:
                 return modifiers == .control && !isRepeat ? .restorePullInReason : nil
+            case KeyCode.arrowUp:
+                return modifiers.isEmpty ? .recallPreviousPullInReason : nil
+            case KeyCode.arrowDown:
+                return modifiers.isEmpty ? .recallNextPullInReason : nil
+            case KeyCode.n:
+                return modifiers == .control ? .recallNextPullInReason : nil
+            case KeyCode.p:
+                return modifiers == .control ? .recallPreviousPullInReason : nil
             default:
                 return nil
             }

@@ -2468,7 +2468,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.confirmPullInReason()
             return true
         case .restorePullInReason:
-            model.restorePullInReason()
+            model.restorePullInReasonFromKeyboard()
+            return true
+        case .recallNextPullInReason:
+            model.recallNextPullInReason()
+            return true
+        case .recallPreviousPullInReason:
+            model.recallPreviousPullInReason()
             return true
         case .confirmInboxRouteChoice:
             model.confirmInboxRouteChoice()

@@ -328,6 +328,30 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(49), context: reason))
         XCTAssertNil(router.command(for: keyEvent(7, modifiers: .control), context: reason))
         XCTAssertNil(router.command(for: keyEvent(0, modifiers: .command), context: reason))
+        // Recall: plain Ctrl+N/↓ and Ctrl+P/↑ map to recall steps.
+        XCTAssertEqual(
+            router.command(for: keyEvent(45, modifiers: .control), context: reason),
+            .recallNextPullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(125), context: reason),
+            .recallNextPullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(35, modifiers: .control), context: reason),
+            .recallPreviousPullInReason)
+        XCTAssertEqual(
+            router.command(for: keyEvent(126), context: reason),
+            .recallPreviousPullInReason)
+        // Modified chords stay nil; Return is unchanged.
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(45, modifiers: [.control, .shift]), context: reason))
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(35, modifiers: [.control, .option]), context: reason))
+        XCTAssertNil(
+            router.command(for: keyEvent(125, modifiers: .shift), context: reason))
+        XCTAssertNil(
+            router.command(for: keyEvent(126, modifiers: .command), context: reason))
     }
 
     @MainActor

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "ok": true,
+  "query": null,
+  "half_life_days": 7.0,
+  "logs": [
+    {
+      "kind": "cancel",
+      "label": "Cancel Log",
+      "emoji": "❌",
+      "recency_precision": "day",
+      "phrases_total": 3,
+      "truncated": false,
+      "excluded": {
+        "machine": 1,
+        "blank": 0,
+        "too_long": 0,
+        "copies": 0,
+        "unparsed": 0
+      },
+      "phrases": [
+        {
+          "text": "duplicate of planning",
+          "key": "duplicate of planning",
+          "uses": 4,
+          "last_used": "2026-11-18",
+          "score": 3.1,
+          "recency_rank": 0,
+          "match": null
+        },
+        {
+          "text": "no longer needed",
+          "key": "no longer needed",
+          "uses": 2,
+          "last_used": "2026-11-15",
+          "score": 1.4,
+          "recency_rank": 1,
+          "match": null
+        },
+        {
+          "text": "superseded by weekly review",
+          "key": "superseded by weekly review",
+          "uses": 1,
+          "last_used": "2026-11-02",
+          "score": 0.5,
+          "recency_rank": 2,
+          "match": null
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

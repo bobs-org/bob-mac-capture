@@ -1208,7 +1208,15 @@ struct CapturePanelView: View {
         }
 
         if model.pullInChoiceVisible, let choice = model.pullInChoice {
-            let policy = CapturePullInChoiceHeightPolicy(choice: choice, displayScale: displayScale)
+            var recallBandHeight: CGFloat = 0
+            if choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand {
+                recallBandHeight = CGFloat(
+                    LogRecallBandPresentation.bandHeight(
+                        rowCount: model.pullInRecall.visibleRows.count))
+            }
+            let policy = CapturePullInChoiceHeightPolicy(
+                choice: choice, displayScale: displayScale,
+                recallBandHeight: recallBandHeight)
             return CapturePanelAuxiliaryHeight(
                 idealHeight: max(policy.idealHeight, measuredAuxiliaryContentHeight),
                 minimumVisibleHeight: policy.minimumVisibleHeight

@@ -75,6 +75,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedRelatedIdentity: String?
     private var unsupportedGmailPeekIdentity: String?
     private var unsupportedGcalNoteIdentity: String?
+    private var unsupportedLogHistoryIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
     /// `inbox_route.supported == true`. Once remembered for the current
@@ -205,6 +206,20 @@ public final class BobProcessClient: @unchecked Sendable {
             let identity = identityToken
             if unsupportedGcalNoteIdentity != identity {
                 self.unsupportedGcalNoteIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Whether this executable has already rejected `logs list`. Cached per
+    /// executable identity so replacing Bob permits a fresh capability probe.
+    public var logHistoryKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedLogHistoryIdentity else { return false }
+            let identity = identityToken
+            if unsupportedLogHistoryIdentity != identity {
+                self.unsupportedLogHistoryIdentity = nil
                 return false
             }
             return true
@@ -671,6 +686,77 @@ public final class BobProcessClient: @unchecked Sendable {
             return false
         }
         return stderr.contains("walks")
+    }
+
+    /// Cancel phrase history from `bob logs list -l cancel -f json` on its
+    /// own `log-history` lane. Fetch when a pull-in card opens, reusing the
+    /// last good snapshot instantly (stale-while-revalidate); never fetch
+    /// per keystroke. An older bob without the `logs` subcommand fails with
+    /// clap's unrecognized-subcommand error, which maps to
+    /// `BobClientError.unsupportedCommand` and is remembered per executable
+    /// identity.
+    public func logHistory(kinds: [String] = ["cancel"]) async throws -> LogRecallCatalog {
+        if logHistoryKnownUnsupported {
+            throw BobClientError.unsupportedCommand("logs list")
+        }
+        var arguments = ["logs", "list", "-f", "json"]
+        for kind in kinds {
+            arguments += ["-l", kind]
+        }
+        let result = try await run(arguments: arguments, lane: "log-history")
+        let command = [executablePath] + arguments
+        let stderr = boundedProcessText(result.stderr)
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedLogsFailure(stderr: stderr) {
+                stateQueue.sync {
+                    unsupportedLogHistoryIdentity = identityToken
+                }
+                throw BobClientError.unsupportedCommand("logs list")
+            }
+            throw BobClientError.processFailed(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+        do {
+            let catalog = try decoder.decode(
+                LogRecallCatalog.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard catalog.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: command,
+                    expected: 1,
+                    actual: catalog.schemaVersion
+                )
+            }
+            return catalog
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    static func isUnsupportedLogsFailure(stderr: String) -> Bool {
+        guard stderr.contains("unrecognized subcommand") else {
+            return false
+        }
+        return stderr.contains("logs")
     }
 
     /// Clap reports an unknown flag as `error: unexpected argument

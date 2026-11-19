@@ -473,7 +473,15 @@ Rows start unselected: Leave, Pull in, Done, or Cancel. Control-X stages Done;
 Control-Shift-X opens Cancel reason; Return confirms; Esc restores. Shift-Return
 keeps verdicts, while two Esc presses discard them. Buttons show `Pull In {a}`,
 `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`. The strip shows Bob's
-consequence or refusal reason. `@route` previews up to five offers with tag, lane,
+consequence or refusal reason. The Cancel reason field offers a `USED BEFORE`
+band with up to 3 cancel-history rows from `bob logs list -l cancel -f json`:
+Control-N / Down and Control-P / Up fill the field without committing, typing
+adopts the shown text as the new draft, Esc restores the draft first, and a
+click fills without confirming (blur never commits a click). Row metadata shows
+`N× · age`; nothing is preselected and Return writes exactly the visible text.
+With no `bob`, an old `bob`, or a fetch failure the band takes zero pixels and
+every prompt works as before. History ranking is in
+[Log Recall](https://bobs-org.github.io/log-recall/). `@route` previews up to five offers with tag, lane,
 destination, and fold; Shift-Return returns without writing, while status changes
 route. Space toggles the row; Tab toggles and advances through visible offers
 with filter focus. Shift-Tab moves back.

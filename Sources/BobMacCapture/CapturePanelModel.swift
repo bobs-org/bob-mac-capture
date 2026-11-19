@@ -844,6 +844,17 @@ final class CapturePanelModel: ObservableObject {
     private var moveChoiceContext: CaptureMoveChoiceSubmitContext?
     private var rememberedMoveChoice: CaptureMoveChoiceState?
     @Published var pullInChoice: CapturePullInChoiceState?
+    /// Cancel `USED BEFORE` recall for the pull-in reason field. The band
+    /// never owns focus; the field stays first responder throughout.
+    @Published var pullInRecall = LogRecallState()
+    /// Last good cancel snapshot, reused instantly (stale-while-revalidate).
+    var pullInRecallCatalog: [LogRecallPhrase] = []
+    /// Suppress-blur token for recall row clicks: the click fills but never
+    /// confirms, so the blur auto-confirm must be skipped once.
+    var pullInRecallSuppressBlur = false
+    /// Edge-bump seed for the clamped bottom row (120 ms, no wrap).
+    @Published var pullInRecallBumpSeed = 0
+    private var pullInRecallFetchTask: Task<Void, Never>?
     @Published var inboxRouteChoice: CaptureInboxRouteChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
@@ -5329,6 +5340,7 @@ final class CapturePanelModel: ObservableObject {
         choice.beginOfferCancel(key)
         pullInChoice = choice
         requestFocus(.pullInReasonField)
+        fetchPullInLogHistory()
     }
 
     func clearPullInVerdictForRow(_ key: String) {
@@ -5414,6 +5426,7 @@ final class CapturePanelModel: ObservableObject {
         choice.beginOfferCancel(key)
         pullInChoice = choice
         requestFocus(.pullInReasonField)
+        fetchPullInLogHistory()
     }
 
     func confirmPullInReason() {
@@ -5422,6 +5435,8 @@ final class CapturePanelModel: ObservableObject {
         }
         choice.confirmOfferCancel()
         pullInChoice = choice
+        pullInRecall = LogRecallState()
+        pullInRecallFetchTask?.cancel()
         announceStatus(choice.consequenceMessage ?? "Cancel staged")
         requestFocus(.pullInOfferList)
     }
@@ -5432,10 +5447,30 @@ final class CapturePanelModel: ObservableObject {
         }
         choice.restoreOfferCancel()
         pullInChoice = choice
+        pullInRecall = LogRecallState()
         requestFocus(.pullInOfferList)
     }
 
+    /// Esc layering: while RECALLING, Esc/Ctrl+[ restore the draft (one
+    /// layer, prompt stays open). From DRAFT run today's back-out.
+    func restorePullInReasonFromKeyboard() {
+        if pullInRecall.backOut() {
+            if var choice = pullInChoice, choice.activeReasonKey != nil {
+                choice.updateReasonText(pullInRecall.draft)
+                pullInChoice = choice
+            }
+            requestFocus(.pullInReasonField)
+            return
+        }
+        restorePullInReason()
+    }
+
     func pullInReasonFieldDidBlur() {
+        if pullInRecallSuppressBlur {
+            pullInRecallSuppressBlur = false
+            requestFocus(.pullInReasonField)
+            return
+        }
         guard pullInChoice?.activeReasonKey != nil else {
             return
         }
@@ -5455,6 +5490,96 @@ final class CapturePanelModel: ObservableObject {
         }
         choice.updateReasonText(text)
         pullInChoice = choice
+        // Typing adopts the shown text as the new draft and resets selection.
+        pullInRecall.draftChanged(text)
+    }
+
+    /// Fetch when a pull-in reason editor opens, reusing the last good
+    /// snapshot instantly (stale-while-revalidate). Never fetch per keystroke.
+    func fetchPullInLogHistory() {
+        guard pullInChoice?.activeReasonKey != nil else { return }
+        pullInRecall.open(
+            draft: pullInChoice?.activeReasonText ?? "",
+            catalog: pullInRecallCatalog)
+        guard let client = processClient else { return }
+        objectWillChange.send()
+        pullInRecallFetchTask?.cancel()
+        let generation = pullInRecall.generation
+        pullInRecallFetchTask = Task { @MainActor in
+            do {
+                let catalog = try await client.logHistory(kinds: ["cancel"])
+                let phrases = catalog.cancelPhrases()
+                pullInRecallCatalog = phrases
+                _ = pullInRecall.applyCatalog(phrases, generation: generation)
+                objectWillChange.send()
+            } catch {
+                // Failure keeps today's behavior: the band takes zero pixels
+                // and Ctrl+N/P keep their pre-feature (nil) mapping.
+            }
+        }
+    }
+
+    private func fillPullInReasonFromRecall() {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        guard let text = pullInRecall.filledText() else { return }
+        choice.updateReasonText(text)
+        pullInChoice = choice
+        let ranked = pullInRecall.ranked
+        if let index = pullInRecall.selectedIndex {
+            let row = ranked[index - 1]
+            announceStatus(
+                LogRecallBandPresentation.announcement(
+                    index: index, total: ranked.count, text: row.phrase.text))
+        }
+        requestFocus(.pullInReasonField)
+    }
+
+    func recallNextPullInReason() {
+        guard pullInChoice?.activeReasonKey != nil else { return }
+        guard !pullInRecall.catalog.isEmpty else { return }
+        switch pullInRecall.moveNext() {
+        case .bumpedBottom:
+            pullInRecallBumpSeed &+= 1
+            NSSound.beep()
+            return
+        case .enteredTop, .moved, .bumpedTop, nil:
+            break
+        }
+        fillPullInReasonFromRecall()
+    }
+
+    func recallPreviousPullInReason() {
+        guard pullInChoice?.activeReasonKey != nil else { return }
+        guard !pullInRecall.catalog.isEmpty else { return }
+        switch pullInRecall.movePrevious() {
+        case .bumpedTop:
+            // Above the top row returns to DRAFT: restore the draft.
+            if var choice = pullInChoice, choice.activeReasonKey != nil {
+                choice.updateReasonText(pullInRecall.draft)
+                pullInChoice = choice
+            }
+            requestFocus(.pullInReasonField)
+            return
+        case .bumpedBottom:
+            pullInRecallBumpSeed &+= 1
+            NSSound.beep()
+            return
+        case .enteredTop, .moved, nil:
+            break
+        }
+        fillPullInReasonFromRecall()
+    }
+
+    /// Row click fills and enters RECALLING; it never commits. Rows stay
+    /// non-focusable with a suppress-blur token plus a refocus, so the blur
+    /// auto-confirm never fires.
+    func selectPullInRecallRow(key: String) {
+        guard pullInChoice?.activeReasonKey != nil else { return }
+        guard pullInRecall.select(key: key) else { return }
+        pullInRecallSuppressBlur = true
+        fillPullInReasonFromRecall()
     }
 
     func movePullInChoiceHighlight(by delta: Int, keepFilterFocus: Bool = false) {
