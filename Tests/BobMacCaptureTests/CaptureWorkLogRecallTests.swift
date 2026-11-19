@@ -118,15 +118,15 @@ final class CaptureWorkLogRecallTests: XCTestCase {
 
     func testWorkLogAcceptKeepsIndexTokensOutsideTheSummary() throws {
         let model = CapturePanelModel()
-        var response = try workLogResponse()
-        response = CaptureCompletionResponse(
-            ok: response.ok,
+        let base = try workLogResponse()
+        let response = CaptureCompletionResponse(
+            ok: base.ok,
             cursor: 10,
             replacement: CaptureRange(start: 6, end: 10),
-            context: response.context,
-            initialSelection: response.initialSelection,
-            query: response.query,
-            candidates: response.candidates
+            context: base.context,
+            candidates: base.candidates,
+            initialSelection: base.initialSelection,
+            query: base.query
         )
         model.plainDraft = "x\n- 1 auth"
         model.completionResponse = response
