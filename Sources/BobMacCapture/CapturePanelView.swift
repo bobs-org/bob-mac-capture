@@ -3591,6 +3591,9 @@ struct CompletionList: View {
                         taskGroup(title: "Ready to use", rows: taskRows(requiresBlockID: false))
                         taskGroup(title: "Needs block ID", rows: taskRows(requiresBlockID: true))
                     } else {
+                        if model.completionResponse?.context == "work_log" {
+                            workLogSectionHeader
+                        }
                         ForEach(indexedCandidates) { row in
                             if let title = completionSectionTitle(for: row) {
                                 Text(title)
@@ -3644,10 +3647,14 @@ struct CompletionList: View {
             base = presentation.listAccessibilityLabel
         } else if let presentation = model.placeMenuPresentation() {
             base = presentation.listAccessibilityLabel
-        } else if let candidates = model.completionResponse?.candidates, !candidates.isEmpty {
-            let contextLabel = model.rowContent(for: candidates[0]).contextLabel
+        } else if let response = model.completionResponse, !response.candidates.isEmpty {
+            // Work Log rows carry no per-row label (the `USED BEFORE`
+            // header names the list), so the list names its own noun.
+            let contextLabel = response.context == "work_log"
+                ? "Work Log"
+                : model.rowContent(for: response.candidates[0]).contextLabel
             let noun = contextLabel.isEmpty ? "Completion" : contextLabel
-            let count = candidates.count
+            let count = response.candidates.count
             base = "\(noun) suggestions, \(count) result\(count == 1 ? "" : "s")"
         } else {
             base = "Completion suggestions"
@@ -3666,6 +3673,24 @@ struct CompletionList: View {
 
     private func taskRows(requiresBlockID: Bool) -> [IndexedCompletionCandidate] {
         indexedCandidates.filter { $0.candidate.requiresBlockID == requiresBlockID }
+    }
+
+    /// `USED BEFORE` header for inline Work Log recall: the pull-in recall
+    /// band's icon and header type, in this list's section-header style.
+    private var workLogSectionHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            Text("USED BEFORE")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
     }
 
     private func completionSectionTitle(for row: IndexedCompletionCandidate) -> String? {

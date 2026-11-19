@@ -283,8 +283,15 @@ A Pomodoro close instead shows its own card whenever
   previews the trimmed draft dimmed with a `Type a task number after ,` row
   and **Close** disabled; while a Work Log bullet dangles (`x` plus `- 1`),
   it previews the rest dimmed with a `Type the Work Log entry for task 1` row
-  and the same disablement. A dangling start list on `~`/`,` dims the start
-  card the same way with **Start** disabled instead.
+  and the same disablement. Inside a close-log entry summary, the completion
+  popup offers a `USED BEFORE` band with up to 3 Work phrases from vault
+  history once 2 characters are typed: Down / Control-N and Up / Control-P
+  move through the rows without committing, Return accepts only a selected
+  row (otherwise the draft captures as typed), and Tab takes the selected
+  row or the top row. Accepting a row replaces only the summary. History
+  ranking is in [Log Recall](https://bobs-org.github.io/log-recall/). A
+  dangling start list on `~`/`,` dims the start card the same way with
+  **Start** disabled instead.
 
 ### Start card
 

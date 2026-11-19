@@ -309,6 +309,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case pomodoroSplitType
     case pomodoroMergeSource
     case pomodoroMergeDestination
+    case workLog
     case task
     case drawer
     case activeTask
@@ -349,6 +350,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "pomodoro_split_type": self = .pomodoroSplitType
         case "pomodoro_merge_src": self = .pomodoroMergeSource
         case "pomodoro_merge_dest": self = .pomodoroMergeDestination
+        case "work_log": self = .workLog
         case "task": self = .task
         case "drawer": self = .drawer
         case "active_task": self = .activeTask
@@ -848,6 +850,26 @@ public func completionRowContent(
         secondaryText = details.joined(separator: " · ")
         badges = [candidate.needsRepair ? "needs !" : (candidate.kind ?? "segment")]
         accessibilityHint = "Inserts Bob's segment suffix \(candidate.replacement)."
+
+    case .workLog:
+        // Vault-derived Work Log phrases from `capture-complete` (the
+        // `work_log` context). Bob ranks and filters them, so the app only
+        // formats Bob's `uses` and `last_used` into the `N× · age`
+        // metadata shared with the pull-in recall band. Nothing is
+        // preselected: Tab takes the shown row, Return needs a selection.
+        category = .neutral
+        symbolName = "clock.arrow.circlepath"
+        contextLabel = ""
+        primaryText = candidate.text ?? candidate.replacement
+        if let lastUsed = candidate.lastUsed, !lastUsed.isEmpty {
+            secondaryText = LogRecallBandPresentation.meta(
+                uses: candidate.uses ?? 1,
+                lastUsed: lastUsed
+            )
+        } else if let uses = candidate.uses {
+            secondaryText = "\(uses)×"
+        }
+        accessibilityHint = "Replaces the Work Log summary with this phrase."
 
     case .activeTask:
         // In Progress tasks are already being worked; Next tasks are queued but

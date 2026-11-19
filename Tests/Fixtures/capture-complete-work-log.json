@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "grammar": 28,
+  "cursor": 6,
+  "replacement": {
+    "start": 2,
+    "end": 6
+  },
+  "context": "work_log",
+  "initial_selection": "none",
+  "candidates": [
+    {
+      "replacement": "auth retry",
+      "text": "auth retry",
+      "key": "auth retry",
+      "uses": 2,
+      "last_used": "2026-11-19 08:30",
+      "recency_rank": 0,
+      "match": "prefix"
+    },
+    {
+      "replacement": "auth timeout recovery",
+      "text": "auth timeout recovery",
+      "key": "auth timeout recovery",
+      "uses": 1,
+      "last_used": "2026-11-19 08:15",
+      "recency_rank": 1,
+      "match": "prefix"
+    },
+    {
+      "replacement": "auth config cleanup",
+      "text": "auth config cleanup",
+      "key": "auth config cleanup",
+      "uses": 1,
+      "last_used": "2026-11-19 08:00",
+      "recency_rank": 2,
+      "match": "prefix"
+    }
+  ],
+  "query": "auth"
+}

@@ -10679,6 +10679,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let origin: String?
     public let lastUsed: String?
     public let daysUsed: Int?
+    /// Additive `work_log` phrase use count. Bob sends `uses` on every
+    /// Work Log candidate; older Bob never sends the `work_log` context,
+    /// so missing decodes as nil and rows render without a count.
+    public let uses: Int?
     public let similarTo: [String]
     // Additive `next_up` marker on `pomodoro_start_name` rows: true for the
     // entry a bare `=` would start. Omitted when false, and older Bob never
@@ -10894,6 +10898,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         origin: String? = nil,
         lastUsed: String? = nil,
         daysUsed: Int? = nil,
+        uses: Int? = nil,
         similarTo: [String] = [],
         nextUp: Bool = false,
         pomodoro: ActiveTaskPomodoro? = nil,
@@ -10998,6 +11003,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.origin = origin
         self.lastUsed = lastUsed
         self.daysUsed = daysUsed
+        self.uses = uses
         self.similarTo = similarTo
         self.nextUp = nextUp
         self.pomodoro = pomodoro
@@ -11105,6 +11111,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         origin = try container.decodeIfPresent(String.self, forKey: .origin)
         lastUsed = try container.decodeIfPresent(String.self, forKey: .lastUsed)
         daysUsed = try container.decodeIfPresent(Int.self, forKey: .daysUsed)
+        uses = (try? container.decodeIfPresent(Int.self, forKey: .uses)) ?? nil
         similarTo = try container.decodeIfPresent([String].self, forKey: .similarTo) ?? []
         nextUp = try container.decodeIfPresent(Bool.self, forKey: .nextUp) ?? false
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
@@ -11225,6 +11232,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case origin
         case lastUsed = "last_used"
         case daysUsed = "days_used"
+        case uses
         case similarTo = "similar_to"
         case nextUp = "next_up"
         case pomodoro

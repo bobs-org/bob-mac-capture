@@ -22267,6 +22267,9 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_task_query",
             "pomodoro_close_drop",
             "pomodoro_close_park",
+            // A caret inside a close-log entry summary asks bob for
+            // `work_log` phrase completion; bob owns the two-character gate.
+            "pomodoro_close_log_summary",
             "pomodoro_past_segment",
             "pomodoro_start_drop",
             "task_type",
