@@ -200,17 +200,16 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-Space marks, Tab marks and moves to the next offer (staying on the last), and Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses the Cancel reason, Return confirms it, and Esc restores the prior outcome. Shift-Return keeps verdicts, and two Esc presses discard them. Command-X stays Cut. In the Cancel reason field, Control-N / Down and Control-P / Up step through the `USED BEFORE` cancel history (up to 3 rows, shown after the first step or 2 typed characters); the first Esc restores the draft and only the next Esc backs out. Return writes exactly the visible text. Full behavior is in [Capture previews](capture-previews.md); history ranking is in [Log Recall](https://bobs-org.github.io/log-recall/).
+Space marks, Tab marks and moves to the next offer (staying on the last), Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Command-X stays Cut. In Cancel reason, Control-N / Down and Control-P / Up step through `USED BEFORE` history (up to 3 rows after the first step or 2 typed characters); the first Esc restores the draft and only the next Esc backs out, and Return writes exactly the visible text (see [Capture previews](capture-previews.md) and [Log Recall](https://bobs-org.github.io/log-recall/)).
 
 ## Inbox routing
 
 Up/Down or Control-N/Control-P moves the destination highlight. Return moves
-the current task, Control-Return moves it and opens the capture notes, and
+the current task, Control-Return moves it and opens capture notes,
 Shift-Return keeps it in its inbox.
-Escape goes back one task, then to the successor card when one preceded
-the route card, or to the unchanged draft. Control-T and Command-\ are consumed
-while the route card is open so the shelf and Pomodoro action cannot
-take over its modal keys. Full behavior is in [Capture previews](capture-previews.md).
+Escape goes back one task, then to the preceding successor card or the
+unchanged draft. Control-T and Command-\ are consumed while the route card is
+open. Full behavior is in [Capture previews](capture-previews.md).
 
 ## Similar tasks keys
 

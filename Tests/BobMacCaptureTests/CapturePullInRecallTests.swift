@@ -25,7 +25,11 @@ final class CapturePullInRecallTests: XCTestCase {
         let model = CapturePanelModel()
         model.installPullInChoiceForPreviews(
             offers: offers(count: 3),
-            pullIn: CapturePullIn(supported: true, offerCount: 3),
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 3,
+                close: CapturePullInClose(supported: true)
+            ),
             draft: "draft"
         )
         model.pullInRecallCatalog = catalog()
@@ -149,7 +153,8 @@ final class CapturePullInRecallTests: XCTestCase {
                         dayFile: "20261013.md",
                         entryName: "FOCUS",
                         entryRole: "current"
-                    )
+                    ),
+                    close: TaskCompleteOfferClose(complete: true, cancel: true)
                 )
             )
         }

@@ -238,41 +238,26 @@ Preview shows every block Bob will write, in Bob's own order: each item's parent
 
 ### Close card
 
-A Pomodoro close instead shows its own card whenever
-  `pomodoro_close` is present: a `stop.circle.fill` header with the `Close NAME`
-  title and the monospaced session range (the shortened half tinted with the
-  Pomodoro-session colour), the day-file destination plus a timing chip that is
-  orange when early, green when on time, and secondary when over — or, when
-  Bob reports a sized close (`pomodoro_close.size`), one `Nx · as of HH:MM`
-  chip in the session-operator tint that replaces the timing chip — a `link` via
-  row for link closes or a `plus.circle` row for new-task closes, up to six
-  task rows with per-role
-  glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
-  with strikethrough on struck rows, trailing locators, and Work Log previews —
-  each row shows its `typed_work_log` entries first with date stripped, then
-  `typed_work_log_details` lines, then remaining `work_log` entries capped at two —
-  then a notes row (`1 note stays`), a next-session footer row, and an
-  empty state (`No Task Links — the session simply closes`) when there are no
-  task rows. When Bob reports the created continuation was placed last
-  (`next_pomodoro.placed_last`), the footer reads `Next: MEET · new ·
-  placed last · carries 1 link`. Numbered rows start with a fixed-width badge — a filled
-  `N.circle.fill` when the row is listed, an open `N.circle` otherwise (monospaced
-  digits in a capsule past 50), tinted orange for in progress, green for
-  complete, and secondary for deferred, with unlisted rows dimmed;
-  unnumbered rows keep a clear spacer, and with no numbered rows the card
-  looks exactly like today's. Completed rows keep the embedded green glyph
-  with struck text and a `[*] → [x]` transition. One caption row teaches
-  the syntax before a selection is typed and shows the outcome after
-  (`In progress 1, 3 · Complete 2 · Deferred 4`, or `In progress none` for
-  `x0`); numbered rows never hide under `+N more`. A sized close reads its
-  session line from Bob's `size.from.time_range` to the closed range with the
-  recorded minutes (`0900-0925 → 0900-0910 · 10m` shrink, `0900-0910 → 0900-0915
-  · 15m` lengthen, `0900-0925 · 25m` with no arrow when equal), keeps the
-  duration visible at compact widths, and announces
-  `Close BUILD at 10 minutes, 2 blocks, 15 minutes shorter than planned`
-  (`longer than planned` / `as planned`) from Bob's `minutes`, `blocks`, and
-  `delta_minutes` — never recomputed from clocks; the chip reads Bob's
-  `closed_at`. Close spelling, sized tokens, and selection lists are in
+A Pomodoro close shows its own card whenever `pomodoro_close` is present: a
+  `stop.circle.fill` header with `Close NAME` and the monospaced session range
+  (shortened half in the Pomodoro-session colour), the day-file destination
+  plus a timing chip (orange early, green on time, secondary over; a sized
+  close replaces it with one `Nx · as of HH:MM` chip) — a `link` via row for
+  link closes or a `plus.circle` row for new-task closes, up to six task rows
+  with per-role glyphs, transitions, strikethrough, locators, and Work Log
+  previews (each row shows `typed_work_log` first, then details, then
+  `work_log` capped at two) — then a notes row, a next-session footer, and an
+  empty state when there are no task rows. When the continuation was placed
+  last, the footer reads `Next: MEET · new · placed last · carries 1 link`.
+  Numbered rows use a fixed-width badge (filled when listed, open otherwise;
+  monospaced digits past 50; orange/green/secondary; unlisted dimmed);
+  unnumbered rows keep a spacer. Completed rows keep the green glyph with
+  struck text. One caption row teaches the syntax before selection and shows
+  the outcome after; numbered rows never hide under `+N more`. A sized close
+  reads its session line from `size.from.time_range` with recorded minutes,
+  keeps the duration visible at compact widths, and announces the close from
+  `minutes`, `blocks`, and `delta_minutes` — never recomputed; the chip reads
+  `closed_at`. Spelling, tokens, and lists are in
   [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size)
   and [Protocol](protocol.md#capability-requirements).
   The accessibility label includes the typed entries with their details after
@@ -283,13 +268,14 @@ A Pomodoro close instead shows its own card whenever
   previews the trimmed draft dimmed with a `Type a task number after ,` row
   and **Close** disabled; while a Work Log bullet dangles (`x` plus `- 1`),
   it previews the rest dimmed with a `Type the Work Log entry for task 1` row
-  and the same disablement. Inside a close-log entry summary, the completion
-  popup offers a `USED BEFORE` band with up to 3 Work phrases from vault
-  history once 2 characters are typed: Down / Control-N and Up / Control-P
-  move through the rows without committing, Return accepts only a selected
-  row (otherwise the draft captures as typed), and Tab takes the selected
-  row or the top row. Accepting a row replaces only the summary. History
-  ranking is in [Log Recall](https://bobs-org.github.io/log-recall/). A
+  and the same disablement. Inside a close-log entry summary, completion
+  offers a `USED BEFORE` band with up to 8 Work phrases after 2 non-space
+  characters (query is the text up to the cursor; the exact summary is
+  dropped; `[[` never completes; see
+  [Log Recall](https://bobs-org.github.io/log-recall/)): Down / Control-N and
+  Up / Control-P move without committing, Return accepts only a selected row
+  (otherwise the draft captures as typed), Tab takes the selected or top row,
+  and accepting replaces only the summary. A
   dangling start list on `~`/`,` dims the start card the same way with
   **Start** disabled instead.
 
@@ -481,14 +467,13 @@ Control-Shift-X opens Cancel reason; Return confirms; Esc restores. Shift-Return
 keeps verdicts, while two Esc presses discard them. Buttons show `Pull In {a}`,
 `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`. The strip shows Bob's
 consequence or refusal reason. The Cancel reason field offers a `USED BEFORE`
-band with up to 3 cancel-history rows from `bob logs list -l cancel -f json`:
-Control-N / Down and Control-P / Up fill the field without committing, typing
-adopts the shown text as the new draft, Esc restores the draft first, and a
-click fills without confirming (blur never commits a click). Row metadata shows
-`N× · age`; nothing is preselected and Return writes exactly the visible text.
-With no `bob`, an old `bob`, or a fetch failure the band takes zero pixels and
-every prompt works as before. History ranking is in
-[Log Recall](https://bobs-org.github.io/log-recall/). `@route` previews up to five offers with tag, lane,
+band with up to 3 cancel-history rows (rows show `N× · age`, nothing is
+preselected; see [Log Recall](https://bobs-org.github.io/log-recall/)):
+Control-N / Down and Control-P / Up fill without committing, typing adopts the
+shown text, Esc restores first, clicks fill without confirming (blur never
+commits a click), and Return writes exactly the visible text; with no `bob`,
+an old `bob`, or a fetch failure the band takes zero pixels. `@route`
+previews up to five offers with tag, lane,
 destination, and fold; Shift-Return returns without writing, while status changes
 route. Space toggles the row; Tab toggles and advances through visible offers
 with filter focus. Shift-Tab moves back.
