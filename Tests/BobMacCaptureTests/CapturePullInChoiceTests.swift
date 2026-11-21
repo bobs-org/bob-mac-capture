@@ -1323,6 +1323,24 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(state.footerSummaryText.contains("✓ 1 done"), true)
     }
 
+    func testPrimaryCommitLabelIgnoresHiddenHighlight() throws {
+        var state = choiceState(offers: offers(count: 4))
+        let project = try XCTUnwrap(state.sections.first(where: { $0.group == "project" }))
+        let projectKey = try XCTUnwrap(project.rows.first?.offerKey)
+        state.highlightedKey = projectKey
+        state.markedKeys = []
+        XCTAssertEqual(state.effectiveSelectionKeys, [projectKey])
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1")
+        XCTAssertTrue(state.canCommit)
+
+        state.toggleGroup(project.id)
+        XCTAssertTrue(state.visibleRows(in: project).isEmpty)
+        XCTAssertTrue(state.effectiveSelectionKeys.isEmpty)
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In")
+        XCTAssertFalse(state.canCommit)
+        XCTAssertEqual(state.outcomes.primaryLabel, "Pull In 1")
+    }
+
     func testJumpPinSurvivesFilterAndVerdicts() {
         var state = choiceState(
             offers: offers(count: 3),
@@ -1369,7 +1387,7 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertTrue(state.footerSummaryText.hasSuffix("↗ “Task 2”"), state.footerSummaryText)
     }
 
-    func testJumpWithoutCapabilityRefusesNothingAndMarksNothing() {
+    func testJumpTogglePinsValidKeysAndIgnoresUnknownKeys() {
         var state = choiceState(offers: offers(count: 2))
         XCTAssertFalse(state.jumpSupported)
         state.toggleJump("opaque#1^suffix")
@@ -1546,6 +1564,15 @@ final class CapturePullInChoiceTests: XCTestCase {
             CapturePullInChoiceFooter.openIntentAccessibilityText.contains(
                 "Control-Return pulls in and opens")
         )
+        XCTAssertTrue(
+            CapturePullInChoiceFooter.jumpIntentAccessibilityText.contains(
+                "jumps to the pinned offer"))
+        XCTAssertTrue(
+            CapturePullInChoiceFooter.jumpIntentAccessibilityText.contains(
+                "applies verdicts, and jumps"))
+        XCTAssertFalse(
+            CapturePullInChoiceFooter.jumpIntentAccessibilityText.contains(
+                "opens the reported notes"))
     }
 
     private func fixtureSuccess(_ name: String) throws -> CaptureCommandSuccess {

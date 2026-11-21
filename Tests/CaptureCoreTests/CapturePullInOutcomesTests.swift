@@ -170,6 +170,15 @@ final class CapturePullInOutcomesTests: XCTestCase {
         XCTAssertNil(outcomes.verdicts["offer:b"])
     }
 
+    func testPrimaryLabelHonorsExplicitPickCount() {
+        var outcomes = CapturePullInOutcomes(offers: offers())
+        XCTAssertEqual(outcomes.primaryLabel, "Pull In 1")
+        XCTAssertEqual(outcomes.primaryLabel(pickCount: 0), "Pull In")
+        outcomes.toggleJump(for: "offer:b")
+        XCTAssertEqual(outcomes.primaryLabel(pickCount: 0), "Leave Open & Jump")
+        XCTAssertEqual(outcomes.primaryLabel(pickCount: 2), "Pull In 2 & Jump")
+    }
+
     func testJumpPinTogglesMovesAndClearsWithoutMovingHighlight() {
         var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
         XCTAssertNil(outcomes.jumpKey)

@@ -486,6 +486,60 @@ final class CaptureInboxRouteChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 2)
     }
 
+    func testPinnedRouteSubmitSendsJumpOfferAndOpensJumpURL() async throws {
+        let record = temporaryURL()
+        let responseFile = temporaryURL()
+        try write(fixture("inbox-route-choice-required.json"), to: responseFile)
+        let model = makeModel(
+            record: record,
+            responseFile: responseFile,
+            dryRunResponse: pullInAndRoutePreviewWithJump()
+        )
+        model.plainDraft = "!dev:prereq\n\n@mac_inbox:route-task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+
+        let offer = try XCTUnwrap(model.pullInChoice?.selectableKeys.first)
+        model.toggleJumpForRow(offer)
+        model.confirmPullInChoice()
+        try await waitUntil { model.inboxRouteChoiceVisible }
+        let firstWrite = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(firstWrite.contains("--jump-offer \(offer)"), firstWrite)
+        XCTAssertTrue(firstWrite.contains("--pull-in none"), firstWrite)
+
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        try write(pullInJumpRouteSuccess(offer: offer), to: responseFile)
+        model.selectInboxRouteDestination("health.md")
+        model.confirmInboxRouteChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let routeSubmit = try XCTUnwrap(captureBlocks(try recordText(record)).last)
+        XCTAssertTrue(routeSubmit.contains("--jump-offer \(offer)"), routeSubmit)
+        XCTAssertTrue(
+            routeSubmit.contains("--inbox-route mac_inbox.md#^route-task=health.md"),
+            routeSubmit)
+        XCTAssertEqual(opened.count, 1)
+        let url = try XCTUnwrap(opened.first)
+        XCTAssertEqual(url.host, "bob-open-notes")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "count" })?.value, "1")
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/dev.md")
+        XCTAssertEqual(items.first(where: { $0.name == "line1" })?.value, "6")
+    }
+
+    private func pullInJumpRouteSuccess(offer: String) -> String {
+        """
+        {"ok":true,"dry_run":false,"routed":true,"route":"mac_inbox","route_label":"mac_inbox.md","relative_target":"mac_inbox.md","target":"/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md","text":"","task_line":"- [*] #task Route me","kind":"pomodoro_link","created":"2026-10-24","placement":"linked","open_notes":[{"path":"/tmp/day.md","relative_path":"day.md","role":"note","label":"day"}],"jump":{"key":"\(offer)","n":1,"label":"Dependent","outcome":"left","landing":{"path":"/tmp/dev.md","relative_path":"dev.md","role":"note","label":"dev","line":6,"ref":"6:abcdef12","block_id":"dep"}}}
+        """
+    }
+
     private func pullInAndRoutePreviewWithJump() -> String {
         #"""
         {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"dev.md","target":"/tmp/dev.md","text":"!dev:prereq","task_line":"- [x] #task Prereq ^prereq","kind":"task_complete","created":"2026-10-24","placement":"updated","pull_in":{"supported":true,"offer_count":1,"choice":null,"picked_count":0,"close":{"supported":true,"done_count":0,"cancelled_count":0},"jump":{"supported":true}},"task_complete":{"raw":"!dev:prereq","unblocked":[{"note_path":"dev.md","block_id":"dep","line":6,"text":"Dependent","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"dev.md#^dep","n":1,"group":"hand_off","destination":{"day_file":"20261024.md","entry_name":"WORK","entry_role":"current"},"close":{"complete":true,"cancel":true,"complete_consequence":"Completes Dependent","cancel_consequence":"Cancels Dependent","unblocks":0}}}]},"inbox_route":{"supported":true,"candidate_count":1,"routed_count":0,"kept_count":0,"candidates":[{"key":"mac_inbox.md#^route-task","n":1,"note_path":"mac_inbox.md","inbox":"mac_inbox","block_id":"route-task","line":6,"text":"Route me","previous_status_symbol":" ","previous_status_name":"Ready","status_symbol":"*","status_name":"Next","outcome":"pending"}],"destinations":[{"relative_path":"health.md","route":"health","label":"health","kind":"area","blocked":false}]}}

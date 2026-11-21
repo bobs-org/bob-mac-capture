@@ -714,7 +714,7 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     var primaryCommitLabel: String {
-        outcomes.primaryLabel
+        outcomes.primaryLabel(pickCount: effectivePickCount)
     }
 
     var skipCommitLabel: String {

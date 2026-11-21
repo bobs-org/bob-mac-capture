@@ -473,6 +473,10 @@ struct CapturePullInChoiceCard: View {
                             }
                             .buttonStyle(.plain)
                             .id(key)
+                            .animation(
+                                reduceMotion
+                                    ? .easeInOut(duration: 0.2) : .snappy(duration: 0.25),
+                                value: choice.jumpKey)
                             .contextMenu {
                                 if choice.closeSupported,
                                     choice.outcomes.isEligible(.done, for: key)
@@ -513,12 +517,14 @@ struct CapturePullInChoiceCard: View {
                             .accessibilityAction(named: "Leave") {
                                 model.clearPullInVerdictForRow(key)
                             }
-                            .accessibilityAction(
-                                named: choice.jumpKey == key
-                                    ? "Clear Jump" : "Jump Here After Capture"
-                            ) {
-                                model.toggleJumpForRow(key)
-                            }
+                            .modifier(
+                                OptionalNamedAccessibilityAction(
+                                    enabled: choice.jumpSupported,
+                                    name: choice.jumpKey == key
+                                        ? "Clear Jump" : "Jump Here After Capture",
+                                    action: { model.toggleJumpForRow(key) }
+                                )
+                            )
                             if choice.activeReasonKey == key {
                                 CapturePullInReasonField(
                                     model: model,
@@ -774,6 +780,21 @@ struct CapturePullInDestinationCapsule: View {
     }
 }
 
+private struct OptionalNamedAccessibilityAction: ViewModifier {
+    var enabled: Bool
+    var name: String
+    var action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.accessibilityAction(named: LocalizedStringKey(name), action)
+        } else {
+            content
+        }
+    }
+}
+
 /// The solid accent jump capsule. Highlight is an outline, a mark is a
 /// tint, and the pin is a solid pill, so all three stay distinct in the
 /// same hue. The pin glides between rows; under Reduce Motion it
@@ -797,7 +818,7 @@ struct CapturePullInJumpCapsule: View {
         .transition(
             reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
         .accessibilityHidden(true)
-        if let namespace {
+        if let namespace, !reduceMotion {
             capsule.matchedGeometryEffect(id: "jump-pin", in: namespace)
         } else {
             capsule
@@ -938,7 +959,8 @@ struct CapturePullInOfferRow: View {
             )
         }
         if isJumpPinned {
-            CapturePullInJumpCapsule(namespace: jumpNamespace)
+            CapturePullInJumpCapsule(
+                namespace: reduceMotion ? nil : jumpNamespace)
         }
     }
 
@@ -1260,6 +1282,14 @@ struct CapturePullInChoiceFooter: View {
         + "notes. Shift-Return skips pull-ins and applies verdicts. Escape needs two presses "
         + "while verdicts are staged."
 
+    static let jumpIntentAccessibilityText =
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. "
+        + "Tab marks it and moves to the next offer. Shift-Tab moves to the previous offer. "
+        + "Command-A marks every offer. Control-X stages Done, Control-Shift-X stages Cancel "
+        + "with an optional reason. Return applies every staged choice, then jumps to the pinned "
+        + "offer. Shift-Return skips pull-ins, applies verdicts, and jumps. Escape needs two "
+        + "presses while verdicts are staged."
+
     private var openAfterCapture: Bool {
         model.pullInChoice?.openAfterCapture == true
     }
@@ -1346,7 +1376,7 @@ struct CapturePullInChoiceFooter: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(skipTitle)
-                            if openAfterCapture {
+                            if jumpPinned || openAfterCapture {
                                 Image(systemName: "arrow.up.forward")
                             }
                             Text("⇧↩")
@@ -1362,7 +1392,7 @@ struct CapturePullInChoiceFooter: View {
                     HStack(spacing: 4) {
                         Text(pullInTitle)
                             .contentTransition(.numericText())
-                        if openAfterCapture {
+                        if jumpPinned || openAfterCapture {
                             Image(systemName: "arrow.up.forward")
                         }
                         Text("↩")
@@ -1378,7 +1408,10 @@ struct CapturePullInChoiceFooter: View {
         .accessibilityLabel(
             isOnlyNotePull && !hasVerdicts
                 ? "Shift-Return returns to the draft. Escape returns to the draft without writing."
-                : openAfterCapture ? Self.openIntentAccessibilityText : Self.accessibilityText
+                : jumpPinned
+                    ? Self.jumpIntentAccessibilityText
+                    : openAfterCapture
+                        ? Self.openIntentAccessibilityText : Self.accessibilityText
         )
         .onChange(of: model.statusAnnouncementTick) { _, _ in
             guard !model.statusText.isEmpty else {

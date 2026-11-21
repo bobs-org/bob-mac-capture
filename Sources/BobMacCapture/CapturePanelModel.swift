@@ -570,6 +570,8 @@ private struct CaptureInboxRouteSubmitContext {
     let pullInCapabilityAdvertised: Bool
     let offerVerdicts: CapturePullInOfferVerdicts?
     let offerCloseCapabilityAdvertised: Bool
+    var jumpOffer: String? = nil
+    var jumpCapabilityAdvertised = false
     let inboxRouteCapabilityAdvertised: Bool
     let hasOverride: Bool
     let vaultDirectoryIdentity: String
@@ -581,6 +583,8 @@ private struct CaptureMoveChoiceSubmitContext {
     let preview: CapturePullInPreviewSnapshot
     var openAfterCapture: Bool
     var needsPreview = false
+    var jumpOffer: String? = nil
+    var jumpCapabilityAdvertised = false
 }
 
 private struct PendingExplicitSubmitIntent: Equatable {
@@ -4092,7 +4096,9 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         openAfterCapture: Bool,
         preview: CapturePullInPreviewSnapshot?,
-        moveInSelection: String? = nil
+        moveInSelection: String? = nil,
+        jumpOffer: String? = nil,
+        jumpCapabilityAdvertised: Bool = false
     ) {
         guard let processClient else { return }
         if let preview,
@@ -4135,6 +4141,8 @@ final class CapturePanelModel: ObservableObject {
                 pullInCapabilityAdvertised: preview.pullIn?.supported == true,
                 offerVerdicts: nil,
                 offerCloseCapabilityAdvertised: preview.pullIn?.close?.supported == true,
+                jumpOffer: jumpOffer,
+                jumpCapabilityAdvertised: jumpCapabilityAdvertised,
                 inboxRouteCapabilityAdvertised: true,
                 hasOverride: preview.hasOverride,
                 vaultDirectoryIdentity: processClient.vaultDirectoryIdentity,
@@ -4158,7 +4166,9 @@ final class CapturePanelModel: ObservableObject {
             seed: preview?.seed ?? activePriorityRollSeed(),
             inboxRouteCapabilityAdvertised: preview?.inboxRoute?.supported == true,
             moveInSelection: moveInSelection,
-            moveInCapabilityAdvertised: preview?.moveChoice?.supported == true
+            moveInCapabilityAdvertised: preview?.moveChoice?.supported == true,
+            jumpOffer: jumpOffer,
+            jumpCapabilityAdvertised: jumpCapabilityAdvertised
         )
     }
 
@@ -4202,6 +4212,8 @@ final class CapturePanelModel: ObservableObject {
             offerVerdicts: offerVerdicts,
             offerCloseCapabilityAdvertised: offerCloseCapabilityAdvertised
                 || matchingPreview?.pullIn?.close?.supported == true,
+            jumpOffer: jumpOffer,
+            jumpCapabilityAdvertised: jumpCapabilityAdvertised,
             inboxRouteCapabilityAdvertised: inboxRouteCapabilityAdvertised
                 || matchingPreview?.inboxRoute?.supported == true,
             hasOverride: allowsOverride,
@@ -4232,13 +4244,13 @@ final class CapturePanelModel: ObservableObject {
                         moveInCapabilityAdvertised: submitContext.moveInCapabilityAdvertised,
                         pullInSelection: selection,
                         offerVerdicts: submitContext.offerVerdicts,
-                        jumpOffer: jumpOffer,
+                        jumpOffer: submitContext.jumpOffer,
                         requirePullInChoice: selection == nil && inboxRouteAnswers == nil,
                         refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
                         offerCloseCapabilityAdvertised: submitContext
                             .offerCloseCapabilityAdvertised,
-                        jumpCapabilityAdvertised: jumpCapabilityAdvertised,
+                        jumpCapabilityAdvertised: submitContext.jumpCapabilityAdvertised,
                         inboxRouteAnswers: inboxRouteAnswers,
                         requireInboxRouteChoice: true,
                         inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
@@ -4305,7 +4317,9 @@ final class CapturePanelModel: ObservableObject {
         preview: CapturePullInPreviewSnapshot,
         openAfterCapture: Bool,
         stale: Bool = false,
-        needsPreview: Bool = false
+        needsPreview: Bool = false,
+        jumpOffer: String? = nil,
+        jumpCapabilityAdvertised: Bool = false
     ) {
         var state =
             rememberedMoveChoice?.slot.parent == slot.parent
@@ -4314,7 +4328,8 @@ final class CapturePanelModel: ObservableObject {
         rememberedMoveChoice = state
         moveChoice = state
         moveChoiceContext = CaptureMoveChoiceSubmitContext(
-            preview: preview, openAfterCapture: openAfterCapture, needsPreview: needsPreview
+            preview: preview, openAfterCapture: openAfterCapture, needsPreview: needsPreview,
+            jumpOffer: jumpOffer, jumpCapabilityAdvertised: jumpCapabilityAdvertised
         )
         moveChoiceMessage =
             stale
@@ -4426,7 +4441,9 @@ final class CapturePanelModel: ObservableObject {
         }
         continueSubmit(
             draft: context.preview.draft, openAfterCapture: shouldOpen,
-            preview: context.preview, moveInSelection: none ? "none" : state.selection
+            preview: context.preview, moveInSelection: none ? "none" : state.selection,
+            jumpOffer: context.jumpOffer,
+            jumpCapabilityAdvertised: context.jumpCapabilityAdvertised
         )
     }
 
@@ -4470,11 +4487,15 @@ final class CapturePanelModel: ObservableObject {
                         seed: previous.seed, generation: previous.generation, requestID: requestID
                     )
                     self.moveChoiceContext = CaptureMoveChoiceSubmitContext(
-                        preview: preview, openAfterCapture: openAfterCapture
+                        preview: preview, openAfterCapture: openAfterCapture,
+                        jumpOffer: context.jumpOffer,
+                        jumpCapabilityAdvertised: context.jumpCapabilityAdvertised
                     )
                     self.continueSubmit(
                         draft: previous.draft, openAfterCapture: openAfterCapture,
-                        preview: preview, moveInSelection: selection
+                        preview: preview, moveInSelection: selection,
+                        jumpOffer: context.jumpOffer,
+                        jumpCapabilityAdvertised: context.jumpCapabilityAdvertised
                     )
                 case .failure:
                     self.completeSubmit(
@@ -5793,6 +5814,8 @@ final class CapturePanelModel: ObservableObject {
             pullInCapabilityAdvertised: false,
             offerVerdicts: nil,
             offerCloseCapabilityAdvertised: false,
+            jumpOffer: nil,
+            jumpCapabilityAdvertised: false,
             inboxRouteCapabilityAdvertised: route.supported,
             hasOverride: false,
             vaultDirectoryIdentity: processClient?.vaultDirectoryIdentity ?? "preview-vault"
@@ -18107,20 +18130,19 @@ final class CapturePanelModel: ObservableObject {
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
             // A staged pin replaces the open-notes landing: one entry for
-            // the post-write jump target. A lost (null) landing falls back
-            // to today's behavior with a lost-target notice line.
-            let submittedJumpKey = routeContext?.pullInChoiceForBack?.jumpKey
-            let jump = submittedJumpKey.flatMap { _ in success.jump }
-            let jumpedLanding: CaptureOpenNote? = {
-                guard let submittedJumpKey, !submittedJumpKey.isEmpty,
-                      let jump, jump.key == submittedJumpKey
-                else {
-                    return nil
-                }
-                return jump.landing
-            }()
-            let jumpLost = submittedJumpKey != nil && !submittedJumpKey!.isEmpty
-                && jump != nil && jump!.landing == nil
+            // the post-write jump target. A lost (null) landing, or a
+            // missing top-level `jump` after a pin, falls back to today's
+            // open-notes behavior with a lost-target notice line.
+            let submittedJumpKey = routeContext?.jumpOffer
+                ?? routeContext?.pullInChoiceForBack?.jumpKey
+            let resolvedJump = CaptureJump.resolveCommit(
+                submittedKey: submittedJumpKey,
+                submittedLabel: routeContext?.pullInChoiceForBack?.jumpLabel,
+                successJump: success.jump
+            )
+            let jump = resolvedJump.jump
+            let jumpedLanding = resolvedJump.landing
+            let jumpLost = resolvedJump.lost
             postCaptureSuccess(
                 captures: captures,
                 globalDestination: success.globalDestination,
@@ -18200,7 +18222,10 @@ final class CapturePanelModel: ObservableObject {
                     )
                     openMoveChoice(
                         slot: slot, preview: snapshot, openAfterCapture: openAfterCapture,
-                        stale: code == "move_choice_stale", needsPreview: true
+                        stale: code == "move_choice_stale", needsPreview: true,
+                        jumpOffer: routeContext?.jumpOffer,
+                        jumpCapabilityAdvertised: routeContext?.jumpCapabilityAdvertised
+                            ?? false
                     )
                     if code != "move_choice_required", code != "move_choice_stale" {
                         moveChoiceMessage = failure.error

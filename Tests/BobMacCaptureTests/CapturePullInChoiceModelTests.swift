@@ -1502,6 +1502,49 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/day.md")
     }
 
+    func testMissingJumpObjectFallsBackToOpenNotes() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpWriteResponseWithoutJump(),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "0",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: true)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.toggleJumpForHighlight()
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        let calls = try recordText(record)
+        XCTAssertTrue(calls.contains("--jump-offer offer#one^key"), calls)
+        XCTAssertEqual(opened.count, 1)
+        let items = URLComponents(
+            url: try XCTUnwrap(opened.first), resolvingAgainstBaseURL: false
+        )?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/day.md")
+        XCTAssertNil(items.first(where: { $0.name == "line1" })?.value)
+    }
+
     private func jumpPreviewResponse() -> String {
         #"""
         {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"!task","task_line":"- [ ] #task Task","kind":"task_complete","created":"2026-10-13","placement":"updated","pull_in":{"supported":true,"offer_count":2,"choice":null,"picked_count":0,"jump":{"supported":true},"groups":[{"group":"hand_off","project":"","folded":{"hidden":0,"already_planned":0,"sub_projects":0}}]},"task_complete":{"raw":"!travel:parent","unblocked":[{"note_path":"travel.md","block_id":"one","line":1,"text":"One task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"offer#one^key","n":1,"group":"hand_off","project":null,"destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}},{"note_path":"travel.md","block_id":"two","line":2,"text":"Two task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"opaque:two#^suffix","n":2,"group":"hand_off","project":null,"destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}}]}}
@@ -1513,6 +1556,12 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         return """
             {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"task","task_line":"- [ ] Task","kind":"task","created":"2026-10-13","placement":"new","open_notes":[{"path":"/tmp/day.md","relative_path":"day.md","role":"note","label":"day"}],"pull_in":{"supported":true,"offer_count":2,"choice":null,"picked_count":0,"jump":{"supported":true}},"jump":{"key":"offer#one^key","n":1,"label":"One task","outcome":"left","landing":\(landingValue)}}
             """
+    }
+
+    private func jumpWriteResponseWithoutJump() -> String {
+        """
+        {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"task","task_line":"- [ ] Task","kind":"task","created":"2026-10-13","placement":"new","open_notes":[{"path":"/tmp/day.md","relative_path":"day.md","role":"note","label":"day"}],"pull_in":{"supported":true,"offer_count":2,"choice":null,"picked_count":0,"jump":{"supported":true}}}
+        """
     }
 
     private func jumpStaleResponse(offers: String = "offer#one^key,opaque:two#^suffix") -> String {

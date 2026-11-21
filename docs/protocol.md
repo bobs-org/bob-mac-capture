@@ -204,7 +204,8 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   captures without asking.
 
 Grammar 12 adds past-work `x=` recording (`pomodoro_past` mode, spans,
-  summaries, windows, trims, warnings), decoded tolerantly.
+  summaries, windows, trims, warnings), decoded tolerantly with no synthesized
+  top-level close.
 
 Grammar 14 segment suffixes precede `!` / `=`: `~` tail, `~N` / `~N+`
 segment start/end, `~~` head. Bob returns spans, candidates, resolved segment/pin,

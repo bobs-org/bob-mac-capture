@@ -164,7 +164,7 @@ final class CapturePullInClientTests: XCTestCase {
         do {
             _ = try await client.capture(
                 "draft",
-                pullInSelection: .none,
+                pullInSelection: CapturePullInSelection.none,
                 jumpOffer: "opaque:key",
                 pullInCapabilityAdvertised: true
             )

@@ -465,10 +465,12 @@ project and its `^prj` task.
 Rows start unselected: Leave, Pull in, Done, or Cancel. Buttons show
 `Pull In {a}`, `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`.
 The strip shows Bob's consequence or refusal reason. The Cancel reason field
-offers a `USED BEFORE` band (see [Log Recall](https://bobs-org.github.io/log-recall/)):
+offers a `USED BEFORE` band (rows show `N× · age`, nothing preselected; see
+[Log Recall](https://bobs-org.github.io/log-recall/)):
 Control-N / Down and Control-P / Up fill without committing, typing adopts the
-shown text, Esc restores first, and Return writes the visible text; with no
-`bob`, an old `bob`, or a fetch failure the band takes zero pixels. `@route`
+shown text, Esc restores first, blur never commits a click, and Return writes
+the text; with no `bob`, an old `bob`, or a fetch failure the band takes zero
+pixels. `@route`
 previews up to five offers with tag, lane, destination, and fold; Shift-Return
 returns without writing, while status changes route. Space toggles the row;
 Tab toggles and advances; Shift-Tab moves back.
@@ -481,7 +483,7 @@ capsule, a `⌃J Jump` footer chip, and a `· ↗ “S”` summary suffix. The p
 survives marks, verdicts, filters, and refusal reopens, and fires on every
 commit; Control-Return behaves like Return while one is staged. The landed
 pin wins over the open-notes landing with a `↗ S` notice line, and a lost
-landing falls back to the open notes.
+landing falls back to open notes.
 
 ## Project-note moves
 

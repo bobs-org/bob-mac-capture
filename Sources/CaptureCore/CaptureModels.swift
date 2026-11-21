@@ -7860,6 +7860,27 @@ public struct CaptureJump: Codable, Equatable, Sendable {
         case outcome
         case landing
     }
+
+    /// Resolve a pinned commit. A present `jump` with a null landing is
+    /// lost; a missing top-level `jump` after a pin is also lost.
+    public static func resolveCommit(
+        submittedKey: String?,
+        submittedLabel: String? = nil,
+        successJump: CaptureJump?
+    ) -> (jump: CaptureJump?, lost: Bool, landing: CaptureOpenNote?) {
+        guard let submittedKey, !submittedKey.isEmpty else {
+            return (nil, false, nil)
+        }
+        if let successJump {
+            let landing = successJump.key == submittedKey ? successJump.landing : nil
+            return (successJump, successJump.landing == nil, landing)
+        }
+        return (
+            CaptureJump(key: submittedKey, label: submittedLabel ?? ""),
+            true,
+            nil
+        )
+    }
 }
 
 /// Bob's note-pull result or refusal payload. The same tolerant shape is

@@ -471,24 +471,28 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public var primaryLabel: String {
+        primaryLabel(pickCount: effectivePickCount)
+    }
+
+    /// Copy-table primary label. The card passes its visible pick count so a
+    /// collapsed highlight never shows "Pull In 1" on a disabled button.
+    public func primaryLabel(pickCount: Int) -> String {
         if jumpKey != nil {
             if closeCount > 0 {
                 return "Apply & Jump"
             }
-            let picks = effectivePickCount
-            if picks > 0 {
-                return "Pull In \(picks) & Jump"
+            if pickCount > 0 {
+                return "Pull In \(pickCount) & Jump"
             }
             return "Leave Open & Jump"
         }
-        let picks = effectivePickCount
-        if picks > 0, closeCount > 0 {
-            return "Pull In \(picks) · Close \(closeCount)"
+        if pickCount > 0, closeCount > 0 {
+            return "Pull In \(pickCount) · Close \(closeCount)"
         }
         if closeCount > 0 {
             return "Close \(closeCount)"
         }
-        return picks == 0 ? "Pull In" : "Pull In \(picks)"
+        return pickCount == 0 ? "Pull In" : "Pull In \(pickCount)"
     }
 
     public var skipLabel: String {

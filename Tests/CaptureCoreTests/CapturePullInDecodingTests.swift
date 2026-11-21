@@ -378,6 +378,38 @@ final class CapturePullInDecodingTests: XCTestCase {
         )
         XCTAssertNil(legacy.pullIn?.jump)
         XCTAssertNil(legacy.jump)
+
+        let missing = CaptureJump.resolveCommit(
+            submittedKey: "dev.md#^fixmig",
+            submittedLabel: "Fix the migration",
+            successJump: nil
+        )
+        XCTAssertTrue(missing.lost)
+        XCTAssertNil(missing.landing)
+        XCTAssertEqual(missing.jump?.key, "dev.md#^fixmig")
+        XCTAssertEqual(missing.jump?.label, "Fix the migration")
+
+        let nullLanding = CaptureJump.resolveCommit(
+            submittedKey: jump.key,
+            submittedLabel: jump.label,
+            successJump: lost.jump
+        )
+        XCTAssertTrue(nullLanding.lost)
+        XCTAssertNil(nullLanding.landing)
+
+        let found = CaptureJump.resolveCommit(
+            submittedKey: jump.key,
+            successJump: jump
+        )
+        XCTAssertFalse(found.lost)
+        XCTAssertEqual(found.landing?.path, "/tmp/dev.md")
+
+        let unpinned = CaptureJump.resolveCommit(
+            submittedKey: nil,
+            successJump: jump
+        )
+        XCTAssertFalse(unpinned.lost)
+        XCTAssertNil(unpinned.jump)
     }
 
     func testNewWireFieldsEncodeAndDecodeWithoutChangingOpaqueKeys() throws {
