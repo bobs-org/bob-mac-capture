@@ -64,6 +64,14 @@ struct CapturePickerFilterField: NSViewRepresentable {
     var focusTarget: CapturePanelFocusTarget = .pickerFilter
     var fontSize: CGFloat = 15
     var onFocusChange: (Bool) -> Void = { _ in }
+    /// Caret-aware text change: when set, the coordinator calls this with
+    /// the post-edit caret (UTF-16, nil for a ranged selection) instead of
+    /// `onTextChange`.
+    var onTextChangeWithCaret: ((String, Int?) -> Void)? = nil
+    /// Raw selection change (location, length) from the field editor, for
+    /// caret-only moves that never send a text change. Observed only while
+    /// the field is editing.
+    var onSelectionChange: ((Int, Int) -> Void)? = nil
 
     func makeNSView(context: Context) -> CapturePickerFilterNSTextField {
         let field = CapturePickerFilterNSTextField()
@@ -119,16 +127,39 @@ struct CapturePickerFilterField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: CapturePickerFilterField
         var appliedFocusSequence: UInt64?
+        var selectionObserver: Any?
 
         init(parent: CapturePickerFilterField) {
             self.parent = parent
+        }
+
+        deinit {
+            if let selectionObserver {
+                NotificationCenter.default.removeObserver(selectionObserver)
+            }
         }
 
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSTextField else {
                 return
             }
-            parent.onTextChange(field.stringValue)
+            let text = field.stringValue
+            if let onTextChangeWithCaret = parent.onTextChangeWithCaret {
+                onTextChangeWithCaret(text, Self.caret(of: field))
+            } else {
+                parent.onTextChange(text)
+            }
+        }
+
+        /// Post-edit caret (UTF-16), or nil for a ranged selection or a
+        /// missing editor.
+        private static func caret(of field: NSTextField) -> Int? {
+            guard let editor = field.currentEditor() as? NSTextView else {
+                return nil
+            }
+            let selection = editor.selectedRange
+            guard selection.length == 0 else { return nil }
+            return selection.location
         }
 
         func controlTextDidBeginEditing(_ notification: Notification) {
@@ -142,11 +173,42 @@ struct CapturePickerFilterField: NSViewRepresentable {
                 editor.isAutomaticSpellingCorrectionEnabled = false
                 let end = (editor.string as NSString).length
                 editor.selectedRange = NSRange(location: end, length: 0)
+                observeSelectionChanges(of: editor)
             }
         }
 
         func controlTextDidEndEditing(_ notification: Notification) {
+            stopObservingSelectionChanges()
             parent.onFocusChange(false)
+        }
+
+        /// Caret-only moves (arrows, clicks) never send a text change, so
+        /// the LINK band tracks them through the field editor's selection
+        /// notification, bound to the edit session.
+        private func observeSelectionChanges(of editor: NSTextView) {
+            guard parent.onSelectionChange != nil, selectionObserver == nil else {
+                return
+            }
+            selectionObserver = NotificationCenter.default.addObserver(
+                forName: NSTextView.didChangeSelectionNotification,
+                object: editor,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self,
+                    let onSelectionChange = self.parent.onSelectionChange
+                else {
+                    return
+                }
+                let selection = editor.selectedRange
+                onSelectionChange(selection.location, selection.length)
+            }
+        }
+
+        private func stopObservingSelectionChanges() {
+            if let selectionObserver {
+                NotificationCenter.default.removeObserver(selectionObserver)
+                self.selectionObserver = nil
+            }
         }
     }
 }

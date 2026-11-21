@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 9,
+  "replacement": { "start": 6, "end": 9 },
+  "context": "wikilink_note",
+  "candidates": [
+    {
+      "replacement": "sase]]",
+      "cursor_after": 12,
+      "path": "sase.md",
+      "name": "sase",
+      "match_kind": "prefix_stem"
+    },
+    {
+      "replacement": "sase_cleanup]]",
+      "cursor_after": 21,
+      "path": "sase_cleanup.md",
+      "name": "sase_cleanup",
+      "match_kind": "prefix_stem"
+    }
+  ],
+  "warnings": []
+}

@@ -38,7 +38,8 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         hasActiveReasonEditor: Bool = false,
         captionSectionCount: Int = 0,
         displayScale: CGFloat = 1,
-        recallBandHeight: CGFloat = 0
+        recallBandHeight: CGFloat = 0,
+        linkBandHeight: CGFloat = 0
     ) {
         self.sectionCount = sectionCount
         self.captionSectionCount = captionSectionCount
@@ -48,11 +49,13 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
         self.hasActiveReasonEditor = hasActiveReasonEditor
         self.displayScale = displayScale
         self.recallBandHeight = recallBandHeight
+        self.linkBandHeight = linkBandHeight
     }
 
     init(
         choice: CapturePullInChoiceState, displayScale: CGFloat = 1,
-        recallBandHeight: CGFloat = 0
+        recallBandHeight: CGFloat = 0,
+        linkBandHeight: CGFloat = 0
     ) {
         let sections = choice.sections
         let folds = sections.filter { $0.foldText != nil }.count
@@ -65,7 +68,8 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
             hasActiveReasonEditor: choice.activeReasonKey != nil,
             captionSectionCount: sections.filter { $0.caption != nil }.count,
             displayScale: displayScale,
-            recallBandHeight: recallBandHeight
+            recallBandHeight: recallBandHeight,
+            linkBandHeight: linkBandHeight
         )
     }
 
@@ -80,11 +84,16 @@ struct CapturePullInChoiceHeightPolicy: Equatable {
                 + CGFloat(rowCount) * CapturePanelLayout.pullInRowHeight
                 + (hasActiveReasonEditor ? CapturePanelLayout.pullInReasonFieldHeight : 0)
                 + recallBandHeight
+                + linkBandHeight
         )
     }
 
     /// `USED BEFORE` recall band height, added while the band is visible.
     var recallBandHeight: CGFloat = 0
+
+    /// `LINK` band height, added while the band is visible. It replaces the
+    /// recall band in its slot, so the two heights never add together.
+    var linkBandHeight: CGFloat = 0
 
     var maxListHeight: CGFloat {
         roundedToPixel(
@@ -169,17 +178,29 @@ struct CapturePullInChoiceCard: View {
     private var policy: CapturePullInChoiceHeightPolicy {
         CapturePullInChoiceHeightPolicy(
             choice: choice, displayScale: displayScale,
-            recallBandHeight: recallBandHeight)
+            recallBandHeight: recallBandHeight,
+            linkBandHeight: linkBandHeight)
     }
 
     private var recallBandHeight: CGFloat {
-        guard choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand
+        guard !model.pullInLinkBandVisible,
+            choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand
         else {
             return 0
         }
         return CGFloat(
             LogRecallBandPresentation.bandHeight(
                 rowCount: model.pullInRecall.visibleRows.count))
+    }
+
+    private var linkBandHeight: CGFloat {
+        guard model.pullInLinkBandVisible else {
+            return 0
+        }
+        return CGFloat(
+            PullInLinkBandPresentation.bandHeight(
+                rowCount: model.pullInLink.visibleCandidates.count,
+                hasSelection: model.pullInLink.selectedCandidate != nil))
     }
 
     var body: some View {
@@ -1104,7 +1125,10 @@ struct CapturePullInReasonField: View {
             .padding(.top, 2)
             .padding(.leading, 30)
             .frame(height: CapturePanelLayout.pullInReasonFieldHeight)
-            if !previewMode, model.pullInRecall.shouldShowBand {
+            if !previewMode, model.pullInLinkBandVisible {
+                CapturePullInLinkBand(model: model)
+                    .padding(.leading, 30)
+            } else if !previewMode, model.pullInRecall.shouldShowBand {
                 CapturePullInRecallBand(model: model)
                     .padding(.leading, 30)
             }
@@ -1146,6 +1170,17 @@ struct CapturePullInReasonField: View {
                     } else {
                         model.pullInReasonFieldDidBlur()
                     }
+                },
+                onTextChangeWithCaret: { text, caret in
+                    if let caret {
+                        model.updatePullInReasonText(text, caretUTF16: caret)
+                    } else {
+                        model.updatePullInReasonText(text)
+                    }
+                },
+                onSelectionChange: { location, length in
+                    guard length == 0 else { return }
+                    model.updatePullInReasonCaret(location)
                 }
             )
         }

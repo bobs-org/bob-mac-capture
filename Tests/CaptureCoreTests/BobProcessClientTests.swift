@@ -2555,6 +2555,120 @@ final class BobProcessClientTests: XCTestCase {
         }
     }
 
+    func testCaptureCompleteLinksOnlySendsFlagsAndDecodesNoteField() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureComplete(
+            "fix [[sas", cursor: 9, linksOnly: true)
+
+        XCTAssertEqual(response.context, "wikilink_note")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 6, end: 9))
+        XCTAssertEqual(response.candidates.count, 2)
+        XCTAssertEqual(response.candidates[0].replacement, "sase]]")
+        XCTAssertEqual(response.candidates[0].cursorAfter, 12)
+        XCTAssertEqual(response.candidates[0].path, "sase.md")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --links-only --cursor 9 --format json -- fix [[sas")
+        )
+    }
+
+    func testCaptureCompleteLinksOnlySendsSourceNote() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureComplete(
+            "see [[sase#De", cursor: 13, linksOnly: true, sourceNote: "sase.md")
+
+        XCTAssertEqual(response.context, "wikilink_heading")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 11, end: 13))
+        XCTAssertEqual(response.candidates.first?.heading, "Design")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --links-only --source-note sase.md --cursor 13 --format json -- see [[sase#De")
+        )
+    }
+
+    func testCaptureCompleteLinksOnlySameNoteNeedsSourceNote() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureComplete(
+            "see [[#De", cursor: 9, linksOnly: true)
+
+        XCTAssertNil(response.context)
+        XCTAssertTrue(response.candidates.isEmpty)
+    }
+
+    func testCaptureCompleteLinksOnlyLeavesGrammarLiteral() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureComplete(
+            "fix bug @db", cursor: 11, linksOnly: true)
+
+        XCTAssertNil(response.context)
+        XCTAssertTrue(response.candidates.isEmpty)
+        XCTAssertEqual(response.replacement, CaptureRange(start: 11, end: 11))
+    }
+
+    func testCaptureCompleteLinksOnlyUnsupportedOptionMapsOldBob() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_LINKS_ONLY_UNSUPPORTED": "1",
+            ]
+        )
+
+        XCTAssertFalse(client.linksOnlyKnownUnsupported)
+        do {
+            _ = try await client.captureComplete(
+                "fix [[sas", cursor: 9, linksOnly: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--links-only")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+        // The flag is remembered per executable identity: a second call
+        // fails fast without spawning bob again.
+        XCTAssertTrue(client.linksOnlyKnownUnsupported)
+        do {
+            _ = try await client.captureComplete(
+                "fix [[sas", cursor: 9, linksOnly: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--links-only")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+    }
+
     private func fakeBobPath() throws -> String {
         let source = URL(fileURLWithPath: #filePath)
         let packageRoot = source

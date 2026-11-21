@@ -465,12 +465,14 @@ project and its `^prj` task.
 Rows start unselected: Leave, Pull in, Done, or Cancel. Buttons show
 `Pull In {a}`, `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`.
 The strip shows Bob's consequence or refusal reason. The Cancel reason field
-offers a `USED BEFORE` band (rows show `N× · age`, nothing preselected; see
+offers a `USED BEFORE` band (`N× · age`, 3 rows after 2 typed characters,
+nothing preselected; see
 [Log Recall](https://bobs-org.github.io/log-recall/)):
-Control-N / Down and Control-P / Up fill without committing, typing adopts the
-shown text, Esc restores first, blur never commits a click, and Return writes
-the text; with no `bob`, an old `bob`, or a fetch failure the band takes zero
-pixels. `@route`
+Control-N/P, Up/Down fill, typing adopts, Esc restores, clicks never commit,
+Return writes; no `bob`, old `bob`, or fetch failure: zero pixels.
+`[[` swaps in a `LINK` band instead
+([Wikilink completion](wikilink-completion.md)): arrows move, Return/Tab
+insert at bob's bytes, Esc closes. `@route`
 previews up to five offers with tag, lane, destination, and fold; Shift-Return
 returns without writing, while status changes route. Space toggles the row;
 Tab toggles and advances; Shift-Tab moves back.

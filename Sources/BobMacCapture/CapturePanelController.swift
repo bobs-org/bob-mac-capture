@@ -2472,12 +2472,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .restorePullInReason:
             model.restorePullInReasonFromKeyboard()
+            syncPullInReasonCaretAfterProgrammaticFill()
             return true
         case .recallNextPullInReason:
             model.recallNextPullInReason()
+            syncPullInReasonCaretAfterProgrammaticFill()
             return true
         case .recallPreviousPullInReason:
             model.recallPreviousPullInReason()
+            syncPullInReasonCaretAfterProgrammaticFill()
+            return true
+        case .movePullInLinkNext:
+            return model.movePullInLinkSelection(by: 1)
+        case .movePullInLinkPrevious:
+            return model.movePullInLinkSelection(by: -1)
+        case .acceptPullInLink:
+            return acceptPullInLinkFromKeyboard(onFailure: .confirm)
+        case .acceptPullInLinkFromTab:
+            return acceptPullInLinkFromKeyboard(onFailure: .passThrough)
+        case .closePullInLinkBand:
+            model.closePullInLinkBand()
             return true
         case .confirmInboxRouteChoice:
             model.confirmInboxRouteChoice()
@@ -3240,6 +3254,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                             identifier: pullInReasonFieldAccessibilityIdentifier,
                             firstResponder: panel?.firstResponder
                         )?.holdsFirstResponder ?? false),
+                    pullInLinkOpen: model.pullInLinkBandVisible,
+                    pullInLinkCanAccept: model.pullInLinkBandVisible
+                        && model.pullInLink.selectedCandidate != nil,
                     inboxRouteChoiceVisible: model.inboxRouteChoiceVisible,
                 keyIsRepeat: event.isARepeat,
                 pickerHasSelection: model.picker?.selectedRowID != nil,
@@ -3503,6 +3520,96 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return false
         }
         return true
+    }
+
+    /// What a LINK-band Return/Tab does when there is nothing to insert
+    /// (stale caret, edited text, lost selection): Return confirms the
+    /// visible text like a band-less Return, while Tab passes through to
+    /// the host so focus traversal keeps working.
+    private enum PullInLinkAcceptFailure {
+        case confirm
+        case passThrough
+    }
+
+    /// Return/Tab with the LINK band open: splice bob's replacement through
+    /// the reason field's editor (one undo step) and park the caret at
+    /// `cursor_after`. A ranged selection, a missing editor, or a stale
+    /// caret closes the band instead of splicing a stale range.
+    private func acceptPullInLinkFromKeyboard(
+        onFailure: PullInLinkAcceptFailure
+    ) -> Bool {
+        guard let panel,
+            let field = Self.findPickerFilterField(
+                in: panel.contentView,
+                identifier: pullInReasonFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
+            ),
+            let editor = field.currentEditor() as? NSTextView
+        else {
+            model.closePullInLinkBand()
+            switch onFailure {
+            case .confirm:
+                model.confirmPullInReason()
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+        let selection = editor.selectedRange()
+        guard selection.length == 0 else {
+            model.closePullInLinkBand()
+            switch onFailure {
+            case .confirm:
+                model.confirmPullInReason()
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+        guard let edit = model.pullInReasonLinkEdit(
+            fieldText: editor.string, caretUTF16: selection.location)
+        else {
+            model.closePullInLinkBand()
+            switch onFailure {
+            case .confirm:
+                model.confirmPullInReason()
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+        // End the typed key's coalesced typing run first, so the splice is
+        // its own undo step: Undo restores the literal pre-accept draft and
+        // Redo replays exactly this replacement.
+        editor.breakUndoCoalescing()
+        editor.insertText(edit.insertion, replacementRange: edit.range)
+        editor.breakUndoCoalescing()
+        editor.setSelectedRange(NSRange(location: edit.caretUTF16, length: 0))
+        editor.scrollRangeToVisible(NSRange(location: edit.caretUTF16, length: 0))
+        model.didAcceptPullInLink(edit)
+        return true
+    }
+
+    /// Recall fills and Esc-restores rewrite the reason text model-side; the
+    /// SwiftUI binding syncs the field on the next runloop, so read the live
+    /// caret after that sync and refetch the LINK band there.
+    private func syncPullInReasonCaretAfterProgrammaticFill() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let panel = self.panel,
+                let field = Self.findPickerFilterField(
+                    in: panel.contentView,
+                    identifier: pullInReasonFieldAccessibilityIdentifier,
+                    firstResponder: panel.firstResponder
+                ),
+                field.holdsFirstResponder,
+                let editor = field.currentEditor() as? NSTextView
+            else {
+                return
+            }
+            let selection = editor.selectedRange()
+            guard selection.length == 0 else { return }
+            self.model.updatePullInReasonCaret(selection.location)
+        }
     }
 
     private func resignPullInFilterIfFocused() {

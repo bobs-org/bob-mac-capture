@@ -76,6 +76,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedGmailPeekIdentity: String?
     private var unsupportedGcalNoteIdentity: String?
     private var unsupportedLogHistoryIdentity: String?
+    private var unsupportedLinksOnlyIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
     /// `inbox_route.supported == true`. Once remembered for the current
@@ -220,6 +221,21 @@ public final class BobProcessClient: @unchecked Sendable {
             let identity = identityToken
             if unsupportedLogHistoryIdentity != identity {
                 self.unsupportedLogHistoryIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Whether this executable has already rejected `capture-complete
+    /// --links-only`. Cached per executable identity so replacing Bob
+    /// permits a fresh capability probe.
+    public var linksOnlyKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedLinksOnlyIdentity else { return false }
+            let identity = identityToken
+            if unsupportedLinksOnlyIdentity != identity {
+                self.unsupportedLinksOnlyIdentity = nil
                 return false
             }
             return true
@@ -804,9 +820,20 @@ public final class BobProcessClient: @unchecked Sendable {
         includeClosedTasks: Bool = false,
         includeArchivedNotes: Bool = false,
         nextMissingField: Bool = false,
-        recordField: String? = nil
+        recordField: String? = nil,
+        linksOnly: Bool = false,
+        sourceNote: String? = nil
     ) async throws -> CaptureCompletionResponse {
+        if linksOnlyKnownUnsupported, linksOnly {
+            throw BobClientError.unsupportedOption("--links-only")
+        }
         var arguments = ["capture-complete", "--all-tasks"]
+        if linksOnly {
+            arguments.append("--links-only")
+        }
+        if linksOnly, let sourceNote, !sourceNote.isEmpty {
+            arguments += ["--source-note", sourceNote]
+        }
         if includeArchivedNotes {
             arguments.append("--archived-notes")
         }
@@ -827,6 +854,17 @@ public final class BobProcessClient: @unchecked Sendable {
             )
         } catch let error as BobClientError {
             if case .processFailed(_, _, let stderr) = error {
+                if linksOnly,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--links-only"
+                    )
+                {
+                    stateQueue.sync {
+                        unsupportedLinksOnlyIdentity = identityToken
+                    }
+                    throw BobClientError.unsupportedOption("--links-only")
+                }
                 if includeArchivedNotes,
                     Self.isUnsupportedOptionFailure(
                         stderr: stderr,

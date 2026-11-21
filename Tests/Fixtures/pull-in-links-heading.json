@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 13,
+  "replacement": { "start": 11, "end": 13 },
+  "context": "wikilink_heading",
+  "candidates": [
+    {
+      "replacement": "Design]]",
+      "cursor_after": 19,
+      "path": "sase.md",
+      "name": "sase",
+      "heading": "Design",
+      "level": 1,
+      "match_kind": "prefix_stem"
+    },
+    {
+      "replacement": "Decision Log]]",
+      "cursor_after": 25,
+      "path": "sase.md",
+      "name": "sase",
+      "heading": "Decision Log",
+      "level": 2,
+      "match_kind": "prefix_stem"
+    }
+  ],
+  "warnings": []
+}

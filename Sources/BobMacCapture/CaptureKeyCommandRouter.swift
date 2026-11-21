@@ -94,6 +94,11 @@ enum CaptureKeyCommand: Equatable {
     case restorePullInReason
     case recallNextPullInReason
     case recallPreviousPullInReason
+    case movePullInLinkNext
+    case movePullInLinkPrevious
+    case acceptPullInLink
+    case acceptPullInLinkFromTab
+    case closePullInLinkBand
     case togglePullInOfferAt(String)
     case confirmInboxRouteChoice
     case confirmInboxRouteChoiceAndOpen
@@ -186,6 +191,10 @@ struct CaptureKeyRoutingContext: Equatable {
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
     var pullInReasonFocused = false
+    /// The LINK band is visible in the recall slot: its keys win.
+    var pullInLinkOpen = false
+    /// The LINK band has a selected row to insert.
+    var pullInLinkCanAccept = false
     var inboxRouteChoiceVisible = false
     var keyIsRepeat = false
     /// Defaults true so omitted flags keep selected-row picker Return/Tab.
@@ -493,7 +502,9 @@ struct CaptureKeyCommandRouter {
                 isRepeat: context.keyIsRepeat || event.isARepeat,
                 filterFocused: context.pullInFilterFocused,
                 filterIsEmpty: context.pullInFilterIsEmpty,
-                reasonFocused: context.pullInReasonFocused
+                reasonFocused: context.pullInReasonFocused,
+                linkOpen: context.pullInLinkOpen,
+                linkCanAccept: context.pullInLinkCanAccept
             )
         }
 
@@ -841,9 +852,16 @@ struct CaptureKeyCommandRouter {
         isRepeat: Bool,
         filterFocused: Bool,
         filterIsEmpty: Bool,
-        reasonFocused: Bool = false
+        reasonFocused: Bool = false,
+        linkOpen: Bool = false,
+        linkCanAccept: Bool = false
     ) -> CaptureKeyCommand? {
         if reasonFocused {
+            if linkOpen {
+                return pullInLinkCommand(
+                    for: event, modifiers: modifiers, isRepeat: isRepeat,
+                    canAccept: linkCanAccept)
+            }
             switch event.keyCode {
             case KeyCode.return, KeyCode.keypadEnter:
                 guard !isRepeat else { return .consumeKey }
@@ -938,6 +956,49 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
             return modifiers == .command ? .consumeKey : nil
+        default:
+            return nil
+        }
+    }
+
+    /// Keys for the Pull-In reason `LINK` band, while it replaces the
+    /// recall band in its slot. Return and Tab insert bob's replacement at
+    /// bob's byte range; zero rows (or no selection) make Return close the
+    /// band without confirming, while Tab passes through to the host. Esc
+    /// and Ctrl+[ close the band only.
+    private func pullInLinkCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
+        canAccept: Bool
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !isRepeat else { return .consumeKey }
+            let keys = Self.strippedReturnModifiers(modifiers)
+            return keys.isEmpty ? .acceptPullInLink : nil
+        case KeyCode.tab:
+            guard !isRepeat else { return .consumeKey }
+            if modifiers == .shift {
+                return nil
+            }
+            return modifiers.isEmpty && canAccept ? .acceptPullInLinkFromTab : nil
+        case KeyCode.j:
+            // Ctrl+J never pins while a Cancel reason is being edited.
+            return modifiers == .control ? .consumeKey : nil
+        case KeyCode.escape:
+            guard !isRepeat else { return .consumeKey }
+            return .closePullInLinkBand
+        case KeyCode.leftBracket:
+            return modifiers == .control && !isRepeat ? .closePullInLinkBand : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .movePullInLinkPrevious : nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .movePullInLinkNext : nil
+        case KeyCode.n:
+            return modifiers == .control ? .movePullInLinkNext : nil
+        case KeyCode.p:
+            return modifiers == .control ? .movePullInLinkPrevious : nil
         default:
             return nil
         }

@@ -25,6 +25,28 @@ decodes and presents it.
   in one step, so the caret lands exactly where typing would have left it — after the
   closing `]]`, mid-heading, or wherever the candidate specifies.
 
+## Pull-In reason LINK band
+
+Typing `[[` in a successor Pull-In Cancel reason opens a `LINK` band in the
+`USED BEFORE` band's slot, answered by `bob capture-complete --links-only`
+(plus `--source-note <task note>` when the row carries one) instead of the
+capture draft's own completion. The app debounces 60–80 ms per text or caret
+change, keeps the previous rows visible while a request is in flight, and
+drops stale replies by generation. An older bob without `--links-only`
+fails open for the session: plain typing and the `USED BEFORE` band keep
+working, and any other error means no band.
+
+Rows render with the same completion rows as draft wikilinks (Note, Heading,
+Block) at 22pt with path metadata, and a detail strip names the exact
+`[[…]]` link Return inserts. Up/Down and Control-N/Control-P move without
+wrapping (the bottom row bumps), Return and Tab insert bob's replacement at
+bob's byte range through the field editor — one undo step, caret at
+`cursor_after` — and keep the reason open. Return with no rows closes the
+band without confirming the Pull-In, Tab with no rows passes through to the
+host, and Esc / Control-[ close the band only. Clicking a row inserts it
+without confirming. The event-note editor stays excluded: it escapes `[`,
+so a completed link would be corrupted.
+
 Each completion row shows a compact SF Symbol and context label for what will be
 inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Drawer
 rows), a primary line with restrained emphasis on the part of the text

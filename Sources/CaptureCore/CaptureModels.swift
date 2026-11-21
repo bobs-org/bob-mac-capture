@@ -9188,7 +9188,7 @@ public struct CaptureCompleteOverride: Codable, Equatable, Sendable {
 
 /// Additive relation token metadata on Bob's `relation_label` completion.
 /// Ranges are UTF-8 byte offsets into the original draft.
-public struct CaptureCompletionRelation: Codable, Equatable {
+public struct CaptureCompletionRelation: Codable, Equatable, Sendable {
     public let direction: String
     public let range: CaptureRange
 
@@ -10708,7 +10708,7 @@ public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned
     }
 }
 
-public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
+public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifiable {
     public let replacement: String
     /// Additive `directive` row fields: the literal `%` token, a one-line `summary`,
     /// and an optional explanatory `detail`. Directive rows have no route, kind, or

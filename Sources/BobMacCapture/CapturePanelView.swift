@@ -1209,14 +1209,21 @@ struct CapturePanelView: View {
 
         if model.pullInChoiceVisible, let choice = model.pullInChoice {
             var recallBandHeight: CGFloat = 0
-            if choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand {
+            var linkBandHeight: CGFloat = 0
+            if model.pullInLinkBandVisible {
+                linkBandHeight = CGFloat(
+                    PullInLinkBandPresentation.bandHeight(
+                        rowCount: model.pullInLink.visibleCandidates.count,
+                        hasSelection: model.pullInLink.selectedCandidate != nil))
+            } else if choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand {
                 recallBandHeight = CGFloat(
                     LogRecallBandPresentation.bandHeight(
                         rowCount: model.pullInRecall.visibleRows.count))
             }
             let policy = CapturePullInChoiceHeightPolicy(
                 choice: choice, displayScale: displayScale,
-                recallBandHeight: recallBandHeight)
+                recallBandHeight: recallBandHeight,
+                linkBandHeight: linkBandHeight)
             return CapturePanelAuxiliaryHeight(
                 idealHeight: max(policy.idealHeight, measuredAuxiliaryContentHeight),
                 minimumVisibleHeight: policy.minimumVisibleHeight

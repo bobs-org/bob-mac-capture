@@ -2669,6 +2669,8 @@ JSON
     archived_notes="false"
     next_missing="false"
     record_field=""
+    links_only="false"
+    source_note=""
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
@@ -2689,9 +2691,44 @@ JSON
       if [[ "${args[$i]}" == "--record-field" || "${args[$i]}" == "-F" ]]; then
         record_field="${args[$((i + 1))]:-}"
       fi
+      if [[ "${args[$i]}" == "--links-only" || "${args[$i]}" == "-L" ]]; then
+        links_only="true"
+      fi
+      if [[ "${args[$i]}" == "--source-note" || "${args[$i]}" == "-S" ]]; then
+        source_note="${args[$((i + 1))]:-}"
+      fi
     done
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS:-}" ]]; then
       sleep "${FAKE_BOB_CAPTURE_COMPLETE_DELAY_SECONDS}"
+    fi
+    if [[ "${links_only}" == "true" ]]; then
+      # Plain-prose wikilink completion for the Pull-In reason field: only
+      # note/heading/block fields complete, like `bob capture-complete
+      # --links-only`. Same-note `[[#` fields need `--source-note`.
+      if [[ "${FAKE_BOB_LINKS_ONLY_UNSUPPORTED:-}" == "1" ]]; then
+        printf "error: unexpected argument '--links-only' found\n\nUsage: bob capture-complete [OPTIONS] -- <TEXT>\n" >&2
+        exit 2
+      fi
+      if [[ -n "${FAKE_BOB_LINKS_ONLY_FIXTURE:-}" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/${FAKE_BOB_LINKS_ONLY_FIXTURE}"
+        exit 0
+      fi
+      if [[ "${draft}" != *"[["* ]]; then
+        printf '{\n  "ok": true,\n  "schema_version": 1,\n  "cursor": %s,\n  "replacement": { "start": %s, "end": %s },\n  "context": null,\n  "candidates": [],\n  "warnings": []\n}\n' "${cursor}" "${cursor}" "${cursor}"
+        exit 0
+      fi
+      if [[ "${draft}" == *"[["*"#"* ]]; then
+        # Heading or block field. A same-note `[[#` field without
+        # `--source-note` is an empty success, like the real bob.
+        if [[ "${draft}" == *"[["#* && -z "${source_note}" ]]; then
+          printf '{\n  "ok": true,\n  "schema_version": 1,\n  "cursor": %s,\n  "replacement": { "start": %s, "end": %s },\n  "context": null,\n  "candidates": [],\n  "warnings": []\n}\n' "${cursor}" "${cursor}" "${cursor}"
+          exit 0
+        fi
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pull-in-links-heading.json"
+        exit 0
+      fi
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pull-in-links-note.json"
+      exit 0
     fi
     if [[ "${FAKE_BOB_NOTE_GOTO_FIXTURES:-}" == "1" ]]; then
       if [[ "${draft}" == "//"* && "${FAKE_BOB_NOTE_GOTO_FAIL_NOTES:-}" == "1" ]]; then

@@ -1280,6 +1280,15 @@ struct CapturePullInChoiceState: Equatable {
         activeReasonText = text
     }
 
+    /// Vault-relative note path for the row the reason editor is open on,
+    /// or nil when the row carries none. The LINK band passes it as
+    /// `--source-note` so same-note `[[#` fields resolve.
+    var activeReasonNotePath: String? {
+        guard let activeReasonKey else { return nil }
+        let path = rows.first { $0.offerKey == activeReasonKey }?.notePath ?? ""
+        return path.isEmpty ? nil : path
+    }
+
     mutating func updateConsequenceForHighlight() {
         guard let highlighted = highlightedKey,
             let verdict = outcomes.verdicts[highlighted]

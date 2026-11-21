@@ -18,6 +18,21 @@ struct CaptureRelationLabelRowEntry: Identifiable {
     let candidate: CaptureCompletionCandidate
 }
 
+/// One LINK-band splice for the Pull-In reason field: bob's replacement at
+/// bob's range, applied by the controller through the field editor so
+/// `NSUndoManager` records one step. The row identity is bob's candidate
+/// key; selection never uses an index.
+struct PullInReasonLinkEdit: Equatable {
+    /// UTF-16 range of bob's byte range in the live field text.
+    let range: NSRange
+    /// Bob's insertion text for the selected row.
+    let insertion: String
+    /// Full field text after the splice.
+    let newText: String
+    /// UTF-16 caret for bob's `cursor_after` in `newText`.
+    let caretUTF16: Int
+}
+
 /// One-shot expected buffer after native separator insertion or a sigil alias.
 /// Cleared on consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
@@ -859,6 +874,20 @@ final class CapturePanelModel: ObservableObject {
     /// Edge-bump seed for the clamped bottom row (120 ms, no wrap).
     @Published var pullInRecallBumpSeed = 0
     private var pullInRecallFetchTask: Task<Void, Never>?
+    /// Cancel `LINK` wikilink completion for the pull-in reason field,
+    /// answered by `bob capture-complete --links-only`. The band never owns
+    /// focus; the field stays first responder throughout.
+    @Published var pullInLink = PullInLinkState()
+    /// Last caret (UTF-16) reported by the reason field. Every text or caret
+    /// change refetches with this caret, so bob's byte ranges always match
+    /// the live field.
+    private var pullInLinkCaretUTF16: Int?
+    /// Suppress-blur token for LINK row clicks: the click inserts but never
+    /// confirms, so the blur auto-confirm must be skipped once.
+    var pullInLinkSuppressBlur = false
+    /// Edge-bump seed for the clamped bottom row (120 ms, no wrap).
+    @Published var pullInLinkBumpSeed = 0
+    private var pullInLinkFetchTask: Task<Void, Never>?
     @Published var inboxRouteChoice: CaptureInboxRouteChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
@@ -5387,6 +5416,7 @@ final class CapturePanelModel: ObservableObject {
         choice.beginOfferCancel(key)
         pullInChoice = choice
         requestFocus(.pullInReasonField)
+        beginPullInLinkReason()
         fetchPullInLogHistory()
     }
 
@@ -5546,6 +5576,7 @@ final class CapturePanelModel: ObservableObject {
         choice.beginOfferCancel(key)
         pullInChoice = choice
         requestFocus(.pullInReasonField)
+        beginPullInLinkReason()
         fetchPullInLogHistory()
     }
 
@@ -5557,6 +5588,7 @@ final class CapturePanelModel: ObservableObject {
         pullInChoice = choice
         pullInRecall = LogRecallState()
         pullInRecallFetchTask?.cancel()
+        resetPullInLink()
         announceStatus(choice.consequenceMessage ?? "Cancel staged")
         requestFocus(.pullInOfferList)
     }
@@ -5568,12 +5600,18 @@ final class CapturePanelModel: ObservableObject {
         choice.restoreOfferCancel()
         pullInChoice = choice
         pullInRecall = LogRecallState()
+        resetPullInLink()
         requestFocus(.pullInOfferList)
     }
 
-    /// Esc layering: while RECALLING, Esc/Ctrl+[ restore the draft (one
-    /// layer, prompt stays open). From DRAFT run today's back-out.
+    /// Esc layering: while the LINK band is open, Esc/Ctrl+[ close the band
+    /// only (one layer, the reason stays). While RECALLING, Esc/Ctrl+[
+    /// restore the draft. From DRAFT run today's back-out.
     func restorePullInReasonFromKeyboard() {
+        if closePullInLinkBand() {
+            requestFocus(.pullInReasonField)
+            return
+        }
         if pullInRecall.backOut() {
             if var choice = pullInChoice, choice.activeReasonKey != nil {
                 choice.updateReasonText(pullInRecall.draft)
@@ -5591,6 +5629,11 @@ final class CapturePanelModel: ObservableObject {
             requestFocus(.pullInReasonField)
             return
         }
+        if pullInLinkSuppressBlur {
+            pullInLinkSuppressBlur = false
+            requestFocus(.pullInReasonField)
+            return
+        }
         guard pullInChoice?.activeReasonKey != nil else {
             return
         }
@@ -5605,6 +5648,25 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func updatePullInReasonText(_ text: String) {
+        updatePullInReasonInput(text: text, caretUTF16: nil)
+    }
+
+    /// Text change straight from the reason field, carrying the post-edit
+    /// caret so the LINK refetch asks bob at the live position.
+    func updatePullInReasonText(_ text: String, caretUTF16: Int) {
+        updatePullInReasonInput(text: text, caretUTF16: caretUTF16)
+    }
+
+    /// Caret-only move (arrows, click) from the reason field. The LINK band
+    /// refetches at the new caret; bob decides whether it is still a field.
+    func updatePullInReasonCaret(_ caretUTF16: Int) {
+        guard pullInChoice?.activeReasonKey != nil else { return }
+        guard caretUTF16 != pullInLinkCaretUTF16 else { return }
+        pullInLinkCaretUTF16 = caretUTF16
+        pullInLinkInputChanged()
+    }
+
+    private func updatePullInReasonInput(text: String, caretUTF16: Int?) {
         guard var choice = pullInChoice, choice.activeReasonKey != nil else {
             return
         }
@@ -5612,6 +5674,253 @@ final class CapturePanelModel: ObservableObject {
         pullInChoice = choice
         // Typing adopts the shown text as the new draft and resets selection.
         pullInRecall.draftChanged(text)
+        if let caretUTF16 {
+            pullInLinkCaretUTF16 = caretUTF16
+        }
+        pullInLinkInputChanged()
+    }
+
+    /// Whether the LINK band is visible in the recall band's slot. While
+    /// open, the recall band hides and its keys belong to the band.
+    var pullInLinkBandVisible: Bool {
+        pullInChoice?.activeReasonKey != nil && pullInLink.isOpen
+    }
+
+    /// The exact `[[…]]` link the selected LINK row would insert, for the
+    /// detail strip. Nil without a live selection.
+    var pullInLinkDetailPreview: String? {
+        guard let choice = pullInChoice, choice.activeReasonKey != nil,
+            let caretUTF16 = pullInLinkCaretUTF16,
+            let caret = utf8Offset(
+                in: choice.activeReasonText, utf16Offset: caretUTF16)
+        else {
+            return nil
+        }
+        return pullInLink.acceptedLinkPreview(
+            fieldText: choice.activeReasonText, caretUTF8: caret)
+    }
+
+    /// A new reason edit session: forget the band, arm the next generation,
+    /// and place the caret at the end of the initial text.
+    private func beginPullInLinkReason() {
+        pullInLink.beginReason()
+        pullInLinkFetchTask?.cancel()
+        pullInLinkCaretUTF16 =
+            pullInChoice?.activeReasonText.utf16.count
+    }
+
+    private func resetPullInLink() {
+        pullInLink.beginReason()
+        pullInLinkFetchTask?.cancel()
+        pullInLinkCaretUTF16 = nil
+    }
+
+    /// Adopt the live input and refetch the LINK band (debounced). The
+    /// previous rows stay visible while the request is in flight.
+    private func pullInLinkInputChanged() {
+        guard let choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        let text = choice.activeReasonText
+        guard let caretUTF16 = pullInLinkCaretUTF16,
+            let caret = utf8Offset(in: text, utf16Offset: caretUTF16)
+        else {
+            return
+        }
+        pullInLink.inputChanged(text: text, cursorUTF8: caret)
+        schedulePullInLinkFetch(sourceNote: choice.activeReasonNotePath)
+    }
+
+    /// One debounced `capture-complete --links-only` per input generation.
+    /// A stale reply is dropped; the previous rows stay visible. An older
+    /// bob fails open for the session, and any other error means no band —
+    /// the reason field and the recall band keep working.
+    private func schedulePullInLinkFetch(sourceNote: String?) {
+        pullInLinkFetchTask?.cancel()
+        // Cheap pre-filter: bob decides fields, so without `[[` there is
+        // nothing to ask and an open band closes.
+        guard pullInLink.text.contains("[[") else {
+            if pullInLink.isOpen {
+                _ = pullInLink.close()
+            }
+            return
+        }
+        guard let client = processClient else { return }
+        if client.linksOnlyKnownUnsupported { return }
+        let generation = pullInLink.generation
+        let text = pullInLink.text
+        let cursor = pullInLink.cursorUTF8
+        pullInLinkFetchTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 70_000_000)
+            guard !Task.isCancelled else { return }
+            do {
+                let response = try await client.captureComplete(
+                    text, cursor: cursor, linksOnly: true,
+                    sourceNote: sourceNote)
+                guard !Task.isCancelled else { return }
+                let rawContext = response.context.flatMap(
+                    CaptureCompletionContext.init(rawContext:))
+                let linkContext: CaptureCompletionContext? = switch rawContext {
+                case .wikilinkNote, .wikilinkHeading, .wikilinkBlock:
+                    rawContext
+                case .none, .some:
+                    nil
+                }
+                _ = pullInLink.receive(
+                    text: text,
+                    cursorUTF8: cursor,
+                    context: linkContext,
+                    replacement: response.replacement,
+                    candidates: response.candidates,
+                    opensWithoutSelection: response.opensWithoutSelection,
+                    generation: generation
+                )
+                objectWillChange.send()
+            } catch let error as BobClientError {
+                if case .unsupportedOption(let option) = error,
+                    option == "--links-only"
+                {
+                    // Old bob: caught by the per-identity flag next time.
+                    return
+                }
+                if pullInLink.generation == generation {
+                    _ = pullInLink.close()
+                    objectWillChange.send()
+                }
+            } catch {
+                if pullInLink.generation == generation {
+                    _ = pullInLink.close()
+                    objectWillChange.send()
+                }
+            }
+        }
+    }
+
+    /// Move the LINK selection. Returns true when the band consumed the key.
+    @discardableResult
+    func movePullInLinkSelection(by delta: Int) -> Bool {
+        guard pullInChoice?.activeReasonKey != nil else { return false }
+        let step: PullInLinkState.Step? =
+            delta > 0 ? pullInLink.moveNext() : pullInLink.movePrevious()
+        switch step {
+        case .bumpedBottom:
+            pullInLinkBumpSeed &+= 1
+            NSSound.beep()
+            return true
+        case .enteredTop, .moved:
+            announcePullInLinkSelection()
+            requestFocus(.pullInReasonField)
+            return true
+        case .bumpedTop:
+            requestFocus(.pullInReasonField)
+            return true
+        case nil:
+            return false
+        }
+    }
+
+    private func announcePullInLinkSelection() {
+        guard let index = pullInLink.selectedIndex,
+            let candidate = pullInLink.selectedCandidate
+        else {
+            return
+        }
+        let text =
+            candidate.heading.map { "#\($0)" }
+            ?? candidate.blockID.map { "^\($0)" }
+            ?? candidate.name ?? candidate.replacement
+        announceStatus(
+            PullInLinkBandPresentation.announcement(
+                index: index, total: pullInLink.candidates.count, text: text))
+    }
+
+    /// Insert the selected LINK row through the field editor. Returns the
+    /// splice for the controller to apply, or nil when there is nothing to
+    /// insert (the caller closes the band instead).
+    func pullInReasonLinkEdit(
+        fieldText: String, caretUTF16: Int
+    ) -> PullInReasonLinkEdit? {
+        guard let choice = pullInChoice, choice.activeReasonKey != nil else {
+            return nil
+        }
+        guard let caret = utf8Offset(in: fieldText, utf16Offset: caretUTF16) else {
+            return nil
+        }
+        guard choice.activeReasonText == fieldText,
+            let accept = pullInLink.acceptEdit(
+                fieldText: fieldText, caretUTF8: caret),
+            let candidate = pullInLink.selectedCandidate,
+            let nsRange = utf16Range(
+                in: fieldText, byteRange: pullInLink.replacement),
+            let caretUTF16 = utf16Range(
+                in: accept.text, start: accept.caretUTF8,
+                end: accept.caretUTF8
+            )?.location
+        else {
+            return nil
+        }
+        return PullInReasonLinkEdit(
+            range: nsRange,
+            insertion: candidate.replacement,
+            newText: accept.text,
+            caretUTF16: caretUTF16
+        )
+    }
+
+    /// The field editor applied the LINK splice: adopt the text, park the
+    /// caret, close the band, and re-render recall against the new draft.
+    func didAcceptPullInLink(_ edit: PullInReasonLinkEdit) {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        choice.updateReasonText(edit.newText)
+        pullInChoice = choice
+        pullInRecall.draftChanged(edit.newText)
+        pullInLinkCaretUTF16 = edit.caretUTF16
+        _ = pullInLink.close()
+        pullInLinkFetchTask?.cancel()
+        requestFocus(.pullInReasonField)
+    }
+
+    /// Row click inserts the row (it never confirms). Applied model-side
+    /// like recall fills: the text reaches the field through the binding,
+    /// with a suppress-blur token plus a refocus so the blur auto-confirm
+    /// never fires. (Keyboard Return/Tab instead splice through the field
+    /// editor so `NSUndoManager` records one step.)
+    func insertPullInLinkRow(id: String) {
+        guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        guard pullInLink.select(id: id) else { return }
+        let text = choice.activeReasonText
+        guard let caretUTF16 = pullInLinkCaretUTF16,
+            let caret = utf8Offset(in: text, utf16Offset: caretUTF16),
+            let accept = pullInLink.acceptEdit(fieldText: text, caretUTF8: caret),
+            let acceptedCaretUTF16 = utf16Range(
+                in: accept.text, start: accept.caretUTF8, end: accept.caretUTF8
+            )?.location
+        else {
+            return
+        }
+        pullInLinkSuppressBlur = true
+        choice.updateReasonText(accept.text)
+        pullInChoice = choice
+        pullInRecall.draftChanged(accept.text)
+        pullInLinkCaretUTF16 = acceptedCaretUTF16
+        _ = pullInLink.close()
+        pullInLinkFetchTask?.cancel()
+        announcePullInLinkSelection()
+        requestFocus(.pullInReasonField)
+    }
+
+    /// Close the LINK band only (one layer). Returns true when consumed.
+    @discardableResult
+    func closePullInLinkBand() -> Bool {
+        let consumed = pullInLink.close()
+        if consumed {
+            pullInLinkFetchTask?.cancel()
+        }
+        return consumed
     }
 
     /// Fetch when a pull-in reason editor opens, reusing the last good
