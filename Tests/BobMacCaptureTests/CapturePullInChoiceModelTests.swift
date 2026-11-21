@@ -124,6 +124,59 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         XCTAssertEqual(captureCallCount(try recordText(record)), 1)
     }
 
+    func testPinnedNotePullOnlyShiftReturnCommitsNoneWithJumpOffer() async throws {
+        let record = temporaryRecordURL()
+        let preview = try notePullPreviewWithJump()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": preview,
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": notePullJumpWriteResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "0",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "@sase"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertTrue(choice.isOnlyNotePull)
+        XCTAssertTrue(choice.jumpSupported)
+        XCTAssertEqual(choice.closeCount, 0)
+
+        model.toggleJumpForHighlight()
+        XCTAssertEqual(model.pullInChoice?.jumpKey, "sase.md#^pending")
+        XCTAssertEqual(model.pullInChoice?.skipCommitLabel, "Skip & Jump")
+
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        let controller = CapturePanelController(model: model)
+        XCTAssertTrue(controller.perform(.chooseNoPullInOffers))
+        try await waitUntil { !model.isSubmitting }
+
+        let calls = try recordText(record)
+        XCTAssertTrue(calls.contains("--pull-in none"), calls)
+        XCTAssertTrue(calls.contains("--jump-offer sase.md#^pending"), calls)
+        XCTAssertEqual(opened.count, 1)
+        let url = try XCTUnwrap(opened.first)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/sase.md")
+        XCTAssertEqual(items.first(where: { $0.name == "line1" })?.value, "5")
+        XCTAssertNil(model.pullInChoice)
+    }
+
     func testMovedNotePullRowsStayInTheirRequestedSourceSections() async throws {
         let record = temporaryRecordURL()
         let model = makeModel(
@@ -1230,6 +1283,19 @@ final class CapturePullInChoiceModelTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func notePullPreviewWithJump() throws -> String {
+        try fixtureText("note-pull-np1.json").replacingOccurrences(
+            of: "\"pull_in\":{\"supported\":true",
+            with: "\"pull_in\":{\"supported\":true,\"jump\":{\"supported\":true}"
+        )
+    }
+
+    private func notePullJumpWriteResponse() -> String {
+        """
+        {"ok":true,"dry_run":false,"routed":true,"route":"sase","route_label":"sase","relative_target":"sase.md","target":"/tmp/sase.md","text":"","task_line":"","kind":"note_pull","created":"2026-10-05","placement":"created","open_notes":[{"path":"/tmp/sase.md","relative_path":"sase.md","role":"note","label":"sase"}],"pull_in":{"supported":true,"offer_count":3,"choice":null,"picked_count":0,"jump":{"supported":true}},"jump":{"key":"sase.md#^pending","n":1,"label":"Ship renderer","outcome":"left","landing":{"path":"/tmp/sase.md","relative_path":"sase.md","role":"note","label":"sase","line":5,"ref":"5:abcdef12","block_id":"pending"}}}
+        """
     }
 
     private func fixtureText(_ name: String) throws -> String {

@@ -1290,6 +1290,35 @@ struct CapturePullInChoiceFooter: View {
         + "offer. Shift-Return skips pull-ins, applies verdicts, and jumps. Escape needs two "
         + "presses while verdicts are staged."
 
+    static let notePullBackAccessibilityText =
+        "Shift-Return returns to the draft. Escape returns to the draft without writing."
+
+    static func intentAccessibilityText(
+        isOnlyNotePull: Bool,
+        hasVerdicts: Bool,
+        jumpPinned: Bool,
+        openAfterCapture: Bool
+    ) -> String {
+        if jumpPinned {
+            return jumpIntentAccessibilityText
+        }
+        if isOnlyNotePull && !hasVerdicts {
+            return notePullBackAccessibilityText
+        }
+        if openAfterCapture {
+            return openIntentAccessibilityText
+        }
+        return accessibilityText
+    }
+
+    static func skipShowsBackToDraft(
+        isOnlyNotePull: Bool,
+        hasVerdicts: Bool,
+        jumpPinned: Bool
+    ) -> Bool {
+        isOnlyNotePull && !hasVerdicts && !jumpPinned
+    }
+
     private var openAfterCapture: Bool {
         model.pullInChoice?.openAfterCapture == true
     }
@@ -1366,7 +1395,11 @@ struct CapturePullInChoiceFooter: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if isOnlyNotePull, !hasVerdicts {
+                if Self.skipShowsBackToDraft(
+                    isOnlyNotePull: isOnlyNotePull,
+                    hasVerdicts: hasVerdicts,
+                    jumpPinned: jumpPinned)
+                {
                     Text("⇧↩ Back to draft")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -1406,12 +1439,11 @@ struct CapturePullInChoiceFooter: View {
         .frame(minHeight: 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            isOnlyNotePull && !hasVerdicts
-                ? "Shift-Return returns to the draft. Escape returns to the draft without writing."
-                : jumpPinned
-                    ? Self.jumpIntentAccessibilityText
-                    : openAfterCapture
-                        ? Self.openIntentAccessibilityText : Self.accessibilityText
+            Self.intentAccessibilityText(
+                isOnlyNotePull: isOnlyNotePull,
+                hasVerdicts: hasVerdicts,
+                jumpPinned: jumpPinned,
+                openAfterCapture: openAfterCapture)
         )
         .onChange(of: model.statusAnnouncementTick) { _, _ in
             guard !model.statusText.isEmpty else {

@@ -1573,6 +1573,26 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertFalse(
             CapturePullInChoiceFooter.jumpIntentAccessibilityText.contains(
                 "opens the reported notes"))
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.intentAccessibilityText(
+                isOnlyNotePull: true,
+                hasVerdicts: false,
+                jumpPinned: false,
+                openAfterCapture: false),
+            CapturePullInChoiceFooter.notePullBackAccessibilityText)
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.intentAccessibilityText(
+                isOnlyNotePull: true,
+                hasVerdicts: false,
+                jumpPinned: true,
+                openAfterCapture: false),
+            CapturePullInChoiceFooter.jumpIntentAccessibilityText)
+        XCTAssertTrue(
+            CapturePullInChoiceFooter.skipShowsBackToDraft(
+                isOnlyNotePull: true, hasVerdicts: false, jumpPinned: false))
+        XCTAssertFalse(
+            CapturePullInChoiceFooter.skipShowsBackToDraft(
+                isOnlyNotePull: true, hasVerdicts: false, jumpPinned: true))
     }
 
     private func fixtureSuccess(_ name: String) throws -> CaptureCommandSuccess {

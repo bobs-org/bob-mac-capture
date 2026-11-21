@@ -5222,7 +5222,7 @@ final class CapturePanelModel: ObservableObject {
             choice.confirmOfferCancel()
             pullInChoice = choice
         }
-        if choice.isOnlyNotePull, choice.closeCount == 0 {
+        if choice.isOnlyNotePull, choice.closeCount == 0, choice.jumpKey == nil {
             announceStatus("Escape returns to the draft without pulling in")
             return
         }
