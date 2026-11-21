@@ -48,6 +48,7 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let notePathKey = "notePath"
     nonisolated static let targetPathsKey = "targetPaths"
     nonisolated static let openPlanKey = "openPlan"
+    nonisolated static let jumpPlanKey = "jumpPlan"
     nonisolated static let openErrorKey = "openError"
     nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
         .banner, .sound, .list,
@@ -92,13 +93,17 @@ final class NotificationService: NSObject, ObservableObject {
     func notifyCaptureSuccess(
         captures: [CaptureCommandSuccess],
         globalDestination: CaptureGlobalDestination? = nil,
-        openPlan: CaptureOpenPlan? = nil
+        openPlan: CaptureOpenPlan? = nil,
+        jump: CaptureJump? = nil,
+        jumpLost: Bool = false
     ) {
         Task {
             try? await add(Self.successContent(
                 captures: captures,
                 globalDestination: globalDestination,
-                openPlan: openPlan
+                openPlan: openPlan,
+                jump: jump,
+                jumpLost: jumpLost
             ))
         }
     }
@@ -219,7 +224,9 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static func successContent(
         captures: [CaptureCommandSuccess],
         globalDestination: CaptureGlobalDestination? = nil,
-        openPlan: CaptureOpenPlan? = nil
+        openPlan: CaptureOpenPlan? = nil,
+        jump: CaptureJump? = nil,
+        jumpLost: Bool = false
     ) -> UNMutableNotificationContent {
         let openPlan = openPlan ?? CaptureOpenPlan(openNotes: nil, captures: captures)
         let presentation = successPresentation(
@@ -232,13 +239,31 @@ final class NotificationService: NSObject, ObservableObject {
         content.subtitle = presentation.subtitle
         content.body = presentation.body
         content.sound = .default
+        // A landed pin adds the jump receipt line and retargets the
+        // default click at the one-entry jump plan. A lost pin keeps the
+        // open-notes target and adds the lost-target line instead.
+        let jumpPlan: CaptureOpenPlan? = {
+            guard let landing = jump?.landing, !landing.path.isEmpty else { return nil }
+            let plan = CaptureOpenPlan(openNotes: [landing], captures: [])
+            return plan.isEmpty ? nil : plan
+        }()
+        if let jump, !jump.label.isEmpty, jumpPlan != nil {
+            content.body += (content.body.isEmpty ? "" : "\n") + "↗ \(jump.label)"
+        } else if jumpLost, let jump, !jump.label.isEmpty {
+            content.body += (content.body.isEmpty ? "" : "\n")
+                + "↗ Couldn't find “\(jump.label)” to jump to"
+        }
         if !openPlan.isEmpty {
             content.categoryIdentifier = captureOpenPlanCategoryIdentifier(count: openPlan.notes.count)
-            content.userInfo = [
+            var userInfo: [AnyHashable: Any] = [
                 openPlanKey: openPlan.notificationPayload,
                 targetPathKey: presentation.targetPaths[0],
                 targetPathsKey: presentation.targetPaths,
             ]
+            if let jumpPlan {
+                userInfo[jumpPlanKey] = jumpPlan.notificationPayload
+            }
+            content.userInfo = userInfo
         }
         return content
     }
@@ -561,6 +586,17 @@ final class NotificationService: NSObject, ObservableObject {
                 || actionIdentifier == openNotesActionIdentifier
         else {
             return []
+        }
+
+        // A landed jump pin retargets the default click at the
+        // one-entry jump plan. The explicit Open Notes action still opens
+        // the captured notes through the open-plan payload below.
+        if actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let payload = userInfo[jumpPlanKey] as? [[String: Any]],
+           let plan = CaptureOpenPlan(notificationPayload: payload),
+           let url = ObsidianOpenURL.openNotesURL(for: plan)
+        {
+            return [url]
         }
 
         if let payload = userInfo[openPlanKey] as? [[String: Any]],

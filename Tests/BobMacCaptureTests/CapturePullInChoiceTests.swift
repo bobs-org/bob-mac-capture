@@ -1323,6 +1323,61 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertEqual(state.footerSummaryText.contains("✓ 1 done"), true)
     }
 
+    func testJumpPinSurvivesFilterAndVerdicts() {
+        var state = choiceState(
+            offers: offers(count: 3),
+            pullIn: CapturePullIn(
+                supported: true,
+                offerCount: 3,
+                jump: CapturePullInJump(supported: true)
+            )
+        )
+        XCTAssertTrue(state.jumpSupported)
+        state.toggleJump("opaque#2^suffix")
+        XCTAssertEqual(state.jumpKey, "opaque#2^suffix")
+        // The fallback stays suppressed while the pin is staged, and the
+        // footer names the pin even when the filter hides its row.
+        state.updateFilter("zzz")
+        XCTAssertTrue(state.effectiveSelectionKeys.isEmpty)
+        XCTAssertTrue(state.canCommit)
+        XCTAssertEqual(state.primaryCommitLabel, "Leave Open & Jump")
+        XCTAssertEqual(state.footerSummaryText, "Choose offers · ↗ “Task 2”")
+        state.updateFilter("")
+        // Marks and the pin ride together, each keyed by offer key.
+        state.toggleOffer("opaque#1^suffix")
+        XCTAssertEqual(state.jumpKey, "opaque#2^suffix")
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1 & Jump")
+        XCTAssertEqual(state.skipCommitLabel, "Skip & Jump")
+        // Clearing the pin returns the card to its untouched behavior.
+        state.toggleJump("opaque#2^suffix")
+        XCTAssertNil(state.jumpKey)
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1")
+        XCTAssertEqual(state.skipCommitLabel, "Skip")
+        XCTAssertEqual(state.footerSummaryText, "pull in 1")
+    }
+
+    func testJumpPinWithVerdictsAppliesThenJumps() {
+        var state = verdictChoiceState()
+        XCTAssertTrue(state.jumpSupported)
+        state.toggleJump("k2")
+        XCTAssertEqual(state.jumpKey, "k2")
+        XCTAssertEqual(state.primaryCommitLabel, "Pull In 1 & Jump")
+        state.toggleOfferDone("k1")
+        XCTAssertEqual(state.jumpKey, "k2")
+        XCTAssertEqual(state.primaryCommitLabel, "Apply & Jump")
+        XCTAssertEqual(state.skipCommitLabel, "Skip pull-ins · Close 1 & Jump")
+        XCTAssertTrue(state.footerSummaryText.hasSuffix("↗ “Task 2”"), state.footerSummaryText)
+    }
+
+    func testJumpWithoutCapabilityRefusesNothingAndMarksNothing() {
+        var state = choiceState(offers: offers(count: 2))
+        XCTAssertFalse(state.jumpSupported)
+        state.toggleJump("opaque#1^suffix")
+        XCTAssertEqual(state.jumpKey, "opaque#1^suffix")
+        state.toggleJump("bogus")
+        XCTAssertEqual(state.jumpKey, "opaque#1^suffix")
+    }
+
     func testCapabilityGateAndIneligibleRefusal() {
         var old = choiceState(offers: offers(count: 2))
         XCTAssertFalse(old.closeSupported)
@@ -1375,7 +1430,8 @@ final class CapturePullInChoiceTests: XCTestCase {
                     CapturePullInGroup(group: "hand_off"),
                     CapturePullInGroup(group: "project"),
                 ],
-                close: CapturePullInClose(supported: true)),
+                close: CapturePullInClose(supported: true),
+                jump: CapturePullInJump(supported: true)),
             planBudget: planBudget,
             rows: rows,
             highlightedKey: "k1")
@@ -1397,15 +1453,60 @@ final class CapturePullInChoiceTests: XCTestCase {
         XCTAssertNil(state.filterMatchRange(in: "Book flights"))
     }
 
+    func testRouterOwnsJumpKeyConsumesItInTheReasonField() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(pullInChoiceVisible: true)
+        XCTAssertEqual(
+            router.command(for: keyEvent(38, modifiers: .control), context: context),
+            .togglePullInJump)
+        XCTAssertEqual(
+            router.command(for: keyEvent(38, modifiers: .control, repeat: true), context: context),
+            .consumeKey)
+        XCTAssertNil(router.command(for: keyEvent(38), context: context))
+        XCTAssertNil(
+            router.command(for: keyEvent(38, modifiers: [.control, .shift]), context: context))
+        XCTAssertNil(
+            router.command(for: keyEvent(38, modifiers: .command), context: context))
+        XCTAssertNil(
+            router.command(for: keyEvent(38, modifiers: [.control, .option]), context: context))
+
+        let reason = CaptureKeyRoutingContext(
+            pullInChoiceVisible: true, pullInReasonFocused: true)
+        XCTAssertEqual(
+            router.command(for: keyEvent(38, modifiers: .control), context: reason),
+            .consumeKey)
+        XCTAssertNil(router.command(for: keyEvent(38), context: reason))
+
+        // Outside the card, Ctrl+J keeps its editor bullet-newline duty.
+        let editor = CaptureKeyRoutingContext()
+        XCTAssertEqual(
+            router.command(for: keyEvent(38, modifiers: .control), context: editor),
+            .insertBulletNewline)
+    }
+
+    @MainActor
+    func testControllerDispatchTogglesJumpOnTheHighlight() {
+        let offers = offers(count: 2)
+        let model = CapturePanelModel()
+        model.installPullInChoiceForPreviews(
+            offers: offers, pullIn: CapturePullIn(supported: true), draft: "jump")
+        let controller = CapturePanelController(model: model)
+        // No jump capability proof: the refusal strip names the newer bob.
+        XCTAssertTrue(controller.perform(.togglePullInJump))
+        XCTAssertNil(model.pullInChoice?.jumpKey)
+        XCTAssertEqual(
+            model.pullInChoice?.verdictRefusalMessage, "Jump needs a newer bob")
+    }
+
     func testFooterContractPinsHintsAndAccessibilityText() {
         let items = CapturePullInChoiceFooter.hintItems
         XCTAssertEqual(
             items.map { $0.keys },
-            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "esc", "⌃↩"])
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "⌃J", "esc", "⌃↩"])
         XCTAssertEqual(
             items.map { $0.action },
             [
-                "Move", "Mark", "Mark & Next", "All", "Done", "Cancel", "Back",
+                "Move", "Mark", "Mark & Next", "All", "Done", "Cancel", "Jump", "Back",
                 "Pull In & Open",
             ])
         XCTAssertEqual(
@@ -1417,6 +1518,23 @@ final class CapturePullInChoiceTests: XCTestCase {
             CapturePullInChoiceFooter.hintItems(openAfterCapture: false, closeSupported: false)
                 .map { $0.keys },
             ["⌃N ⌃P", "space", "tab", "⌘A", "esc", "⌃↩"])
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.hintItems(
+                openAfterCapture: false, closeSupported: true, jumpSupported: true
+            ).map { $0.keys },
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "⌃J", "esc", "⌃↩"])
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.hintItems(
+                openAfterCapture: false, closeSupported: true, jumpSupported: true,
+                jumpPinned: true
+            ).map { $0.keys },
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "⌃J", "esc"])
+        XCTAssertEqual(
+            CapturePullInChoiceFooter.hintItems(
+                openAfterCapture: true, closeSupported: true, jumpSupported: true,
+                jumpPinned: true
+            ).map { $0.keys },
+            ["⌃N ⌃P", "space", "tab", "⌘A", "⌃X", "⌃⇧X", "⌃J", "esc"])
         let label = CapturePullInChoiceFooter.accessibilityText
         for phrase in [
             "Control-N", "Space", "Command-A", "Control-X", "Control-Shift-X", "Return",

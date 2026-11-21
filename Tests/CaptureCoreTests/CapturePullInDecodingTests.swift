@@ -335,6 +335,51 @@ final class CapturePullInDecodingTests: XCTestCase {
         XCTAssertFalse(oldRow.hideRemoved)
     }
 
+    func testJumpCapabilityAndLandingDecodeWithLostFallback() throws {
+        let decoder = JSONDecoder()
+        let landed = try decoder.decode(
+            CaptureCommandSuccess.self,
+            from: Data(
+                #"""
+                {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"t","task_line":"- [ ] T","kind":"task","created":"2026-10-13","placement":"new","pull_in":{"supported":true,"offer_count":1,"jump":{"supported":true}},"jump":{"key":"dev.md#^fixmig","n":2,"label":"Fix the migration","outcome":"left","landing":{"path":"/tmp/dev.md","relative_path":"dev.md","role":"note","label":"dev","line":42,"ref":"42:35a733bd","block_id":"fixmig"}}}
+                """#.utf8
+            )
+        )
+        XCTAssertEqual(landed.pullIn?.jump?.supported, true)
+        let jump = try XCTUnwrap(landed.jump)
+        XCTAssertEqual(jump.key, "dev.md#^fixmig")
+        XCTAssertEqual(jump.n, 2)
+        XCTAssertEqual(jump.label, "Fix the migration")
+        XCTAssertEqual(jump.outcome, "left")
+        let landing = try XCTUnwrap(jump.landing)
+        XCTAssertEqual(landing.path, "/tmp/dev.md")
+        XCTAssertEqual(landing.line, 42)
+        XCTAssertEqual(landing.ref, "42:35a733bd")
+        XCTAssertEqual(landing.blockID, "fixmig")
+
+        let lost = try decoder.decode(
+            CaptureCommandSuccess.self,
+            from: Data(
+                #"""
+                {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"t","task_line":"- [ ] T","kind":"task","created":"2026-10-13","placement":"new","pull_in":{"supported":true,"offer_count":1,"jump":{"supported":true}},"jump":{"key":"dev.md#^fixmig","n":2,"label":"Fix the migration","outcome":"left","landing":null}}
+                """#.utf8
+            )
+        )
+        XCTAssertEqual(lost.jump?.key, "dev.md#^fixmig")
+        XCTAssertNil(lost.jump?.landing)
+
+        let legacy = try decoder.decode(
+            CaptureCommandSuccess.self,
+            from: Data(
+                #"""
+                {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"t","task_line":"- [ ] T","kind":"task","created":"2026-10-13","placement":"new","pull_in":{"supported":true,"offer_count":1}}
+                """#.utf8
+            )
+        )
+        XCTAssertNil(legacy.pullIn?.jump)
+        XCTAssertNil(legacy.jump)
+    }
+
     func testNewWireFieldsEncodeAndDecodeWithoutChangingOpaqueKeys() throws {
         let row = TaskCompleteUnblocked(
             notePath: "sase.md",

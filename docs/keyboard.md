@@ -200,16 +200,16 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 ## Successor choices
 
-Space marks, Tab marks and moves to the next offer (staying on the last), Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Command-X stays Cut. In Cancel reason, Control-N / Down and Control-P / Up step through `USED BEFORE` history (up to 3 rows after the first step or 2 typed characters); the first Esc restores the draft and only the next Esc backs out, and Return writes exactly the visible text (see [Capture previews](capture-previews.md) and [Log Recall](https://bobs-org.github.io/log-recall/)).
+Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Command-X stays Cut. Control-J pins the jump successor on the highlighted row (again clears it); Return lands on it after the writes. Needs `pull_in.jump`: older Bobs hide the hint, report `Jump needs a newer bob`, and consume the key in Cancel reason. In Cancel reason, Control-N / Down and Control-P / Up walk `USED BEFORE` history (3 rows, 2 typed characters); the first Esc restores the draft, the next backs out, Return writes the text (see [Capture previews](capture-previews.md) and [Log Recall](https://bobs-org.github.io/log-recall/)).
 
 ## Inbox routing
 
 Up/Down or Control-N/Control-P moves the destination highlight. Return moves
 the current task, Control-Return moves it and opens capture notes,
 Shift-Return keeps it in its inbox.
-Escape goes back one task, then to the preceding successor card or the
-unchanged draft. Control-T and Command-\ are consumed while the route card is
-open. Full behavior is in [Capture previews](capture-previews.md).
+Escape steps back: one task, then the successor card or draft. Control-T and
+Command-\ stay consumed on the route card. Full behavior is in
+[Capture previews](capture-previews.md).
 
 ## Similar tasks keys
 

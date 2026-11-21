@@ -1147,6 +1147,99 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(query.first(where: { $0.name == "path2" })?.value, notes[1].path)
     }
 
+    func testJumpPinRetargetsDefaultClickAndAddsReceiptLine() {
+        let landing = CaptureOpenNote(
+            path: "/Users/bryan/bob/dev.md",
+            relativePath: "dev.md",
+            role: .note,
+            label: "dev",
+            line: 42,
+            ref: "42:35a733bd",
+            blockID: "fixmig"
+        )
+        let jump = CaptureJump(
+            key: "dev.md#^fixmig",
+            n: 2,
+            label: "Fix the migration",
+            outcome: "left",
+            landing: landing
+        )
+        let plan = CaptureOpenPlan(
+            openNotes: [
+                CaptureOpenNote(
+                    path: "/Users/bryan/bob/cash.md",
+                    relativePath: "cash.md",
+                    role: .note,
+                    label: "cash"
+                )
+            ],
+            captures: []
+        )
+        let content = NotificationService.successContent(
+            captures: [], openPlan: plan, jump: jump)
+
+        XCTAssertTrue(content.body.contains("↗ Fix the migration"), content.body)
+        XCTAssertNotNil(content.userInfo[NotificationService.jumpPlanKey])
+
+        let defaultClick = NotificationService.targetURLs(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            userInfo: content.userInfo
+        )
+        XCTAssertEqual(defaultClick.count, 1)
+        let query = URLComponents(url: defaultClick[0], resolvingAgainstBaseURL: false)?.queryItems
+            ?? []
+        XCTAssertEqual(query.first(where: { $0.name == "count" })?.value, "1")
+        XCTAssertEqual(query.first(where: { $0.name == "path1" })?.value, "/Users/bryan/bob/dev.md")
+        XCTAssertEqual(query.first(where: { $0.name == "line1" })?.value, "42")
+
+        // The Open Notes action still opens the captured notes.
+        let action = NotificationService.targetURLs(
+            forActionIdentifier: NotificationService.openNotesActionIdentifier,
+            userInfo: content.userInfo
+        )
+        XCTAssertEqual(action.count, 1)
+        let actionQuery = URLComponents(url: action[0], resolvingAgainstBaseURL: false)?.queryItems
+            ?? []
+        XCTAssertEqual(
+            actionQuery.first(where: { $0.name == "path1" })?.value, "/Users/bryan/bob/cash.md")
+    }
+
+    func testLostJumpKeepsOpenNotesTargetAndAddsLostLine() {
+        let jump = CaptureJump(
+            key: "dev.md#^fixmig",
+            n: 2,
+            label: "Fix the migration",
+            outcome: "left",
+            landing: nil
+        )
+        let plan = CaptureOpenPlan(
+            openNotes: [
+                CaptureOpenNote(
+                    path: "/Users/bryan/bob/cash.md",
+                    relativePath: "cash.md",
+                    role: .note,
+                    label: "cash"
+                )
+            ],
+            captures: []
+        )
+        let content = NotificationService.successContent(
+            captures: [], openPlan: plan, jump: jump, jumpLost: true)
+
+        XCTAssertTrue(
+            content.body.contains("↗ Couldn't find “Fix the migration” to jump to"), content.body)
+        XCTAssertNil(content.userInfo[NotificationService.jumpPlanKey])
+        let defaultClick = NotificationService.targetURLs(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            userInfo: content.userInfo
+        )
+        XCTAssertEqual(defaultClick.count, 1)
+        let query = URLComponents(url: defaultClick[0], resolvingAgainstBaseURL: false)?.queryItems
+            ?? []
+        XCTAssertEqual(
+            query.first(where: { $0.name == "path1" })?.value, "/Users/bryan/bob/cash.md")
+    }
+
     func testOpenFailureNotificationCarriesTheReportedError() {
         let content = NotificationService.openFailureContent(message: "Obsidian returned an open error")
 

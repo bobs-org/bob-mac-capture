@@ -170,6 +170,80 @@ final class CapturePullInOutcomesTests: XCTestCase {
         XCTAssertNil(outcomes.verdicts["offer:b"])
     }
 
+    func testJumpPinTogglesMovesAndClearsWithoutMovingHighlight() {
+        var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        XCTAssertNil(outcomes.jumpKey)
+        let parked = outcomes.highlightedKey
+
+        XCTAssertTrue(outcomes.toggleJump(for: "offer:a"))
+        XCTAssertEqual(outcomes.jumpKey, "offer:a")
+        XCTAssertEqual(outcomes.highlightedKey, parked)
+
+        XCTAssertTrue(outcomes.toggleJump(for: "offer:b"))
+        XCTAssertEqual(outcomes.jumpKey, "offer:b")
+        XCTAssertEqual(outcomes.highlightedKey, parked)
+
+        XCTAssertTrue(outcomes.toggleJump(for: "offer:b"))
+        XCTAssertNil(outcomes.jumpKey)
+        XCTAssertEqual(outcomes.highlightedKey, parked)
+
+        XCTAssertFalse(outcomes.toggleJump(for: "missing"))
+        XCTAssertNil(outcomes.jumpKey)
+    }
+
+    func testJumpPinSuppressesFallbackAndArmsJumpOnlyCommit() {
+        var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        XCTAssertEqual(outcomes.effectiveSelectionKeys, ["offer:a"])
+
+        outcomes.toggleJump(for: "offer:b")
+        XCTAssertEqual(outcomes.effectiveSelectionKeys, [])
+        XCTAssertTrue(outcomes.canCommit)
+        XCTAssertEqual(outcomes.primaryLabel, "Leave Open & Jump")
+        XCTAssertEqual(outcomes.skipLabel, "Skip & Jump")
+        XCTAssertEqual(outcomes.footerSummaryText, "Choose offers · ↗ “Task 2”")
+        XCTAssertEqual(outcomes.jumpLabel, "Task 2")
+
+        outcomes.toggleMark(for: "offer:a")
+        XCTAssertEqual(outcomes.effectiveSelectionKeys, ["offer:a"])
+        XCTAssertEqual(outcomes.primaryLabel, "Pull In 1 & Jump")
+        XCTAssertEqual(outcomes.footerSummaryText, "pull in 1 · ↗ “Task 2”")
+
+        outcomes.replaceVerdict(.done, for: "offer:c")
+        XCTAssertEqual(outcomes.primaryLabel, "Apply & Jump")
+        XCTAssertEqual(outcomes.skipLabel, "Skip pull-ins · Close 1 & Jump")
+        XCTAssertNil(outcomes.escArmedText)
+        XCTAssertTrue(outcomes.armEscDiscard())
+    }
+
+    func testJumpPinSurvivesEscDiscardAndRefreshDropsLostPin() {
+        var outcomes = CapturePullInOutcomes(offers: offers(), closeSupported: true)
+        outcomes.replaceVerdict(.done, for: "offer:a")
+        outcomes.toggleJump(for: "offer:b")
+        outcomes.discardVerdicts()
+        XCTAssertNil(outcomes.verdicts["offer:a"])
+        XCTAssertEqual(outcomes.jumpKey, "offer:b")
+
+        XCTAssertEqual(outcomes.refresh(rows: Array(offers().prefix(1))), 1)
+        XCTAssertNil(outcomes.jumpKey)
+        XCTAssertNil(outcomes.jumpSummarySuffix)
+        // The surviving row's highlight fallback returns untouched behavior.
+        XCTAssertEqual(outcomes.effectiveSelectionKeys, ["offer:a"])
+        XCTAssertEqual(outcomes.primaryLabel, "Pull In 1")
+
+        outcomes.toggleJump(for: "offer:a")
+        XCTAssertEqual(outcomes.refresh(rows: offers()), 0)
+        XCTAssertEqual(outcomes.jumpKey, "offer:a")
+        XCTAssertEqual(outcomes.jumpSummarySuffix, " · ↗ “Task 1”")
+    }
+
+    func testJumpSummaryTruncatesLongLabels() {
+        let long = String(repeating: "a", count: 50)
+        XCTAssertEqual(
+            CapturePullInOutcomes.truncatedJumpLabel(long),
+            String(repeating: "a", count: 40) + "…")
+        XCTAssertEqual(CapturePullInOutcomes.truncatedJumpLabel("short"), "short")
+    }
+
     private func offers() -> [TaskCompleteUnblocked] {
         [
             offer("offer:a", n: 1),

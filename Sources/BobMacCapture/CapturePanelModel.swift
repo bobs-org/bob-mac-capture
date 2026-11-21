@@ -4175,7 +4175,9 @@ final class CapturePanelModel: ObservableObject {
         moveInSelection: String? = nil,
         moveInCapabilityAdvertised: Bool = false,
         offerVerdicts: CapturePullInOfferVerdicts? = nil,
-        offerCloseCapabilityAdvertised: Bool = false
+        offerCloseCapabilityAdvertised: Bool = false,
+        jumpOffer: String? = nil,
+        jumpCapabilityAdvertised: Bool = false
     ) {
         cancelSimilarTasks(clear: true)
         guard let processClient else {
@@ -4230,11 +4232,13 @@ final class CapturePanelModel: ObservableObject {
                         moveInCapabilityAdvertised: submitContext.moveInCapabilityAdvertised,
                         pullInSelection: selection,
                         offerVerdicts: submitContext.offerVerdicts,
+                        jumpOffer: jumpOffer,
                         requirePullInChoice: selection == nil && inboxRouteAnswers == nil,
                         refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
                         offerCloseCapabilityAdvertised: submitContext
                             .offerCloseCapabilityAdvertised,
+                        jumpCapabilityAdvertised: jumpCapabilityAdvertised,
                         inboxRouteAnswers: inboxRouteAnswers,
                         requireInboxRouteChoice: true,
                         inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
@@ -4736,7 +4740,8 @@ final class CapturePanelModel: ObservableObject {
         _ choice: CapturePullInChoiceState,
         error: String,
         lostCount: Int,
-        status: String? = nil
+        status: String? = nil,
+        jumpCleared: Bool = false
     ) {
         var next = choice
         next.verdictRefusalMessage = error
@@ -4749,6 +4754,8 @@ final class CapturePanelModel: ObservableObject {
         let announcement: String
         if let status {
             announcement = status
+        } else if jumpCleared {
+            announcement = "\(error) · Jump target is no longer offered — cleared"
         } else if lostCount > 0 {
             announcement =
                 "\(error) · \(lostCount) staged choice\(lostCount == 1 ? "" : "s") lost"
@@ -4775,13 +4782,17 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         // Refresh row data/descriptors from Bob, preserving marks, verdicts,
-        // reasons, and highlight. Removed keys are dropped and counted.
-        // Keep the original capability proof; fresh descriptors arrive via
-        // the refreshed offers. Never silently discard a still-present
-        // staged verdict: it stays visible with Bob's error until changed.
+        // reasons, highlight, and the jump pin. Removed keys are dropped and
+        // counted. Keep the original capability proof; fresh descriptors
+        // arrive via the refreshed offers. Never silently discard a
+        // still-present staged verdict: it stays visible with Bob's error
+        // until changed.
         if !failure.offers.isEmpty {
+            let hadJump = choice.jumpKey
             let lost = choice.refresh(offers: failure.offers)
-            showReseededPullInChoice(choice, error: failure.error, lostCount: lost)
+            let jumpCleared = hadJump != nil && choice.jumpKey == nil
+            showReseededPullInChoice(
+                choice, error: failure.error, lostCount: lost, jumpCleared: jumpCleared)
             return true
         }
         // No structured offers: fall through to the dry-run refresh path.
@@ -4878,9 +4889,12 @@ final class CapturePanelModel: ObservableObject {
                                 "\(failure.error) · no offers remain")
                             return
                         }
+                        let hadJump = choice.jumpKey
                         let lost = choice.refresh(offers: offers)
+                        let jumpCleared = hadJump != nil && choice.jumpKey == nil
                         self.showReseededPullInChoice(
-                            choice, error: failure.error, lostCount: lost)
+                            choice, error: failure.error, lostCount: lost,
+                            jumpCleared: jumpCleared)
                     case .failure(let refreshFailure):
                         self.showReseededPullInChoice(
                             remembered,
@@ -5154,7 +5168,7 @@ final class CapturePanelModel: ObservableObject {
         }
         let selection = pullInSelectionForCommit(choice)
         let verdicts = choice.outcomes.argvSelection().offerVerdicts
-        guard !selectionKeys(selection).isEmpty || !verdicts.isEmpty else {
+        guard !selectionKeys(selection).isEmpty || !verdicts.isEmpty || choice.jumpKey != nil else {
             announceStatus("No visible successor offer is selected")
             return
         }
@@ -5215,6 +5229,16 @@ final class CapturePanelModel: ObservableObject {
             }
             return built
         }()
+        // Never emit `--jump-offer` without the matching preview
+        // capability proof; an old bob would file the flag as a junk task.
+        let jumpOffer: String? = {
+            guard let key = choice.jumpKey, !key.isEmpty,
+                  choice.pullIn.jump?.supported == true
+            else {
+                return nil
+            }
+            return key
+        }()
         pullInChoice = nil
         clearEditorInputLockIfFree()
         dispatchCapture(
@@ -5228,7 +5252,9 @@ final class CapturePanelModel: ObservableObject {
             moveInSelection: choice.moveInSelection,
             moveInCapabilityAdvertised: choice.moveInSelection != nil,
             offerVerdicts: verdicts,
-            offerCloseCapabilityAdvertised: choice.pullIn.close?.supported == true
+            offerCloseCapabilityAdvertised: choice.pullIn.close?.supported == true,
+            jumpOffer: jumpOffer,
+            jumpCapabilityAdvertised: choice.pullIn.jump?.supported == true
         )
     }
 
@@ -5341,6 +5367,79 @@ final class CapturePanelModel: ObservableObject {
         pullInChoice = choice
         requestFocus(.pullInReasonField)
         fetchPullInLogHistory()
+    }
+
+    /// Ctrl+J on the card: pin or clear the jump successor on the
+    /// highlighted row. The pin is navigation only and never moves the
+    /// highlight.
+    func toggleJumpForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard choice.jumpSupported else {
+            let refusal = "Jump needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
+            NSSound.beep()
+            return
+        }
+        guard let key = choice.highlightedKey, choice.selectableKeys.contains(key) else {
+            let refusal = "Jump works on offer rows only"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
+            NSSound.beep()
+            return
+        }
+        choice.toggleJump(key)
+        pullInChoice = choice
+        if choice.jumpKey == nil {
+            announceStatus("Jump cleared")
+        } else if let label = choice.jumpLabel {
+            announceStatus("Jump set to \(label)")
+        } else {
+            announceStatus("Jump set")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    /// Pointer and menu pin on one offer row, mirroring Ctrl+J for that row.
+    func toggleJumpForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        guard choice.jumpSupported else {
+            let refusal = "Jump needs a newer bob"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
+            NSSound.beep()
+            return
+        }
+        guard choice.selectableKeys.contains(key) else {
+            let refusal = "Jump works on offer rows only"
+            choice.verdictRefusalMessage = refusal
+            pullInChoice = choice
+            announceStatus(refusal)
+            NSSound.beep()
+            return
+        }
+        let highlight = choice.highlightedKey
+        choice.toggleJump(key)
+        // Pointer actions target the acted-on row and never move focus.
+        if highlight != key, choice.highlightedKey == key {
+            choice.highlightedKey = highlight
+        }
+        pullInChoice = choice
+        if choice.jumpKey == nil {
+            announceStatus("Jump cleared")
+        } else if let label = choice.jumpLabel {
+            announceStatus("Jump set to \(label)")
+        } else {
+            announceStatus("Jump set")
+        }
+        requestFocus(.pullInOfferList)
     }
 
     func clearPullInVerdictForRow(_ key: String) {
@@ -18007,13 +18106,38 @@ final class CapturePanelModel: ObservableObject {
             templateOrigin = nil
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
+            // A staged pin replaces the open-notes landing: one entry for
+            // the post-write jump target. A lost (null) landing falls back
+            // to today's behavior with a lost-target notice line.
+            let submittedJumpKey = routeContext?.pullInChoiceForBack?.jumpKey
+            let jump = submittedJumpKey.flatMap { _ in success.jump }
+            let jumpedLanding: CaptureOpenNote? = {
+                guard let submittedJumpKey, !submittedJumpKey.isEmpty,
+                      let jump, jump.key == submittedJumpKey
+                else {
+                    return nil
+                }
+                return jump.landing
+            }()
+            let jumpLost = submittedJumpKey != nil && !submittedJumpKey!.isEmpty
+                && jump != nil && jump!.landing == nil
             postCaptureSuccess(
                 captures: captures,
                 globalDestination: success.globalDestination,
-                openPlan: openPlan
+                openPlan: openPlan,
+                jump: jump,
+                jumpLost: jumpLost
             )
-            if openAfterCapture,
-               let url = ObsidianOpenURL.openNotesURL(for: openPlan)
+            if let landing = jumpedLanding {
+                let jumpPlan = CaptureOpenPlan(openNotes: [landing], captures: [])
+                if let url = ObsidianOpenURL.openNotesURL(for: jumpPlan) {
+                    noteOpener(url) { [weak self] error in
+                        guard let self, let error else { return }
+                        self.postCaptureOpenFailure(message: error.localizedDescription)
+                    }
+                }
+            } else if openAfterCapture,
+                      let url = ObsidianOpenURL.openNotesURL(for: openPlan)
             {
                 noteOpener(url) { [weak self] error in
                     guard let self, let error else { return }
@@ -18179,7 +18303,10 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             if let code = failure.code,
-                ["offer_close_stale", "offer_close_refused", "offer_verdict_conflict"]
+                [
+                    "offer_close_stale", "offer_close_refused", "offer_verdict_conflict",
+                    "offer_jump_stale",
+                ]
                     .contains(code)
             {
                 if reopenPullInChoiceAfterOfferRefusal(
@@ -18218,7 +18345,9 @@ final class CapturePanelModel: ObservableObject {
     private func postCaptureSuccess(
         captures: [CaptureCommandSuccess],
         globalDestination: CaptureGlobalDestination?,
-        openPlan: CaptureOpenPlan
+        openPlan: CaptureOpenPlan,
+        jump: CaptureJump? = nil,
+        jumpLost: Bool = false
     ) {
         if let captureSuccessNotifier {
             captureSuccessNotifier(captures, globalDestination, openPlan)
@@ -18226,7 +18355,9 @@ final class CapturePanelModel: ObservableObject {
             notificationService?.notifyCaptureSuccess(
                 captures: captures,
                 globalDestination: globalDestination,
-                openPlan: openPlan
+                openPlan: openPlan,
+                jump: jump,
+                jumpLost: jumpLost
             )
         }
     }

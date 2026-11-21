@@ -1295,6 +1295,236 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     private func refusalResponse() -> String {
         #"{"ok":false,"error":"Choose successor offers","code":"pull_in_choice_required","pull_in":{"supported":true,"offer_count":1,"choice":"explicit","picked_count":0},"offers":[{"note_path":"travel.md","block_id":"one","line":1,"text":"One task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"refusal:key","n":1,"group":"hand_off","destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}}]}"#
     }
+
+    func testPinOnlyReturnSendsPullInNoneWithJumpOfferAndOpensJumpLanding() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpWriteResponse(
+                        landing: #"{"path":"/tmp/travel.md","relative_path":"travel.md","role":"note","label":"travel","line":7,"ref":"7:abcdef12","block_id":"one"}"#),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "0",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.toggleJumpForHighlight()
+        XCTAssertEqual(model.pullInChoice?.jumpKey, "offer#one^key")
+        XCTAssertEqual(model.pullInChoice?.footerSummaryText, "Choose offers · ↗ “One task”")
+        XCTAssertEqual(model.pullInChoice?.primaryCommitLabel, "Leave Open & Jump")
+
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        XCTAssertNil(model.pullInChoice)
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --pull-in none --jump-offer offer#one^key --refuse-override -- complete task"
+            ),
+            calls)
+        XCTAssertEqual(opened.count, 1)
+        let url = try XCTUnwrap(opened.first)
+        XCTAssertEqual(url.host, "bob-open-notes")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "count" })?.value, "1")
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/travel.md")
+        XCTAssertEqual(items.first(where: { $0.name == "line1" })?.value, "7")
+    }
+
+    func testCommandReturnDraftWithPinOpensOnlyTheJump() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpWriteResponse(
+                        landing: #"{"path":"/tmp/travel.md","relative_path":"travel.md","role":"note","label":"travel","line":7,"ref":"7:abcdef12","block_id":"one"}"#),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "0",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: true)
+        XCTAssertTrue(model.pullInChoiceVisible)
+        XCTAssertEqual(model.pullInChoice?.openAfterCapture, true)
+
+        model.toggleJumpForHighlight()
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(opened.count, 1)
+        let items = URLComponents(
+            url: try XCTUnwrap(opened.first), resolvingAgainstBaseURL: false
+        )?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "count" })?.value, "1")
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/travel.md")
+    }
+
+    func testStaleJumpSelectorReopensCardAndKeepsThePin() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpStaleResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "2",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.toggleJumpForHighlight()
+        model.confirmPullInChoice()
+        try await waitUntil { model.pullInChoiceVisible && !model.isSubmitting }
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertEqual(choice.jumpKey, "offer#one^key")
+        XCTAssertTrue(try XCTUnwrap(choice.errorMessage).contains("stale"))
+        XCTAssertEqual(model.plainDraft, "complete task")
+    }
+
+    func testStaleJumpSelectorClearsLostPinVisibly() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpStaleResponse(offers: "offer#one^key"),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "2",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: false)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.toggleJumpForRow("opaque:two#^suffix")
+        XCTAssertEqual(model.pullInChoice?.jumpKey, "opaque:two#^suffix")
+        model.confirmPullInChoice()
+        try await waitUntil { model.pullInChoiceVisible && !model.isSubmitting }
+
+        let choice = try XCTUnwrap(model.pullInChoice)
+        XCTAssertNil(choice.jumpKey)
+        XCTAssertTrue(model.statusText.contains("no longer offered"))
+    }
+
+    func testLostLandingFallsBackToOpenNotes() async throws {
+        let record = temporaryRecordURL()
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": record.path,
+                    "FAKE_BOB_CAPTURE_DRY_RUN_STDOUT": jumpPreviewResponse(),
+                    "FAKE_BOB_CAPTURE_WRITE_STDOUT": jumpWriteResponse(landing: nil),
+                    "FAKE_BOB_CAPTURE_WRITE_EXIT": "0",
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "complete task"
+        model.preview()
+        try await waitUntil { !model.isPreviewing }
+        model.installCompatibleCaptureGrammarForTests()
+        model.submit(openAfterCapture: true)
+        XCTAssertTrue(model.pullInChoiceVisible)
+
+        model.toggleJumpForHighlight()
+        var opened: [URL] = []
+        model.noteOpener = { url, completion in
+            opened.append(url)
+            completion(nil)
+        }
+        model.panelDismisser = {}
+        model.confirmPullInChoice()
+        try await waitUntil { !model.isSubmitting }
+
+        // No landing: the write still succeeds and opens the captured notes.
+        let calls = try recordText(record)
+        XCTAssertTrue(calls.contains("--jump-offer offer#one^key"), calls)
+        XCTAssertEqual(opened.count, 1)
+        let items = URLComponents(
+            url: try XCTUnwrap(opened.first), resolvingAgainstBaseURL: false
+        )?.queryItems ?? []
+        XCTAssertEqual(items.first(where: { $0.name == "path1" })?.value, "/tmp/day.md")
+    }
+
+    private func jumpPreviewResponse() -> String {
+        #"""
+        {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"!task","task_line":"- [ ] #task Task","kind":"task_complete","created":"2026-10-13","placement":"updated","pull_in":{"supported":true,"offer_count":2,"choice":null,"picked_count":0,"jump":{"supported":true},"groups":[{"group":"hand_off","project":"","folded":{"hidden":0,"already_planned":0,"sub_projects":0}}]},"task_complete":{"raw":"!travel:parent","unblocked":[{"note_path":"travel.md","block_id":"one","line":1,"text":"One task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"offer#one^key","n":1,"group":"hand_off","project":null,"destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}},{"note_path":"travel.md","block_id":"two","line":2,"text":"Two task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"opaque:two#^suffix","n":2,"group":"hand_off","project":null,"destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}}]}}
+        """#
+    }
+
+    private func jumpWriteResponse(landing: String?) -> String {
+        let landingValue = landing ?? "null"
+        return """
+            {"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"task","task_line":"- [ ] Task","kind":"task","created":"2026-10-13","placement":"new","open_notes":[{"path":"/tmp/day.md","relative_path":"day.md","role":"note","label":"day"}],"pull_in":{"supported":true,"offer_count":2,"choice":null,"picked_count":0,"jump":{"supported":true}},"jump":{"key":"offer#one^key","n":1,"label":"One task","outcome":"left","landing":\(landingValue)}}
+            """
+    }
+
+    private func jumpStaleResponse(offers: String = "offer#one^key,opaque:two#^suffix") -> String {
+        let rows = offers.components(separatedBy: ",").map { key in
+            """
+            {"note_path":"travel.md","block_id":"one","line":1,"text":"One task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"\(key)","n":1,"group":"hand_off","destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}}
+            """
+        }.joined(separator: ",")
+        return """
+            {"ok":false,"error":"stale, unknown, or out-of-range --jump-offer pick: offer#one^key","code":"offer_jump_stale","pull_in":{"supported":true,"offer_count":1,"choice":null,"picked_count":0,"jump":{"supported":true}},"offers":[\(rows)]}
+            """
+    }
 }
 
 private func captureCallCount(_ record: String) -> Int {

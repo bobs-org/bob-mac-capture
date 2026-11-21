@@ -198,24 +198,20 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   `ref_parent`, or `project_name_aliases` still previews and captures; the
   Mac app decodes each as absent, keeps today's wording, never auto-opens
   File under, and matches routes without aliases, so upgrade Bob before
-  filing links. Inbox routing needs a Bob that reports the additive
-  `inbox_route` object (`supported`, candidates, and destinations) on every
-  capture JSON and accepts repeated `--inbox-route KEY=<relative_path>` (or
-  `KEY=` to keep) answers plus the hidden `--require-inbox-route-choice`
-  guard; without it the app captures without asking.
+  filing links. Inbox routing needs a Bob reporting the additive `inbox_route` object on every
+  capture JSON and accepting `--inbox-route KEY=<relative_path>` (or `KEY=` to
+  keep) plus the hidden `--require-inbox-route-choice` guard; without it the app
+  captures without asking.
 
-Grammar 12 adds past-work `x=` recording: `pomodoro_past` mode, spans, and
-  summaries with windows, trims, and `pomodoro_past_trim` warnings, decoded
-  tolerantly with no synthesized top-level close and an unchanged gate.
+Grammar 12 adds past-work `x=` recording (`pomodoro_past` mode, spans,
+  summaries, windows, trims, warnings), decoded tolerantly.
 
 Grammar 14 segment suffixes precede `!` / `=`: `~` tail, `~N` / `~N+`
 segment start/end, `~~` head. Bob returns spans, candidates, resolved segment/pin,
 and cuts. Segment-ending `-` rewrites to `~`; stale-window guards refresh previews.
 
-The app never invokes a login shell to find `bob`. A Settings override must be an
-absolute executable path.
-
-Executable search paths and the Settings override live in [Install](install.md#requirements).
+The app never invokes a login shell to find `bob`; a Settings override must be an
+absolute executable path (see [Install](install.md#requirements)).
 
 ## Move-choice submission
 
@@ -223,31 +219,34 @@ Executable search paths and the Settings override live in [Install](install.md#r
 [Move-card protocol](task-pickers.md#move-card-protocol) documents slots, refusals,
 answer chaining, and optional decoding.
 
-## Successor verdict submission
+## Successor verdict and jump submission
 
-`pull_in.close.supported` gates `--complete-offer` and `--cancel-offer`.
-Refusals reopen intact; stale picks refresh once and never retry writes.
-The app × Bob version matrix lives with the [Move card](task-pickers.md#move-card-protocol).
+`pull_in.close.supported` gates `--complete-offer` and `--cancel-offer`;
+`pull_in.jump.supported` gates `--jump-offer KEY` after them, else the app
+refuses. A pin-only commit sends `--pull-in none`. `bob` answers with a top-level `jump` object: `landing` is an
+`open_notes`-shaped entry re-found after the writes, or `null` when lost.
+Refusals reopen intact; stale picks refresh once and never retry writes. A
+refresh that loses the pinned key clears it visibly. The app × Bob version
+matrix lives with the [Move card](task-pickers.md#move-card-protocol).
 
 ## Timeouts and guards
 
 Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 
-If Bob rejects the exact `--refuse-override` flag as an
-unexpected argument (exit 2), the app retries without that guard and remembers the
-answer for that executable. `--require-pull-in-choice` is never retried: it goes out
-only after a preview from the same executable advertised `pull_in.supported`;
-it also shows a note that this Bob lacks successor-choice
+If Bob rejects `--refuse-override` as unexpected (exit 2), the app retries without
+it and remembers the answer per executable. `--require-pull-in-choice` is never retried: it goes out
+only after a preview from that executable advertised `pull_in.supported`;
+it also notes that this Bob lacks successor-choice
 checks. `--require-inbox-route-choice` goes out under the same positive gate (a
-preview, or any decoded capture JSON, that carried `inbox_route.supported == true`),
-and an older Bob that still receives it retries without the flag the same way. Other failures and explicit stale-key refusals are never
-retried. The app only sends explicit offer keys from a matching preview or write-free
-refusal back to `bob capture`. An older bob never overrides on `=`, so retrying without
-`--refuse-override` is safe.
+preview, or any decoded capture JSON, carrying `inbox_route.supported == true`),
+and an older Bob that still receives it retries without the flag the same way. Other
+failures and stale-key refusals never retry. The app only sends explicit offer keys
+from a matching preview or write-free refusal back to `bob capture`. An older bob
+never overrides on `=`, so the `--refuse-override` retry is safe.
 
-If Bob rejects `-a` / `--attended` on `ref scan` as an unexpected argument (exit 2),
-the app retries without that flag and remembers the answer for that executable, the
-same way it remembers the capture guard flags.
+If Bob rejects `-a` / `--attended` on `ref scan` (exit 2), the app retries
+without that flag and remembers the answer per executable, like the capture
+guard flags.
 
 Template saves send `--template-origin` only after that executable’s template-list succeeds; see [Saved templates](saved-templates.md).
 

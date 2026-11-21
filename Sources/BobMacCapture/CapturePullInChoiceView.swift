@@ -164,6 +164,7 @@ struct CapturePullInChoiceCard: View {
     var previewMode = false
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var jumpPinNamespace
 
     private var policy: CapturePullInChoiceHeightPolicy {
         CapturePullInChoiceHeightPolicy(
@@ -465,7 +466,9 @@ struct CapturePullInChoiceCard: View {
                                     choice: choice,
                                     row: row,
                                     isHighlighted: choice.highlightedKey == key,
-                                    isMarked: choice.markedKeys.contains(key)
+                                    isMarked: choice.markedKeys.contains(key),
+                                    isJumpPinned: choice.jumpKey == key,
+                                    jumpNamespace: jumpPinNamespace
                                 )
                             }
                             .buttonStyle(.plain)
@@ -489,6 +492,14 @@ struct CapturePullInChoiceCard: View {
                                         model.clearPullInVerdictForRow(key)
                                     }
                                 }
+                                if choice.jumpSupported {
+                                    Button(
+                                        choice.jumpKey == key
+                                            ? "Clear Jump" : "Jump Here After Capture"
+                                    ) {
+                                        model.toggleJumpForRow(key)
+                                    }
+                                }
                             }
                             .accessibilityAction(named: "Mark Done") {
                                 model.stagePullInDoneForRow(key)
@@ -501,6 +512,12 @@ struct CapturePullInChoiceCard: View {
                             }
                             .accessibilityAction(named: "Leave") {
                                 model.clearPullInVerdictForRow(key)
+                            }
+                            .accessibilityAction(
+                                named: choice.jumpKey == key
+                                    ? "Clear Jump" : "Jump Here After Capture"
+                            ) {
+                                model.toggleJumpForRow(key)
                             }
                             if choice.activeReasonKey == key {
                                 CapturePullInReasonField(
@@ -564,7 +581,8 @@ struct CapturePullInChoiceCard: View {
                                 choice: choice,
                                 row: row,
                                 isHighlighted: choice.highlightedKey == key,
-                                isMarked: choice.markedKeys.contains(key)
+                                isMarked: choice.markedKeys.contains(key),
+                                isJumpPinned: choice.jumpKey == key
                             )
                             if choice.activeReasonKey == key {
                                 CapturePullInReasonField(
@@ -756,6 +774,37 @@ struct CapturePullInDestinationCapsule: View {
     }
 }
 
+/// The solid accent jump capsule. Highlight is an outline, a mark is a
+/// tint, and the pin is a solid pill, so all three stay distinct in the
+/// same hue. The pin glides between rows; under Reduce Motion it
+/// cross-fades instead.
+@available(macOS 26.0, *)
+struct CapturePullInJumpCapsule: View {
+    var namespace: Namespace.ID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let capsule = HStack(spacing: 2) {
+            Image(systemName: "arrow.up.forward")
+            Text("Jump")
+        }
+        .font(.caption.weight(.semibold))
+        .lineLimit(1)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Color.accentColor, in: Capsule())
+        .transition(
+            reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+        .accessibilityHidden(true)
+        if let namespace {
+            capsule.matchedGeometryEffect(id: "jump-pin", in: namespace)
+        } else {
+            capsule
+        }
+    }
+}
+
 /// One 44pt two-line offer row, after the Refs rows. Verdict rows reuse
 /// relation complete/cancel symbols and palette; colour is never the only
 /// signal because the glyph and words always carry the verdict.
@@ -765,6 +814,8 @@ struct CapturePullInOfferRow: View {
     let row: CapturePullInChoiceRow
     var isHighlighted = false
     var isMarked = false
+    var isJumpPinned = false
+    var jumpNamespace: Namespace.ID?
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
@@ -886,6 +937,9 @@ struct CapturePullInOfferRow: View {
                 isEffective: isEffective
             )
         }
+        if isJumpPinned {
+            CapturePullInJumpCapsule(namespace: jumpNamespace)
+        }
     }
 
     private var cancelDetailText: (text: String, faint: Bool)? {
@@ -986,6 +1040,9 @@ struct CapturePullInOfferRow: View {
                 label += ", marked"
             } else if choice.isEffectivelySelected(key) {
                 label += ", will be pulled in"
+            }
+            if isJumpPinned {
+                label += ", jumps here after capture"
             }
             if let why = choice.refusalReason(for: key),
                 !choice.isCloseEligible(key)
@@ -1158,19 +1215,31 @@ struct CapturePullInChoiceFooter: View {
         ("⌘A", "All"),
         ("⌃X", "Done"),
         ("⌃⇧X", "Cancel"),
+        ("⌃J", "Jump"),
         ("esc", "Back"),
         ("⌃↩", "Pull In & Open"),
     ]
 
-    static func hintItems(openAfterCapture: Bool, closeSupported: Bool = false) -> [(
+    static func hintItems(
+        openAfterCapture: Bool,
+        closeSupported: Bool = false,
+        jumpSupported: Bool = false,
+        jumpPinned: Bool = false
+    ) -> [(
         keys: String, action: String
     )] {
         var items = hintItems
         if !closeSupported {
             items.removeAll { $0.keys == "⌃X" || $0.keys == "⌃⇧X" }
         }
+        if !jumpSupported {
+            items.removeAll { $0.keys == "⌃J" }
+        }
+        if jumpPinned {
+            items.removeAll { $0.keys == "⌃↩" }
+        }
         if openAfterCapture {
-            return Array(items.dropLast())
+            items.removeAll { $0.keys == "⌃↩" }
         }
         return items
     }
@@ -1207,6 +1276,14 @@ struct CapturePullInChoiceFooter: View {
         (model.pullInChoice?.closeCount ?? 0) > 0
     }
 
+    private var jumpSupported: Bool {
+        model.pullInChoice?.jumpSupported == true
+    }
+
+    private var jumpPinned: Bool {
+        model.pullInChoice?.jumpKey != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let strip = verdictStripText {
@@ -1226,24 +1303,32 @@ struct CapturePullInChoiceFooter: View {
                     hintRow(
                         items: Self.hintItems(
                             openAfterCapture: openAfterCapture,
-                            closeSupported: closeSupported))
+                            closeSupported: closeSupported,
+                            jumpSupported: jumpSupported,
+                            jumpPinned: jumpPinned))
                     hintRow(
                         items: Array(
                             Self.hintItems(
                                 openAfterCapture: openAfterCapture,
-                                closeSupported: closeSupported
+                                closeSupported: closeSupported,
+                                jumpSupported: jumpSupported,
+                                jumpPinned: jumpPinned
                             ).filter { $0.keys != "⌃↩" }))
                     hintRow(
                         items: Array(
                             Self.hintItems(
                                 openAfterCapture: true,
-                                closeSupported: closeSupported
+                                closeSupported: closeSupported,
+                                jumpSupported: jumpSupported,
+                                jumpPinned: jumpPinned
                             ).dropLast()))
                     hintRow(
                         items: Array(
                             Self.hintItems(
                                 openAfterCapture: true,
-                                closeSupported: closeSupported
+                                closeSupported: closeSupported,
+                                jumpSupported: jumpSupported,
+                                jumpPinned: jumpPinned
                             ).prefix(2)))
                 }
                 Spacer(minLength: 12)

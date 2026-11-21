@@ -5486,6 +5486,12 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// `@file#section` header: its kind, route, section, header line, position,
     /// and the list's bullet count. Older Bob and non-list results omit it.
     public let list: CaptureListContext?
+    /// Additive navigation-only successor landing requested with
+    /// `--jump-offer`. Nil means an older Bob or an unpinned capture; a
+    /// present value with a null landing is a lost target and the capture
+    /// still succeeds. Malformed values decode as nil so they can never
+    /// fail the capture decode.
+    public let jump: CaptureJump?
 
     public init(
         ok: Bool,
@@ -5586,7 +5592,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         openNotes: [CaptureOpenNote]? = nil,
         taskTheme: CaptureTaskThemeChange? = nil,
         typeRelocation: CaptureTypeRelocation? = nil,
-        list: CaptureListContext? = nil
+        list: CaptureListContext? = nil,
+        jump: CaptureJump? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -5687,6 +5694,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.taskTheme = taskTheme
         self.typeRelocation = typeRelocation
         self.list = list
+        self.jump = jump
     }
 
     public init(from decoder: Decoder) throws {
@@ -5940,6 +5948,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decodeIfPresent(CaptureTypeRelocation.self, forKey: .typeRelocation))
             ?? nil
         list = (try? container.decodeIfPresent(CaptureListContext.self, forKey: .list)) ?? nil
+        jump = (try? container.decodeIfPresent(CaptureJump.self, forKey: .jump)) ?? nil
         if container.contains(.openNotes) {
             if try container.decodeNil(forKey: .openNotes) {
                 openNotes = []
@@ -6059,6 +6068,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case taskTheme = "task_theme"
         case typeRelocation = "type_relocation"
         case list
+        case jump
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the
@@ -7733,6 +7743,25 @@ public struct CapturePullInClose: Codable, Equatable, Sendable {
     }
 }
 
+/// Successor jump-target capability. Older Bob omits it, which is the
+/// Mac's feature gate for `--jump-offer`.
+public struct CapturePullInJump: Codable, Equatable, Sendable {
+    public let supported: Bool
+
+    public init(supported: Bool = false) {
+        self.supported = supported
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = (try? container.decodeIfPresent(Bool.self, forKey: .supported)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case supported
+    }
+}
+
 public struct CapturePullIn: Codable, Equatable, Sendable {
     public let supported: Bool
     public let offerCount: Int
@@ -7742,6 +7771,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
     public let copy: CapturePullInCopy?
     /// Missing on older Bob; this nested capability gates offer-verdict argv.
     public let close: CapturePullInClose?
+    /// Missing on older Bob; this nested capability gates `--jump-offer`.
+    public let jump: CapturePullInJump?
 
     public init(
         supported: Bool = false,
@@ -7750,7 +7781,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         pickedCount: Int = 0,
         groups: [CapturePullInGroup] = [],
         copy: CapturePullInCopy? = nil,
-        close: CapturePullInClose? = nil
+        close: CapturePullInClose? = nil,
+        jump: CapturePullInJump? = nil
     ) {
         self.supported = supported
         self.offerCount = offerCount
@@ -7759,6 +7791,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         self.groups = groups
         self.copy = copy
         self.close = close
+        self.jump = jump
     }
 
     public init(from decoder: Decoder) throws {
@@ -7770,6 +7803,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         groups = (try? container.decodeIfPresent([CapturePullInGroup].self, forKey: .groups)) ?? []
         copy = try? container.decodeIfPresent(CapturePullInCopy.self, forKey: .copy)
         close = try? container.decodeIfPresent(CapturePullInClose.self, forKey: .close)
+        jump = try? container.decodeIfPresent(CapturePullInJump.self, forKey: .jump)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7780,6 +7814,51 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         case groups
         case copy
         case close
+        case jump
+    }
+}
+
+/// One post-write successor landing requested with `--jump-offer`.
+/// `landing` is null when the target can't be found again after the
+/// writes; the capture still succeeds and the card falls back to
+/// today's open-notes behavior.
+public struct CaptureJump: Codable, Equatable, Sendable {
+    public let key: String
+    public let n: Int
+    public let label: String
+    public let outcome: String?
+    public let landing: CaptureOpenNote?
+
+    public init(
+        key: String = "",
+        n: Int = 0,
+        label: String = "",
+        outcome: String? = nil,
+        landing: CaptureOpenNote? = nil
+    ) {
+        self.key = key
+        self.n = n
+        self.label = label
+        self.outcome = outcome
+        self.landing = landing
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+        label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? ""
+        outcome = try? container.decodeIfPresent(String.self, forKey: .outcome)
+        landing = (try? container.decodeIfPresent(CaptureOpenNote.self, forKey: .landing))
+            .flatMap { $0 }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case n
+        case label
+        case outcome
+        case landing
     }
 }
 

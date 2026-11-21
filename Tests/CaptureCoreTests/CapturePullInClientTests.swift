@@ -158,6 +158,41 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertFalse(invocations[2].contains("--refuse-override"))
     }
 
+    func testJumpOfferRequiresAdvertisedJumpCapabilityAndPinsArgvOrder() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+        do {
+            _ = try await client.capture(
+                "draft",
+                pullInSelection: .none,
+                jumpOffer: "opaque:key",
+                pullInCapabilityAdvertised: true
+            )
+            XCTFail("Expected jump capability guard")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--jump-offer")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: record.path))
+
+        _ = try await client.capture(
+            "draft",
+            readClipboard: false,
+            pullInSelection: CapturePullInSelection.none,
+            offerVerdicts: CapturePullInOfferVerdicts(completeKeys: ["opaque:done"]),
+            jumpOffer: "opaque:key",
+            pullInCapabilityAdvertised: true,
+            offerCloseCapabilityAdvertised: true,
+            jumpCapabilityAdvertised: true
+        )
+
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --no-clip --pull-in none --complete-offer opaque:done --jump-offer opaque:key -- draft"
+            ),
+            calls)
+    }
+
     func testExplicitSelectionRequiresMatchingCapabilityAdvertisement() async throws {
         let record = temporaryRecordURL()
         let client = try makeClient(record: record)

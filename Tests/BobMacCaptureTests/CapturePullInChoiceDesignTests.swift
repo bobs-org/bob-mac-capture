@@ -417,6 +417,26 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
         }
     }
 
+    func testRenderPinnedRowCard() throws {
+        try writeCardFixtures(name: "capture-pull-in-choice-pinned") { model in
+            model.installPullInChoiceForPreviews(
+                offers: [
+                    cardOffer(n: 1, text: "Re-launch all failed agents"),
+                    cardOffer(n: 2, text: "Book flights"),
+                    cardOffer(n: 3, text: "Ship the outcome"),
+                ],
+                pullIn: CapturePullIn(
+                    supported: true,
+                    offerCount: 3,
+                    close: CapturePullInClose(supported: true),
+                    jump: CapturePullInJump(supported: true)
+                ),
+                draft: "!task with dependents"
+            )
+            model.toggleJumpForRow("opaque#2^suffix")
+        }
+    }
+
     func testRenderRefusalStripWithoutStagedVerdicts() throws {
         try writeCardFixtures(name: "capture-pull-in-choice-refusal-empty") { model in
             model.installPullInChoiceForPreviews(

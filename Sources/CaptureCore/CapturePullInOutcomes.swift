@@ -68,6 +68,10 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     public private(set) var highlightedKey: String?
     public private(set) var marks: Set<String>
     public private(set) var verdicts: [String: Verdict]
+    /// Navigation-only jump pin: at most one offer key, never a write.
+    /// It rides alongside verdicts and marks, fires on every commit key,
+    /// and dies when the card closes without committing.
+    public private(set) var jumpKey: String?
     public private(set) var isEscArmed = false
 
     /// Card compatibility: direct highlight assignment, including nil when
@@ -98,7 +102,8 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         closeSupported: Bool = false,
         highlightedKey: String? = nil,
         marks: Set<String>? = nil,
-        verdicts: [String: Verdict] = [:]
+        verdicts: [String: Verdict] = [:],
+        jumpKey: String? = nil
     ) {
         var seen = Set<String>()
         let usableRows = offers.compactMap { row -> TaskCompleteUnblocked? in
@@ -132,6 +137,7 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
                 verdict, in: usableRows.first { $0.offer?.key == key }?.offer?.close,
                 closeSupported: closeSupported)
         }
+        self.jumpKey = jumpKey.flatMap { validKeys.contains($0) ? $0 : nil }
         for key in self.verdicts.keys {
             self.marks.remove(key)
         }
@@ -171,11 +177,12 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public var canCommit: Bool {
-        effectivePickCount > 0 || closeCount > 0
+        effectivePickCount > 0 || closeCount > 0 || jumpKey != nil
     }
 
     /// Explicit marks win. The highlighted-row fallback applies only before
-    /// the user stages any Done or Cancel verdict.
+    /// the user stages any Done or Cancel verdict, and never while a jump
+    /// pin is staged: a pin-only commit jumps without pulling anything in.
     public func effectivePickKeys(fallbackKey: String? = nil) -> [String] {
         let validKeys = Set(selectableKeys)
         let marked = selectableKeys.filter { marks.contains($0) && verdicts[$0] == nil }
@@ -183,6 +190,7 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
             return marked
         }
         guard verdicts.isEmpty,
+            jumpKey == nil,
             let fallbackKey,
             validKeys.contains(fallbackKey),
             verdicts[fallbackKey] == nil
@@ -313,6 +321,43 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         return replaceVerdict(verdict, for: key, visibleOrder: visibleOrder)
     }
 
+    /// Toggle the jump pin: radio toggle and move, keyed by offer key,
+    /// never by list index. Returns false for non-offer rows, which the
+    /// card surfaces as a refusal instead of a pin. Verdicts, marks, and
+    /// the highlight are untouched; Ctrl+J never moves the highlight.
+    @discardableResult
+    public mutating func toggleJump(for key: String) -> Bool {
+        guard selectableKeys.contains(key) else { return false }
+        if jumpKey == key {
+            jumpKey = nil
+        } else {
+            jumpKey = key
+        }
+        if !verdicts.isEmpty {
+            isEscArmed = false
+        }
+        return true
+    }
+
+    /// The pinned row's plain text, for status and VoiceOver copy.
+    public var jumpLabel: String? {
+        guard let jumpKey else { return nil }
+        let text = rows.first(where: { $0.offer?.key == jumpKey })?.text ?? ""
+        return text.isEmpty ? nil : text
+    }
+
+    /// Footer safety net: the staged pin is never a surprise, even when the
+    /// filter hides its row. S is truncated to 40 characters plus `…`.
+    public var jumpSummarySuffix: String? {
+        guard let label = jumpLabel else { return nil }
+        return " · ↗ “\(Self.truncatedJumpLabel(label))”"
+    }
+
+    public static func truncatedJumpLabel(_ text: String) -> String {
+        guard text.count > 40 else { return text }
+        return String(text.prefix(40)) + "…"
+    }
+
     /// Clear a row back to Leave without moving the highlight.
     @discardableResult
     public mutating func clearVerdict(for key: String) -> String? {
@@ -335,7 +380,8 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     @discardableResult
     public mutating func reseed(validKeys: Set<String>) -> Int {
         let survivingKeys = Set(selectableKeys).intersection(validKeys)
-        let staged = Set(marks).union(verdicts.keys)
+        var staged = Set(marks).union(verdicts.keys)
+        if let jumpKey { staged.insert(jumpKey) }
         let lost = staged.subtracting(survivingKeys).count
         rows = rows.filter { row in
             guard let key = row.offer?.key else { return false }
@@ -343,6 +389,9 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         }
         marks.formIntersection(survivingKeys)
         verdicts = verdicts.filter { survivingKeys.contains($0.key) }
+        if let jumpKey, !survivingKeys.contains(jumpKey) {
+            self.jumpKey = nil
+        }
         if let highlightedKey, !survivingKeys.contains(highlightedKey) {
             self.highlightedKey = selectableKeys.first
         }
@@ -382,7 +431,8 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
                 : left < right
         }
         let validKeys = Set(usable.compactMap { $0.offer?.key })
-        let staged = Set(marks).union(verdicts.keys)
+        var staged = Set(marks).union(verdicts.keys)
+        if let jumpKey { staged.insert(jumpKey) }
         let lost = staged.subtracting(validKeys).count
         rows = usable
         marks.formIntersection(validKeys)
@@ -390,6 +440,11 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         // descriptor now refuses them; Bob remains the final write
         // validator and the user changes the judgment explicitly.
         verdicts = verdicts.filter { validKeys.contains($0.key) }
+        // A refresh that loses the pinned key drops the pin; the caller
+        // reports it with the visible status line.
+        if let jumpKey, !validKeys.contains(jumpKey) {
+            self.jumpKey = nil
+        }
         if let highlightedKey, !validKeys.contains(highlightedKey) {
             self.highlightedKey = usable.compactMap { $0.offer?.key }.first
         }
@@ -398,6 +453,7 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     /// The shared footer copy, with zero-count segments omitted.
+    /// A staged pin always appends the jump safety-net suffix.
     public var footerSummaryText: String {
         var parts: [String] = []
         let picks = effectivePickCount
@@ -410,10 +466,21 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         if cancelCount > 0 {
             parts.append("⊘ \(cancelCount) cancel")
         }
-        return parts.isEmpty ? "Choose offers" : parts.joined(separator: " · ")
+        let base = parts.isEmpty ? "Choose offers" : parts.joined(separator: " · ")
+        return base + (jumpSummarySuffix ?? "")
     }
 
     public var primaryLabel: String {
+        if jumpKey != nil {
+            if closeCount > 0 {
+                return "Apply & Jump"
+            }
+            let picks = effectivePickCount
+            if picks > 0 {
+                return "Pull In \(picks) & Jump"
+            }
+            return "Leave Open & Jump"
+        }
         let picks = effectivePickCount
         if picks > 0, closeCount > 0 {
             return "Pull In \(picks) · Close \(closeCount)"
@@ -425,7 +492,8 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public var skipLabel: String {
-        closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
+        let base = closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
+        return jumpKey != nil ? base + " & Jump" : base
     }
 
     public var escArmedText: String? {

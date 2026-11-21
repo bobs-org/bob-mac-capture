@@ -523,7 +523,9 @@ A successful aggregate capture hides the panel automatically only after Bob retu
   `bob-open-notes` URL, which opens tabs and lands on each captured line. This needs
   bob-navigation-hotkeys ≥ 2.44.1; an older plugin ignores the unknown
   `bob-open-notes` action, so nothing opens. An older bob that omits `open_notes`
-  still opens the notes as tabs, but without landing.
+  still opens the notes as tabs, but without landing. A staged jump pin wins over
+  this landing: the app opens the one-entry jump URL instead, so Control-Return
+  behaves like Return while a pin is staged (see [Successor offers](capture-previews.md#successor-offers)).
   Reopening the panel after a success starts from a clean slate — the prior
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
   or a failure) reopens exactly as it was left. Escape retains a nonempty draft.

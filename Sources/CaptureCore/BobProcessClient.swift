@@ -1215,10 +1215,12 @@ public final class BobProcessClient: @unchecked Sendable {
         moveInCapabilityAdvertised: Bool = false,
         pullInSelection: CapturePullInSelection? = nil,
         offerVerdicts: CapturePullInOfferVerdicts? = nil,
+        jumpOffer: String? = nil,
         requirePullInChoice: Bool = false,
         refuseOverride: Bool = false,
         pullInCapabilityAdvertised: Bool = false,
         offerCloseCapabilityAdvertised: Bool = false,
+        jumpCapabilityAdvertised: Bool = false,
         inboxRouteAnswers: [CaptureInboxRouteSubmission]? = nil,
         requireInboxRouteChoice: Bool = false,
         inboxRouteCapabilityAdvertised: Bool = false,
@@ -1234,6 +1236,9 @@ public final class BobProcessClient: @unchecked Sendable {
         if let offerVerdicts, !offerVerdicts.isEmpty, !offerCloseCapabilityAdvertised {
             let option = offerVerdicts.completeKeys.isEmpty ? "--cancel-offer" : "--complete-offer"
             throw BobClientError.unsupportedOption(option)
+        }
+        if let jumpOffer, !jumpOffer.isEmpty, !jumpCapabilityAdvertised {
+            throw BobClientError.unsupportedOption("--jump-offer")
         }
         let rememberedInboxCapability: Bool = stateQueue.sync {
             inboxRouteCapabilityIdentities.contains(identityToken)
@@ -1287,6 +1292,9 @@ public final class BobProcessClient: @unchecked Sendable {
                 let value = offer.reason.isEmpty ? offer.key : "\(offer.key)=\(offer.reason)"
                 arguments += ["--cancel-offer", value]
             }
+        }
+        if let jumpOffer, !jumpOffer.isEmpty {
+            arguments += ["--jump-offer", jumpOffer]
         }
         if let inboxRouteAnswers {
             guard inboxRouteAnswers.allSatisfy({ !$0.key.isEmpty }) else {

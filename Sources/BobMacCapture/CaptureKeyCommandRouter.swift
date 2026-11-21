@@ -84,6 +84,7 @@ enum CaptureKeyCommand: Equatable {
     case nextPullInOffer
     case previousPullInOffer
     case togglePullInOffer
+    case togglePullInJump
     case togglePullInOfferAndAdvance(keepFilterFocus: Bool)
     case previousPullInOfferFromTab(keepFilterFocus: Bool)
     case markAllPullInOffers
@@ -848,6 +849,9 @@ struct CaptureKeyCommandRouter {
                 guard !isRepeat else { return .consumeKey }
                 let keys = Self.strippedReturnModifiers(modifiers)
                 return keys.isEmpty ? .confirmPullInReason : nil
+            case KeyCode.j:
+                // Ctrl+J never pins while a Cancel reason is being edited.
+                return modifiers == .control ? .consumeKey : nil
             case KeyCode.escape:
                 guard !isRepeat else { return .consumeKey }
                 return .restorePullInReason
@@ -921,6 +925,13 @@ struct CaptureKeyCommandRouter {
             }
             if modifiers == [.control, .shift] {
                 return isRepeat ? .consumeKey : .beginPullInCancel
+            }
+            return nil
+        case KeyCode.j:
+            // Ctrl+J pins the jump successor. Shift, Command, and Option
+            // stay native; a repeat only consumes.
+            if modifiers == .control {
+                return isRepeat ? .consumeKey : .togglePullInJump
             }
             return nil
         case KeyCode.t:

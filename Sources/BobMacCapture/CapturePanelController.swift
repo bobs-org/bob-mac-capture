@@ -2443,6 +2443,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .togglePullInOffer:
             model.toggleHighlightedPullInOffer()
             return true
+        case .togglePullInJump:
+            model.toggleJumpForHighlight()
+            return true
         case .togglePullInOfferAndAdvance(let keepFilterFocus):
             model.toggleHighlightedPullInOfferAndAdvance(keepFilterFocus: keepFilterFocus)
             return true

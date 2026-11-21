@@ -630,6 +630,29 @@ struct CapturePullInChoiceState: Equatable {
         pullIn.close?.supported == true
     }
 
+    /// Whether Bob advertised the jump capability that gates `--jump-offer`.
+    var jumpSupported: Bool {
+        pullIn.jump?.supported == true
+    }
+
+    var jumpKey: String? {
+        outcomes.jumpKey
+    }
+
+    var jumpLabel: String? {
+        outcomes.jumpLabel
+    }
+
+    /// Toggle the jump pin on one offer row. Non-offer rows refuse.
+    mutating func toggleJump(_ key: String) {
+        guard selectableKeys.contains(key) else {
+            return
+        }
+        cancelActiveReasonEditing()
+        verdictRefusalMessage = nil
+        outcomes.toggleJump(for: key)
+    }
+
     var hasVerdicts: Bool {
         !outcomes.verdicts.isEmpty
     }
@@ -650,9 +673,10 @@ struct CapturePullInChoiceState: Equatable {
         if !validMarked.isEmpty {
             return selectableKeys.filter(validMarked.contains)
         }
-        // Once any verdict exists, Return has no highlight fallback.
-        // A hidden highlight never supplies a fallback pick.
+        // Once any verdict exists — or a jump pin is staged — Return has
+        // no highlight fallback. A hidden highlight never supplies one.
         guard outcomes.verdicts.isEmpty,
+            outcomes.jumpKey == nil,
             let highlighted = outcomes.highlightedKey,
             visibleSelectableKeys.contains(highlighted)
         else {
@@ -678,40 +702,23 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     var canCommit: Bool {
-        !effectiveSelectionKeys.isEmpty || closeCount > 0
+        !effectiveSelectionKeys.isEmpty || closeCount > 0 || jumpKey != nil
     }
 
     var footerSummaryText: String {
-        var parts: [String] = []
-        let picks = effectivePickCount
-        if picks > 0 {
-            parts.append("pull in \(picks)")
+        if effectivePickCount > 0 || closeCount > 0 {
+            return outcomes.footerSummaryText
         }
-        if doneCount > 0 {
-            parts.append("✓ \(doneCount) done")
-        }
-        if cancelCount > 0 {
-            parts.append("⊘ \(cancelCount) cancel")
-        }
-        if parts.isEmpty {
-            return isOnlyNotePull ? "Choose tasks to pull in" : "Choose offers"
-        }
-        return parts.joined(separator: " · ")
+        let base = isOnlyNotePull ? "Choose tasks to pull in" : "Choose offers"
+        return base + (outcomes.jumpSummarySuffix ?? "")
     }
 
     var primaryCommitLabel: String {
-        let picks = effectivePickCount
-        if picks > 0, closeCount > 0 {
-            return "Pull In \(picks) · Close \(closeCount)"
-        }
-        if closeCount > 0 {
-            return "Close \(closeCount)"
-        }
-        return picks == 0 ? "Pull In" : "Pull In \(picks)"
+        outcomes.primaryLabel
     }
 
     var skipCommitLabel: String {
-        closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
+        outcomes.skipLabel
     }
 
     var visibleSelectableKeys: [String] {
