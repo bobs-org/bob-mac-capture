@@ -5785,6 +5785,11 @@ final class CapturePanelModel: ObservableObject {
         guard let key = choice.highlightedKey else {
             return
         }
+        // Ctrl+X on a requirement restores Met and never means task Done.
+        if choice.outcomes.requirementRow(for: key) != nil {
+            stageRequirementMetForHighlight()
+            return
+        }
         guard choice.closeSupported else {
             let refusal = "Closing offers needs a newer bob"
             choice.verdictRefusalMessage = refusal
@@ -5818,6 +5823,11 @@ final class CapturePanelModel: ObservableObject {
         guard let key = choice.highlightedKey else {
             return
         }
+        // Ctrl+Shift+X on a requirement opens the Drop reason editor.
+        if choice.outcomes.requirementRow(for: key) != nil {
+            beginRequirementDropForHighlight()
+            return
+        }
         guard choice.closeSupported else {
             let refusal = "Closing offers needs a newer bob"
             choice.verdictRefusalMessage = refusal
@@ -5849,8 +5859,189 @@ final class CapturePanelModel: ObservableObject {
         fetchPullInLogHistory()
     }
 
+    // MARK: - Requirement verdicts (card_ui)
+
+    /// Ctrl+X on a requirement restores Met. Repeating a verdict returns to
+    /// Met; another verdict replaces it. Overlaps refuse with Bob's frozen
+    /// copy and keep every staged choice.
+    func stageRequirementMetForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard let key = choice.highlightedKey,
+            choice.outcomes.requirementRow(for: key) != nil
+        else { return }
+        choice.stageRequirementMet(key)
+        pullInChoice = choice
+        announceStatus(choice.requirementConsequenceText(for: nil, rowKey: key) ?? "Met staged")
+        requestFocus(.pullInOfferList)
+    }
+
+    func stageRequirementMetForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard choice.outcomes.requirementRow(for: key) != nil else { return }
+        let highlight = choice.highlightedKey
+        choice.stageRequirementMet(key)
+        if highlight != key, choice.highlightedKey == key {
+            choice.highlightedKey = highlight
+        }
+        // Pointer never advances: keep the original highlight when staging
+        // moved it.
+        if highlight != nil, highlight != key {
+            choice.highlightedKey = highlight
+        } else if highlight == key {
+            choice.highlightedKey = key
+        }
+        pullInChoice = choice
+        announceStatus(choice.requirementConsequenceText(for: nil, rowKey: key) ?? "Met staged")
+        requestFocus(.pullInOfferList)
+    }
+
+    /// Ctrl+Shift+X on a requirement opens the Drop reason editor with
+    /// `Why drop it? (optional)`. Same chord on staged Drop restores Met.
+    /// Enter stages, Escape restores the prior verdict without arming discard.
+    func beginRequirementDropForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard let key = choice.highlightedKey,
+            choice.outcomes.requirementRow(for: key) != nil
+        else { return }
+        if choice.requirementChoice(for: key)?.isDrop == true {
+            choice.beginRequirementDrop(key)
+            pullInChoice = choice
+            announceStatus("Back to Met")
+            requestFocus(.pullInOfferList)
+            return
+        }
+        choice.beginRequirementDrop(key)
+        pullInChoice = choice
+        requestFocus(.pullInReasonField)
+        beginPullInLinkReason()
+        fetchPullInLogHistory()
+    }
+
+    func beginRequirementDropForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard choice.outcomes.requirementRow(for: key) != nil else { return }
+        if choice.requirementChoice(for: key)?.isDrop == true {
+            let highlight = choice.highlightedKey
+            choice.beginRequirementDrop(key)
+            if highlight != key {
+                choice.highlightedKey = highlight
+            }
+            pullInChoice = choice
+            announceStatus("Back to Met")
+            requestFocus(.pullInOfferList)
+            return
+        }
+        choice.beginRequirementDrop(key)
+        // Pointer opens the editor on the acted-on row without moving focus
+        // away from the original highlight until editing begins.
+        pullInChoice = choice
+        requestFocus(.pullInReasonField)
+        beginPullInLinkReason()
+        fetchPullInLogHistory()
+    }
+
+    /// Ctrl+Shift+T carries a requirement branch. It acts only on
+    /// requirement rows; ordinary rows keep their current keys.
+    func stageRequirementCarryForHighlight() {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard let key = choice.highlightedKey,
+            choice.outcomes.requirementRow(for: key) != nil
+        else { return }
+        choice.stageRequirementCarry(key)
+        pullInChoice = choice
+        if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+            announceStatus(refusal)
+            NSSound.beep()
+        } else {
+            announceStatus(
+                choice.requirementConsequenceText(
+                    for: choice.requirementChoice(for: key), rowKey: key) ?? "Own task staged")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    func stageRequirementCarryForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard choice.outcomes.requirementRow(for: key) != nil else { return }
+        let highlight = choice.highlightedKey
+        choice.stageRequirementCarry(key)
+        // Pointer never advances.
+        if let highlight {
+            choice.highlightedKey = highlight
+        } else {
+            choice.highlightedKey = key
+        }
+        _ = highlight
+        pullInChoice = choice
+        if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+            announceStatus(refusal)
+            NSSound.beep()
+        } else {
+            announceStatus(
+                choice.requirementConsequenceText(
+                    for: choice.requirementChoice(for: key), rowKey: key) ?? "Own task staged")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    /// Space stages Carry-plus-pull on a requirement; Tab does the same then
+    /// advances once in combined Bob order. Pointer shares Space validation
+    /// and never advances.
+    func stageRequirementCarryPulledForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard choice.outcomes.requirementRow(for: key) != nil else { return }
+        let highlight = choice.highlightedKey
+        choice.stageRequirementCarryPulled(key)
+        if let highlight {
+            choice.highlightedKey = highlight
+        } else {
+            choice.highlightedKey = key
+        }
+        pullInChoice = choice
+        if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+            announceStatus(refusal)
+            NSSound.beep()
+        } else {
+            announceStatus(
+                choice.requirementConsequenceText(
+                    for: choice.requirementChoice(for: key), rowKey: key) ?? "Pull in staged")
+        }
+        requestFocus(.pullInOfferList)
+    }
+
+    func clearRequirementForRow(_ key: String) {
+        guard var choice = pullInChoice, !isSubmitting else { return }
+        guard choice.outcomes.requirementRow(for: key) != nil else { return }
+        let highlight = choice.highlightedKey
+        _ = choice.outcomes.clearRequirementChoice(for: key)
+        choice.updateRequirementConsequence(for: key)
+        if highlight != key {
+            choice.highlightedKey = highlight
+        }
+        pullInChoice = choice
+        announceStatus("Back to Met")
+        requestFocus(.pullInOfferList)
+    }
+
     func confirmPullInReason() {
         guard var choice = pullInChoice, choice.activeReasonKey != nil else {
+            return
+        }
+        if let key = choice.activeReasonKey,
+            choice.outcomes.requirementRow(for: key) != nil
+        {
+            choice.confirmRequirementDrop()
+            pullInChoice = choice
+            pullInRecall = LogRecallState()
+            pullInRecallFetchTask?.cancel()
+            resetPullInLink()
+            if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+                announceStatus(refusal)
+                NSSound.beep()
+            } else {
+                announceStatus(choice.consequenceMessage ?? "Drop staged")
+            }
+            requestFocus(.pullInOfferList)
             return
         }
         choice.confirmOfferCancel()

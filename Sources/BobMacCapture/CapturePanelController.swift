@@ -2545,6 +2545,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             resignPullInFilterIfFocused()
             model.beginPullInCancelForHighlight()
             return true
+        case .stageRequirementCarry:
+            resignPullInFilterIfFocused()
+            model.stageRequirementCarryForHighlight()
+            return true
         case .confirmPullInReason:
             model.confirmPullInReason()
             return true

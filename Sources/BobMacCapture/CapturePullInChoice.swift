@@ -505,6 +505,35 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         return CapturePullInGlyph.systemImageName(for: group)
     }
 
+    /// Bob-authored scope line for a requirement section (for example
+    /// "4 reqs"). History is the vault-stored context line; footer carries
+    /// the canonical key hints. All three are optional additive copy.
+    var requirementScope: String? {
+        pullInNonempty(copy?.scope)
+    }
+
+    var requirementHistory: String? {
+        pullInNonempty(copy?.history)
+    }
+
+    var requirementFooter: String? {
+        pullInNonempty(copy?.footer)
+    }
+
+    /// Selectable requirement count for the section header. Ordinary
+    /// sections keep their row count; requirement sections count pending
+    /// requirement rows, not ordinary offers.
+    var selectableRequirementCount: Int {
+        requirementRows.filter(\.isSelectable).count
+    }
+
+    /// Depth glyph for a requirement row: depth 1 is ⌗⌗, depth 2 is ⌗⌗⌗,
+    /// depth 3+ is ⌗⌗⌗⌗. Exact depth belongs in accessible text, never in
+    /// the glyph alone.
+    static func depthGlyph(for depth: Int) -> String {
+        String(repeating: "⌗", count: min(max(depth, 1), 3) + 1)
+    }
+
     private var relationWhyFallback: String? {
         let rowTarget = rows.first?.offerRow?.relation?.after.first?.text
         guard let text = pullInNonempty(after?.text) ?? pullInNonempty(rowTarget) else {
@@ -1345,21 +1374,51 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     mutating func toggleHighlighted() {
-        guard let highlightedKey, visibleSelectableKeys.contains(highlightedKey) else {
+        guard let current = highlightedKey else {
+            return
+        }
+        // Space on a requirement stages Carry-plus-pull and stays on the
+        // row; repeating it returns to Met. Ordinary offers keep mark.
+        if outcomes.requirementRow(for: current) != nil {
+            stageRequirementCarryPulled(current)
+            // Staging advances via outcomes; Space stays.
+            highlightedKey = current
+            return
+        }
+        guard visibleSelectableKeys.contains(current) else {
             return
         }
         cancelActiveReasonEditing()
-        outcomes.toggleMark(for: highlightedKey)
+        outcomes.toggleMark(for: current)
         updateConsequenceForHighlight()
     }
 
     mutating func toggleHighlightedAndAdvance() {
+        if let current = highlightedKey,
+            outcomes.requirementRow(for: current) != nil
+        {
+            // Tab on a requirement stages Carry-plus-pull then advances
+            // once in combined Bob order.
+            stageRequirementCarryPulled(current)
+            highlightedKey = current
+            moveHighlight(by: 1)
+            updateConsequenceForHighlight()
+            return
+        }
         toggleHighlighted()
         moveHighlight(by: 1)
         updateConsequenceForHighlight()
     }
 
     mutating func toggleOffer(_ key: String) {
+        // Pointer on a requirement stages Carry-plus-pull, sharing keyboard
+        // validation; it never advances and never becomes a mark.
+        if outcomes.requirementRow(for: key) != nil {
+            highlightedKey = key
+            stageRequirementCarryPulled(key)
+            highlightedKey = key
+            return
+        }
         guard selectableKeys.contains(key) else {
             return
         }

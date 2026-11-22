@@ -556,7 +556,88 @@ struct CapturePullInChoiceCard: View {
                         CapturePullInMutedRow(row: row)
                     }
                 }
+                ForEach(choice.visibleRequirementRows(in: section), id: \.offer.key) { reqRow in
+                    let key = reqRow.offer.key
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            model.togglePullInOffer(key)
+                        } label: {
+                            CapturePullInRequirementRow(
+                                choice: choice,
+                                row: reqRow,
+                                isHighlighted: choice.highlightedKey == key,
+                                isJumpPinned: choice.jumpKey == key,
+                                jumpNamespace: jumpPinNamespace
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .id(key)
+                        .animation(
+                            reduceMotion
+                                ? .easeInOut(duration: 0.2) : .snappy(duration: 0.25),
+                            value: choice.jumpKey)
+                        .contextMenu {
+                            Button("Met") {
+                                model.stageRequirementMetForRow(key)
+                            }
+                            Button("Drop…") {
+                                model.beginRequirementDropForRow(key)
+                            }
+                            Button("Own task") {
+                                model.stageRequirementCarryForRow(key)
+                            }
+                            Button("Pull in") {
+                                model.stageRequirementCarryPulledForRow(key)
+                            }
+                            if choice.requirementChoice(for: key) != nil {
+                                Button("Back to Met") {
+                                    model.clearRequirementForRow(key)
+                                }
+                            }
+                            if choice.jumpSupported {
+                                Button(
+                                    choice.jumpKey == key
+                                        ? "Clear Jump" : "Jump Here After Capture"
+                                ) {
+                                    model.toggleJumpForRow(key)
+                                }
+                            }
+                        }
+                        .accessibilityAction(named: "Met") {
+                            model.stageRequirementMetForRow(key)
+                        }
+                        .accessibilityAction(named: "Drop…") {
+                            model.beginRequirementDropForRow(key)
+                        }
+                        .accessibilityAction(named: "Own task") {
+                            model.stageRequirementCarryForRow(key)
+                        }
+                        .accessibilityAction(named: "Pull in") {
+                            model.stageRequirementCarryPulledForRow(key)
+                        }
+                        .accessibilityAction(named: "Back to Met") {
+                            model.clearRequirementForRow(key)
+                        }
+                        .modifier(
+                            OptionalNamedAccessibilityAction(
+                                enabled: choice.jumpSupported,
+                                name: choice.jumpKey == key
+                                    ? "Clear Jump" : "Jump Here After Capture",
+                                action: { model.toggleJumpForRow(key) }
+                            )
+                        )
+                        if choice.activeReasonKey == key {
+                            CapturePullInReasonField(
+                                model: model,
+                                choice: choice,
+                                rowKey: key
+                            )
+                            .id("reason:" + key)
+                        }
+                    }
+                }
                 if previewMode && choice.visibleRows(in: section).isEmpty
+                    && choice.visibleRequirementRows(in: section).isEmpty
                     && choice.filterText.isEmpty
                 {
                     EmptyView()
@@ -621,8 +702,28 @@ struct CapturePullInChoiceCard: View {
                         CapturePullInMutedRow(row: row)
                     }
                 }
+                ForEach(choice.visibleRequirementRows(in: section), id: \.offer.key) { reqRow in
+                    let key = reqRow.offer.key
+                    VStack(alignment: .leading, spacing: 0) {
+                        CapturePullInRequirementRow(
+                            choice: choice,
+                            row: reqRow,
+                            isHighlighted: choice.highlightedKey == key,
+                            isJumpPinned: choice.jumpKey == key
+                        )
+                        if choice.activeReasonKey == key {
+                            CapturePullInReasonField(
+                                model: model,
+                                choice: choice,
+                                rowKey: key,
+                                previewMode: true
+                            )
+                        }
+                    }
+                }
             }
-            if choice.visibleSelectableKeys.isEmpty && !choice.filterText.isEmpty {
+            if choice.visibleSelectableKeys.isEmpty && choice.visibleRequirementKeys.isEmpty
+                && !choice.filterText.isEmpty {
                 pullInEmptyState
             }
         }
@@ -668,17 +769,31 @@ struct CapturePullInSectionHeader: View {
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCollapsed)
                         .accessibilityHidden(true)
-                    Image(systemName: section.glyph)
-                        .foregroundStyle(glyphColor)
-                        .accessibilityHidden(true)
+                    if section.isRequirement {
+                        Text("⌗")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(glyphColor)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: section.glyph)
+                            .foregroundStyle(glyphColor)
+                            .accessibilityHidden(true)
+                    }
                     Text(section.title)
                         .font(.callout.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    Text("\(section.rows.filter(\.isSelectable).count)")
+                    Text(headerCountText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                    if let scope = section.requirementScope, section.isRequirement {
+                        Text(scope)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                     Spacer(minLength: 8)
                     if marked > 0 {
                         Text("\(marked) marked")
@@ -705,31 +820,76 @@ struct CapturePullInSectionHeader: View {
                     }
                     .padding(.leading, 42)
                 }
+                if section.isRequirement, let history = section.requirementHistory {
+                    HStack(spacing: 6) {
+                        Text(history)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 4)
+                    }
+                    .padding(.leading, 42)
+                }
             }
         }
         .frame(
-            height: section.caption == nil
-                ? CapturePanelLayout.pullInSectionHeaderHeight
-                : CapturePanelLayout.pullInKeepMovingHeaderHeight
+            height: headerHeight
         )
         .padding(.horizontal, 8)
         .contentShape(Rectangle())
         .buttonStyle(.plain)
         .background(.regularMaterial)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel(
-            [
+        .accessibilityLabel(headerAccessibilityLabel)
+    }
+
+    private var headerCountText: String {
+        if section.isRequirement {
+            return "\(section.selectableRequirementCount)"
+        }
+        return "\(section.rows.filter(\.isSelectable).count)"
+    }
+
+    private var headerHeight: CGFloat {
+        if section.isRequirement {
+            if section.caption != nil || section.requirementHistory != nil {
+                return CapturePanelLayout.pullInKeepMovingHeaderHeight
+            }
+            return CapturePanelLayout.pullInSectionHeaderHeight
+        }
+        return section.caption == nil
+            ? CapturePanelLayout.pullInSectionHeaderHeight
+            : CapturePanelLayout.pullInKeepMovingHeaderHeight
+    }
+
+    private var headerAccessibilityLabel: String {
+        if section.isRequirement {
+            return [
                 section.title,
-                "\(section.rows.filter(\.isSelectable).count) offers",
+                "\(section.selectableRequirementCount) requirements",
+                section.requirementScope,
                 section.caption,
+                section.requirementHistory,
                 section.contrastTag,
             ]
             .compactMap { $0 }
             .joined(separator: ", ")
-        )
+        }
+        return [
+            section.title,
+            "\(section.rows.filter(\.isSelectable).count) offers",
+            section.caption,
+            section.contrastTag,
+        ]
+        .compactMap { $0 }
+        .joined(separator: ", ")
     }
 
     private var glyphColor: Color {
+        if section.isRequirement {
+            return .teal
+        }
         if section.isNewProject {
             return .brown
         }
@@ -1094,6 +1254,161 @@ struct CapturePullInOfferRow: View {
     }
 }
 
+/// One requirement row: depth glyph, bob-authored text, verdict and
+/// consequence, optional drop reason, fold count and jump pin. There is no
+/// native checkbox: Met is the absence of a staged choice, and Bob supplies
+/// the consequence copy. Depth glyphs reuse the marker rule (depth 1 is
+/// ⌗⌗, depth 2 ⌗⌗⌗, depth 3+ ⌗⌗⌗⌗); exact depth lives in accessibility.
+@available(macOS 26.0, *)
+struct CapturePullInRequirementRow: View {
+    let choice: CapturePullInChoiceState
+    let row: CaptureRequirementRow
+    var isHighlighted = false
+    var isJumpPinned = false
+    var jumpNamespace: Namespace.ID?
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    private var key: String {
+        row.offer.key
+    }
+
+    private var staged: CaptureRequirementStagedVerdict? {
+        choice.requirementChoice(for: key)
+    }
+
+    private var verdictText: String {
+        switch staged {
+        case .none:
+            return "Met"
+        case .drop:
+            return "Drop"
+        case .carry:
+            return "Own task"
+        case .carryPulled:
+            return "Pull in"
+        }
+    }
+
+    private var verdictColor: Color {
+        switch staged {
+        case .none:
+            return .teal
+        case .drop:
+            return Color(nsColor: .systemRed)
+        case .carry, .carryPulled:
+            return .green
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(CapturePullInChoiceSection.depthGlyph(for: row.req.depth))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.teal)
+                .frame(width: 34, alignment: .trailing)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(row.req.text)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+                        .padding(.leading, CGFloat(max(0, min(row.req.depth, 4) - 1)) * 12)
+                    Spacer(minLength: 6)
+                    Text(verdictText)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                        .foregroundStyle(verdictColor)
+                }
+                Text(metaLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let consequence = choice.requirementConsequenceText(
+                    for: staged, rowKey: key)
+                {
+                    Text(consequence)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                if case .drop(let reason) = staged, !reason.isEmpty {
+                    Text("“\(reason)”")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                if let folded = choice.outcomes.nestedGoWithItText(for: key) {
+                    Text(folded)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            if isJumpPinned {
+                CapturePullInJumpCapsule(
+                    namespace: reduceMotion ? nil : jumpNamespace)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: CapturePanelLayout.pullInRowHeight)
+        .padding(.horizontal, 8)
+        .background(rowBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isHighlighted ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var metaLine: String {
+        var parts: [String] = ["Offer \(row.offer.n)"]
+        if !row.req.ownerKey.isEmpty {
+            parts.append(row.req.ownerKey)
+        }
+        parts.append("level \(row.req.depth)")
+        if row.req.pendingDescendants > 0, staged != nil {
+            parts.append("\(row.req.pendingDescendants) nested")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var rowBackground: Color {
+        if isHighlighted {
+            return Color.accentColor.opacity(contrast == .increased ? 0.30 : 0.16)
+        }
+        if isHovered {
+            return Color.primary.opacity(contrast == .increased ? 0.12 : 0.06)
+        }
+        return .clear
+    }
+
+    private var accessibilityLabel: String {
+        var label = choice.requirementAccessibility(for: key)
+            ?? "requirement, level \(row.req.depth)"
+        label += ", \(row.req.text)"
+        if isJumpPinned {
+            label += ", jumps here after capture"
+        }
+        if let refusal = choice.verdictRefusalMessage, !refusal.isEmpty {
+            label += ", \(refusal)"
+        }
+        return label
+    }
+}
+
 /// Inline Cancel reason field. It lives outside the row's toggle Button
 /// hit target so text interaction never toggles Pull In.
 @available(macOS 26.0, *)
@@ -1104,10 +1419,22 @@ struct CapturePullInReasonField: View {
     var previewMode = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var isRequirementReason: Bool {
+        choice.outcomes.requirementRow(for: rowKey) != nil
+    }
+
+    private var reasonPrompt: String {
+        isRequirementReason ? "Why drop it? (optional)" : "Why cancel? (optional)"
+    }
+
+    private var reasonGlyph: String {
+        isRequirementReason ? "⊘ Why drop it?" : "⊘ Why cancel?"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text("⊘ Why cancel?")
+                Text(reasonGlyph)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 reasonTextField
@@ -1138,7 +1465,7 @@ struct CapturePullInReasonField: View {
     private var reasonTextField: some View {
         if previewMode {
             TextField(
-                "Why cancel? (optional)",
+                reasonPrompt,
                 text: Binding(
                     get: { choice.activeReasonText },
                     set: {
@@ -1150,12 +1477,12 @@ struct CapturePullInReasonField: View {
             .font(.body)
             .lineLimit(1)
             .accessibilityIdentifier(pullInReasonFieldAccessibilityIdentifier)
-            .accessibilityLabel("Why cancel? optional reason")
+            .accessibilityLabel(reasonPrompt)
         } else {
             CapturePickerFilterField(
                 text: choice.activeReasonText,
-                placeholder: "Why cancel? (optional)",
-                accessibilityLabel: "Why cancel? optional reason",
+                placeholder: reasonPrompt,
+                accessibilityLabel: reasonPrompt,
                 focusRequest: model.focusRequest,
                 onTextChange: { model.updatePullInReasonText($0) },
                 fieldIdentifier: pullInReasonFieldAccessibilityIdentifier,
@@ -1274,14 +1601,50 @@ struct CapturePullInChoiceFooter: View {
         ("⌃↩", "Pull In & Open"),
     ]
 
+    /// Requirement key hints: Bob's canonical footer copy (vectors `copy.footer`).
+    /// Space stages Carry-plus-pull and Tab stages then advances; Ctrl+Shift+T
+    /// carries. Ordinary Mark/All hints stay for mixed cards.
+    static let requirementHintItems: [(keys: String, action: String)] = [
+        ("⌃X", "Met"),
+        ("⌃⇧X", "Drop"),
+        ("⌃⇧T", "Own task"),
+        ("space", "Pull in"),
+        ("⌃J", "Jump"),
+    ]
+
     static func hintItems(
         openAfterCapture: Bool,
         closeSupported: Bool = false,
         jumpSupported: Bool = false,
-        jumpPinned: Bool = false
+        jumpPinned: Bool = false,
+        hasRequirements: Bool = false
     ) -> [(
         keys: String, action: String
     )] {
+        if hasRequirements {
+            var items: [(keys: String, action: String)] = [
+                ("⌃N ⌃P", "Move"),
+                ("space", "Pull in"),
+                ("tab", "Pull in & Next"),
+                ("⌘A", "All"),
+                ("⌃X", "Met"),
+                ("⌃⇧X", "Drop"),
+                ("⌃⇧T", "Own task"),
+                ("⌃J", "Jump"),
+                ("esc", "Back"),
+                ("⌃↩", "Pull In & Open"),
+            ]
+            if !jumpSupported {
+                items.removeAll { $0.keys == "⌃J" }
+            }
+            if jumpPinned {
+                items.removeAll { $0.keys == "⌃↩" }
+            }
+            if openAfterCapture {
+                items.removeAll { $0.keys == "⌃↩" }
+            }
+            return items
+        }
         var items = hintItems
         if !closeSupported {
             items.removeAll { $0.keys == "⌃X" || $0.keys == "⌃⇧X" }
@@ -1325,12 +1688,29 @@ struct CapturePullInChoiceFooter: View {
     static let notePullBackAccessibilityText =
         "Shift-Return returns to the draft. Escape returns to the draft without writing."
 
+    static let requirementAccessibilityText =
+        "Up, Down, Control-N, or Control-P moves the highlight. Space makes the highlighted "
+        + "requirement its own task and pulls it in. Tab does the same and moves to the next row. "
+        + "Shift-Tab moves to the previous row. Command-A marks every ordinary offer and keeps "
+        + "requirement choices. Control-X keeps the requirement met, Control-Shift-X drops it "
+        + "with an optional reason, Control-Shift-T makes it its own task, Control-J pins the "
+        + "jump successor. Return applies every staged choice. Shift-Return carries without "
+        + "pulling and keeps the pin. Escape needs two presses while structural choices are staged."
+
     static func intentAccessibilityText(
         isOnlyNotePull: Bool,
         hasVerdicts: Bool,
         jumpPinned: Bool,
-        openAfterCapture: Bool
+        openAfterCapture: Bool,
+        hasRequirements: Bool = false
     ) -> String {
+        if hasRequirements {
+            if jumpPinned {
+                return requirementAccessibilityText
+                    + " Pinned jump rides along."
+            }
+            return requirementAccessibilityText
+        }
         if jumpPinned {
             return jumpIntentAccessibilityText
         }
@@ -1364,7 +1744,11 @@ struct CapturePullInChoiceFooter: View {
     }
 
     private var hasVerdicts: Bool {
-        (model.pullInChoice?.closeCount ?? 0) > 0
+        (model.pullInChoice?.totalCloseCount ?? 0) > 0
+    }
+
+    private var hasRequirements: Bool {
+        !(model.pullInChoice?.outcomes.requirementRows.isEmpty ?? true)
     }
 
     private var jumpSupported: Bool {
@@ -1396,14 +1780,16 @@ struct CapturePullInChoiceFooter: View {
                             openAfterCapture: openAfterCapture,
                             closeSupported: closeSupported,
                             jumpSupported: jumpSupported,
-                            jumpPinned: jumpPinned))
+                            jumpPinned: jumpPinned,
+                            hasRequirements: hasRequirements))
                     hintRow(
                         items: Array(
                             Self.hintItems(
                                 openAfterCapture: openAfterCapture,
                                 closeSupported: closeSupported,
                                 jumpSupported: jumpSupported,
-                                jumpPinned: jumpPinned
+                                jumpPinned: jumpPinned,
+                                hasRequirements: hasRequirements
                             ).filter { $0.keys != "⌃↩" }))
                     hintRow(
                         items: Array(
@@ -1411,7 +1797,8 @@ struct CapturePullInChoiceFooter: View {
                                 openAfterCapture: true,
                                 closeSupported: closeSupported,
                                 jumpSupported: jumpSupported,
-                                jumpPinned: jumpPinned
+                                jumpPinned: jumpPinned,
+                                hasRequirements: hasRequirements
                             ).dropLast()))
                     hintRow(
                         items: Array(
@@ -1419,7 +1806,8 @@ struct CapturePullInChoiceFooter: View {
                                 openAfterCapture: true,
                                 closeSupported: closeSupported,
                                 jumpSupported: jumpSupported,
-                                jumpPinned: jumpPinned
+                                jumpPinned: jumpPinned,
+                                hasRequirements: hasRequirements
                             ).prefix(2)))
                 }
                 Spacer(minLength: 12)
@@ -1475,7 +1863,8 @@ struct CapturePullInChoiceFooter: View {
                 isOnlyNotePull: isOnlyNotePull,
                 hasVerdicts: hasVerdicts,
                 jumpPinned: jumpPinned,
-                openAfterCapture: openAfterCapture)
+                openAfterCapture: openAfterCapture,
+                hasRequirements: hasRequirements)
         )
         .onChange(of: model.statusAnnouncementTick) { _, _ in
             guard !model.statusText.isEmpty else {

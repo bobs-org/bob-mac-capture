@@ -90,6 +90,7 @@ enum CaptureKeyCommand: Equatable {
     case markAllPullInOffers
     case stagePullInDone
     case beginPullInCancel
+    case stageRequirementCarry
     case confirmPullInReason
     case restorePullInReason
     case recallNextPullInReason
@@ -971,6 +972,11 @@ struct CaptureKeyCommandRouter {
             }
             return nil
         case KeyCode.t:
+            // Ctrl+Shift+T carries a requirement branch; plain Ctrl+T keeps
+            // its existing consumption guard and never acts on ordinary rows.
+            if modifiers == [.control, .shift] {
+                return isRepeat ? .consumeKey : .stageRequirementCarry
+            }
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
             return modifiers == .command ? .consumeKey : nil
