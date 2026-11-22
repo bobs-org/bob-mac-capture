@@ -385,6 +385,36 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 3)
     }
 
+    func testEmptyMetRequirementSubmissionStillSendsReqChoice() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(
+            record: record,
+            extraEnvironment: ["FAKE_BOB_STDOUT": requirementCapabilityResponse()]
+        )
+        _ = try await client.captureLivePreview("preview", priorityRollSeed: "seed")
+        let proof = try XCTUnwrap(client.requirementChoiceCapabilityProof)
+        _ = try await client.capture(
+            "all default met",
+            readClipboard: false,
+            requirementSubmission: CaptureRequirementSubmission(),
+            requirementCapabilityProof: proof,
+            requirePullInChoice: true,
+            pullInCapabilityAdvertised: true
+        )
+
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --no-clip --require-pull-in-choice --req-choice -- all default met"
+            ),
+            calls
+        )
+        XCTAssertFalse(calls.contains("--carry"), calls)
+        XCTAssertFalse(calls.contains("--cancel-offer"), calls)
+        XCTAssertFalse(calls.contains("--complete-offer"), calls)
+        XCTAssertFalse(calls.contains("--pull-in"), calls)
+    }
+
     func testCarryAndPullConflictsWithExplicitNoPullAndProofExpiresWithBobIdentity() async throws {
         let record = temporaryRecordURL()
         let client = try makeClient(

@@ -608,6 +608,8 @@ private struct CaptureInboxRouteSubmitContext {
     let pullInCapabilityAdvertised: Bool
     let offerVerdicts: CapturePullInOfferVerdicts?
     let offerCloseCapabilityAdvertised: Bool
+    let requirementSubmission: CaptureRequirementSubmission?
+    let requirementCapabilityAdvertised: Bool
     var jumpOffer: String? = nil
     var jumpCapabilityAdvertised = false
     let inboxRouteCapabilityAdvertised: Bool
@@ -4341,7 +4343,8 @@ final class CapturePanelModel: ObservableObject {
         guard let processClient else { return }
         if let preview,
             preview.pullIn?.supported == true,
-            preview.offers.contains(where: { $0.offer.map { !$0.key.isEmpty } == true })
+            Self.pullInCardHasOpenableRows(
+                offers: preview.offers, pullIn: preview.pullIn!)
         {
             _ = openPullInChoice(
                 offers: preview.offers,
@@ -4379,6 +4382,9 @@ final class CapturePanelModel: ObservableObject {
                 pullInCapabilityAdvertised: preview.pullIn?.supported == true,
                 offerVerdicts: nil,
                 offerCloseCapabilityAdvertised: preview.pullIn?.close?.supported == true,
+                requirementSubmission: nil,
+                requirementCapabilityAdvertised: preview.pullIn?.reqs?.supported == true
+                    || processClient.requirementChoiceCapabilityProof != nil,
                 jumpOffer: jumpOffer,
                 jumpCapabilityAdvertised: jumpCapabilityAdvertised,
                 inboxRouteCapabilityAdvertised: true,
@@ -4405,6 +4411,7 @@ final class CapturePanelModel: ObservableObject {
             inboxRouteCapabilityAdvertised: preview?.inboxRoute?.supported == true,
             moveInSelection: moveInSelection,
             moveInCapabilityAdvertised: preview?.moveChoice?.supported == true,
+            requirementCapabilityProof: processClient.requirementChoiceCapabilityProof,
             jumpOffer: jumpOffer,
             jumpCapabilityAdvertised: jumpCapabilityAdvertised
         )
@@ -4424,6 +4431,8 @@ final class CapturePanelModel: ObservableObject {
         moveInCapabilityAdvertised: Bool = false,
         offerVerdicts: CapturePullInOfferVerdicts? = nil,
         offerCloseCapabilityAdvertised: Bool = false,
+        requirementSubmission: CaptureRequirementSubmission? = nil,
+        requirementCapabilityProof: CaptureRequirementCapabilityProof? = nil,
         jumpOffer: String? = nil,
         jumpCapabilityAdvertised: Bool = false
     ) {
@@ -4450,6 +4459,10 @@ final class CapturePanelModel: ObservableObject {
             offerVerdicts: offerVerdicts,
             offerCloseCapabilityAdvertised: offerCloseCapabilityAdvertised
                 || matchingPreview?.pullIn?.close?.supported == true,
+            requirementSubmission: requirementSubmission,
+            requirementCapabilityAdvertised: requirementCapabilityProof != nil
+                || matchingPreview?.pullIn?.reqs?.supported == true
+                || processClient.requirementChoiceCapabilityProof != nil,
             jumpOffer: jumpOffer,
             jumpCapabilityAdvertised: jumpCapabilityAdvertised,
             inboxRouteCapabilityAdvertised: inboxRouteCapabilityAdvertised
@@ -4482,6 +4495,9 @@ final class CapturePanelModel: ObservableObject {
                         moveInCapabilityAdvertised: submitContext.moveInCapabilityAdvertised,
                         pullInSelection: selection,
                         offerVerdicts: submitContext.offerVerdicts,
+                        requirementSubmission: submitContext.requirementSubmission,
+                        requirementCapabilityProof: requirementCapabilityProof
+                            ?? processClient.requirementChoiceCapabilityProof,
                         jumpOffer: submitContext.jumpOffer,
                         requirePullInChoice: selection == nil && inboxRouteAnswers == nil,
                         refuseOverride: !allowsOverride,
@@ -4704,7 +4720,8 @@ final class CapturePanelModel: ObservableObject {
             do {
                 let response = try await processClient.capture(
                     previous.draft, dryRun: true, priorityRollSeed: previous.seed,
-                    moveInSelection: selection, moveInCapabilityAdvertised: true
+                    moveInSelection: selection, moveInCapabilityAdvertised: true,
+                    requirementCapabilityProof: processClient.requirementChoiceCapabilityProof
                 )
                 guard let self, self.activeRequestID == requestID else { return }
                 self.isPreviewing = false
@@ -4810,6 +4827,14 @@ final class CapturePanelModel: ObservableObject {
         return previewPullInSnapshot
     }
 
+    private static func pullInCardHasOpenableRows(
+        offers: [TaskCompleteUnblocked],
+        pullIn: CapturePullIn
+    ) -> Bool {
+        uniquePullInRows(offers).contains { $0.offer?.key.isEmpty == false }
+            || pullIn.hasSelectableRequirements
+    }
+
     private func openPullInChoice(
         offers: [TaskCompleteUnblocked],
         stillBlocked: [TaskCompleteStillBlocked],
@@ -4827,7 +4852,7 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         let unique = Self.uniquePullInRows(offers)
-        guard unique.contains(where: { $0.offer?.key.isEmpty == false }) else {
+        guard Self.pullInCardHasOpenableRows(offers: unique, pullIn: pullIn) else {
             errorMessage = "Bob requested a successor choice but returned no usable offer keys. Preview again before submitting."
             errorCode = nil
             statusText = "Successor offers need refresh"
@@ -4851,10 +4876,15 @@ final class CapturePanelModel: ObservableObject {
                 project: item.project
             )
         }
-        let firstKey = unique
+        let firstOfferKey = unique
             .filter { $0.offer?.key.isEmpty == false }
             .sorted { ($0.offer?.n ?? .max) < ($1.offer?.n ?? .max) }
             .first?.offer?.key
+        let firstRequirementKey = pullIn.selectableRequirementRows
+            .sorted {
+                $0.offer.n == $1.offer.n ? $0.offer.key < $1.offer.key : $0.offer.n < $1.offer.n
+            }
+            .first?.offer.key
         pullInChoice = CapturePullInChoiceState(
             moveInSelection: moveInSelection,
             draftSnapshot: draft,
@@ -4866,7 +4896,7 @@ final class CapturePanelModel: ObservableObject {
             pullIn: pullIn,
             planBudget: planBudget,
             rows: rows,
-            highlightedKey: firstKey
+            highlightedKey: firstRequirementKey ?? firstOfferKey
         )
         editorInputLocked = true
         completionResponse = nil
@@ -4874,6 +4904,22 @@ final class CapturePanelModel: ObservableObject {
         statusText = pullInChoice?.promptStatusText ?? "Choose successor offers"
         requestFocus(.pullInOfferList)
         return true
+    }
+
+    private static func requirementOutcomeMessages(
+        from captures: [CaptureCommandSuccess]
+    ) -> [String] {
+        var seen = Set<String>()
+        var lines: [String] = []
+        for capture in captures {
+            for outcome in capture.allRequirementOutcomes {
+                guard !outcome.message.isEmpty, seen.insert(outcome.key).inserted else {
+                    continue
+                }
+                lines.append(outcome.message)
+            }
+        }
+        return lines
     }
 
     private static func uniquePullInRows(_ offers: [TaskCompleteUnblocked]) -> [TaskCompleteUnblocked] {
@@ -5040,15 +5086,33 @@ final class CapturePanelModel: ObservableObject {
         guard var choice = remembered else {
             return false
         }
+        // Overlap and ordinary verdict conflicts keep the staged card. Do
+        // not hide the draft or resubmit defaults.
+        if failure.code == "req_verdict_overlap" || failure.code == "offer_verdict_conflict",
+            failure.offers.isEmpty, failure.currentRequirementGroups.isEmpty
+        {
+            showReseededPullInChoice(choice, error: failure.error, lostCount: 0)
+            return true
+        }
         // Refresh row data/descriptors from Bob, preserving marks, verdicts,
         // reasons, highlight, and the jump pin. Removed keys are dropped and
         // counted. Keep the original capability proof; fresh descriptors
-        // arrive via the refreshed offers. Never silently discard a
-        // still-present staged verdict: it stays visible with Bob's error
-        // until changed.
-        if !failure.offers.isEmpty {
+        // arrive via the refreshed offers and `current` requirement groups.
+        // Never silently discard a still-present staged verdict: it stays
+        // visible with Bob's error until changed.
+        let freshReqs = failure.currentRequirementGroups.flatMap(\.rows)
+            .filter(\.isSelectable)
+        if let merged = Self.pullInMergingCurrent(
+            failure.pullIn ?? choice.pullIn, current: failure.current)
+        {
+            choice.pullIn = merged
+        }
+        if !failure.offers.isEmpty || !freshReqs.isEmpty {
             let hadJump = choice.jumpKey
-            let lost = choice.refresh(offers: failure.offers)
+            let lost = choice.refresh(
+                offers: failure.offers.isEmpty ? choice.outcomes.rows : failure.offers,
+                requirements: freshReqs.isEmpty ? nil : freshReqs
+            )
             let jumpCleared = hadJump != nil && choice.jumpKey == nil
             showReseededPullInChoice(
                 choice, error: failure.error, lostCount: lost, jumpCleared: jumpCleared)
@@ -5086,14 +5150,14 @@ final class CapturePanelModel: ObservableObject {
         isPreviewing = true
         statusText = "Refreshing successor offers…"
         let generation = analysisGeneration
-        let requestID = UUID()
         Task { [weak self, processClient] in
             do {
                 let response = try await processClient.capture(
                     draft,
                     dryRun: true,
                     readClipboard: true,
-                    priorityRollSeed: choiceSeed)
+                    priorityRollSeed: choiceSeed,
+                    requirementCapabilityProof: processClient.requirementChoiceCapabilityProof)
                 await MainActor.run {
                     guard let self else { return }
                     let sameGeneration = self.analysisGeneration == generation
@@ -5109,35 +5173,13 @@ final class CapturePanelModel: ObservableObject {
                     switch response {
                     case .success(let success):
                         var choice = remembered
-                        var offers: [TaskCompleteUnblocked] = []
-                        for capture in success.normalizedCaptures {
-                            if let complete = capture.taskComplete {
-                                offers.append(contentsOf: complete.unblocked)
-                                offers.append(contentsOf: complete.keepMoving)
-                            }
-                            if let close = capture.pomodoroClose {
-                                offers.append(contentsOf: close.unblocked)
-                                offers.append(contentsOf: close.keepMoving)
-                            }
-                            if let past = capture.pomodoroPast {
-                                offers.append(contentsOf: past.close.unblocked)
-                                offers.append(contentsOf: past.close.keepMoving)
-                            }
-                            if let projectNote = capture.projectNote,
-                                projectNote.form == "offer"
-                            {
-                                offers.append(contentsOf: projectNote.successors)
-                            }
-                            offers.append(contentsOf: capture.allNotePullRows)
-                            for relationComplete in capture.relationCompletes {
-                                guard let complete = relationComplete.taskComplete else {
-                                    continue
-                                }
-                                offers.append(contentsOf: complete.unblocked)
-                                offers.append(contentsOf: complete.keepMoving)
-                            }
+                        let offers = success.allPullInOfferRows
+                        let reqs = success.allRequirementGroups.flatMap(\.rows)
+                            .filter(\.isSelectable)
+                        if let canonical = success.pullInWithCanonicalRequirementGroups() {
+                            choice.pullIn = canonical
                         }
-                        if offers.isEmpty {
+                        if offers.isEmpty && reqs.isEmpty {
                             // Refresh with no offers: empty recovery state,
                             // route back to the draft, no enabled commit.
                             self.pullInChoice = nil
@@ -5149,7 +5191,8 @@ final class CapturePanelModel: ObservableObject {
                             return
                         }
                         let hadJump = choice.jumpKey
-                        let lost = choice.refresh(offers: offers)
+                        let lost = choice.refresh(
+                            offers: offers, requirements: reqs)
                         let jumpCleared = hadJump != nil && choice.jumpKey == nil
                         self.showReseededPullInChoice(
                             choice, error: failure.error, lostCount: lost,
@@ -5360,7 +5403,10 @@ final class CapturePanelModel: ObservableObject {
             seed: context.seed,
             inboxRouteAnswers: answers,
             inboxRouteCapabilityAdvertised: context.inboxRouteCapabilityAdvertised,
-            routeContext: context
+            routeContext: context,
+            requirementSubmission: context.requirementSubmission,
+            requirementCapabilityProof: context.requirementCapabilityAdvertised
+                ? processClient?.requirementChoiceCapabilityProof : nil
         )
     }
 
@@ -5420,14 +5466,18 @@ final class CapturePanelModel: ObservableObject {
         }
         // An active reason edit confirms first; blur also confirms once.
         if choice.activeReasonKey != nil {
-            choice.confirmOfferCancel()
+            if let key = choice.activeReasonKey,
+               choice.outcomes.requirementRow(for: key) != nil
+            {
+                choice.confirmRequirementDrop()
+            } else {
+                choice.confirmOfferCancel()
+            }
             pullInChoice = choice
             announceStatus(choice.consequenceMessage ?? "Cancel staged")
             requestFocus(.pullInOfferList)
         }
-        let selection = pullInSelectionForCommit(choice)
-        let verdicts = choice.outcomes.argvSelection().offerVerdicts
-        guard !selectionKeys(selection).isEmpty || !verdicts.isEmpty || choice.jumpKey != nil else {
+        guard choice.canCommit else {
             announceStatus("No visible successor offer is selected")
             return
         }
@@ -5435,21 +5485,7 @@ final class CapturePanelModel: ObservableObject {
             choice.openAfterCapture = true
             pullInChoice = choice
         }
-        commitPullInChoice(choice, selection: selection)
-    }
-
-    private func pullInSelectionForCommit(_ choice: CapturePullInChoiceState) -> CapturePullInSelection {
-        let keys = choice.effectiveSelectionKeys
-        return keys.isEmpty ? .none : .keys(keys)
-    }
-
-    private func selectionKeys(_ selection: CapturePullInSelection) -> [String] {
-        switch selection {
-        case .keys(let keys):
-            return keys
-        case .none:
-            return []
-        }
+        commitPullInChoice(choice, shiftReturn: false)
     }
 
     func chooseNoPullInOffers() {
@@ -5457,20 +5493,29 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if choice.activeReasonKey != nil {
-            choice.confirmOfferCancel()
+            if let key = choice.activeReasonKey,
+               choice.outcomes.requirementRow(for: key) != nil
+            {
+                choice.confirmRequirementDrop()
+            } else {
+                choice.confirmOfferCancel()
+            }
             pullInChoice = choice
         }
-        if choice.isOnlyNotePull, choice.closeCount == 0, choice.jumpKey == nil {
+        if choice.isOnlyNotePull, choice.closeCount == 0, choice.jumpKey == nil,
+            choice.outcomes.requirementRows.isEmpty
+        {
             announceStatus("Escape returns to the draft without pulling in")
             return
         }
-        // Shift-Return sends explicit .none and retains every verdict.
-        commitPullInChoice(choice, selection: .none)
+        // Shift-Return invokes the no-pull projection: ordinary pull-ins
+        // become none, carry-plus-pull downgrades to Carry, and the pin stays.
+        commitPullInChoice(choice, shiftReturn: true)
     }
 
     private func commitPullInChoice(
         _ choice: CapturePullInChoiceState,
-        selection: CapturePullInSelection
+        shiftReturn: Bool
     ) {
         guard plainDraft == choice.draftSnapshot,
               processClient?.identityToken == choice.processClientIdentity,
@@ -5480,6 +5525,7 @@ final class CapturePanelModel: ObservableObject {
             dismissPullInChoice(status: "Successor choice canceled")
             return
         }
+        let projection = choice.commitProjection(shiftReturn: shiftReturn)
         // Never emit verdicts without the matching preview capability proof.
         let verdicts: CapturePullInOfferVerdicts? = {
             let built = choice.outcomes.argvSelection().offerVerdicts
@@ -5488,10 +5534,19 @@ final class CapturePanelModel: ObservableObject {
             }
             return built
         }()
+        let requirements: CaptureRequirementSubmission? = {
+            guard
+                choice.pullIn.reqs?.supported == true
+                    || processClient?.requirementChoiceCapabilityProof != nil
+            else {
+                return nil
+            }
+            return projection.requirements
+        }()
         // Never emit `--jump-offer` without the matching preview
         // capability proof; an old bob would file the flag as a junk task.
         let jumpOffer: String? = {
-            guard let key = choice.jumpKey, !key.isEmpty,
+            guard let key = projection.jumpKey ?? choice.jumpKey, !key.isEmpty,
                   choice.pullIn.jump?.supported == true
             else {
                 return nil
@@ -5503,7 +5558,7 @@ final class CapturePanelModel: ObservableObject {
         dispatchCapture(
             draft: choice.draftSnapshot,
             openAfterCapture: choice.openAfterCapture,
-            selection: selection,
+            selection: projection.pullIn,
             capabilityAdvertised: choice.pullIn.supported,
             seed: choice.priorityRollSeed,
             inboxRouteCapabilityAdvertised: processClient?.inboxRouteCapabilityKnown == true,
@@ -5512,6 +5567,8 @@ final class CapturePanelModel: ObservableObject {
             moveInCapabilityAdvertised: choice.moveInSelection != nil,
             offerVerdicts: verdicts,
             offerCloseCapabilityAdvertised: choice.pullIn.close?.supported == true,
+            requirementSubmission: requirements,
+            requirementCapabilityProof: processClient?.requirementChoiceCapabilityProof,
             jumpOffer: jumpOffer,
             jumpCapabilityAdvertised: choice.pullIn.jump?.supported == true
         )
@@ -5529,8 +5586,9 @@ final class CapturePanelModel: ObservableObject {
             requestFocus(.pullInOfferList)
             return
         }
-        // Two-step Esc while verdicts are staged.
-        if choice.closeCount > 0, !choice.outcomes.isEscArmed {
+        // Two-step Esc while ordinary or structural requirement verdicts
+        // are staged. Default Met never arms.
+        if choice.totalCloseCount > 0, !choice.outcomes.isEscArmed {
             choice.armEscDiscard()
             pullInChoice = choice
             let text = choice.outcomes.escArmedText ?? "Esc again to discard closes"
@@ -5644,7 +5702,9 @@ final class CapturePanelModel: ObservableObject {
             NSSound.beep()
             return
         }
-        guard let key = choice.highlightedKey, choice.selectableKeys.contains(key) else {
+        guard let key = choice.highlightedKey,
+            choice.combinedSelectableKeys.contains(key)
+        else {
             let refusal = "Jump works on offer rows only"
             choice.verdictRefusalMessage = refusal
             pullInChoice = choice
@@ -5677,7 +5737,7 @@ final class CapturePanelModel: ObservableObject {
             NSSound.beep()
             return
         }
-        guard choice.selectableKeys.contains(key) else {
+        guard choice.combinedSelectableKeys.contains(key) else {
             let refusal = "Jump works on offer rows only"
             choice.verdictRefusalMessage = refusal
             pullInChoice = choice
@@ -6547,6 +6607,8 @@ final class CapturePanelModel: ObservableObject {
             pullInCapabilityAdvertised: false,
             offerVerdicts: nil,
             offerCloseCapabilityAdvertised: false,
+            requirementSubmission: nil,
+            requirementCapabilityAdvertised: false,
             jumpOffer: nil,
             jumpCapabilityAdvertised: false,
             inboxRouteCapabilityAdvertised: route.supported,
@@ -6585,7 +6647,8 @@ final class CapturePanelModel: ObservableObject {
                         draft,
                         dryRun: true,
                         readClipboard: true,
-                        priorityRollSeed: seed
+                        priorityRollSeed: seed,
+                        requirementCapabilityProof: processClient.requirementChoiceCapabilityProof
                     )
                 }
                 await MainActor.run {
@@ -18854,6 +18917,12 @@ final class CapturePanelModel: ObservableObject {
             if let templateStatus = Self.templateCaptureStatus(success.template) {
                 statusText += templateStatus
             }
+            let requirementLines = Self.requirementOutcomeMessages(from: captures)
+            if !requirementLines.isEmpty {
+                statusText +=
+                    (statusText.isEmpty ? "" : " · ")
+                    + requirementLines.joined(separator: " · ")
+            }
             if let routeStatus = CaptureInboxRoutePresentation.successNoticeSuffix(
                 route: success.inboxRoute
             ) {
@@ -18862,10 +18931,9 @@ final class CapturePanelModel: ObservableObject {
             templateOrigin = nil
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
-            // A staged pin replaces the open-notes landing: one entry for
-            // the post-write jump target. A lost (null) landing, or a
-            // missing top-level `jump` after a pin, falls back to today's
-            // open-notes behavior with a lost-target notice line.
+            // A staged pin replaces the open-notes landing: Bob's final
+            // `jump.landing` after the whole write succeeds is the only
+            // navigation target. A null landing has no text-based fallback.
             let submittedJumpKey = routeContext?.jumpOffer
                 ?? routeContext?.pullInChoiceForBack?.jumpKey
             let resolvedJump = CaptureJump.resolveCommit(
@@ -18975,7 +19043,8 @@ final class CapturePanelModel: ObservableObject {
                 guard let processClient,
                     plainDraft == draft,
                     processClient.identityToken == processClientIdentity,
-                    let pullIn = failure.pullIn,
+                    let pullIn = Self.pullInMergingCurrent(
+                        failure.pullIn, current: failure.current),
                     pullIn.supported
                 else {
                     errorMessage =
@@ -18997,11 +19066,46 @@ final class CapturePanelModel: ObservableObject {
                     requestID: requestID,
                     moveInSelection: routeContext?.moveInSelection
                 )
-                if !opened {
-                    errorMessage = "Bob requested a successor choice but returned no usable offer keys. Preview again before submitting."
-                    errorCode = nil
-                    statusText = "Successor offers need refresh"
+                if opened {
+                    return
                 }
+                // A legacy `--require-pull-in-choice` handshake omits
+                // requirement groups. Once this refusal advertises support,
+                // retry once with `--req-choice` so a requirement-only close
+                // can still open the card.
+                if pullIn.reqs?.supported == true,
+                   routeContext?.requirementCapabilityAdvertised != true,
+                   let proof = processClient.requirementChoiceCapabilityProof
+                {
+                    dispatchCapture(
+                        draft: draft,
+                        openAfterCapture: openAfterCapture,
+                        selection: nil,
+                        capabilityAdvertised: true,
+                        seed: choiceSeed,
+                        inboxRouteCapabilityAdvertised:
+                            routeContext?.inboxRouteCapabilityAdvertised
+                            ?? processClient.inboxRouteCapabilityKnown,
+                        routeContext: nil,
+                        pullInChoiceForBack: routeContext?.pullInChoiceForBack,
+                        moveInSelection: routeContext?.moveInSelection,
+                        moveInCapabilityAdvertised: routeContext?.moveInCapabilityAdvertised
+                            ?? false,
+                        offerVerdicts: routeContext?.offerVerdicts,
+                        offerCloseCapabilityAdvertised:
+                            routeContext?.offerCloseCapabilityAdvertised ?? false,
+                        requirementSubmission: routeContext?.requirementSubmission,
+                        requirementCapabilityProof: proof,
+                        jumpOffer: routeContext?.jumpOffer,
+                        jumpCapabilityAdvertised: routeContext?.jumpCapabilityAdvertised
+                            ?? false
+                    )
+                    return
+                }
+                errorMessage =
+                    "Bob requested a successor choice but returned no usable offer keys. Preview again before submitting."
+                errorCode = nil
+                statusText = "Successor offers need refresh"
                 return
             }
             if failure.code == "inbox_route_choice_required" {
@@ -19063,7 +19167,7 @@ final class CapturePanelModel: ObservableObject {
             if let code = failure.code,
                 [
                     "offer_close_stale", "offer_close_refused", "offer_verdict_conflict",
-                    "offer_jump_stale",
+                    "offer_jump_stale", "req_close_stale", "req_verdict_overlap",
                 ]
                     .contains(code)
             {
@@ -19240,44 +19344,16 @@ final class CapturePanelModel: ObservableObject {
         generation: UInt64,
         requestID: UUID?
     ) -> CapturePullInPreviewSnapshot {
-        var offers: [TaskCompleteUnblocked] = []
         var stillBlocked: [TaskCompleteStillBlocked] = []
         for capture in captures {
-            if let complete = capture.taskComplete {
-                offers.append(contentsOf: complete.unblocked)
-                offers.append(contentsOf: complete.keepMoving)
-                stillBlocked.append(contentsOf: complete.stillBlocked)
-            }
-            if let close = capture.pomodoroClose {
-                offers.append(contentsOf: close.unblocked)
-                offers.append(contentsOf: close.keepMoving)
-                stillBlocked.append(contentsOf: close.stillBlocked)
-            }
-            if let past = capture.pomodoroPast {
-                offers.append(contentsOf: past.close.unblocked)
-                offers.append(contentsOf: past.close.keepMoving)
-                stillBlocked.append(contentsOf: past.close.stillBlocked)
-            }
-            if let projectNote = capture.projectNote, projectNote.form == "offer" {
-                offers.append(contentsOf: projectNote.successors)
-            }
-            offers.append(contentsOf: capture.allNotePullRows)
-            // Complete-label commits offer successors exactly like `!`:
-            // the close carries the same `task_complete` offers.
+            stillBlocked.append(contentsOf: capture.taskComplete?.stillBlocked ?? [])
+            stillBlocked.append(contentsOf: capture.pomodoroClose?.stillBlocked ?? [])
+            stillBlocked.append(contentsOf: capture.pomodoroPast?.close.stillBlocked ?? [])
             for relationComplete in capture.relationCompletes {
-                guard let complete = relationComplete.taskComplete else {
-                    continue
-                }
-                offers.append(contentsOf: complete.unblocked)
-                offers.append(contentsOf: complete.keepMoving)
-                stillBlocked.append(contentsOf: complete.stillBlocked)
+                stillBlocked.append(
+                    contentsOf: relationComplete.taskComplete?.stillBlocked ?? [])
             }
-            // Relation offers via the shared helpers, including item-level
-            // toggle offers and nested complete-label closes. Deduped below
-            // by Bob's opaque key, preserving canonical numbering.
-            offers.append(contentsOf: capture.allRelationSuccessors)
         }
-        offers.append(contentsOf: success.allRelationSuccessors)
         if let parent = success.moveChoice?.slots.first?.parent,
             rememberedMoveChoice?.slot.parent != parent
         {
@@ -19289,16 +19365,39 @@ final class CapturePanelModel: ObservableObject {
             seed: seed,
             generation: generation,
             requestID: requestID,
-            pullIn: success.pullIn,
+            pullIn: success.pullInWithCanonicalRequirementGroups() ?? success.pullIn,
             inboxRoute: success.inboxRoute,
             planBudget: success.planBudget,
-            offers: Self.uniquePullInRows(offers),
+            offers: Self.uniquePullInRows(success.allPullInOfferRows),
             stillBlocked: stillBlocked,
             hasOverride: captures.contains { capture in
                 CapturePomodoroStartPresentation(capture: capture)?.isOverride == true
             },
             moveChoice: success.moveChoice
         )
+    }
+
+    /// Merge a stale-key `current` payload onto Bob's pull-in object so a
+    /// requirement-only recovery still has groups to open.
+    private static func pullInMergingCurrent(
+        _ pullIn: CapturePullIn?,
+        current: CaptureRequirementCurrent?
+    ) -> CapturePullIn? {
+        let currentGroups = CaptureCommandSuccess.canonicalRequirementGroups(
+            current?.groups ?? [])
+        guard let pullIn else {
+            guard !currentGroups.isEmpty else { return nil }
+            return CapturePullIn(
+                supported: true,
+                offerCount: 0,
+                groups: currentGroups,
+                reqs: CapturePullInRequirementCapability(
+                    supported: true, pending: currentGroups.flatMap(\.rows).count)
+            )
+        }
+        guard !currentGroups.isEmpty else { return pullIn }
+        let ordinary = pullIn.groups.filter { !$0.isRequirementGroup }
+        return pullIn.replacingGroups(currentGroups + ordinary)
     }
 
     /// A batch's toggle presentation, only when it is exactly one `task_toggle` item —
@@ -21253,7 +21352,8 @@ final class CapturePanelModel: ObservableObject {
                     try await processClient.captureLivePreview(
                         previewDraft,
                         priorityRollSeed: seed,
-                        readClipboard: clipAuthorized
+                        readClipboard: clipAuthorized,
+                        requirementCapabilityProof: processClient.requirementChoiceCapabilityProof
                     )
                 }
                 await MainActor.run {

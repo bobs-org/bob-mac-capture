@@ -179,4 +179,103 @@ final class CaptureSuccessorOfferRowsTests: XCTestCase {
         XCTAssertTrue(success.allRelationHeld.isEmpty)
         XCTAssertNil(success.allRelationCheck)
     }
+
+    func testAllPullInOfferRowsCollectOnceAndLeaveRequirementsAside() throws {
+        let json = #"""
+            {
+              "ok": true, "dry_run": true, "routed": false, "route_label": "",
+              "relative_target": "day.md", "target": "/tmp/day.md", "text": "close",
+              "task_line": "- [x] Task", "kind": "batch", "created": "2026-11-02",
+              "placement": "batch",
+              "task_complete": {
+                "raw": "a",
+                "unblocked": [{"text":"unblocked","offer":{"key":"u1","n":1}}],
+                "keep_moving": [{"text":"keep moving","offer":{"key":"k1","n":2}}]
+              },
+              "note_pull": {
+                "note": "sase.md", "route": "sase",
+                "successors": [{"text":"note pull","offer":{"key":"n1","n":3,"group":"note_pull"}}]
+              },
+              "project_note": {
+                "basename": "cash.md", "parent_route": "cash", "parent_link": "[[cash]]",
+                "form": "offer",
+                "successors": [{"text":"project offer","offer":{"key":"p1","n":4,"group":"project"}}]
+              },
+              "relation_successors": [{"text":"relation","offer":{"key":"r1","n":5,"group":"relation"}}],
+              "pull_in": {
+                "supported": true, "offer_count": 5,
+                "reqs": {"supported": true, "pending": 1},
+                "groups": [
+                  {
+                    "group": "requirements", "kind": "requirements",
+                    "owner": {"key": "owner@hash", "task_key": "sase.md#^ship", "text": "Ship"},
+                    "rows": [{
+                      "offer": {"key": "owner@hash/req/1~aaaa", "n": 6, "group": "requirements"},
+                      "req": {
+                        "owner": "owner@hash", "path": "1", "depth": 1,
+                        "text": "Handles empty input", "line": 2, "state": "pending"
+                      },
+                      "consequences": {
+                        "met": "Met", "drop": "Drop",
+                        "carry": "Carry", "carry_pulled": "Carry and pull"
+                      }
+                    }]
+                  },
+                  {"group": "hand_off"}
+                ]
+              }
+            }
+            """#
+        guard
+            case .success(let success) = try JSONDecoder().decode(
+                CaptureCommandResponse.self, from: Data(json.utf8))
+        else {
+            return XCTFail("Expected capture success")
+        }
+
+        XCTAssertEqual(
+            success.allPullInOfferRows.map(\.text),
+            ["unblocked", "keep moving", "project offer", "note pull", "relation"]
+        )
+        XCTAssertEqual(
+            success.allPullInOfferRows.compactMap { $0.offer?.key },
+            ["u1", "k1", "p1", "n1", "r1"]
+        )
+        XCTAssertEqual(success.allRequirementGroups.count, 1)
+        XCTAssertEqual(
+            success.allRequirementGroups.first?.rows.map(\.offer.key),
+            ["owner@hash/req/1~aaaa"]
+        )
+        XCTAssertFalse(
+            success.allPullInOfferRows.contains { $0.offer?.key == "owner@hash/req/1~aaaa" })
+        XCTAssertFalse(
+            success.allUnblockedRows.contains { $0.offer?.key == "owner@hash/req/1~aaaa" })
+
+        let canonical = try XCTUnwrap(success.pullInWithCanonicalRequirementGroups())
+        XCTAssertEqual(canonical.groups.map(\.effectiveKind), ["requirements", "hand_off"])
+        XCTAssertTrue(canonical.hasSelectableRequirements)
+    }
+
+    func testMixedFixtureKeepsRequirementRowsOutOfUnblockedCollectors() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(
+            contentsOf: fixtures.appendingPathComponent("capture-req-close-mixed.json"))
+        guard
+            case .success(let mixed) = try JSONDecoder().decode(
+                CaptureCommandResponse.self, from: data)
+        else {
+            return XCTFail("Expected mixed requirement fixture")
+        }
+        XCTAssertEqual(mixed.allPullInOfferRows.compactMap(\.blockID), ["docs"])
+        XCTAssertEqual(mixed.allUnblockedRows.compactMap(\.blockID), ["docs"])
+        XCTAssertEqual(mixed.allRequirementGroups.first?.rows.count, 3)
+        XCTAssertEqual(
+            Set(mixed.allPullInOfferRows.compactMap { $0.offer?.key })
+                .intersection(
+                    Set(mixed.allRequirementGroups.flatMap(\.rows).map(\.offer.key))),
+            [])
+    }
 }

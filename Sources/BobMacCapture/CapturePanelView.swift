@@ -4613,7 +4613,8 @@ struct PreviewPane: View {
                     return seen.insert(key).inserted
                 }
             }()
-            if !dedupedOffers.isEmpty {
+            let hasRequirements = pullIn?.hasSelectableRequirements == true
+            if !dedupedOffers.isEmpty || hasRequirements {
                 let rows = dedupedOffers.map { item in
                     CapturePullInChoiceRow(
                         offerRow: item,
@@ -4662,6 +4663,16 @@ struct PreviewPane: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
+                        }
+                        ForEach(section.requirementRows, id: \.offer.key) { row in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("Req \(row.offer.n)")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text(row.req.text)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                            }
                         }
                         ForEach(section.rows) { row in
                             HStack(alignment: .firstTextBaseline, spacing: 6) {

@@ -238,6 +238,12 @@ final class NotificationService: NSObject, ObservableObject {
         content.title = presentation.title
         content.subtitle = presentation.subtitle
         content.body = presentation.body
+        let requirementLines = requirementOutcomeMessages(from: captures)
+        if !requirementLines.isEmpty {
+            content.body +=
+                (content.body.isEmpty ? "" : "\n")
+                + requirementLines.joined(separator: "\n")
+        }
         content.sound = .default
         // A landed pin adds the jump receipt line and retargets the
         // default click at the one-entry jump plan. A lost pin keeps the
@@ -963,6 +969,24 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated private static func closedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroClosePresentation(capture: capture)
             .map(\.batchSuffix) ?? ""
+    }
+
+    /// Bob-authored requirement receipts, once per opaque key so a batch
+    /// root mirror never duplicates an item-level outcome.
+    nonisolated private static func requirementOutcomeMessages(
+        from captures: [CaptureCommandSuccess]
+    ) -> [String] {
+        var seen = Set<String>()
+        var lines: [String] = []
+        for capture in captures {
+            for outcome in capture.allRequirementOutcomes {
+                guard !outcome.message.isEmpty, seen.insert(outcome.key).inserted else {
+                    continue
+                }
+                lines.append(outcome.message)
+            }
+        }
+        return lines
     }
 
     nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {

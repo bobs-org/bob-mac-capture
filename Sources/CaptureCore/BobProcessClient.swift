@@ -1492,11 +1492,11 @@ public final class BobProcessClient: @unchecked Sendable {
         if requireGuard {
             arguments.append("--require-pull-in-choice")
         }
-        let hasOfferVerdicts = offerVerdicts.map { !$0.isEmpty } ?? false
-        if hasRequirementCapability
-            && (dryRun || requirePullInChoice || hasRequirementChoices || hasOfferVerdicts
-                || (jumpOffer?.isEmpty == false))
-        {
+        // Known support adds `--req-choice` to previews, guarded submits, and
+        // final verdict submissions, including all-default Met commits that
+        // send no structural requirement flags. The legacy
+        // `--require-pull-in-choice` handshake alone omits requirement groups.
+        if hasRequirementCapability {
             arguments.append("--req-choice")
         }
         // Same positive gate for inbox routing: `--require-inbox-route-choice`

@@ -46,6 +46,29 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.contains("Already Next"), content.body)
     }
 
+    func testRequirementReceiptsAppendOnceAndDoNotCountAsRecoveredTasks() throws {
+        let write = try closeSuccessFixture("capture-req-close-write.json")
+        let content = NotificationService.successContent(captures: [write])
+        XCTAssertTrue(
+            content.body.contains("✓ 1 requirements met with “Ship parser”"),
+            content.body)
+        XCTAssertTrue(
+            content.body.contains("⊘ Dropped “Handles empty input” · “No longer required”"),
+            content.body)
+        XCTAssertFalse(content.body.contains("Pulled in"), content.body)
+        XCTAssertEqual(
+            content.body.components(separatedBy: "requirements met").count - 1, 1)
+
+        let mirrored = NotificationService.successContent(captures: [write, write])
+        XCTAssertEqual(
+            mirrored.body.components(separatedBy: "requirements met").count - 1, 1,
+            mirrored.body)
+        XCTAssertEqual(
+            mirrored.body.components(separatedBy: "Dropped “Handles empty input”").count - 1,
+            1,
+            mirrored.body)
+    }
+
     func testRecordNotificationUsesCommittedSummary() throws {
         let success = try recordFixture("record-capture-restaurant-commit.json")
         let summary = try XCTUnwrap(success.recordNote)

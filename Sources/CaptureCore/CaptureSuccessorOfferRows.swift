@@ -38,7 +38,7 @@ extension CaptureCommandSuccess {
         return outcomes.filter { !$0.key.isEmpty && seen.insert($0.key).inserted }
     }
 
-    static func canonicalRequirementGroups(
+    public static func canonicalRequirementGroups(
         _ groups: [CapturePullInGroup]
     ) -> [CapturePullInGroup] {
         var result: [CapturePullInGroup] = []
@@ -73,6 +73,32 @@ extension CaptureCommandSuccess {
             }
         }
         return result
+    }
+
+    /// Every ordinary Pull-In offer this capture can stage, in preview order:
+    /// unblocked, keep-moving, project-note successors, note-pull, then
+    /// relation/merge hand-offs. Requirement rows stay in
+    /// `allRequirementGroups` and never appear here as recovered tasks.
+    public var allPullInOfferRows: [TaskCompleteUnblocked] {
+        var rows: [TaskCompleteUnblocked] = []
+        for capture in normalizedCaptures {
+            rows.append(contentsOf: capture.taskComplete?.unblocked ?? [])
+            rows.append(contentsOf: capture.taskComplete?.keepMoving ?? [])
+            rows.append(contentsOf: capture.pomodoroClose?.unblocked ?? [])
+            rows.append(contentsOf: capture.pomodoroClose?.keepMoving ?? [])
+            rows.append(contentsOf: capture.pomodoroPast?.close.unblocked ?? [])
+            rows.append(contentsOf: capture.pomodoroPast?.close.keepMoving ?? [])
+            for relationComplete in capture.relationCompletes {
+                rows.append(contentsOf: relationComplete.taskComplete?.unblocked ?? [])
+                rows.append(contentsOf: relationComplete.taskComplete?.keepMoving ?? [])
+            }
+            if let projectNote = capture.projectNote, projectNote.form == "offer" {
+                rows.append(contentsOf: projectNote.successors)
+            }
+            rows.append(contentsOf: capture.allNotePullRows)
+            rows.append(contentsOf: capture.allRelationSuccessors)
+        }
+        return rows
     }
 
     /// Keep-moving offer rows from the same closes, in the same order.
@@ -145,6 +171,41 @@ extension CaptureCommandSuccess {
 
     private var relationItems: [CaptureCommandSuccess] {
         captures.isEmpty ? [self] : captures
+    }
+}
+
+extension CapturePullIn {
+    /// Reconstruct the same capability object with a new group list.
+    public func replacingGroups(_ groups: [CapturePullInGroup]) -> CapturePullIn {
+        CapturePullIn(
+            supported: supported,
+            offerCount: offerCount,
+            choice: choice,
+            pickedCount: pickedCount,
+            groups: groups,
+            copy: copy,
+            close: close,
+            jump: jump,
+            reqs: reqs
+        )
+    }
+
+    public var selectableRequirementRows: [CaptureRequirementRow] {
+        groups.filter(\.isRequirementGroup).flatMap(\.rows).filter(\.isSelectable)
+    }
+
+    public var hasSelectableRequirements: Bool {
+        !selectableRequirementRows.isEmpty
+    }
+}
+
+extension CaptureCommandSuccess {
+    /// `pull_in` with canonical requirement groups first, then Bob's ordinary
+    /// groups. Batch root mirrors collapse to one owner each.
+    public func pullInWithCanonicalRequirementGroups() -> CapturePullIn? {
+        guard let pullIn else { return nil }
+        let ordinary = pullIn.groups.filter { !$0.isRequirementGroup }
+        return pullIn.replacingGroups(allRequirementGroups + ordinary)
     }
 }
 
