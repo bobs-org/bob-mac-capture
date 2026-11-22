@@ -90,6 +90,7 @@ public enum RefKind: Equatable, Hashable, Sendable {
     case doc
     case book
     case slides
+    case podcast
     case other(raw: String?)
 
     public init(refType: String?) {
@@ -106,6 +107,8 @@ public enum RefKind: Equatable, Hashable, Sendable {
             self = .book
         case "slides":
             self = .slides
+        case "podcasts":
+            self = .podcast
         default:
             self = .other(raw: refType)
         }
@@ -125,6 +128,8 @@ public enum RefKind: Equatable, Hashable, Sendable {
             return "Book"
         case .slides:
             return "Slides"
+        case .podcast:
+            return "Podcast"
         case .other(let raw):
             guard let raw, !raw.isEmpty else {
                 return "Reference"
@@ -150,6 +155,8 @@ public enum RefKind: Equatable, Hashable, Sendable {
             return "books.vertical"
         case .slides:
             return "rectangle.on.rectangle"
+        case .podcast:
+            return "mic"
         case .other:
             return "doc"
         }
@@ -167,7 +174,7 @@ public enum RefKind: Equatable, Hashable, Sendable {
             return .articles
         case .doc:
             return .docs
-        case .book, .slides, .other:
+        case .book, .slides, .podcast, .other:
             return nil
         }
     }

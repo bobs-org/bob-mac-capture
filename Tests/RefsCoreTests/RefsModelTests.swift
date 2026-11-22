@@ -14,6 +14,8 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind(refType: "docs"), .doc)
         XCTAssertEqual(RefKind(refType: "books"), .book)
         XCTAssertEqual(RefKind(refType: "slides"), .slides)
+        XCTAssertEqual(RefKind(refType: "podcasts"), .podcast)
+        XCTAssertEqual(RefKind(refType: "podcast"), .other(raw: "podcast"))
         XCTAssertEqual(RefKind(refType: "code"), .other(raw: "code"))
         XCTAssertEqual(RefKind(refType: nil), .other(raw: nil))
 
@@ -23,6 +25,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.doc.label, "Doc")
         XCTAssertEqual(RefKind.book.label, "Book")
         XCTAssertEqual(RefKind.slides.label, "Slides")
+        XCTAssertEqual(RefKind.podcast.label, "Podcast")
         XCTAssertEqual(RefKind(refType: "code").label, "Code")
         XCTAssertEqual(RefKind(refType: nil).label, "Reference")
 
@@ -32,6 +35,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.doc.symbolName, "book.closed")
         XCTAssertEqual(RefKind.book.symbolName, "books.vertical")
         XCTAssertEqual(RefKind.slides.symbolName, "rectangle.on.rectangle")
+        XCTAssertEqual(RefKind.podcast.symbolName, "mic")
         XCTAssertEqual(RefKind(refType: "code").symbolName, "doc")
     }
 
@@ -42,6 +46,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.doc.scope, .docs)
         XCTAssertNil(RefKind.book.scope)
         XCTAssertNil(RefKind.slides.scope)
+        XCTAssertNil(RefKind.podcast.scope)
         XCTAssertNil(RefKind(refType: "code").scope)
         XCTAssertNil(RefKind(refType: nil).scope)
     }
@@ -55,6 +60,8 @@ final class RefsModelTests: XCTestCase {
         XCTAssertFalse(RefScope.articles.contains(.doc))
         XCTAssertTrue(RefScope.docs.contains(.doc))
         XCTAssertFalse(RefScope.docs.contains(.other(raw: "code")))
+        XCTAssertTrue(RefScope.all.contains(.podcast))
+        XCTAssertFalse(RefScope.articles.contains(.podcast))
         XCTAssertEqual(RefScope.all.label, "All")
         XCTAssertEqual(RefScope.allCases.map(\.rawValue), [1, 2, 3, 4, 5])
     }

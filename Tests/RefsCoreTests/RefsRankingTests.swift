@@ -359,6 +359,26 @@ final class RefsRankingTests: XCTestCase {
         XCTAssertEqual(listing.matches["art"]?.secondary?.field, .kind)
     }
 
+    func testPodcastKindWordsMatchPodcastAndEpisode() {
+        let items = [
+            makeItem(
+                id: "pod", title: "Building Developer Tools", kind: .podcast,
+                state: .ready, author: "The Pragmatic Engineer", added: "2026-10-01"
+            ),
+            makeItem(
+                id: "art", title: "Building Better Blogs", kind: .article,
+                state: .ready, added: "2026-10-01"
+            ),
+        ]
+        let signals = makeSignals()
+        for query in ["podcast", "episode"] {
+            let listing = searchListing(items, query: query, signals: signals)
+            XCTAssertEqual(listing.orderedIDs, ["pod"], query)
+            XCTAssertEqual(listing.matches["pod"]?.tier, .secondary, query)
+            XCTAssertEqual(listing.matches["pod"]?.secondary?.field, .kind, query)
+        }
+    }
+
     func testHarnessSeparatesKindsAndSinksDropped() {
         let items = [
             makeItem(
@@ -572,6 +592,16 @@ final class RefsRankingTests: XCTestCase {
         XCTAssertEqual(
             RefsCaption.caption(for: missing, in: .next, signals: signals),
             "Chat · added Sep 11 · PDF missing"
+        )
+
+        let episode = makeItem(
+            id: "e", title: "Building Developer Tools", kind: .podcast,
+            state: .ready, author: "The Pragmatic Engineer", added: "2026-09-20"
+        )
+        signals = makeSignals(pages: ["e": 9])
+        XCTAssertEqual(
+            RefsCaption.caption(for: episode, in: .ready, signals: signals),
+            "Podcast · The Pragmatic Engineer · added Sep 20 · 9 pp"
         )
     }
 

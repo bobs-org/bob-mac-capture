@@ -557,10 +557,11 @@ struct RefsInspectorView: View {
             )
     }
 
-    /// Papers, articles, and docs show the page-1 thumbnail; every
-    /// other kind keeps the tile.
+    /// Papers, articles, docs, and podcasts (page 1 is the episode
+    /// dossier card) show the page-1 thumbnail; every other kind keeps
+    /// the tile.
     private func showsThumbnailSlot(for item: RefKind) -> Bool {
-        item == .paper || item == .article || item == .doc
+        item == .paper || item == .article || item == .doc || item == .podcast
     }
 
     private func showsThumbnailSlot(for item: RefItem) -> Bool {

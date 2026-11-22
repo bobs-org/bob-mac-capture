@@ -564,6 +564,8 @@ enum RefsText {
             return ["article", "blog"]
         case .doc:
             return ["doc", "docs"]
+        case .podcast:
+            return ["podcast", "episode"]
         case .book, .slides, .other:
             return []
         }

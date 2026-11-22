@@ -5,8 +5,8 @@ import Foundation
 /// `monospacedDigit` in the UI; the strings here carry no attributes.
 public enum RefsCaption {
     /// The two-line row's second line: kind label, author (papers,
-    /// articles, docs), a date phrase naming the date that explains the
-    /// row's position, `N pp` when the page count is known, and — in
+    /// articles, docs, podcasts), a date phrase naming the date that
+    /// explains the row's position, `N pp` when the page count is known, and — in
     /// search mode — the matched stem or secondary field. Parts join
     /// with `·`; a missing PDF gains "PDF missing". A matched author
     /// the caption already shows is not repeated.
@@ -33,7 +33,7 @@ public enum RefsCaption {
         // when it is the matched stem or secondary field.
         var parts: [(text: String, ranges: [Range<Int>])] = [(item.kind.label, [])]
         switch item.kind {
-        case .paper, .article, .doc:
+        case .paper, .article, .doc, .podcast:
             if let author = item.author, !author.isEmpty {
                 parts.append((author, []))
             }
@@ -87,7 +87,7 @@ public enum RefsCaption {
             return false
         }
         switch item.kind {
-        case .paper, .article, .doc:
+        case .paper, .article, .doc, .podcast:
             return true
         case .chat, .book, .slides, .other:
             return false

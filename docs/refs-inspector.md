@@ -21,7 +21,8 @@ inspector re-hydrates in place, keeping its selection, scroll position, and
 revealed page (clamped if the feed shrinks). Old content stays until the new
 notes and intrinsics are ready; a hidden panel hydrates when shown.
 
-- Papers, articles, and docs show a page-1 thumbnail (fixed space
+- Papers, articles, docs, and podcasts show a page-1 thumbnail
+  (a podcast's page 1 is its episode dossier card; fixed space
   is reserved while it loads, so nothing jumps) and the outline:
   150 × 194 pt beside the facts in the wide layout, 112 × 145 pt
   above them in compact. Both draw from the one 300 × 388 px image

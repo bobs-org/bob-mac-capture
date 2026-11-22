@@ -218,7 +218,8 @@ enum RefsVisualTokens {
     // MARK: - Kind and state
 
     /// The kind tint: purple chat, teal paper, brown article, indigo
-    /// doc, secondary for everything else. Status hues never encode
+    /// doc, cyan podcast (purple, the platform's podcast color, is
+    /// taken by chat), secondary for everything else. Status hues never encode
     /// kind; pink means the Now lane only; the accent means selection,
     /// matches, and the New dot.
     static let newDotSize: CGFloat = 6
@@ -238,6 +239,8 @@ enum RefsVisualTokens {
             return .brown
         case .doc:
             return .indigo
+        case .podcast:
+            return .cyan
         case .book, .slides, .other:
             return .secondary
         }
