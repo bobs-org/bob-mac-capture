@@ -5440,6 +5440,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive receipts for offer rows resolved during this capture.
     /// Older Bob binaries omit the field; malformed rows are ignored.
     public let offerCloses: [CaptureOfferClose]
+    /// Additive Bob-authored requirement verdict receipts. Older Bob omits
+    /// them; malformed rows are dropped independently.
+    public let reqOutcomes: [CaptureRequirementOutcome]
     /// Additive batch-level inbox-route capability, candidates, and
     /// destinations. Older Bob binaries omit this field; a malformed value
     /// decodes as nil so it can never fail the capture decode.
@@ -5584,6 +5587,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         planBudget: CapturePlanBudget? = nil,
         pullIn: CapturePullIn? = nil,
         offerCloses: [CaptureOfferClose] = [],
+        reqOutcomes: [CaptureRequirementOutcome] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
         captures: [CaptureCommandSuccess] = [],
@@ -5685,6 +5689,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.planBudget = planBudget
         self.pullIn = pullIn
         self.offerCloses = offerCloses
+        self.reqOutcomes = reqOutcomes
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
         self.pomodoroBlocks = pomodoroBlocks
@@ -5906,6 +5911,12 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
         offerCloses =
             (try? container.decodeIfPresent([CaptureOfferClose].self, forKey: .offerCloses)) ?? []
+        reqOutcomes =
+            (try? container.decode(
+                CaptureLossyArray<CaptureRequirementOutcome>.self,
+                forKey: .reqOutcomes
+            ))?
+            .values ?? []
         inboxRoute =
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
         moveChoice =
@@ -6059,6 +6070,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case planBudget = "plan_budget"
         case pullIn = "pull_in"
         case offerCloses = "offer_closes"
+        case reqOutcomes = "req_outcomes"
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"
         case pomodoroBlocks = "pomodoro_blocks"
@@ -7672,6 +7684,10 @@ public struct CapturePullInFolded: Codable, Equatable, Sendable {
 
 public struct CapturePullInGroup: Codable, Equatable, Sendable {
     public let group: String
+    /// Additive row kind; clients fall back to `group` when older Bob omits it.
+    public let kind: String?
+    /// Requirement owner metadata. Other group kinds omit it.
+    public let owner: CaptureRequirementOwner?
     public let project: String?
     /// Note path for `note_pull` sections. Older groups omit it.
     public let note: String?
@@ -7679,48 +7695,68 @@ public struct CapturePullInGroup: Codable, Equatable, Sendable {
     public let label: String?
     public let event: String?
     public let folded: CapturePullInFolded?
+    /// Requirement rows only. Each row is decoded independently so one
+    /// malformed new row cannot hide ordinary task offers or valid siblings.
+    public let rows: [CaptureRequirementRow]
     public let copy: CapturePullInGroupCopy?
 
     public init(
         group: String = "",
+        kind: String? = nil,
+        owner: CaptureRequirementOwner? = nil,
         project: String? = nil,
         note: String? = nil,
         after: CapturePullInAfter? = nil,
         label: String? = nil,
         event: String? = nil,
         folded: CapturePullInFolded? = nil,
+        rows: [CaptureRequirementRow] = [],
         copy: CapturePullInGroupCopy? = nil
     ) {
         self.group = group
+        self.kind = kind
+        self.owner = owner
         self.project = project
         self.note = note
         self.after = after
         self.label = label
         self.event = event
         self.folded = folded
+        self.rows = rows
         self.copy = copy
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
+        kind = try? container.decodeIfPresent(String.self, forKey: .kind)
+        owner = try? container.decodeIfPresent(CaptureRequirementOwner.self, forKey: .owner)
         project = try? container.decodeIfPresent(String.self, forKey: .project)
         note = try? container.decodeIfPresent(String.self, forKey: .note)
         after = try? container.decodeIfPresent(CapturePullInAfter.self, forKey: .after)
         label = try? container.decodeIfPresent(String.self, forKey: .label)
         event = try? container.decodeIfPresent(String.self, forKey: .event)
         folded = try? container.decodeIfPresent(CapturePullInFolded.self, forKey: .folded)
+        rows =
+            (try? container.decode(
+                CaptureLossyArray<CaptureRequirementRow>.self,
+                forKey: .rows
+            ))?
+            .values ?? []
         copy = try? container.decodeIfPresent(CapturePullInGroupCopy.self, forKey: .copy)
     }
 
     private enum CodingKeys: String, CodingKey {
         case group
+        case kind
+        case owner
         case project
         case note
         case after
         case label
         case event
         case folded
+        case rows
         case copy
     }
 }
@@ -7781,6 +7817,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
     public let close: CapturePullInClose?
     /// Missing on older Bob; this nested capability gates `--jump-offer`.
     public let jump: CapturePullInJump?
+    /// Missing on older Bob; this nested capability gates `--req-choice`.
+    public let reqs: CapturePullInRequirementCapability?
 
     public init(
         supported: Bool = false,
@@ -7790,7 +7828,8 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         groups: [CapturePullInGroup] = [],
         copy: CapturePullInCopy? = nil,
         close: CapturePullInClose? = nil,
-        jump: CapturePullInJump? = nil
+        jump: CapturePullInJump? = nil,
+        reqs: CapturePullInRequirementCapability? = nil
     ) {
         self.supported = supported
         self.offerCount = offerCount
@@ -7800,6 +7839,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         self.copy = copy
         self.close = close
         self.jump = jump
+        self.reqs = reqs
     }
 
     public init(from decoder: Decoder) throws {
@@ -7812,6 +7852,10 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         copy = try? container.decodeIfPresent(CapturePullInCopy.self, forKey: .copy)
         close = try? container.decodeIfPresent(CapturePullInClose.self, forKey: .close)
         jump = try? container.decodeIfPresent(CapturePullInJump.self, forKey: .jump)
+        reqs = try? container.decodeIfPresent(
+            CapturePullInRequirementCapability.self,
+            forKey: .reqs
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -7823,6 +7867,7 @@ public struct CapturePullIn: Codable, Equatable, Sendable {
         case copy
         case close
         case jump
+        case reqs
     }
 }
 
@@ -8270,6 +8315,9 @@ public struct CaptureCommandFailure: Codable, Equatable {
     // `unknown_directive`). Other failures and older Bob omit it, and it decodes as nil.
     public let code: String?
     public let pullIn: CapturePullIn?
+    /// Fresh numbered requirement rows returned on a stale requirement-key
+    /// refusal. Other failures and older Bob omit it.
+    public let current: CaptureRequirementCurrent?
     /// Additive payload for `nothing_to_pull_in`; absent on older Bob and
     /// on other refusal codes.
     public let notePull: CaptureNotePull?
@@ -8331,6 +8379,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         error: String,
         code: String? = nil,
         pullIn: CapturePullIn? = nil,
+        current: CaptureRequirementCurrent? = nil,
         notePull: CaptureNotePull? = nil,
         transferPending: CaptureTransferPending? = nil,
         mergeInPending: CaptureMergeInPending? = nil,
@@ -8346,6 +8395,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.error = error
         self.code = code
         self.pullIn = pullIn
+        self.current = current
         self.notePull = notePull
         self.transferPending = transferPending
         self.mergeInPending = mergeInPending
@@ -8364,6 +8414,10 @@ public struct CaptureCommandFailure: Codable, Equatable {
         error = try container.decodeIfPresent(String.self, forKey: .error) ?? ""
         code = try container.decodeIfPresent(String.self, forKey: .code)
         pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
+        current = try? container.decodeIfPresent(
+            CaptureRequirementCurrent.self,
+            forKey: .current
+        )
         notePull = (try? container.decodeIfPresent(CaptureNotePull.self, forKey: .notePull)) ?? nil
         transferPending =
             (try? container.decodeIfPresent(CaptureTransferPending.self, forKey: .transferPending))
@@ -8394,6 +8448,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case error
         case code
         case pullIn = "pull_in"
+        case current
         case notePull = "note_pull"
         case transferPending = "transfer_pending"
         case mergeInPending = "merge_in_pending"

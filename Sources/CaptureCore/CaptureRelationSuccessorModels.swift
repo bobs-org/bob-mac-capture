@@ -194,19 +194,31 @@ public struct CapturePullInGroupCopy: Codable, Equatable, Sendable {
     public let tag: String?
     public let fold: String?
     public let glyph: String
+    public let scope: String?
+    public let history: String?
+    public let footer: String?
+    public let hint: String?
 
     public init(
         title: String = "",
         why: String? = nil,
         tag: String? = nil,
         fold: String? = nil,
-        glyph: String = ""
+        glyph: String = "",
+        scope: String? = nil,
+        history: String? = nil,
+        footer: String? = nil,
+        hint: String? = nil
     ) {
         self.title = title
         self.why = why
         self.tag = tag
         self.fold = fold
         self.glyph = glyph
+        self.scope = scope
+        self.history = history
+        self.footer = footer
+        self.hint = hint
     }
 
     public init(from decoder: Decoder) throws {
@@ -216,6 +228,10 @@ public struct CapturePullInGroupCopy: Codable, Equatable, Sendable {
         tag = try? container.decodeIfPresent(String.self, forKey: .tag)
         fold = try? container.decodeIfPresent(String.self, forKey: .fold)
         glyph = (try? container.decodeIfPresent(String.self, forKey: .glyph)) ?? ""
+        scope = try? container.decodeIfPresent(String.self, forKey: .scope)
+        history = try? container.decodeIfPresent(String.self, forKey: .history)
+        footer = try? container.decodeIfPresent(String.self, forKey: .footer)
+        hint = try? container.decodeIfPresent(String.self, forKey: .hint)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -224,6 +240,10 @@ public struct CapturePullInGroupCopy: Codable, Equatable, Sendable {
         case tag
         case fold
         case glyph
+        case scope
+        case history
+        case footer
+        case hint
     }
 }
 

@@ -1,0 +1,188 @@
+{
+  "ok": true,
+  "dry_run": true,
+  "routed": true,
+  "route": null,
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob-mac-capture-req-close-fixture/mixed-vault/sase.md",
+  "text": "",
+  "task_line": "- [x] #task Ship parser [id:: ship]  [completion:: 2026-10-05] ^ship",
+  "kind": "task_complete",
+  "created": "2026-10-05",
+  "scheduled": null,
+  "placement": "completed",
+  "block_id": "ship",
+  "drawer": null,
+  "previous_task_line": "- [ ] #task Ship parser [id:: ship] ^ship",
+  "status_symbol": "x",
+  "status_name": "Done",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Ready",
+  "status_changed": true,
+  "task_complete": {
+    "raw": "!sase:ship",
+    "note": "sase",
+    "note_path": "sase.md",
+    "block_id": "ship",
+    "action": "completed",
+    "completion_date": "2026-10-05",
+    "text": "Ship parser",
+    "subtasks": [],
+    "subtasks_left_open": [],
+    "unblocked": [
+      {
+        "note_path": "deps.md",
+        "block_id": "docs",
+        "line": 1,
+        "text": "Write docs",
+        "previous_status_symbol": "?",
+        "previous_status_name": "Blocked",
+        "status_symbol": " ",
+        "status_name": "Ready",
+        "inbox": false,
+        "unblocked_by": [
+          {
+            "note_path": "sase.md",
+            "block_id": "ship",
+            "text": "Ship parser"
+          }
+        ],
+        "not_linked": "not_selected",
+        "trigger": "dependency",
+        "hide_removed": false,
+        "offer": {
+          "key": "deps.md#^docs",
+          "n": 1,
+          "group": "hand_off",
+          "selected": false,
+          "block_id_needed": false,
+          "destination": {
+            "day_file": "20261005.md",
+            "entry_name": "CAPTURE",
+            "entry_role": "implicit",
+            "fallback": true
+          },
+          "close": {
+            "complete": true,
+            "cancel": true,
+            "complete_consequence": "✓ Completes “Write docs” · Ready → Done",
+            "cancel_consequence": "⊘ Cancels “Write docs” · Ready → Cancelled",
+            "unblocks": 0
+          }
+        }
+      }
+    ],
+    "keep_moving": [],
+    "still_blocked": [],
+    "unblocked_check": "checked"
+  },
+  "task_blocks": [
+    {
+      "relative_target": "sase.md",
+      "route": "sase",
+      "line": 1,
+      "block_id": "ship",
+      "text": "Ship parser",
+      "status_symbol": "x",
+      "status_name": "Done",
+      "created": false,
+      "roles": [
+        "completed"
+      ],
+      "lines": [
+        {
+          "text": "- [x] #task Ship parser [id:: ship]  [completion:: 2026-10-05] ^ship",
+          "depth": 0,
+          "change": "changed",
+          "before": "- [ ] #task Ship parser [id:: ship] ^ship"
+        },
+        {
+          "text": "\t- [ ] Handles empty input",
+          "depth": 1,
+          "change": "unchanged"
+        },
+        {
+          "text": "\t\t- [ ] Handles zero bytes",
+          "depth": 2,
+          "change": "unchanged"
+        },
+        {
+          "text": "\t- [ ] Handles unicode",
+          "depth": 1,
+          "change": "unchanged"
+        }
+      ]
+    },
+    {
+      "relative_target": "deps.md",
+      "route": "deps",
+      "line": 1,
+      "block_id": "docs",
+      "text": "Write docs",
+      "status_symbol": " ",
+      "status_name": "Ready",
+      "created": false,
+      "roles": [
+        "unblocked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] #task Write docs [dependsOn:: ship] [id:: docs] ^docs",
+          "depth": 0,
+          "change": "changed",
+          "before": "- [?] #task Write docs [dependsOn:: ship] [id:: docs] ^docs"
+        }
+      ]
+    }
+  ],
+  "open_notes": [
+    {
+      "path": "/tmp/bob-mac-capture-req-close-fixture/mixed-vault/sase.md",
+      "relative_path": "sase.md",
+      "role": "note",
+      "label": "sase.md",
+      "line": 1,
+      "ref": "1:1b602ca3",
+      "block_id": "ship"
+    }
+  ],
+  "pull_in": {
+    "supported": true,
+    "offer_count": 1,
+    "choice": "none",
+    "picked_count": 0,
+    "close": {
+      "supported": true,
+      "done_count": 0,
+      "cancelled_count": 0
+    },
+    "jump": {
+      "supported": true
+    },
+    "groups": [
+      {
+        "group": "hand_off",
+        "copy": {
+          "title": "Hand-offs",
+          "glyph": "hand_off"
+        }
+      }
+    ],
+    "copy": {
+      "title": "Pull in successors of Ship parser",
+      "capsule": "Pull in",
+      "glyph": "hand_off"
+    }
+  },
+  "inbox_route": {
+    "supported": true,
+    "candidate_count": 0,
+    "routed_count": 0,
+    "kept_count": 0,
+    "candidates": []
+  },
+  "move_choice": {
+    "supported": true
+  }
+}

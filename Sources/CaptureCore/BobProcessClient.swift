@@ -85,6 +85,9 @@ public final class BobProcessClient: @unchecked Sendable {
     /// `--require-inbox-route-choice`, so "always" holds even when Return
     /// beats the live preview.
     private var inboxRouteCapabilityIdentities: Set<String> = []
+    /// Requirement-card support is learned only from Bob's positive
+    /// `pull_in.reqs.supported` response and remains scoped to that executable.
+    private var requirementChoiceCapabilityIdentities: Set<String> = []
 
     public init(
         executablePath: String,
@@ -151,6 +154,18 @@ public final class BobProcessClient: @unchecked Sendable {
         stateQueue.sync {
             inboxRouteCapabilityIdentities.contains(identityToken)
         }
+    }
+
+    /// A proof suitable for a later guarded preview or submit. Replacing Bob
+    /// changes the executable identity and makes this return nil.
+    public var requirementChoiceCapabilityProof: CaptureRequirementCapabilityProof? {
+        let identity = identityToken
+        guard stateQueue.sync(execute: {
+            requirementChoiceCapabilityIdentities.contains(identity)
+        }) else {
+            return nil
+        }
+        return CaptureRequirementCapabilityProof(executableIdentity: identity)
     }
 
     /// Records that the current executable advertised inbox-route support.
@@ -1256,12 +1271,21 @@ public final class BobProcessClient: @unchecked Sendable {
     public func captureLivePreview(
         _ draft: String,
         priorityRollSeed: String,
-        readClipboard: Bool = false
+        readClipboard: Bool = false,
+        requirementCapabilityProof: CaptureRequirementCapabilityProof? = nil
     ) async throws -> CaptureCommandResponse {
+        let requestedIdentity = identityToken
+        let requirementCapability = requirementCapabilityProofIsCurrent(
+            requirementCapabilityProof,
+            identity: requestedIdentity
+        )
         var arguments = [
             "capture",
             "--dry-run",
         ]
+        if requirementCapability {
+            arguments.append("--req-choice")
+        }
         if !readClipboard {
             arguments.append("--no-clip")
         }
@@ -1290,6 +1314,8 @@ public final class BobProcessClient: @unchecked Sendable {
         moveInCapabilityAdvertised: Bool = false,
         pullInSelection: CapturePullInSelection? = nil,
         offerVerdicts: CapturePullInOfferVerdicts? = nil,
+        requirementSubmission: CaptureRequirementSubmission? = nil,
+        requirementCapabilityProof: CaptureRequirementCapabilityProof? = nil,
         jumpOffer: String? = nil,
         requirePullInChoice: Bool = false,
         refuseOverride: Bool = false,
@@ -1302,6 +1328,33 @@ public final class BobProcessClient: @unchecked Sendable {
         templateOrigin: String? = nil,
         expectPastWindows: String? = nil
     ) async throws -> CaptureCommandResponse {
+        let requestIdentity = identityToken
+        let reqSubmission = requirementSubmission ?? CaptureRequirementSubmission()
+        let hasRequirementChoices = !reqSubmission.isEmpty
+        let hasRequirementMetOrDrop = reqSubmission.verdicts.contains { verdict in
+            switch verdict {
+            case .met, .drop: return true
+            case .carry, .carryAndPull: return false
+            }
+        }
+        let hasRequirementCarryPull = reqSubmission.verdicts.contains {
+            if case .carryAndPull = $0 { return true }
+            return false
+        }
+        let hasRequirementCapability = requirementCapabilityProofIsCurrent(
+            requirementCapabilityProof,
+            identity: requestIdentity
+        )
+
+        if hasRequirementChoices && !hasRequirementCapability {
+            throw BobClientError.unsupportedOption("--req-choice")
+        }
+        if hasRequirementMetOrDrop && !offerCloseCapabilityAdvertised {
+            throw BobClientError.unsupportedOption("--complete-offer / --cancel-offer")
+        }
+        if hasRequirementCarryPull && !pullInCapabilityAdvertised {
+            throw BobClientError.unsupportedOption("--pull-in")
+        }
         if moveInSelection != nil, !moveInCapabilityAdvertised {
             throw BobClientError.unsupportedOption("--move-in")
         }
@@ -1339,34 +1392,81 @@ public final class BobProcessClient: @unchecked Sendable {
             }
             arguments += ["--move-in", moveInSelection]
         }
+        var pullInKeys: [String] = []
+        var explicitNoPullIn = false
         if let pullInSelection {
             switch pullInSelection {
             case .keys(let keys):
                 guard !keys.isEmpty, keys.allSatisfy({ !$0.isEmpty }) else {
                     throw BobClientError.unsupportedOption("--pull-in requires opaque offer keys")
                 }
-                arguments += ["--pull-in", keys.joined(separator: ",")]
+                pullInKeys.append(contentsOf: keys)
             case .none:
-                arguments += ["--pull-in", "none"]
+                explicitNoPullIn = true
             }
         }
-        if let offerVerdicts {
-            let allKeys = offerVerdicts.completeKeys + offerVerdicts.cancelOffers.map(\.key)
-            guard allKeys.allSatisfy({ !$0.isEmpty }),
-                Set(allKeys).count == allKeys.count
-            else {
-                throw BobClientError.unsupportedOption(
-                    "offer verdicts require unique opaque offer keys")
+        let ordinaryPullInKeys = pullInKeys
+        let requirementCarryPullKeys = reqSubmission.verdicts.compactMap { verdict -> String? in
+            guard case .carryAndPull(let key) = verdict else { return nil }
+            return key
+        }
+        if explicitNoPullIn && !requirementCarryPullKeys.isEmpty {
+            throw BobClientError.unsupportedOption(
+                "--pull-in none conflicts with carry-and-pull requirement verdicts")
+        }
+        pullInKeys.append(contentsOf: requirementCarryPullKeys)
+        let requirementMetKeys = reqSubmission.verdicts.compactMap { verdict -> String? in
+            guard case .met(let key) = verdict else { return nil }
+            return key
+        }
+        let requirementDrops = reqSubmission.verdicts.compactMap {
+            verdict -> CapturePullInCancelOffer? in
+            guard case .drop(let key, let reason) = verdict else { return nil }
+            return CapturePullInCancelOffer(key: key, reason: reason)
+        }
+        let ordinaryCompleteKeys = offerVerdicts?.completeKeys ?? []
+        let ordinaryCancelOffers = offerVerdicts?.cancelOffers ?? []
+        let ordinaryVerdictKeys = ordinaryCompleteKeys + ordinaryCancelOffers.map(\.key)
+        guard Set(ordinaryVerdictKeys).count == ordinaryVerdictKeys.count else {
+            throw BobClientError.unsupportedOption(
+                "offer verdicts require unique opaque offer keys")
+        }
+        let allVerdictKeys =
+            ordinaryCompleteKeys
+            + ordinaryCancelOffers.map(\.key)
+            + reqSubmission.verdicts.map(\.key)
+        guard allVerdictKeys.allSatisfy({ !$0.isEmpty }),
+            Set(allVerdictKeys).count == allVerdictKeys.count,
+            Set(pullInKeys).count == pullInKeys.count,
+            Set(ordinaryPullInKeys).isDisjoint(with: reqSubmission.verdicts.map(\.key))
+        else {
+            throw BobClientError.unsupportedOption(
+                "offer and requirement verdicts require unique opaque keys")
+        }
+        if !pullInKeys.isEmpty {
+            guard pullInKeys.allSatisfy({ !$0.isEmpty }) else {
+                throw BobClientError.unsupportedOption("--pull-in requires opaque offer keys")
             }
-            if !offerVerdicts.completeKeys.isEmpty {
-                arguments += [
-                    "--complete-offer", offerVerdicts.completeKeys.joined(separator: ","),
-                ]
-            }
-            for offer in offerVerdicts.cancelOffers {
-                let value = offer.reason.isEmpty ? offer.key : "\(offer.key)=\(offer.reason)"
-                arguments += ["--cancel-offer", value]
-            }
+            arguments += ["--pull-in", pullInKeys.joined(separator: ",")]
+        } else if explicitNoPullIn {
+            arguments += ["--pull-in", "none"]
+        }
+        if !ordinaryCompleteKeys.isEmpty {
+            arguments += ["--complete-offer", ordinaryCompleteKeys.joined(separator: ",")]
+        }
+        for key in requirementMetKeys {
+            arguments += ["--complete-offer", key]
+        }
+        for offer in ordinaryCancelOffers + requirementDrops {
+            let value = offer.reason.isEmpty ? offer.key : "\(offer.key)=\(offer.reason)"
+            arguments += ["--cancel-offer", value]
+        }
+        let requirementCarryKeys = reqSubmission.verdicts.compactMap { verdict -> String? in
+            guard case .carry(let key) = verdict else { return nil }
+            return key
+        }
+        for key in requirementCarryKeys {
+            arguments += ["--carry", key]
         }
         if let jumpOffer, !jumpOffer.isEmpty {
             arguments += ["--jump-offer", jumpOffer]
@@ -1392,6 +1492,13 @@ public final class BobProcessClient: @unchecked Sendable {
         if requireGuard {
             arguments.append("--require-pull-in-choice")
         }
+        let hasOfferVerdicts = offerVerdicts.map { !$0.isEmpty } ?? false
+        if hasRequirementCapability
+            && (dryRun || requirePullInChoice || hasRequirementChoices || hasOfferVerdicts
+                || (jumpOffer?.isEmpty == false))
+        {
+            arguments.append("--req-choice")
+        }
         // Same positive gate for inbox routing: `--require-inbox-route-choice`
         // goes out only after this executable proved support through a preview
         // whose `inbox_route.supported` was true, or through the remembered
@@ -1408,7 +1515,7 @@ public final class BobProcessClient: @unchecked Sendable {
         if sendRefuseOverride {
             arguments.append("--refuse-override")
         }
-        let currentIdentity = identityToken
+        let currentIdentity = requestIdentity
         let maySendTemplateOrigin = stateQueue.sync {
             savedTemplatesIdentity == currentIdentity
         }
@@ -1439,6 +1546,18 @@ public final class BobProcessClient: @unchecked Sendable {
                 return false
             }
             return unsupportedGuardFlags.contains(flag)
+        }
+    }
+
+    private func requirementCapabilityProofIsCurrent(
+        _ proof: CaptureRequirementCapabilityProof?,
+        identity: String
+    ) -> Bool {
+        if let proof {
+            return proof.applies(to: identity)
+        }
+        return stateQueue.sync {
+            requirementChoiceCapabilityIdentities.contains(identity)
         }
     }
 
@@ -1887,6 +2006,7 @@ public final class BobProcessClient: @unchecked Sendable {
         lane: String = "default",
         allowsGuardFallback: Bool = false
     ) async throws -> CaptureCommandResponse {
+        let requestedIdentity = identityToken
         let result = try await run(
             arguments: arguments, environmentOverrides: environmentOverrides, lane: lane)
         let stderr = boundedProcessText(result.stderr)
@@ -1929,11 +2049,9 @@ public final class BobProcessClient: @unchecked Sendable {
                 CaptureCommandResponse.self,
                 from: Data(trimmedStdout.utf8)
             )
-            // Any decoded capture JSON whose `inbox_route.supported` is true proves
-            // this executable speaks the inbox-route contract. Remember it per
-            // executable identity so later submits send the guard even when Return
-            // beats the live preview.
-            let advertised: Bool = {
+            // Remember positive capabilities only if the executable that answered
+            // is still the one whose process was requested.
+            let inboxRouteAdvertised: Bool = {
                 switch response {
                 case .success(let success):
                     return success.inboxRoute?.supported == true
@@ -1941,10 +2059,24 @@ public final class BobProcessClient: @unchecked Sendable {
                     return failure.inboxRoute?.supported == true
                 }
             }()
-            if advertised {
-                let identity = identityToken
+            let requirementChoiceAdvertised: Bool = {
+                switch response {
+                case .success(let success):
+                    return success.pullIn?.reqs?.supported == true
+                case .failure(let failure):
+                    return failure.pullIn?.reqs?.supported == true
+                }
+            }()
+            if requestedIdentity == identityToken,
+                inboxRouteAdvertised || requirementChoiceAdvertised
+            {
                 stateQueue.sync {
-                    _ = inboxRouteCapabilityIdentities.insert(identity)
+                    if inboxRouteAdvertised {
+                        _ = inboxRouteCapabilityIdentities.insert(requestedIdentity)
+                    }
+                    if requirementChoiceAdvertised {
+                        _ = requirementChoiceCapabilityIdentities.insert(requestedIdentity)
+                    }
                 }
             }
             return response

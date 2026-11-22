@@ -15,6 +15,66 @@ extension CaptureCommandSuccess {
         return rows
     }
 
+    /// Requirement groups in Bob's item order. Requirements stay in their own
+    /// typed collection and never enter `allUnblockedRows` as recovered tasks.
+    /// In batch responses, item groups are authoritative and the root-level
+    /// mirror is appended only to recover groups an older or partial item lacks.
+    public var allRequirementGroups: [CapturePullInGroup] {
+        var groups = normalizedCaptures.flatMap { $0.pullIn?.groups ?? [] }
+        if !captures.isEmpty {
+            groups.append(contentsOf: pullIn?.groups ?? [])
+        }
+        return Self.canonicalRequirementGroups(groups)
+    }
+
+    /// Bob-authored requirement receipts in normalized item order. Batch root
+    /// mirrors are deduplicated by the full opaque receipt key.
+    public var allRequirementOutcomes: [CaptureRequirementOutcome] {
+        var outcomes = normalizedCaptures.flatMap(\.reqOutcomes)
+        if !captures.isEmpty {
+            outcomes.append(contentsOf: reqOutcomes)
+        }
+        var seen = Set<String>()
+        return outcomes.filter { !$0.key.isEmpty && seen.insert($0.key).inserted }
+    }
+
+    static func canonicalRequirementGroups(
+        _ groups: [CapturePullInGroup]
+    ) -> [CapturePullInGroup] {
+        var result: [CapturePullInGroup] = []
+        var ownerIndices: [String: Int] = [:]
+        var seenRowKeys = Set<String>()
+
+        for group in groups where group.isRequirementGroup {
+            let declaredOwnerKey = group.owner?.key.isEmpty == false ? group.owner?.key : nil
+            var ownerKeys: [String] = []
+            for row in group.rows where row.isSelectable {
+                guard declaredOwnerKey == nil || row.req.ownerKey == declaredOwnerKey else {
+                    continue
+                }
+                if !ownerKeys.contains(row.req.ownerKey) {
+                    ownerKeys.append(row.req.ownerKey)
+                }
+            }
+
+            for ownerKey in ownerKeys {
+                let ownerRows = group.rows.filter {
+                    $0.isSelectable && $0.req.ownerKey == ownerKey
+                }
+                let newRows = ownerRows.filter { seenRowKeys.insert($0.offer.key).inserted }
+                guard !newRows.isEmpty else { continue }
+                if let index = ownerIndices[ownerKey] {
+                    let existingRows = result[index].rows
+                    result[index] = result[index].replacingRequirementRows(existingRows + newRows)
+                } else {
+                    ownerIndices[ownerKey] = result.count
+                    result.append(group.replacingRequirementRows(newRows))
+                }
+            }
+        }
+        return result
+    }
+
     /// Keep-moving offer rows from the same closes, in the same order.
     public var allKeepMovingRows: [TaskCompleteUnblocked] {
         var rows: [TaskCompleteUnblocked] = taskComplete?.keepMoving ?? []
@@ -85,5 +145,23 @@ extension CaptureCommandSuccess {
 
     private var relationItems: [CaptureCommandSuccess] {
         captures.isEmpty ? [self] : captures
+    }
+}
+
+extension CaptureCommandResponse {
+    /// Current response's requirement groups, whether it succeeded or
+    /// returned a stale-key refusal with fresh `current.groups`.
+    public var requirementGroups: [CapturePullInGroup] {
+        switch self {
+        case .success(let success):
+            return success.allRequirementGroups
+        case .failure(let failure):
+            return failure.currentRequirementGroups
+        }
+    }
+
+    public var requirementOutcomes: [CaptureRequirementOutcome] {
+        guard case .success(let success) = self else { return [] }
+        return success.allRequirementOutcomes
     }
 }

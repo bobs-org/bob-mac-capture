@@ -321,6 +321,116 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(try recordText(unrelatedRecord).components(separatedBy: "argv=capture").count - 1, 1)
     }
 
+    func testRequirementSubmissionUsesPreviewProvedCapabilityAndOneCaptureCall() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(
+            record: record,
+            extraEnvironment: ["FAKE_BOB_STDOUT": requirementCapabilityResponse()]
+        )
+
+        do {
+            _ = try await client.capture(
+                "early submit",
+                readClipboard: false,
+                requirementSubmission: CaptureRequirementSubmission(
+                    verdicts: [.met(key: "req:met")]
+                ),
+                offerCloseCapabilityAdvertised: true
+            )
+            XCTFail("Requirement verdicts need a current Bob capability proof")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--req-choice")
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: record.path))
+
+        _ = try await client.captureLivePreview("preview", priorityRollSeed: "preview-seed")
+        let proof = try XCTUnwrap(client.requirementChoiceCapabilityProof)
+        _ = try await client.captureLivePreview(
+            "preview with requirements",
+            priorityRollSeed: "preview-seed",
+            requirementCapabilityProof: proof
+        )
+        _ = try await client.capture(
+            "final answer",
+            readClipboard: false,
+            pullInSelection: .keys(["ordinary-pull"]),
+            offerVerdicts: CapturePullInOfferVerdicts(
+                completeKeys: ["ordinary-done"],
+                cancelOffers: [CapturePullInCancelOffer(key: "ordinary-drop", reason: "Moved")]
+            ),
+            requirementSubmission: CaptureRequirementSubmission(verdicts: [
+                .met(key: "req:met"),
+                .drop(key: "req:drop", reason: "No longer required"),
+                .carry(key: "req:carry"),
+                .carryAndPull(key: "req:carry-pull"),
+            ]),
+            requirementCapabilityProof: proof,
+            pullInCapabilityAdvertised: true,
+            offerCloseCapabilityAdvertised: true
+        )
+
+        let calls = try recordText(record)
+        XCTAssertTrue(
+            calls.contains("argv=capture --dry-run --no-clip --format json -- preview"))
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --dry-run --req-choice --no-clip --format json -- preview with requirements"
+            ))
+        XCTAssertTrue(
+            calls.contains(
+                "argv=capture --format json --no-clip --pull-in ordinary-pull,req:carry-pull --complete-offer ordinary-done --complete-offer req:met --cancel-offer ordinary-drop=Moved --cancel-offer req:drop=No longer required --carry req:carry --req-choice -- final answer"
+            ),
+            calls
+        )
+        XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 3)
+    }
+
+    func testCarryAndPullConflictsWithExplicitNoPullAndProofExpiresWithBobIdentity() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(
+            record: record,
+            extraEnvironment: ["FAKE_BOB_STDOUT": requirementCapabilityResponse()]
+        )
+        var identity = "bob-first"
+        client.identityTokenProvider = { identity }
+        _ = try await client.captureLivePreview("preview", priorityRollSeed: "seed")
+        let proof = try XCTUnwrap(client.requirementChoiceCapabilityProof)
+
+        do {
+            _ = try await client.capture(
+                "conflicting",
+                pullInSelection: CapturePullInSelection.none,
+                requirementSubmission: CaptureRequirementSubmission(
+                    verdicts: [.carryAndPull(key: "req:key")]
+                ),
+                requirementCapabilityProof: proof,
+                pullInCapabilityAdvertised: true
+            )
+            XCTFail("An explicit no-pull selection conflicts with carry-and-pull")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--pull-in none conflicts with carry-and-pull requirement verdicts")
+        }
+
+        identity = "bob-replaced"
+        do {
+            _ = try await client.capture(
+                "stale proof",
+                requirementSubmission: CaptureRequirementSubmission(
+                    verdicts: [.drop(key: "req:key", reason: "Drop")]
+                ),
+                requirementCapabilityProof: proof,
+                offerCloseCapabilityAdvertised: true
+            )
+            XCTFail("A proof from a replaced Bob executable must expire")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--req-choice")
+        }
+        XCTAssertEqual(
+            try recordText(record).components(separatedBy: "argv=capture").count - 1,
+            1
+        )
+    }
+
     func testGuardFlagKnownUnsupportedSkipsIdentityLookupWhenEmpty() throws {
         var lookups = 0
         let client = try makeClient(record: temporaryRecordURL())
@@ -386,5 +496,9 @@ final class CapturePullInClientTests: XCTestCase {
 
     private func successResponse() -> String {
         #"{"ok":true,"dry_run":false,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"task","task_line":"- [ ] Task","kind":"task","created":"2026-10-13","placement":"new"}"#
+    }
+
+    private func requirementCapabilityResponse() -> String {
+        #"{"ok":true,"dry_run":true,"routed":false,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"task","task_line":"- [ ] Task","kind":"task","created":"2026-10-13","placement":"new","pull_in":{"supported":true,"reqs":{"supported":true,"pending":1}}}"#
     }
 }
