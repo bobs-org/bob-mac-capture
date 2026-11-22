@@ -73,12 +73,17 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     /// and dies when the card closes without committing.
     public private(set) var jumpKey: String?
     public private(set) var isEscArmed = false
+    /// Pending requirement rows in Bob's order. Empty for legacy offer-only cards.
+    public private(set) var requirementRows: [CaptureRequirementRow] = []
+    /// Explicitly staged structural requirement choices. Absence is Met.
+    public private(set) var requirementChoices: [String: CaptureRequirementStagedVerdict] = [:]
 
     /// Card compatibility: direct highlight assignment, including nil when
     /// filtering hides every row. Staged verdicts never move the highlight
-    /// except through the explicit staging calls.
+    /// except through the explicit staging calls. The highlight may name a
+    /// requirement row; it never becomes an effective pull-in pick.
     public mutating func setHighlightedKeyForCard(_ key: String?) {
-        if let key, rows.contains(where: { $0.offer?.key == key }) {
+        if let key, combinedSelectableKeys.contains(key) {
             highlightedKey = key
             isEscArmed = false
         } else if key == nil {
@@ -88,9 +93,10 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     /// Card compatibility: direct mark replacement for filter/group tests.
-    /// Surviving verdicts still win over marks.
+    /// Surviving verdicts still win over marks. Marks touch ordinary
+    /// task offers only and preserve requirement choices.
     public mutating func setMarksForCard(_ keys: Set<String>) {
-        marks = keys
+        marks = keys.intersection(Set(selectableKeys))
         for key in verdicts.keys {
             marks.remove(key)
         }
@@ -103,6 +109,30 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         highlightedKey: String? = nil,
         marks: Set<String>? = nil,
         verdicts: [String: Verdict] = [:],
+        jumpKey: String? = nil
+    ) {
+        self.init(
+            offers: offers,
+            requirements: [],
+            closeSupported: closeSupported,
+            highlightedKey: highlightedKey,
+            marks: marks,
+            verdicts: verdicts,
+            requirementChoices: [:],
+            jumpKey: jumpKey
+        )
+    }
+
+    /// Requirement-aware initializer. Task-only callers keep the legacy
+    /// initializer above, which delegates here with no requirements.
+    public init(
+        offers: [TaskCompleteUnblocked],
+        requirements: [CaptureRequirementRow],
+        closeSupported: Bool = false,
+        highlightedKey: String? = nil,
+        marks: Set<String>? = nil,
+        verdicts: [String: Verdict] = [:],
+        requirementChoices: [String: CaptureRequirementStagedVerdict] = [:],
         jumpKey: String? = nil
     ) {
         var seen = Set<String>()
@@ -118,13 +148,35 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
                 ? ($0.offer?.key ?? "") < ($1.offer?.key ?? "")
                 : left < right
         }
+        var seenReq = Set<String>()
+        let usableReqs = requirements.filter { $0.isSelectable }.compactMap {
+            row -> CaptureRequirementRow? in
+            guard !row.offer.key.isEmpty, seenReq.insert(row.offer.key).inserted else {
+                return nil
+            }
+            return row
+        }.sorted {
+            $0.offer.n == $1.offer.n ? $0.offer.key < $1.offer.key : $0.offer.n < $1.offer.n
+        }
         let keys = usableRows.compactMap { $0.offer?.key }
         let validKeys = Set(keys)
+        let reqKeys = usableReqs.map(\.offer.key)
+        let validReqKeys = Set(reqKeys)
+        let combinedValid = validKeys.union(validReqKeys)
         self.rows = usableRows
+        self.requirementRows = usableReqs
         self.closeSupported = closeSupported
-        self.highlightedKey =
-            highlightedKey.flatMap { validKeys.contains($0) ? $0 : nil }
-            ?? keys.first
+        // Highlight may target a requirement row; task-only cards keep the
+        // legacy first-offer fallback. A highlighted requirement never
+        // becomes an effective pull-in pick.
+        if let highlightedKey, combinedValid.contains(highlightedKey) {
+            self.highlightedKey = highlightedKey
+        } else if let highlightedKey, validKeys.contains(highlightedKey) {
+            self.highlightedKey = highlightedKey
+        } else {
+            self.highlightedKey = highlightedKey.flatMap { validReqKeys.contains($0) ? $0 : nil }
+                ?? keys.first ?? reqKeys.first
+        }
         self.marks =
             (marks
             ?? Set(
@@ -137,7 +189,11 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
                 verdict, in: usableRows.first { $0.offer?.key == key }?.offer?.close,
                 closeSupported: closeSupported)
         }
-        self.jumpKey = jumpKey.flatMap { validKeys.contains($0) ? $0 : nil }
+        // Only staged structural requirement choices for surviving rows.
+        // Met is the absence of a value and is never stored.
+        self.requirementChoices = requirementChoices.filter { validReqKeys.contains($0.key) }
+        // A jump pin may target an ordinary offer or a requirement row.
+        self.jumpKey = jumpKey.flatMap { combinedValid.contains($0) ? $0 : nil }
         for key in self.verdicts.keys {
             self.marks.remove(key)
         }
@@ -165,7 +221,31 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public var hasVerdicts: Bool {
-        !verdicts.isEmpty
+        !verdicts.isEmpty || !requirementChoices.isEmpty
+    }
+
+    /// Requirement offer keys in Bob's order.
+    public var requirementSelectableKeys: [String] {
+        requirementRows.map(\.offer.key)
+    }
+
+    /// Combined Bob order for highlight and jump validation: requirements
+    /// first by shared numbering, then ordinary offers. Task-only
+    /// `selectableKeys` stays the stable argv order for ordinary offers.
+    public var combinedSelectableKeys: [String] {
+        let typed: [CapturePullInTypedRow] = requirementRows.map { .requirement($0) }
+            + rows.map { .task($0) }
+        return typed.sorted {
+            $0.number == $1.number ? $0.key < $1.key : $0.number < $1.number
+        }.map(\.key)
+    }
+
+    public var typedRowsInBobOrder: [CapturePullInTypedRow] {
+        let typed: [CapturePullInTypedRow] = requirementRows.map { .requirement($0) }
+            + rows.map { .task($0) }
+        return typed.sorted {
+            $0.number == $1.number ? $0.key < $1.key : $0.number < $1.number
+        }
     }
 
     public var effectiveSelectionKeys: [String] {
@@ -177,12 +257,32 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public var canCommit: Bool {
-        effectivePickCount > 0 || closeCount > 0 || jumpKey != nil
+        // All-default requirement cards are committable: Met writes no
+        // bytes but still closes the owner.
+        if !requirementRows.isEmpty {
+            return true
+        }
+        return effectivePickCount > 0 || closeCount > 0 || jumpKey != nil
+    }
+
+    /// Explicit structural requirement choices (Drop/Carry/Carry-plus-pull).
+    public var requirementStructuralCount: Int {
+        requirementChoices.count
+    }
+
+    public var requirementDropCount: Int {
+        requirementChoices.values.filter { $0.isDrop }.count
+    }
+
+    public var requirementCarryCount: Int {
+        requirementChoices.count - requirementDropCount
     }
 
     /// Explicit marks win. The highlighted-row fallback applies only before
-    /// the user stages any Done or Cancel verdict, and never while a jump
-    /// pin is staged: a pin-only commit jumps without pulling anything in.
+    /// the user stages any Done, Cancel, or structural requirement verdict,
+    /// and never while a jump pin is staged or the highlight names a
+    /// requirement: a pin-only commit jumps without pulling anything in,
+    /// and Return never silently pulls a highlighted requirement.
     public func effectivePickKeys(fallbackKey: String? = nil) -> [String] {
         let validKeys = Set(selectableKeys)
         let marked = selectableKeys.filter { marks.contains($0) && verdicts[$0] == nil }
@@ -190,6 +290,7 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
             return marked
         }
         guard verdicts.isEmpty,
+            requirementChoices.isEmpty,
             jumpKey == nil,
             let fallbackKey,
             validKeys.contains(fallbackKey),
@@ -322,18 +423,20 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     /// Toggle the jump pin: radio toggle and move, keyed by offer key,
-    /// never by list index. Returns false for non-offer rows, which the
-    /// card surfaces as a refusal instead of a pin. Verdicts, marks, and
-    /// the highlight are untouched; Ctrl+J never moves the highlight.
+    /// never by list index. Accepts ordinary offers and requirement rows;
+    /// returns false for unknown rows, which the card surfaces as a refusal
+    /// instead of a pin. A navigation-only descendant pin remains valid
+    /// while its ancestor is carried or dropped. Verdicts, marks, and the
+    /// highlight are untouched; Ctrl+J never moves the highlight.
     @discardableResult
     public mutating func toggleJump(for key: String) -> Bool {
-        guard selectableKeys.contains(key) else { return false }
+        guard combinedSelectableKeys.contains(key) else { return false }
         if jumpKey == key {
             jumpKey = nil
         } else {
             jumpKey = key
         }
-        if !verdicts.isEmpty {
+        if !verdicts.isEmpty || !requirementChoices.isEmpty {
             isEscArmed = false
         }
         return true
@@ -342,8 +445,13 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     /// The pinned row's plain text, for status and VoiceOver copy.
     public var jumpLabel: String? {
         guard let jumpKey else { return nil }
-        let text = rows.first(where: { $0.offer?.key == jumpKey })?.text ?? ""
-        return text.isEmpty ? nil : text
+        if let text = rows.first(where: { $0.offer?.key == jumpKey })?.text,
+            !text.isEmpty
+        {
+            return text
+        }
+        let reqText = requirementRows.first(where: { $0.offer.key == jumpKey })?.req.text ?? ""
+        return reqText.isEmpty ? nil : reqText
     }
 
     /// Footer safety net: the staged pin is never a surprise, even when the
@@ -370,18 +478,22 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     }
 
     public mutating func highlight(_ key: String) {
-        guard selectableKeys.contains(key) else { return }
+        guard combinedSelectableKeys.contains(key) else { return }
         highlightedKey = key
         isEscArmed = false
     }
 
     /// Return a valid offer-key set after Bob refuses a stale or changed row.
     /// Surviving marks, verdict reasons, and highlight remain intact.
+    /// Requirement rows and choices survive a task-only reseed; use the
+    /// combined reseed when Bob returns fresh requirement keys.
     @discardableResult
     public mutating func reseed(validKeys: Set<String>) -> Int {
         let survivingKeys = Set(selectableKeys).intersection(validKeys)
         var staged = Set(marks).union(verdicts.keys)
-        if let jumpKey { staged.insert(jumpKey) }
+        if let jumpKey, selectableKeys.contains(jumpKey) {
+            staged.insert(jumpKey)
+        }
         let lost = staged.subtracting(survivingKeys).count
         rows = rows.filter { row in
             guard let key = row.offer?.key else { return false }
@@ -389,11 +501,12 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         }
         marks.formIntersection(survivingKeys)
         verdicts = verdicts.filter { survivingKeys.contains($0.key) }
-        if let jumpKey, !survivingKeys.contains(jumpKey) {
+        let combinedSurviving = survivingKeys.union(Set(requirementSelectableKeys))
+        if let jumpKey, !combinedSurviving.contains(jumpKey) {
             self.jumpKey = nil
         }
-        if let highlightedKey, !survivingKeys.contains(highlightedKey) {
-            self.highlightedKey = selectableKeys.first
+        if let highlightedKey, !combinedSurviving.contains(highlightedKey) {
+            self.highlightedKey = selectableKeys.first ?? requirementSelectableKeys.first
         }
         isEscArmed = false
         return lost
@@ -402,6 +515,36 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     @discardableResult
     public mutating func reseed(validKeys: [String]) -> Int {
         reseed(validKeys: Set(validKeys))
+    }
+
+    /// Combined reseed for task offers and requirement rows. Exact complete
+    /// keys only: a changed owner preimage never transfers by label or
+    /// sibling path. Reports removed staged choices.
+    @discardableResult
+    public mutating func reseedCombined(taskKeys: Set<String>, requirementKeys: Set<String>) -> Int {
+        let survivingTasks = Set(selectableKeys).intersection(taskKeys)
+        let survivingReqs = Set(requirementSelectableKeys).intersection(requirementKeys)
+        var staged = Set(marks).union(verdicts.keys).union(requirementChoices.keys)
+        if let jumpKey { staged.insert(jumpKey) }
+        let survivingCombined = survivingTasks.union(survivingReqs)
+        let lost = staged.subtracting(survivingCombined).count
+        rows = rows.filter { row in
+            guard let key = row.offer?.key else { return false }
+            return survivingTasks.contains(key)
+        }
+        requirementRows = requirementRows.filter { survivingReqs.contains($0.offer.key) }
+        marks.formIntersection(survivingTasks)
+        verdicts = verdicts.filter { survivingTasks.contains($0.key) }
+        requirementChoices = requirementChoices.filter { survivingReqs.contains($0.key) }
+        revalidateRequirementBranches()
+        if let jumpKey, !survivingCombined.contains(jumpKey) {
+            self.jumpKey = nil
+        }
+        if let highlightedKey, !survivingCombined.contains(highlightedKey) {
+            self.highlightedKey = selectableKeys.first ?? requirementSelectableKeys.first
+        }
+        isEscArmed = false
+        return lost
     }
 
     /// Bob-authored unblock count for one row; never derived locally.
@@ -415,8 +558,21 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
     /// row never keeps stale data. Removed keys are dropped and counted.
     @discardableResult
     public mutating func refresh(rows freshRows: [TaskCompleteUnblocked]) -> Int {
+        return refresh(taskRows: freshRows, requirementRows: requirementRows)
+    }
+
+    /// Refresh task and requirement descriptors from Bob, preserving
+    /// surviving marks, verdicts, reasons, highlight and pin. Exact
+    /// complete keys only; a changed owner preimage never transfers by
+    /// label or sibling path. Reports removed staged choices and
+    /// revalidates surviving branch choices.
+    @discardableResult
+    public mutating func refresh(
+        taskRows freshTasks: [TaskCompleteUnblocked],
+        requirementRows freshReqs: [CaptureRequirementRow]
+    ) -> Int {
         var seen = Set<String>()
-        let usable = freshRows.compactMap { row -> TaskCompleteUnblocked? in
+        let usable = freshTasks.compactMap { row -> TaskCompleteUnblocked? in
             guard let offer = row.offer, !offer.key.isEmpty,
                 seen.insert(offer.key).inserted
             else {
@@ -430,32 +586,92 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
                 ? ($0.offer?.key ?? "") < ($1.offer?.key ?? "")
                 : left < right
         }
+        var seenReq = Set<String>()
+        let usableReqs = freshReqs.filter { $0.isSelectable }.compactMap {
+            row -> CaptureRequirementRow? in
+            guard !row.offer.key.isEmpty, seenReq.insert(row.offer.key).inserted else {
+                return nil
+            }
+            return row
+        }.sorted {
+            $0.offer.n == $1.offer.n ? $0.offer.key < $1.offer.key : $0.offer.n < $1.offer.n
+        }
         let validKeys = Set(usable.compactMap { $0.offer?.key })
-        var staged = Set(marks).union(verdicts.keys)
+        let validReqKeys = Set(usableReqs.map(\.offer.key))
+        let validCombined = validKeys.union(validReqKeys)
+        var staged = Set(marks).union(verdicts.keys).union(requirementChoices.keys)
         if let jumpKey { staged.insert(jumpKey) }
-        let lost = staged.subtracting(validKeys).count
+        let lostPre = staged.subtracting(validCombined).count
         rows = usable
+        requirementRows = usableReqs
         marks.formIntersection(validKeys)
         // Keep surviving staged verdicts visible even when Bob's fresh
         // descriptor now refuses them; Bob remains the final write
         // validator and the user changes the judgment explicitly.
         verdicts = verdicts.filter { validKeys.contains($0.key) }
+        requirementChoices = requirementChoices.filter { validReqKeys.contains($0.key) }
+        let droppedBranches = revalidateRequirementBranches()
         // A refresh that loses the pinned key drops the pin; the caller
         // reports it with the visible status line.
-        if let jumpKey, !validKeys.contains(jumpKey) {
+        if let jumpKey, !validCombined.contains(jumpKey) {
             self.jumpKey = nil
         }
-        if let highlightedKey, !validKeys.contains(highlightedKey) {
+        if let highlightedKey, !validCombined.contains(highlightedKey) {
             self.highlightedKey = usable.compactMap { $0.offer?.key }.first
+                ?? usableReqs.map(\.offer.key).first
         }
         isEscArmed = false
-        return lost
+        return lostPre + droppedBranches
+    }
+
+    /// Refresh requirement rows only, preserving task state.
+    @discardableResult
+    public mutating func refreshRequirements(_ freshReqs: [CaptureRequirementRow]) -> Int {
+        return refresh(taskRows: rows, requirementRows: freshReqs)
+    }
+
+    /// Row-aware semantic summary: descendants excluded by staged
+    /// structural choices are not counted as met.
+    public func requirementSummaryCounts() -> (met: Int, dropped: Int, carried: Int) {
+        let folds = Dictionary(uniqueKeysWithValues: requirementFolds().map { ($0.key, $0) })
+        var met = 0
+        var dropped = 0
+        var carried = 0
+        for row in requirementRows {
+            let key = row.offer.key
+            if let choice = requirementChoices[key] {
+                switch choice {
+                case .drop:
+                    dropped += 1
+                case .carry, .carryPulled:
+                    carried += 1
+                }
+                continue
+            }
+            // Unstaged rows hidden by a staged ancestor are excluded, never met.
+            if folds[key]?.visible == false {
+                continue
+            }
+            met += 1
+        }
+        return (met, dropped, carried)
+    }
+
+    public var requirementSummaryText: String? {
+        guard !requirementRows.isEmpty else { return nil }
+        let counts = requirementSummaryCounts()
+        return CaptureRequirementCopy.summary(
+            met: counts.met, dropped: counts.dropped, carried: counts.carried)
     }
 
     /// The shared footer copy, with zero-count segments omitted.
-    /// A staged pin always appends the jump safety-net suffix.
+    /// Requirement summary leads when requirement rows exist; a staged pin
+    /// always appends the jump safety-net suffix.
     public var footerSummaryText: String {
         var parts: [String] = []
+        if let reqSummary = requirementSummaryText {
+            parts.append(reqSummary)
+        }
         let picks = effectivePickCount
         if picks > 0 {
             parts.append("pull in \(picks)")
@@ -466,7 +682,12 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         if cancelCount > 0 {
             parts.append("⊘ \(cancelCount) cancel")
         }
-        let base = parts.isEmpty ? "Choose offers" : parts.joined(separator: " · ")
+        let base: String
+        if parts.isEmpty {
+            base = requirementRows.isEmpty ? "Choose offers" : "Choose requirements"
+        } else {
+            base = parts.joined(separator: " · ")
+        }
         return base + (jumpSummarySuffix ?? "")
     }
 
@@ -476,9 +697,11 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
 
     /// Copy-table primary label. The card passes its visible pick count so a
     /// collapsed highlight never shows "Pull In 1" on a disabled button.
+    /// Requirement structural choices count as closes.
     public func primaryLabel(pickCount: Int) -> String {
+        let total = totalCloseCount
         if jumpKey != nil {
-            if closeCount > 0 {
+            if total > 0 {
                 return "Apply & Jump"
             }
             if pickCount > 0 {
@@ -486,30 +709,38 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
             }
             return "Leave Open & Jump"
         }
-        if pickCount > 0, closeCount > 0 {
-            return "Pull In \(pickCount) · Close \(closeCount)"
+        if pickCount > 0, total > 0 {
+            return "Pull In \(pickCount) · Close \(total)"
         }
-        if closeCount > 0 {
-            return "Close \(closeCount)"
+        if total > 0 {
+            return "Close \(total)"
         }
         return pickCount == 0 ? "Pull In" : "Pull In \(pickCount)"
     }
 
+    /// Total closes for labels and Esc: ordinary Done/Cancel plus
+    /// explicit structural requirement choices. Default Met never arms.
+    public var totalCloseCount: Int {
+        closeCount + requirementStructuralCount
+    }
+
     public var skipLabel: String {
-        let base = closeCount == 0 ? "Skip" : "Skip pull-ins · Close \(closeCount)"
+        let total = totalCloseCount
+        let base = total == 0 ? "Skip" : "Skip pull-ins · Close \(total)"
         return jumpKey != nil ? base + " & Jump" : base
     }
 
     public var escArmedText: String? {
-        guard isEscArmed, closeCount > 0 else { return nil }
-        return closeCount == 1
+        let total = totalCloseCount
+        guard isEscArmed, total > 0 else { return nil }
+        return total == 1
             ? "Esc again to discard 1 close"
-            : "Esc again to discard \(closeCount) closes"
+            : "Esc again to discard \(total) closes"
     }
 
     @discardableResult
     public mutating func armEscDiscard() -> Bool {
-        guard closeCount > 0 else {
+        guard totalCloseCount > 0 else {
             isEscArmed = false
             return false
         }
@@ -523,6 +754,7 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
 
     public mutating func discardVerdicts() {
         verdicts.removeAll()
+        requirementChoices.removeAll()
         isEscArmed = false
     }
 
@@ -551,8 +783,297 @@ public struct CapturePullInOutcomes: Equatable, Sendable {
         )
     }
 
+    // MARK: - Requirements
+
+    public func requirementRow(for key: String) -> CaptureRequirementRow? {
+        requirementRows.first(where: { $0.offer.key == key })
+    }
+
+    public func requirementChoice(for key: String) -> CaptureRequirementStagedVerdict? {
+        requirementChoices[key]
+    }
+
+    public func isRequirementMet(_ key: String) -> Bool {
+        requirementSelectableKeys.contains(key) && requirementChoices[key] == nil
+    }
+
+    /// Bob-authored consequence copy for a requirement row.
+    public func requirementConsequence(
+        for choice: CaptureRequirementStagedVerdict?,
+        rowKey: String
+    ) -> String? {
+        guard let row = requirementRow(for: rowKey) else { return nil }
+        switch choice {
+        case .none:
+            return row.consequences.met
+        case .drop:
+            return row.consequences.drop
+        case .carry:
+            return row.consequences.carry
+        case .carryPulled:
+            return row.consequences.carryPulled
+        }
+    }
+
+    public func requirementAccessibility(for key: String) -> String? {
+        guard let row = requirementRow(for: key) else { return nil }
+        return CaptureRequirementCopy.accessibility(
+            depth: row.req.depth,
+            verb: CaptureRequirementCopy.verb(for: requirementChoices[key]))
+    }
+
+    public func requirementOwnerText(for key: String) -> String? {
+        requirementRow(for: key).map { $0.req.ownerKey }
+    }
+
+    private func requirementIndexByKey() -> [String: CaptureRequirementRow] {
+        Dictionary(uniqueKeysWithValues: requirementRows.map { ($0.offer.key, $0) })
+    }
+
+    /// Overlap refusal for one new structural choice against surviving
+    /// staged choices. Same-key replacement is allowed; every other branch
+    /// overlap in either staging order refuses without mutating.
+    public func requirementOverlap(
+        staging key: String,
+        choice: CaptureRequirementStagedVerdict
+    ) -> CaptureRequirementOverlapError? {
+        guard let target = requirementRow(for: key) else { return nil }
+        _ = choice
+        for (existingKey, _) in requirementChoices {
+            if existingKey == key { continue }
+            guard let existing = requirementRow(for: existingKey) else { continue }
+            guard existing.req.ownerKey == target.req.ownerKey else { continue }
+            let existingPath = existing.req.path.components
+            let targetPath = target.req.path.components
+            if CaptureRequirementBranch.isStrictAncestor(
+                ancestorPath: existingPath, descendantPath: targetPath)
+            {
+                return CaptureRequirementOverlapError(
+                    ancestorKey: existingKey,
+                    ancestorText: existing.req.text,
+                    descendantKey: key)
+            }
+            if CaptureRequirementBranch.isStrictAncestor(
+                ancestorPath: targetPath, descendantPath: existingPath)
+            {
+                return CaptureRequirementOverlapError(
+                    ancestorKey: key,
+                    ancestorText: target.req.text,
+                    descendantKey: existingKey)
+            }
+        }
+        return nil
+    }
+
+    /// Folded display rows: a staged Drop/Carry folds descendant display
+    /// rows. Met unfolds them. Descendant staged choices are retained.
+    public func requirementFolds() -> [CaptureRequirementFold] {
+        let byKey = requirementIndexByKey()
+        return requirementRows.map { row in
+            let key = row.offer.key
+            var ancestorKey: String? = nil
+            // Nearest staged structural ancestor wins for display.
+            var bestDepth = -1
+            for (stagedKey, _) in requirementChoices {
+                if stagedKey == key { continue }
+                guard let stagedRow = byKey[stagedKey] else { continue }
+                guard stagedRow.req.ownerKey == row.req.ownerKey else { continue }
+                if CaptureRequirementBranch.isStrictAncestor(
+                    ancestorPath: stagedRow.req.path.components,
+                    descendantPath: row.req.path.components)
+                {
+                    let depth = stagedRow.req.path.components.count
+                    if depth > bestDepth {
+                        bestDepth = depth
+                        ancestorKey = stagedKey
+                    }
+                }
+            }
+            if let ancestorKey {
+                return CaptureRequirementFold(
+                    key: key, visible: false, hiddenBy: ancestorKey, nestedGoWithIt: nil)
+            }
+            let choice = requirementChoices[key]
+            let nested: Int? = {
+                guard choice != nil, row.req.pendingDescendants > 0 else { return nil }
+                return row.req.pendingDescendants
+            }()
+            return CaptureRequirementFold(key: key, visible: true, hiddenBy: nil, nestedGoWithIt: nested)
+        }
+    }
+
+    public func visibleRequirementKeys() -> [String] {
+        requirementFolds().filter(\.visible).map(\.key)
+    }
+
+    public func nestedGoWithItText(for key: String) -> String? {
+        guard let fold = requirementFolds().first(where: { $0.key == key }),
+            let count = fold.nestedGoWithIt
+        else {
+            return nil
+        }
+        return CaptureRequirementCopy.nestedGoWithIt(count)
+    }
+
+    /// Revalidate surviving branch choices after refresh. Drops descendant
+    /// choices that now overlap a surviving ancestor and reports the count.
+    @discardableResult
+    private mutating func revalidateRequirementBranches() -> Int {
+        let byKey = requirementIndexByKey()
+        let ordered = requirementChoices.keys.sorted { lhs, rhs in
+            let leftDepth = byKey[lhs]?.req.path.components.count ?? Int.max
+            let rightDepth = byKey[rhs]?.req.path.components.count ?? Int.max
+            if leftDepth == rightDepth { return lhs < rhs }
+            return leftDepth < rightDepth
+        }
+        var kept: [String: CaptureRequirementStagedVerdict] = [:]
+        var dropped = 0
+        for key in ordered {
+            guard let choice = requirementChoices[key],
+                let row = byKey[key]
+            else {
+                continue
+            }
+            var overlaps = false
+            for (keptKey, _) in kept {
+                guard let keptRow = byKey[keptKey] else { continue }
+                guard keptRow.req.ownerKey == row.req.ownerKey else { continue }
+                if CaptureRequirementBranch.isStrictAncestor(
+                    ancestorPath: keptRow.req.path.components,
+                    descendantPath: row.req.path.components)
+                    || CaptureRequirementBranch.isStrictAncestor(
+                        ancestorPath: row.req.path.components,
+                        descendantPath: keptRow.req.path.components)
+                {
+                    overlaps = true
+                    break
+                }
+            }
+            if overlaps {
+                dropped += 1
+                continue
+            }
+            kept[key] = choice
+        }
+        requirementChoices = kept
+        return dropped
+    }
+
+    /// Ctrl+X on a requirement restores Met and never means task Done.
+    @discardableResult
+    public mutating func clearRequirementChoice(for key: String) -> String? {
+        guard requirementChoices.removeValue(forKey: key) != nil else {
+            return highlightedKey
+        }
+        isEscArmed = false
+        highlightedKey = key
+        return key
+    }
+
+    public mutating func stageRequirementMet(for key: String) -> String? {
+        return clearRequirementChoice(for: key)
+    }
+
+    @discardableResult
+    public mutating func stageRequirementDrop(
+        reason: String,
+        for key: String,
+        visibleOrder: [String]? = nil
+    ) -> CaptureRequirementOverlapError? {
+        let normalized = CaptureRequirementBranch.normalizedReason(reason)
+        let choice = CaptureRequirementStagedVerdict.drop(reason: normalized)
+        return stageRequirement(choice, for: key, visibleOrder: visibleOrder)
+    }
+
+    @discardableResult
+    public mutating func stageRequirementCarry(
+        for key: String,
+        visibleOrder: [String]? = nil
+    ) -> CaptureRequirementOverlapError? {
+        return stageRequirement(.carry, for: key, visibleOrder: visibleOrder)
+    }
+
+    @discardableResult
+    public mutating func stageRequirementCarryPulled(
+        for key: String,
+        visibleOrder: [String]? = nil
+    ) -> CaptureRequirementOverlapError? {
+        return stageRequirement(.carryPulled, for: key, visibleOrder: visibleOrder)
+    }
+
+    /// Core staging: repeating the same verdict returns to Met; another
+    /// verdict replaces it. Overlaps refuse without mutating.
+    @discardableResult
+    private mutating func stageRequirement(
+        _ choice: CaptureRequirementStagedVerdict,
+        for key: String,
+        visibleOrder: [String]?
+    ) -> CaptureRequirementOverlapError? {
+        guard requirementRow(for: key) != nil else { return nil }
+        if requirementChoices[key] == choice {
+            _ = clearRequirementChoice(for: key)
+            return nil
+        }
+        if let overlap = requirementOverlap(staging: key, choice: choice) {
+            return overlap
+        }
+        requirementChoices[key] = choice
+        isEscArmed = false
+        let order = visibleOrder ?? visibleRequirementKeys()
+        if order.contains(key) {
+            let target = Self.nextKey(after: key, in: order) ?? key
+            highlightedKey = combinedSelectableKeys.contains(target) ? target : key
+        } else {
+            highlightedKey = key
+        }
+        return nil
+    }
+
+    /// Typed commit projection. Shift-Return downgrades carry-plus-pull to
+    /// Carry, keeps Drop/ordinary verdicts and the jump pin, and selects no
+    /// ordinary pull-ins. Never mutates staged UI choices.
+    public func commitProjection(shiftReturn: Bool) -> (
+        pullIn: CapturePullInSelection,
+        requirements: CaptureRequirementSubmission,
+        jumpKey: String?
+    ) {
+        var verdicts: [CaptureRequirementVerdictSubmission] = []
+        for key in requirementSelectableKeys {
+            guard let choice = requirementChoices[key] else { continue }
+            switch choice {
+            case .drop(let reason):
+                verdicts.append(.drop(key: key, reason: reason))
+            case .carry:
+                verdicts.append(.carry(key: key))
+            case .carryPulled:
+                if shiftReturn {
+                    verdicts.append(.carry(key: key))
+                } else {
+                    verdicts.append(.carryAndPull(key: key))
+                }
+            }
+        }
+        let pullIn: CapturePullInSelection
+        if shiftReturn {
+            pullIn = .none
+        } else {
+            let picked = effectiveSelectionKeys
+            pullIn = picked.isEmpty ? .none : .keys(picked)
+        }
+        return (pullIn, CaptureRequirementSubmission(verdicts: verdicts), jumpKey)
+    }
+
+    public func requirementSubmission(shiftReturn: Bool = false) -> CaptureRequirementSubmission {
+        return commitProjection(shiftReturn: shiftReturn).requirements
+    }
+
     private func nextSelectableKey(after key: String) -> String? {
         Self.nextKey(after: key, in: selectableKeys)
+    }
+
+    func nextRequirementKey(after key: String, in order: [String]? = nil) -> String? {
+        let order = order ?? requirementSelectableKeys
+        return Self.nextKey(after: key, in: order)
     }
 
     static func nextKey(after key: String, in order: [String]) -> String? {

@@ -467,7 +467,7 @@ extension CapturePullInGroup {
         return keys.count == 1 ? keys.first : nil
     }
 
-    func replacingRequirementRows(_ rows: [CaptureRequirementRow]) -> CapturePullInGroup {
+    public func replacingRequirementRows(_ rows: [CaptureRequirementRow]) -> CapturePullInGroup {
         CapturePullInGroup(
             group: group,
             kind: kind,

@@ -323,9 +323,43 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     let copy: CapturePullInGroupCopy?
     let folded: CapturePullInFolded?
     let rows: [CapturePullInChoiceRow]
+    let ownerKey: String?
+    let requirementRows: [CaptureRequirementRow]
+
+    init(
+        group: String,
+        project: String? = nil,
+        note: String? = nil,
+        after: CapturePullInAfter? = nil,
+        label: String? = nil,
+        event: String? = nil,
+        copy: CapturePullInGroupCopy? = nil,
+        folded: CapturePullInFolded? = nil,
+        rows: [CapturePullInChoiceRow] = [],
+        ownerKey: String? = nil,
+        requirementRows: [CaptureRequirementRow] = []
+    ) {
+        self.group = group
+        self.project = project
+        self.note = note
+        self.after = after
+        self.label = label
+        self.event = event
+        self.copy = copy
+        self.folded = folded
+        self.rows = rows
+        self.ownerKey = ownerKey
+        self.requirementRows = requirementRows
+    }
 
     var id: String {
-        Self.key(group: group, project: project, note: note, after: after?.key, label: label)
+        Self.key(
+            group: group, project: project, note: note, after: after?.key, label: label,
+            owner: ownerKey)
+    }
+
+    var isRequirement: Bool {
+        group == "requirements"
     }
 
     var isNewProject: Bool {
@@ -537,12 +571,16 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         project: String?,
         note: String? = nil,
         after: String? = nil,
-        label: String? = nil
+        label: String? = nil,
+        owner: String? = nil
     ) -> String {
+        let ownerPart = pullInNonempty(owner) ?? ""
         guard let note = pullInNonempty(note) else {
-            return "\(group)\u{1F}\(project ?? "")\u{1F}\(after ?? "")\u{1F}\(label ?? "")"
+            return
+                "\(group)\u{1F}\(project ?? "")\u{1F}\(after ?? "")\u{1F}\(label ?? "")\u{1F}\(ownerPart)"
         }
-        return "\(group)\u{1F}\(project ?? "")\u{1F}\(note)\u{1F}\(after ?? "")\u{1F}\(label ?? "")"
+        return
+            "\(group)\u{1F}\(project ?? "")\u{1F}\(note)\u{1F}\(after ?? "")\u{1F}\(label ?? "")\u{1F}\(ownerPart)"
     }
 
     static func capitalizedLabel(_ text: String) -> String {
@@ -565,7 +603,7 @@ struct CapturePullInChoiceState: Equatable {
     let priorityRollSeed: String
     let generation: UInt64
     let requestID: UUID?
-    let pullIn: CapturePullIn
+    var pullIn: CapturePullIn
     let planBudget: CapturePlanBudget?
     var rows: [CapturePullInChoiceRow]
     var outcomes: CapturePullInOutcomes
@@ -575,6 +613,7 @@ struct CapturePullInChoiceState: Equatable {
     var activeReasonKey: String?
     var activeReasonText = ""
     var savedPriorVerdict: CapturePullInOfferVerdict?
+    var savedPriorRequirementChoice: CaptureRequirementStagedVerdict? = nil
     var consequenceMessage: String?
     var verdictRefusalMessage: String?
 
@@ -606,8 +645,11 @@ struct CapturePullInChoiceState: Equatable {
         self.planBudget = planBudget
         self.rows = rows
         let offers = rows.compactMap(\.offerRow)
+        let reqRows = pullIn.groups.filter { $0.isRequirementGroup }.flatMap(\.rows)
+            .filter { $0.isSelectable }
         self.outcomes = CapturePullInOutcomes(
             offers: offers,
+            requirements: reqRows,
             closeSupported: pullIn.close?.supported == true,
             highlightedKey: highlightedKey,
             marks: markedKeys.isEmpty ? nil : markedKeys)
@@ -643,9 +685,9 @@ struct CapturePullInChoiceState: Equatable {
         outcomes.jumpLabel
     }
 
-    /// Toggle the jump pin on one offer row. Non-offer rows refuse.
+    /// Toggle the jump pin on one offer or requirement row. Unknown rows refuse.
     mutating func toggleJump(_ key: String) {
-        guard selectableKeys.contains(key) else {
+        guard outcomes.combinedSelectableKeys.contains(key) else {
             return
         }
         cancelActiveReasonEditing()
@@ -654,7 +696,15 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     var hasVerdicts: Bool {
-        !outcomes.verdicts.isEmpty
+        outcomes.hasVerdicts
+    }
+
+    var requirementSelectableKeys: [String] {
+        outcomes.requirementSelectableKeys
+    }
+
+    var combinedSelectableKeys: [String] {
+        outcomes.combinedSelectableKeys
     }
 
     var selectableKeys: [String] {
@@ -673,9 +723,11 @@ struct CapturePullInChoiceState: Equatable {
         if !validMarked.isEmpty {
             return selectableKeys.filter(validMarked.contains)
         }
-        // Once any verdict exists — or a jump pin is staged — Return has
-        // no highlight fallback. A hidden highlight never supplies one.
+        // Once any verdict exists — task or structural requirement — or a
+        // jump pin is staged, Return has no highlight fallback. A hidden
+        // highlight or a highlighted requirement never supplies one.
         guard outcomes.verdicts.isEmpty,
+            outcomes.requirementChoices.isEmpty,
             outcomes.jumpKey == nil,
             let highlighted = outcomes.highlightedKey,
             visibleSelectableKeys.contains(highlighted)
@@ -701,12 +753,28 @@ struct CapturePullInChoiceState: Equatable {
         outcomes.closeCount
     }
 
+    var totalCloseCount: Int {
+        outcomes.totalCloseCount
+    }
+
+    var requirementStructuralCount: Int {
+        outcomes.requirementStructuralCount
+    }
+
     var canCommit: Bool {
-        !effectiveSelectionKeys.isEmpty || closeCount > 0 || jumpKey != nil
+        // All-default requirement cards are committable.
+        if !outcomes.requirementRows.isEmpty {
+            return true
+        }
+        return !effectiveSelectionKeys.isEmpty || totalCloseCount > 0 || jumpKey != nil
     }
 
     var footerSummaryText: String {
-        if effectivePickCount > 0 || closeCount > 0 {
+        if effectivePickCount > 0 || totalCloseCount > 0 || !outcomes.requirementRows.isEmpty {
+            // Requirement summary leads when requirement rows exist.
+            if !outcomes.requirementRows.isEmpty {
+                return outcomes.footerSummaryText
+            }
             return outcomes.footerSummaryText
         }
         let base = isOnlyNotePull ? "Choose tasks to pull in" : "Choose offers"
@@ -725,6 +793,26 @@ struct CapturePullInChoiceState: Equatable {
         sections.flatMap { section in
             visibleRows(in: section).compactMap(\.offerKey)
         }
+    }
+
+    var visibleRequirementKeys: [String] {
+        sections.flatMap { section in
+            visibleRequirementRows(in: section).map(\.offer.key)
+        }
+    }
+
+    var visibleCombinedKeys: [String] {
+        // Bob order: requirements first by shared numbering.
+        let reqKeys = visibleRequirementKeys
+        let taskKeys = visibleSelectableKeys
+        // When both exist, requirements precede tasks by numbering.
+        // Deduplicate to guard against stale keys.
+        var seen = Set<String>()
+        var combined: [String] = []
+        for key in reqKeys + taskKeys where seen.insert(key).inserted {
+            combined.append(key)
+        }
+        return combined
     }
 
     var effectivePickCount: Int {
@@ -1020,19 +1108,76 @@ struct CapturePullInChoiceState: Equatable {
                     ?? pullInNonempty(sectionRows.first?.offerRow?.relation?.event),
                 copy: group?.copy,
                 folded: group?.folded,
-                rows: sortedRows(sectionRows)
+                rows: sortedRows(sectionRows),
+                ownerKey: pullInNonempty(group?.owner?.key) ?? identity.owner,
+                requirementRows: []
             )
+        }
+
+        func makeRequirementSection(
+            ownerKey: String,
+            rows: [CaptureRequirementRow],
+            group: CapturePullInGroup?
+        ) -> CapturePullInChoiceSection? {
+            let reqRows = rows.filter { $0.isSelectable }.sorted {
+                $0.offer.n == $1.offer.n ? $0.offer.key < $1.offer.key : $0.offer.n < $1.offer.n
+            }
+            guard !reqRows.isEmpty else { return nil }
+            let kind = group?.effectiveKind ?? "requirements"
+            return CapturePullInChoiceSection(
+                group: kind,
+                project: group?.project,
+                note: group?.note,
+                after: group?.after,
+                label: group?.label,
+                event: group?.event,
+                copy: group?.copy,
+                folded: group?.folded,
+                rows: [],
+                ownerKey: ownerKey,
+                requirementRows: reqRows)
         }
         func groupMatching(_ identity: PullInSectionIdentity) -> CapturePullInGroup? {
             pullIn.groups.first { PullInSectionIdentity(group: $0) == identity }
         }
+        func requirementGroupMatching(ownerKey: String) -> CapturePullInGroup? {
+            pullIn.groups.first {
+                $0.isRequirementGroup
+                    && ($0.owner?.key == ownerKey || $0.requirementOwnerKey == ownerKey)
+            }
+        }
+        // Requirement sections precede ordinary groups in Bob's closing
+        // owner order, preserving canonical copy and folds. History is not
+        // actionable scope: only pending rows appear. Built from staged
+        // outcomes rows so refresh stays in sync; copy comes from Bob groups.
+        let reqSections: [CapturePullInChoiceSection] = {
+            let byOwner = Dictionary(grouping: outcomes.requirementRows, by: \.req.ownerKey)
+            guard !byOwner.isEmpty else { return [] }
+            var ownerOrder: [String] = []
+            for group in pullIn.groups where group.isRequirementGroup {
+                let key = group.owner?.key ?? group.requirementOwnerKey
+                if let key, !key.isEmpty, byOwner[key] != nil, !ownerOrder.contains(key) {
+                    ownerOrder.append(key)
+                }
+            }
+            for key in byOwner.keys.sorted() where !ownerOrder.contains(key) {
+                ownerOrder.append(key)
+            }
+            return ownerOrder.compactMap { owner in
+                makeRequirementSection(
+                    ownerKey: owner,
+                    rows: byOwner[owner] ?? [],
+                    group: requirementGroupMatching(ownerKey: owner))
+            }
+        }()
         // When Bob supplies copy, his group array is authoritative: emit
         // supplied groups in Bob order, then append any unmatched fallback
         // groups deterministically. This preserves authored copy/order and
         // keeps distinct relation labels at the same target distinct.
         // Copy-less payloads keep the legacy order unless every row identity
         // is listed, so keep-moving still ranks last for partial lists.
-        let listedIdentities = pullIn.groups.map(PullInSectionIdentity.init(group:))
+        let listedIdentities = pullIn.groups.filter { !$0.isRequirementGroup }.map(
+            PullInSectionIdentity.init(group:))
         if carriesBobCopy, !pullIn.groups.isEmpty {
             var ordered: [CapturePullInChoiceSection] = []
             var seen = Set<PullInSectionIdentity>()
@@ -1060,13 +1205,13 @@ struct CapturePullInChoiceState: Equatable {
                     )
                 )
             }
-            return ordered
+            return reqSections + ordered
         }
         if !carriesBobCopy,
             !pullIn.groups.isEmpty,
             Set(rowsByIdentity.keys).isSubset(of: Set(listedIdentities))
         {
-            return listedIdentities.compactMap { identity in
+            let ordinary = listedIdentities.compactMap { identity -> CapturePullInChoiceSection? in
                 guard let sectionRows = rowsByIdentity[identity], !sectionRows.isEmpty else {
                     return nil
                 }
@@ -1076,14 +1221,16 @@ struct CapturePullInChoiceState: Equatable {
                     sectionRows: sectionRows
                 )
             }
+            return reqSections + ordinary
         }
-        return rowsByIdentity.keys.sorted(by: Self.legacySectionOrder).map { identity in
+        let ordinary = rowsByIdentity.keys.sorted(by: Self.legacySectionOrder).map { identity in
             makeSection(
                 identity: identity,
                 group: groupMatching(identity),
                 sectionRows: rowsByIdentity[identity] ?? []
             )
         }
+        return reqSections + ordinary
     }
 
     private static func legacySectionOrder(
@@ -1141,9 +1288,51 @@ struct CapturePullInChoiceState: Equatable {
         }
     }
 
+    func visibleRequirementRows(in section: CapturePullInChoiceSection) -> [CaptureRequirementRow] {
+        guard section.isRequirement else { return [] }
+        guard !collapsedGroups.contains(section.id) || !filterText.isEmpty else {
+            return []
+        }
+        // Fold hides descendants of staged structural ancestors; filtering
+        // and collapse never erase staged choices.
+        let folds = Dictionary(
+            uniqueKeysWithValues: outcomes.requirementFolds().map { ($0.key, $0) })
+        var rows = section.requirementRows
+        // Preserve Bob's row numbers.
+        rows.sort {
+            $0.offer.n == $1.offer.n ? $0.offer.key < $1.offer.key : $0.offer.n < $1.offer.n
+        }
+        if !filterText.isEmpty {
+            let query = filterText.localizedLowercase
+            let headerMatches = section.title.localizedLowercase.contains(query)
+            if !headerMatches {
+                rows = rows.filter { row in
+                    row.req.text.localizedLowercase.contains(query)
+                        || row.req.ownerKey.localizedLowercase.contains(query)
+                }
+            }
+        }
+        // Fold applies after filter: a hidden descendant stays hidden even
+        // when the filter matches, but its staged choice is retained.
+        if filterText.isEmpty {
+            rows = rows.filter { folds[$0.offer.key]?.visible ?? true }
+        } else {
+            // When filtering, still hide folded descendants unless the
+            // header matches (which shows the whole branch for context).
+            let headerMatches = section.title.localizedLowercase.contains(
+                filterText.localizedLowercase)
+            if !headerMatches {
+                rows = rows.filter { folds[$0.offer.key]?.visible ?? true }
+            }
+        }
+        return rows
+    }
+
     mutating func moveHighlight(by delta: Int) {
         verdictRefusalMessage = nil
-        let keys = visibleSelectableKeys
+        // Navigate across combined visible keys: requirements first, then
+        // ordinary offers, in Bob order. Task-only cards keep legacy order.
+        let keys = visibleCombinedKeys.isEmpty ? visibleSelectableKeys : visibleCombinedKeys
         guard !keys.isEmpty else {
             highlightedKey = nil
             return
@@ -1258,22 +1447,178 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     mutating func restoreOfferCancel() {
-        guard activeReasonKey != nil else {
+        guard let target = activeReasonKey else {
+            return
+        }
+        // Esc in a requirement reason editor restores the previous choice
+        // without arming card discard.
+        if outcomes.requirementRow(for: target) != nil {
+            activeReasonKey = nil
+            activeReasonText = ""
+            savedPriorRequirementChoice = nil
+            savedPriorVerdict = nil
+            outcomes.disarmEscDiscard()
+            // Restore the exact prior requirement outcome: re-stage the
+            // saved choice when one existed, otherwise ensure Met.
+            if let prior = savedPriorRequirementChoiceForRestore {
+                _ = stageRequirementWithoutRefusal(prior, for: target)
+            } else {
+                _ = outcomes.clearRequirementChoice(for: target)
+                updateRequirementConsequence(for: target)
+            }
+            savedPriorRequirementChoiceForRestore = nil
             return
         }
         activeReasonKey = nil
         activeReasonText = ""
         savedPriorVerdict = nil
+        savedPriorRequirementChoice = nil
         // Esc in the reason field restores the exact prior outcome without
         // arming the card discard warning.
         outcomes.disarmEscDiscard()
     }
 
+    // Stash for Esc-restoring a requirement reason edit.
+    var savedPriorRequirementChoiceForRestore: CaptureRequirementStagedVerdict? = nil
+
     mutating func cancelActiveReasonEditing() {
         activeReasonKey = nil
         activeReasonText = ""
         savedPriorVerdict = nil
+        savedPriorRequirementChoice = nil
+        savedPriorRequirementChoiceForRestore = nil
         verdictRefusalMessage = nil
+    }
+
+    // MARK: - Requirements
+
+    func requirementChoice(for key: String) -> CaptureRequirementStagedVerdict? {
+        outcomes.requirementChoice(for: key)
+    }
+
+    func isRequirementMet(_ key: String) -> Bool {
+        outcomes.isRequirementMet(key)
+    }
+
+    func requirementConsequenceText(
+        for choice: CaptureRequirementStagedVerdict?,
+        rowKey: String
+    ) -> String? {
+        outcomes.requirementConsequence(for: choice, rowKey: rowKey)
+    }
+
+    func requirementAccessibility(for key: String) -> String? {
+        outcomes.requirementAccessibility(for: key)
+    }
+
+    /// Ctrl+X on a requirement restores Met and never means task Done.
+    mutating func stageRequirementMet(_ key: String) {
+        guard outcomes.requirementRow(for: key) != nil else { return }
+        cancelActiveReasonEditing()
+        verdictRefusalMessage = nil
+        _ = outcomes.clearRequirementChoice(for: key)
+        updateRequirementConsequence(for: key)
+    }
+
+    mutating func stageRequirementCarry(_ key: String) {
+        guard outcomes.requirementRow(for: key) != nil else { return }
+        cancelActiveReasonEditing()
+        if let overlap = outcomes.stageRequirementCarry(
+            for: key, visibleOrder: visibleRequirementKeys)
+        {
+            verdictRefusalMessage = overlap.message
+            return
+        }
+        verdictRefusalMessage = nil
+        updateRequirementConsequence(for: key)
+    }
+
+    mutating func stageRequirementCarryPulled(_ key: String) {
+        guard outcomes.requirementRow(for: key) != nil else { return }
+        cancelActiveReasonEditing()
+        if let overlap = outcomes.stageRequirementCarryPulled(
+            for: key, visibleOrder: visibleRequirementKeys)
+        {
+            verdictRefusalMessage = overlap.message
+            return
+        }
+        verdictRefusalMessage = nil
+        updateRequirementConsequence(for: key)
+    }
+
+    mutating func beginRequirementDrop(_ key: String) {
+        guard outcomes.requirementRow(for: key) != nil else { return }
+        if outcomes.requirementChoice(for: key)?.isDrop == true {
+            // Same Drop chord on an already staged Drop row clears it to Met.
+            cancelActiveReasonEditing()
+            _ = outcomes.clearRequirementChoice(for: key)
+            updateRequirementConsequence(for: key)
+            return
+        }
+        verdictRefusalMessage = nil
+        savedPriorRequirementChoice = outcomes.requirementChoice(for: key)
+        savedPriorRequirementChoiceForRestore = savedPriorRequirementChoice
+        savedPriorVerdict = nil
+        activeReasonKey = key
+        if case .drop(let reason) = outcomes.requirementChoice(for: key) {
+            activeReasonText = reason
+        } else {
+            activeReasonText = ""
+        }
+    }
+
+    mutating func confirmRequirementDrop(_ key: String? = nil) {
+        guard let target = key ?? activeReasonKey else { return }
+        guard outcomes.requirementRow(for: target) != nil else { return }
+        let reason = CaptureRequirementBranch.normalizedReason(activeReasonText)
+        activeReasonKey = nil
+        activeReasonText = ""
+        savedPriorVerdict = nil
+        savedPriorRequirementChoice = nil
+        savedPriorRequirementChoiceForRestore = nil
+        if let overlap = outcomes.stageRequirementDrop(
+            reason: reason, for: target, visibleOrder: visibleRequirementKeys)
+        {
+            verdictRefusalMessage = overlap.message
+            return
+        }
+        verdictRefusalMessage = nil
+        updateRequirementConsequence(for: target)
+    }
+
+    mutating func restoreRequirementDrop() {
+        guard activeReasonKey != nil else { return }
+        restoreOfferCancel()
+    }
+
+    private mutating func stageRequirementWithoutRefusal(
+        _ choice: CaptureRequirementStagedVerdict,
+        for key: String
+    ) -> CaptureRequirementOverlapError? {
+        switch choice {
+        case .drop(let reason):
+            return outcomes.stageRequirementDrop(
+                reason: reason, for: key, visibleOrder: visibleRequirementKeys)
+        case .carry:
+            return outcomes.stageRequirementCarry(
+                for: key, visibleOrder: visibleRequirementKeys)
+        case .carryPulled:
+            return outcomes.stageRequirementCarryPulled(
+                for: key, visibleOrder: visibleRequirementKeys)
+        }
+    }
+
+    mutating func updateRequirementConsequence(for key: String) {
+        consequenceMessage = outcomes.requirementConsequence(
+            for: outcomes.requirementChoice(for: key), rowKey: key)
+    }
+
+    func commitProjection(shiftReturn: Bool) -> (
+        pullIn: CapturePullInSelection,
+        requirements: CaptureRequirementSubmission,
+        jumpKey: String?
+    ) {
+        return outcomes.commitProjection(shiftReturn: shiftReturn)
     }
 
     mutating func updateReasonText(_ text: String) {
@@ -1302,12 +1647,16 @@ struct CapturePullInChoiceState: Equatable {
     }
 
     mutating func updateConsequenceForHighlight() {
-        guard let highlighted = highlightedKey,
-            let verdict = outcomes.verdicts[highlighted]
-        else {
+        guard let highlighted = highlightedKey else {
             return
         }
-        consequenceMessage = consequenceText(for: verdict, rowKey: highlighted)
+        if let verdict = outcomes.verdicts[highlighted] {
+            consequenceMessage = consequenceText(for: verdict, rowKey: highlighted)
+            return
+        }
+        if outcomes.requirementRow(for: highlighted) != nil {
+            updateRequirementConsequence(for: highlighted)
+        }
     }
 
     mutating func clearVerdictForHighlight() {
@@ -1315,10 +1664,32 @@ struct CapturePullInChoiceState: Equatable {
             return
         }
         verdictRefusalMessage = nil
+        if outcomes.requirementRow(for: highlighted) != nil {
+            _ = outcomes.clearRequirementChoice(for: highlighted)
+            updateRequirementConsequence(for: highlighted)
+            // Clearing to Met leaves no consequence copy.
+            if outcomes.requirementChoice(for: highlighted) == nil {
+                consequenceMessage = outcomes.requirementConsequence(
+                    for: nil, rowKey: highlighted)
+            }
+            return
+        }
         _ = outcomes.clearVerdict(for: highlighted)
         if consequenceMessage != nil {
             consequenceMessage = nil
         }
+    }
+
+    /// Ctrl+X on the highlighted row: requirements restore Met, ordinary
+    /// offers toggle Done/Cancel? No: Ctrl+X on a requirement restores Met
+    /// and never means task Done. Ordinary rows keep their current keys.
+    mutating func clearRequirementForHighlight() {
+        guard let highlighted = highlightedKey else { return }
+        guard outcomes.requirementRow(for: highlighted) != nil else { return }
+        verdictRefusalMessage = nil
+        cancelActiveReasonEditing()
+        _ = outcomes.clearRequirementChoice(for: highlighted)
+        updateRequirementConsequence(for: highlighted)
     }
 
     mutating func armEscDiscard() -> Bool {
@@ -1336,10 +1707,35 @@ struct CapturePullInChoiceState: Equatable {
         cancelActiveReasonEditing()
     }
 
-    /// Refresh rows from Bob, preserving marks, verdicts, reasons, and
-    /// highlight. Removed keys are dropped and counted.
-    mutating func refresh(offers fresh: [TaskCompleteUnblocked]) -> Int {
-        let lost = outcomes.refresh(rows: fresh)
+    /// Refresh rows from Bob, preserving marks, verdicts, reasons,
+    /// highlight and pin. Exact complete keys only; reports removed choices
+    /// and revalidates surviving branch choices.
+    mutating func refresh(
+        offers fresh: [TaskCompleteUnblocked],
+        requirements freshReqs: [CaptureRequirementRow]? = nil
+    ) -> Int {
+        if let freshReqs {
+            // Update Bob groups so requirement sections stay in sync; copy
+            // and folds come from the fresh groups.
+            var groups = pullIn.groups
+            for index in groups.indices where groups[index].isRequirementGroup {
+                let owner = groups[index].owner?.key ?? groups[index].requirementOwnerKey
+                let freshRows = freshReqs.filter { $0.req.ownerKey == owner }
+                groups[index] = groups[index].replacingRequirementRows(freshRows)
+            }
+            pullIn = CapturePullIn(
+                supported: pullIn.supported,
+                offerCount: pullIn.offerCount,
+                choice: pullIn.choice,
+                pickedCount: pullIn.pickedCount,
+                groups: groups,
+                copy: pullIn.copy,
+                close: pullIn.close,
+                jump: pullIn.jump,
+                reqs: pullIn.reqs)
+        }
+        let freshReqRows = freshReqs ?? outcomes.requirementRows
+        let lost = outcomes.refresh(taskRows: fresh, requirementRows: freshReqRows)
         let freshRowsByKey = Dictionary(
             uniqueKeysWithValues: fresh.compactMap { row in
                 row.offer.map { ($0.key, row) }
@@ -1378,10 +1774,13 @@ struct CapturePullInChoiceState: Equatable {
     mutating func updateFilter(_ text: String) {
         filterText = text
         cancelActiveReasonEditing()
-        if let highlightedKey, visibleSelectableKeys.contains(highlightedKey) {
+        // Filtering never erases selection state; highlight follows the
+        // combined visible keys so a requirement highlight survives.
+        let combined = visibleCombinedKeys
+        if let highlightedKey, combined.contains(highlightedKey) {
             return
         }
-        highlightedKey = visibleSelectableKeys.first
+        highlightedKey = combined.first ?? visibleSelectableKeys.first
     }
 
     mutating func toggleGroup(_ id: String) {
@@ -1402,13 +1801,22 @@ private struct PullInSectionIdentity: Hashable {
     let note: String?
     let after: String?
     let label: String?
+    let owner: String?
 
-    init(group: String, project: String?, note: String? = nil, after: String?, label: String?) {
+    init(
+        group: String,
+        project: String?,
+        note: String? = nil,
+        after: String?,
+        label: String?,
+        owner: String? = nil
+    ) {
         self.group = group
         self.project = pullInNonempty(project)
         self.note = pullInNonempty(note)
         self.after = pullInNonempty(after)
         self.label = pullInNonempty(label)
+        self.owner = pullInNonempty(owner)
     }
 
     init(row: CapturePullInChoiceRow) {
@@ -1441,7 +1849,8 @@ private struct PullInSectionIdentity: Hashable {
             project: group.project,
             note: group.note,
             after: group.after?.key,
-            label: group.label
+            label: group.label,
+            owner: group.owner?.key
         )
     }
 
