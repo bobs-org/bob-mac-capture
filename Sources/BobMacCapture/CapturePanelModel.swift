@@ -54,6 +54,29 @@ private struct TypedSigilIntent: Equatable {
     let expectedCaretUTF8: Int
 }
 
+/// A physical space at an authored `- [` start. Bob still decides whether
+/// the checkbox is an eligible requirement; this intent only avoids asking
+/// on paste or on unrelated edits.
+private struct RequirementMarkerExpansionIntent: Equatable {
+    let expectedDraft: String
+    let expectedCaretUTF8: Int
+}
+
+private enum RequirementMarkerOvertypeKey: Equatable {
+    case closingBracket
+    case trailingSpace
+}
+
+/// One-shot absorption after Bob expands `- [ ` to `- [ ] `. The caret stays
+/// after Bob's inserted marker while the keys already in the user's typing
+/// stream are swallowed.
+private struct RequirementMarkerOvertypeArm: Equatable {
+    let draft: String
+    let markerRange: CaptureRange
+    let caretUTF8: Int
+    var nextKey: RequirementMarkerOvertypeKey
+}
+
 private enum AliasTipSurface: Equatable {
     case completionList
     case picker
@@ -1187,6 +1210,8 @@ final class CapturePanelModel: ObservableObject {
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
     private var pendingSeparatorToggleIntent: SeparatorToggleIntent?
+    private var pendingRequirementMarkerExpansionIntent: RequirementMarkerExpansionIntent?
+    private var requirementMarkerOvertypeArm: RequirementMarkerOvertypeArm?
     /// A `\` sent to the rewrite lane whose reply has not landed: the
     /// expected post-key draft and caret from key-down time. Lets a second
     /// `\` before Bob's reply re-ask Bob about the first `\`.
@@ -1909,6 +1934,28 @@ final class CapturePanelModel: ObservableObject {
             return []
         }
         return CaptureRecordRouteAdornment.all(in: parse)
+    }
+
+    /// Current Bob-authored requirement spans, used only for the visual
+    /// glyph overlay. The checkbox bytes remain in the draft and in copies.
+    func requirementMarkerSpans() -> [CaptureSpan] {
+        guard showsRecordRouteEmoji,
+              let painted = paintedSpanRanges,
+              painted.draft == plainDraft
+        else {
+            return []
+        }
+        return painted.ranges.compactMap { item in
+            guard item.span.kind == "req_marker",
+                  let depth = item.span.depth,
+                  depth > 0,
+                  item.span.end - item.span.start == 4,
+                  String(painted.draft[item.range]) == "[ ] "
+            else {
+                return nil
+            }
+            return item.span
+        }
     }
 
     /// The footer bare-album one-key fix, only while the parse still
@@ -3279,6 +3326,141 @@ final class CapturePanelModel: ObservableObject {
         lastProvenanceDraft = newText
     }
 
+    /// Records only a physical space immediately after the authored `- [`
+    /// prefix. Bob's rewrite resolver remains the sole authority on whether
+    /// the current route and structural position admit a requirement.
+    func noteRequirementMarkerExpansionIntent(
+        typed: String,
+        text: String,
+        selectedRange: NSRange,
+        hasMarkedText: Bool
+    ) {
+        pendingRequirementMarkerExpansionIntent = nil
+        guard typed == " ", !hasMarkedText, selectedRange.length == 0,
+              let caretUTF8 = utf8Offset(in: text, utf16Offset: selectedRange.location)
+        else {
+            return
+        }
+        let bytes = Array(text.utf8)
+        guard caretUTF8 >= 3,
+              Array(bytes[(caretUTF8 - 3)..<caretUTF8]) == [0x2D, 0x20, 0x5B]
+        else {
+            return
+        }
+        let nsText = text as NSString
+        guard selectedRange.location <= nsText.length else {
+            return
+        }
+        let expectedDraft = nsText.replacingCharacters(in: selectedRange, with: typed)
+        guard let expectedCaretUTF8 = utf8Offset(
+            in: expectedDraft,
+            utf16Offset: selectedRange.location + 1
+        ) else {
+            return
+        }
+        pendingRequirementMarkerExpansionIntent = RequirementMarkerExpansionIntent(
+            expectedDraft: expectedDraft,
+            expectedCaretUTF8: expectedCaretUTF8
+        )
+    }
+
+    /// Consumes the matching key-down intent after AppKit has inserted the
+    /// space. A pasted or programmatically inserted `- [ ` never reaches
+    /// Bob's rewrite endpoint.
+    private func consumeRequirementMarkerExpansionIntent(
+        draft: String,
+        cursorUTF8Offset: Int?
+    ) -> RequirementMarkerExpansionIntent? {
+        guard let intent = pendingRequirementMarkerExpansionIntent else {
+            return nil
+        }
+        pendingRequirementMarkerExpansionIntent = nil
+        guard draft == intent.expectedDraft else {
+            return nil
+        }
+        if let cursorUTF8Offset,
+           cursorUTF8Offset != intent.expectedCaretUTF8,
+           cursorUTF8Offset + 1 != intent.expectedCaretUTF8
+        {
+            return nil
+        }
+        return intent
+    }
+
+    /// Absorbs the `]` and then space that may already be in the user's
+    /// typing stream when Bob's native `- [ ` rewrite lands. The caret stays
+    /// after Bob's inserted `[ ] ` marker.
+    func absorbRequirementMarkerOvertype(
+        typed: String?,
+        text: String,
+        caretUTF8: Int?,
+        canAbsorb: Bool
+    ) -> Bool {
+        guard var arm = requirementMarkerOvertypeArm else {
+            return false
+        }
+        guard canAbsorb, text == arm.draft, caretUTF8 == arm.caretUTF8 else {
+            requirementMarkerOvertypeArm = nil
+            return false
+        }
+        switch arm.nextKey {
+        case .closingBracket where typed == "]":
+            arm.nextKey = .trailingSpace
+            requirementMarkerOvertypeArm = arm
+            return true
+        case .trailingSpace where typed == " ":
+            requirementMarkerOvertypeArm = nil
+            return true
+        default:
+            requirementMarkerOvertypeArm = nil
+            return false
+        }
+    }
+
+    func cancelRequirementMarkerOvertype() {
+        requirementMarkerOvertypeArm = nil
+    }
+
+    /// Bob's req-marker spans authorize atomic Backspace. The just-expanded
+    /// marker is also retained briefly so Backspace works before the following
+    /// asynchronous parse has arrived.
+    func consumeRequirementMarkerBackspace(caretLocation: Int, text: String) -> NSRange? {
+        let arm = requirementMarkerOvertypeArm
+        requirementMarkerOvertypeArm = nil
+        guard let caretUTF8 = utf8Offset(in: text, utf16Offset: caretLocation) else {
+            return nil
+        }
+        if let arm, arm.draft == text, arm.caretUTF8 == caretUTF8,
+           let range = utf16Range(in: text, byteRange: arm.markerRange),
+           NSMaxRange(range) == caretLocation,
+           String((text as NSString).substring(with: range)) == "[ ] "
+        {
+            return range
+        }
+        guard let parse = latestParse,
+              parse.input == text,
+              lastAppliedParseDraft == text,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient?.identityToken
+        else {
+            return nil
+        }
+        for span in parse.spans where span.kind == "req_marker" && span.end == caretUTF8 {
+            guard span.end - span.start == 4,
+                  let range = utf16Range(
+                      in: text,
+                      byteRange: CaptureRange(start: span.start, end: span.end)
+                  ),
+                  NSMaxRange(range) == caretLocation,
+                  String((text as NSString).substring(with: range)) == "[ ] "
+            else {
+                continue
+            }
+            return range
+        }
+        return nil
+    }
+
     /// Records the expected post-key draft and caret for a rewrite-lane
     /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
     /// `\\`, `/`, the Pomodoro-segment `-` alias, relation `=` / `~` aliases,
@@ -3507,6 +3689,9 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if requirementMarkerOvertypeArm?.draft != draft {
+            requirementMarkerOvertypeArm = nil
+        }
         if recordCardDismissedDraft != draft {
             recordCardDismissedDraft = nil
         }
@@ -3603,6 +3788,7 @@ final class CapturePanelModel: ObservableObject {
         if commitRouteCompletionOnAcceptKey(draft: draft) {
             pendingSeparatorToggleIntent = nil
             pendingTypedSigilIntent = nil
+            pendingRequirementMarkerExpansionIntent = nil
             return
         }
 
@@ -3617,10 +3803,22 @@ final class CapturePanelModel: ObservableObject {
                 sigil: intent.sigil
             )
         }
+        let requirementExpansionIntent = consumeRequirementMarkerExpansionIntent(
+            draft: draft,
+            cursorUTF8Offset: insertionOffset
+        )
         var analysisCursor = insertionOffset
         let requestCompletion = insertionOffset != nil
         var completionGate: Task<Void, Never>?
-        if let probe = hashAliasProbe,
+        if let intent = requirementExpansionIntent {
+            completionGate = startCaptureRewrite(
+                draft: draft,
+                cursorUTF8Offset: intent.expectedCaretUTF8,
+                triggeredCharacter: " ",
+                holdInputUntilRewrite: true
+            )
+            analysisCursor = intent.expectedCaretUTF8
+        } else if let probe = hashAliasProbe,
            draft == probe.secondDraft,
            Self.hashAliasProbeCursorMatches(insertionOffset, probe: probe)
         {
@@ -3642,7 +3840,7 @@ final class CapturePanelModel: ObservableObject {
                 triggeredCharacter: intent.typed,
                 triggerTimestamp: intent.timestamp,
                 expectsRelationDirectionToggle: intent.expectsRelationDirectionToggle,
-                deferSubmitForMeaningChangingAlias: Self.isMeaningChangingAlias(
+                holdInputUntilRewrite: Self.isMeaningChangingAlias(
                     trigger: intent.typed,
                     draft: intent.expectedDraft
                 )
@@ -3735,6 +3933,11 @@ final class CapturePanelModel: ObservableObject {
            insertionOffset == expectedCursor || insertionOffset == expectedCursor - 1
         {
             return
+        }
+        if let arm = requirementMarkerOvertypeArm,
+           (arm.draft != plainDraft || insertionOffset != arm.caretUTF8)
+        {
+            requirementMarkerOvertypeArm = nil
         }
         if let intent = pendingRewriteSubmitIntent,
            intent.inputDraft == plainDraft,
@@ -19739,7 +19942,7 @@ final class CapturePanelModel: ObservableObject {
         triggeredCharacter: String = "",
         triggerTimestamp: TimeInterval = 0,
         expectsRelationDirectionToggle: Bool = false,
-        deferSubmitForMeaningChangingAlias: Bool = false
+        holdInputUntilRewrite: Bool = false
     ) -> Task<Void, Never>? {
         guard let processClient else {
             return nil
@@ -19749,7 +19952,7 @@ final class CapturePanelModel: ObservableObject {
         rewriteGeneration &+= 1
         let generation = rewriteGeneration
         cancelPendingRewriteSubmit()
-        deferredRewriteInputDraft = deferSubmitForMeaningChangingAlias ? draft : nil
+        deferredRewriteInputDraft = holdInputUntilRewrite ? draft : nil
         completedDeferredRewriteDraft = nil
         deferredRewriteEchoDraft = nil
         deferredRewriteEchoCursorUTF8 = nil
@@ -19820,7 +20023,7 @@ final class CapturePanelModel: ObservableObject {
             }
         }
         rewriteTask = task
-        if deferSubmitForMeaningChangingAlias {
+        if holdInputUntilRewrite {
             meaningChangingRewriteHoldGeneration = generation
             if meaningChangingRewriteHoldDidStart?(generation) != true {
                 meaningChangingRewriteHoldGeneration = nil
@@ -20301,7 +20504,8 @@ final class CapturePanelModel: ObservableObject {
                 deferredRewriteEchoCursorUTF8 = response.cursor ?? response.text.utf8.count
             }
 
-            if response.rule == "switch_block_id_separator"
+            if response.rule == "expand_req_marker"
+                || response.rule == "switch_block_id_separator"
                 || response.rule == "attach_relation_label"
                 || response.rule == "expand_sigil_alias"
                 || response.rule == "toggle_relation_direction"
@@ -20401,6 +20605,27 @@ final class CapturePanelModel: ObservableObject {
             isApplyingProgrammaticDraft = false
         }
         restoreSelection(cursorUTF8Offset: cursorUTF8Offset, suppressEditorCallbacks: true)
+        if response.rule == "expand_req_marker",
+           cursorUTF8Offset >= 4,
+           let markerRange = stringRange(
+               in: response.text,
+               start: cursorUTF8Offset - 4,
+               end: cursorUTF8Offset
+           ),
+           String(response.text[markerRange]) == "[ ] "
+        {
+            requirementMarkerOvertypeArm = RequirementMarkerOvertypeArm(
+                draft: response.text,
+                markerRange: CaptureRange(
+                    start: cursorUTF8Offset - 4,
+                    end: cursorUTF8Offset
+                ),
+                caretUTF8: cursorUTF8Offset,
+                nextKey: .closingBracket
+            )
+        } else {
+            requirementMarkerOvertypeArm = nil
+        }
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
         }
@@ -22269,6 +22494,8 @@ final class CapturePanelModel: ObservableObject {
     private func invalidateRewrite() {
         cancelInFlightRewrite()
         pendingSeparatorToggleIntent = nil
+        pendingRequirementMarkerExpansionIntent = nil
+        requirementMarkerOvertypeArm = nil
         pendingHashAlias = nil
         hashAliasProbe = nil
         equalsGestureArm = nil
@@ -22738,6 +22965,17 @@ final class CapturePanelModel: ObservableObject {
                         text[glyphLower..<glyphUpper].foregroundColor = .clear
                     }
                 }
+            }
+            if concealRouteStartGlyphs,
+               item.span.kind == "req_marker",
+               let depth = item.span.depth,
+               depth > 0,
+               item.span.end - item.span.start == 4,
+               String(draft[item.range]) == "[ ] "
+            {
+                // The checkbox is semantic storage. Bob's depth-bearing span
+                // reserves its visual slot for the quiet hash run below.
+                text[lower..<upper].foregroundColor = .clear
             }
             if item.span.projectNote != nil {
                 // Every span of a sealed project-note marker, whatever the

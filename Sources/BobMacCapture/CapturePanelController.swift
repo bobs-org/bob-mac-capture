@@ -2008,6 +2008,34 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Backspace: delete Bob's four-byte `[ ] ` requirement marker in one
+    /// native edit, preserving the bullet prefix and one-step undo.
+    static func deleteRequirementMarkerInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0,
+              let deletionRange = model.consumeRequirementMarkerBackspace(
+                  caretLocation: selection.location,
+                  text: textView.string
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.breakUndoCoalescing()
+        textView.insertText("", replacementRange: deletionRange)
+        textView.breakUndoCoalescing()
+        return true
+    }
+
     /// Applies a routed key command. Returns `true` when the key event is consumed.
     @discardableResult
     func perform(_ command: CaptureKeyCommand) -> Bool {
@@ -2103,6 +2131,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             verticalMovementGoal = nil
             return Self.moveByWord(direction, unit, firstResponder: panel?.firstResponder)
         case .deleteBackward:
+            if Self.deleteRequirementMarkerInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            ) {
+                return true
+            }
             if Self.deleteCloseTaskCommaInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model
@@ -3021,6 +3055,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if holdOrFlushTypeAheadKey(event) {
             return nil
         }
+        if absorbRequirementMarkerOvertypeIfNeeded(event) {
+            return nil
+        }
         if event.keyCode == 14 {
             let editor = panel?.firstResponder as? NSTextView
             let command = keyRouter.command(
@@ -3317,6 +3354,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             if model.pullInChoiceVisible {
                 model.disarmPullInDiscardForNativeKey()
             }
+            noteRequirementMarkerExpansionIntentFromEvent(event)
             noteSeparatorToggleIntentFromEvent(event)
             noteTypedSigilIntentFromEvent(event)
             return event
@@ -3708,6 +3746,63 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 || model.isStashPickerPresented
                 || model.isTemplateShelfPresented
                 || model.editorInputLocked
+        )
+    }
+
+    private func noteRequirementMarkerExpansionIntentFromEvent(_ event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let eligibleKey = event.characters == " "
+            && !event.isARepeat
+            && modifiers.intersection([.command, .control, .option]).isEmpty
+        guard let textView = Self.editableTextView(panel?.firstResponder),
+              isDraftEditorResponder(textView),
+              !textView.hasMarkedText()
+        else {
+            model.noteRequirementMarkerExpansionIntent(
+                typed: "",
+                text: "",
+                selectedRange: NSRange(location: 0, length: 0),
+                hasMarkedText: true
+            )
+            return
+        }
+        model.noteRequirementMarkerExpansionIntent(
+            typed: eligibleKey ? " " : "",
+            text: textView.string,
+            selectedRange: textView.selectedRange(),
+            hasMarkedText: textView.hasMarkedText()
+        )
+    }
+
+    /// Absorbs the two keys that may already be queued to complete the
+    /// requirement marker Bob just inserted. Grammar and eligibility stay in
+    /// Bob; the Mac only keeps the caret at the returned rewrite position.
+    private func absorbRequirementMarkerOvertypeIfNeeded(_ event: NSEvent) -> Bool {
+        // Backspace has its own marker-aware path below, which can use the
+        // just-expanded marker even before capture-parse returns.
+        guard event.keyCode != 51 else {
+            return false
+        }
+        guard let textView = Self.editableTextView(panel?.firstResponder),
+              isDraftEditorResponder(textView)
+        else {
+            model.cancelRequirementMarkerOvertype()
+            return false
+        }
+        let selection = textView.selectedRange()
+        let caretUTF8 = selection.length == 0
+            ? utf8Offset(in: textView.string, utf16Offset: selection.location)
+            : nil
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let canAbsorb = !event.isARepeat
+            && !textView.hasMarkedText()
+            && selection.length == 0
+            && modifiers.intersection([.command, .control, .option]).isEmpty
+        return model.absorbRequirementMarkerOvertype(
+            typed: canAbsorb ? event.characters : nil,
+            text: textView.string,
+            caretUTF8: caretUTF8,
+            canAbsorb: canAbsorb
         )
     }
 

@@ -1248,6 +1248,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     public let start: Int
     public let end: Int
     public let kind: String
+    /// Additive requirement depth on `req_marker` spans. Older Bob omits it.
+    public let depth: Int?
     /// Slot index on additive `template_placeholder` and `template_field` spans.
     public let field: Int?
     /// Theme refs for `pomodoro_name` and `task_toggle_pomodoro_name`
@@ -1303,6 +1305,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         start: Int,
         end: Int,
         kind: String,
+        depth: Int? = nil,
         field: Int? = nil,
         themes: [CapturePomodoroThemeRef] = [],
         cancelsSource: Bool = false,
@@ -1320,6 +1323,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.start = start
         self.end = end
         self.kind = kind
+        self.depth = depth
         self.field = field
         self.themes = themes
         self.cancelsSource = cancelsSource
@@ -1340,6 +1344,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         start = try container.decode(Int.self, forKey: .start)
         end = try container.decode(Int.self, forKey: .end)
         kind = try container.decode(String.self, forKey: .kind)
+        depth = (try? container.decodeIfPresent(Int.self, forKey: .depth)) ?? nil
         field = (try? container.decodeIfPresent(Int.self, forKey: .field)) ?? nil
         themes =
             (try? container.decodeIfPresent(
@@ -1364,6 +1369,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case start
         case end
         case kind
+        case depth
         case field
         case themes
         case cancelsSource = "cancels_source"

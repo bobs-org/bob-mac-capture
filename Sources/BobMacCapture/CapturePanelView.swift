@@ -1688,6 +1688,24 @@ private struct AutosizingCaptureEditor: View {
                     .accessibilityHidden(true)
                 }
 
+                let requirementMarkers = model.requirementMarkerSpans()
+                if !requirementMarkers.isEmpty, monoCharWidth > 0 {
+                    RequirementMarkerGlyphOverlay(
+                        draft: String(model.attributedDraft.characters),
+                        spans: requirementMarkers,
+                        wrapWidth: wrapWidth,
+                        monoCharWidth: monoCharWidth,
+                        lineHeight: heightPolicy.lineHeight
+                    )
+                    .padding(
+                        .leading,
+                        textInset + CapturePanelLayout.editorLineFragmentPadding
+                    )
+                    .padding(.top, textInset + 3)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+
                 // Hidden probe measuring one monospaced advance, so ghost
                 // truncation divides the wrap width by the real rendered
                 // character width instead of guessing it.
@@ -1864,6 +1882,51 @@ struct RecordRouteEmojiOverlay: View {
                         .minimumScaleFactor(0.5)
                         .frame(
                             width: monoCharWidth,
+                            height: lineHeight,
+                            alignment: .center
+                        )
+                        .offset(
+                            x: CGFloat(origin.column) * monoCharWidth,
+                            y: CGFloat(origin.line) * lineHeight - 1
+                        )
+                }
+            }
+        }
+        .frame(width: wrapWidth, alignment: .topLeading)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Replaces Bob's depth-bearing `[ ] ` spans with a quiet, presentation-only
+/// hash run. Deeper authored indentation continues to carry the hierarchy;
+/// the run fits the four-character marker slot and saturates at four glyphs.
+@available(macOS 26.0, *)
+struct RequirementMarkerGlyphOverlay: View {
+    let draft: String
+    let spans: [CaptureSpan]
+    let wrapWidth: CGFloat
+    let monoCharWidth: CGFloat
+    let lineHeight: CGFloat
+
+    var body: some View {
+        let charsPerLine = max(8, Int(wrapWidth / max(monoCharWidth, 1)))
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(spans.enumerated()), id: \.offset) { _, span in
+                if let depth = span.depth,
+                   depth > 0,
+                   let origin = CaptureMonospaceGlyphOrigin.wrappingOrigin(
+                       utf8Offset: span.start,
+                       in: draft,
+                       charsPerLine: charsPerLine
+                   )
+                {
+                    Text(String(repeating: "⌗", count: min(depth, 3) + 1))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(CaptureEditorPalette.color(for: .neutral))
+                        .lineLimit(1)
+                        .frame(
+                            width: monoCharWidth * 4,
                             height: lineHeight,
                             alignment: .center
                         )
