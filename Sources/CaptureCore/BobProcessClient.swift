@@ -77,6 +77,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedGcalNoteIdentity: String?
     private var unsupportedLogHistoryIdentity: String?
     private var unsupportedLinksOnlyIdentity: String?
+    private var unsupportedTaskLinksIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
     /// `inbox_route.supported == true`. Once remembered for the current
@@ -236,6 +237,22 @@ public final class BobProcessClient: @unchecked Sendable {
             let identity = identityToken
             if unsupportedLinksOnlyIdentity != identity {
                 self.unsupportedLinksOnlyIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Whether this executable has already rejected `capture-complete
+    /// --task-links`. Cached per executable identity like `--links-only`, so
+    /// replacing Bob permits a fresh capability probe. Bob without `-T`
+    /// still serves `[[` completion; only `((` stays literal.
+    public var taskLinksKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedTaskLinksIdentity else { return false }
+            let identity = identityToken
+            if unsupportedTaskLinksIdentity != identity {
+                self.unsupportedTaskLinksIdentity = nil
                 return false
             }
             return true
@@ -822,14 +839,23 @@ public final class BobProcessClient: @unchecked Sendable {
         nextMissingField: Bool = false,
         recordField: String? = nil,
         linksOnly: Bool = false,
+        taskLinks: Bool = false,
         sourceNote: String? = nil
     ) async throws -> CaptureCompletionResponse {
         if linksOnlyKnownUnsupported, linksOnly {
             throw BobClientError.unsupportedOption("--links-only")
         }
+        // `--task-links` only exists beside `--links-only`.
+        let taskLinks = taskLinks && linksOnly
+        if taskLinks, taskLinksKnownUnsupported {
+            throw BobClientError.unsupportedOption("--task-links")
+        }
         var arguments = ["capture-complete", "--all-tasks"]
         if linksOnly {
             arguments.append("--links-only")
+        }
+        if taskLinks {
+            arguments.append("--task-links")
         }
         if linksOnly, let sourceNote, !sourceNote.isEmpty {
             arguments += ["--source-note", sourceNote]
@@ -864,6 +890,17 @@ public final class BobProcessClient: @unchecked Sendable {
                         unsupportedLinksOnlyIdentity = identityToken
                     }
                     throw BobClientError.unsupportedOption("--links-only")
+                }
+                if taskLinks,
+                    Self.isUnsupportedOptionFailure(
+                        stderr: stderr,
+                        option: "--task-links"
+                    )
+                {
+                    stateQueue.sync {
+                        unsupportedTaskLinksIdentity = identityToken
+                    }
+                    throw BobClientError.unsupportedOption("--task-links")
                 }
                 if includeArchivedNotes,
                     Self.isUnsupportedOptionFailure(

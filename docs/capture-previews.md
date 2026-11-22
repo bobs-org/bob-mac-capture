@@ -469,8 +469,8 @@ offers a `USED BEFORE` band (`N× · age`, 3 rows after 2 typed characters,
 nothing preselected; see
 [Log Recall](https://bobs-org.github.io/log-recall/)):
 Control-N/P, Up/Down fill, typing adopts, Esc restores, clicks never commit,
-Return writes; no `bob`, old `bob`, or fetch failure: zero pixels.
-`[[` swaps in a `LINK` band instead
+Return writes; no `bob`, old `bob`, fetch failure: zero pixels.
+`[[` or `((` swaps in a `LINK` band
 ([Wikilink completion](wikilink-completion.md)): arrows move, Return/Tab
 insert at bob's bytes, Esc closes. `@route`
 previews up to five offers with tag, lane, destination, and fold; Shift-Return

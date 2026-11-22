@@ -2670,6 +2670,7 @@ JSON
     next_missing="false"
     record_field=""
     links_only="false"
+    task_links="false"
     source_note=""
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
@@ -2694,6 +2695,9 @@ JSON
       if [[ "${args[$i]}" == "--links-only" || "${args[$i]}" == "-L" ]]; then
         links_only="true"
       fi
+      if [[ "${args[$i]}" == "--task-links" || "${args[$i]}" == "-T" ]]; then
+        task_links="true"
+      fi
       if [[ "${args[$i]}" == "--source-note" || "${args[$i]}" == "-S" ]]; then
         source_note="${args[$((i + 1))]:-}"
       fi
@@ -2709,8 +2713,19 @@ JSON
         printf "error: unexpected argument '--links-only' found\n\nUsage: bob capture-complete [OPTIONS] -- <TEXT>\n" >&2
         exit 2
       fi
+      if [[ "${task_links}" == "true" && "${FAKE_BOB_TASK_LINKS_UNSUPPORTED:-}" == "1" ]]; then
+        printf "error: unexpected argument '--task-links' found\n\nUsage: bob capture-complete [OPTIONS] -- <TEXT>\n" >&2
+        exit 2
+      fi
       if [[ -n "${FAKE_BOB_LINKS_ONLY_FIXTURE:-}" ]]; then
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/${FAKE_BOB_LINKS_ONLY_FIXTURE}"
+        exit 0
+      fi
+      if [[ "${task_links}" == "true" && "${draft}" == *"(("* && "${draft}" != *"[["* ]]; then
+        # `((` task links in plain prose, like `bob capture-complete
+        # --links-only --task-links`: the `wikilink_task` rows of a real
+        # response over a small vault. Without `-T` the `((` stays literal.
+        cat "${fixtures_dir}/pull-in-links-tasks.json"
         exit 0
       fi
       if [[ "${draft}" != *"[["* ]]; then

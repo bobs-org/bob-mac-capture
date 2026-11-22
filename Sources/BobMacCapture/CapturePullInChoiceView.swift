@@ -197,10 +197,7 @@ struct CapturePullInChoiceCard: View {
         guard model.pullInLinkBandVisible else {
             return 0
         }
-        return CGFloat(
-            PullInLinkBandPresentation.bandHeight(
-                rowCount: model.pullInLink.visibleCandidates.count,
-                hasSelection: model.pullInLink.selectedCandidate != nil))
+        return CGFloat(PullInLinkBandPresentation.bandHeight(for: model.pullInLink))
     }
 
     var body: some View {

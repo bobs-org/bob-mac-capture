@@ -1212,9 +1212,7 @@ struct CapturePanelView: View {
             var linkBandHeight: CGFloat = 0
             if model.pullInLinkBandVisible {
                 linkBandHeight = CGFloat(
-                    PullInLinkBandPresentation.bandHeight(
-                        rowCount: model.pullInLink.visibleCandidates.count,
-                        hasSelection: model.pullInLink.selectedCandidate != nil))
+                    PullInLinkBandPresentation.bandHeight(for: model.pullInLink))
             } else if choice.activeReasonKey != nil, model.pullInRecall.shouldShowBand {
                 recallBandHeight = CGFloat(
                     LogRecallBandPresentation.bandHeight(

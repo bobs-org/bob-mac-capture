@@ -888,6 +888,12 @@ final class CapturePanelModel: ObservableObject {
     /// Edge-bump seed for the clamped bottom row (120 ms, no wrap).
     @Published var pullInLinkBumpSeed = 0
     private var pullInLinkFetchTask: Task<Void, Never>?
+    private var pullInLinkNameTask: Task<Void, Never>?
+    /// Narrow controller bridge: splice bob's `wikilink_replacement` into the
+    /// reason field's editor so Undo records one step. The NAME stage's block
+    /// ID field holds focus while the write runs, so the controller hands
+    /// focus back first. Nil in tests; the model then adopts the text itself.
+    var applyPullInLinkEdit: ((PullInReasonLinkEdit) -> Bool)?
     @Published var inboxRouteChoice: CaptureInboxRouteChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
@@ -5624,6 +5630,11 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func pullInReasonFieldDidBlur() {
+        // Focus moving into the NAME stage's ID field is not a blur of the
+        // reason: it must neither confirm nor restore the Pull-In.
+        if pullInLink.isNaming {
+            return
+        }
         if pullInRecallSuppressBlur {
             pullInRecallSuppressBlur = false
             requestFocus(.pullInReasonField)
@@ -5661,6 +5672,9 @@ final class CapturePanelModel: ObservableObject {
     /// refetches at the new caret; bob decides whether it is still a field.
     func updatePullInReasonCaret(_ caretUTF16: Int) {
         guard pullInChoice?.activeReasonKey != nil else { return }
+        // The NAME stage splices at the caret it opened on; the reason is
+        // not refetched or re-aimed while it owns the band.
+        guard !pullInLink.isNaming else { return }
         guard caretUTF16 != pullInLinkCaretUTF16 else { return }
         pullInLinkCaretUTF16 = caretUTF16
         pullInLinkInputChanged()
@@ -5703,8 +5717,9 @@ final class CapturePanelModel: ObservableObject {
     /// A new reason edit session: forget the band, arm the next generation,
     /// and place the caret at the end of the initial text.
     private func beginPullInLinkReason() {
-        pullInLink.beginReason()
+        pullInLink.beginReason(subject: pullInChoice?.activeReasonSubject)
         pullInLinkFetchTask?.cancel()
+        pullInLinkNameTask?.cancel()
         pullInLinkCaretUTF16 =
             pullInChoice?.activeReasonText.utf16.count
     }
@@ -5712,6 +5727,7 @@ final class CapturePanelModel: ObservableObject {
     private func resetPullInLink() {
         pullInLink.beginReason()
         pullInLinkFetchTask?.cancel()
+        pullInLinkNameTask?.cancel()
         pullInLinkCaretUTF16 = nil
     }
 
@@ -5721,6 +5737,8 @@ final class CapturePanelModel: ObservableObject {
         guard let choice = pullInChoice, choice.activeReasonKey != nil else {
             return
         }
+        // The NAME stage owns the band; the reason is not edited under it.
+        guard !pullInLink.isNaming else { return }
         let text = choice.activeReasonText
         guard let caretUTF16 = pullInLinkCaretUTF16,
             let caret = utf8Offset(in: text, utf16Offset: caretUTF16)
@@ -5737,9 +5755,9 @@ final class CapturePanelModel: ObservableObject {
     /// the reason field and the recall band keep working.
     private func schedulePullInLinkFetch(sourceNote: String?) {
         pullInLinkFetchTask?.cancel()
-        // Cheap pre-filter: bob decides fields, so without `[[` there is
-        // nothing to ask and an open band closes.
-        guard pullInLink.text.contains("[[") else {
+        // Cheap pre-filter: bob decides fields, so without `[[` or `((`
+        // there is nothing to ask and an open band closes.
+        guard pullInLink.text.contains("[[") || pullInLink.text.contains("((") else {
             if pullInLink.isOpen {
                 _ = pullInLink.close()
             }
@@ -5754,14 +5772,27 @@ final class CapturePanelModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 70_000_000)
             guard !Task.isCancelled else { return }
             do {
-                let response = try await client.captureComplete(
-                    text, cursor: cursor, linksOnly: true,
-                    sourceNote: sourceNote)
+                // `((` task links ride the same call as `-T`. A bob without
+                // it drops `-T` for the session (cached per executable) and
+                // keeps `[[`.
+                let wantsTasks = text.contains("((") && !client.taskLinksKnownUnsupported
+                let response: CaptureCompletionResponse
+                do {
+                    response = try await client.captureComplete(
+                        text, cursor: cursor, linksOnly: true, taskLinks: wantsTasks,
+                        sourceNote: sourceNote)
+                } catch BobClientError.unsupportedOption(let option)
+                    where option == "--task-links"
+                {
+                    response = try await client.captureComplete(
+                        text, cursor: cursor, linksOnly: true, taskLinks: false,
+                        sourceNote: sourceNote)
+                }
                 guard !Task.isCancelled else { return }
                 let rawContext = response.context.flatMap(
                     CaptureCompletionContext.init(rawContext:))
                 let linkContext: CaptureCompletionContext? = switch rawContext {
-                case .wikilinkNote, .wikilinkHeading, .wikilinkBlock:
+                case .wikilinkNote, .wikilinkHeading, .wikilinkBlock, .wikilinkTask:
                     rawContext
                 case .none, .some:
                     nil
@@ -5823,6 +5854,13 @@ final class CapturePanelModel: ObservableObject {
         guard let index = pullInLink.selectedIndex,
             let candidate = pullInLink.selectedCandidate
         else {
+            return
+        }
+        if pullInLink.isTasks {
+            let row = PullInTaskRowContent(
+                candidate: candidate, action: pullInLink.rowAction(for: candidate))
+            announceStatus(
+                "Task \(index) of \(pullInLink.candidates.count): \(row.accessibilityLabel)")
             return
         }
         let text =
@@ -5893,6 +5931,27 @@ final class CapturePanelModel: ObservableObject {
         }
         guard pullInLink.select(id: id) else { return }
         let text = choice.activeReasonText
+        if pullInLink.isTasks, let action = pullInLink.selectedAction {
+            switch action {
+            case .disabled(let reason, _):
+                // A guarded row (or the prompt's own task) never inserts.
+                announceStatus(reason)
+                requestFocus(.pullInReasonField)
+                return
+            case .name:
+                // An ID-less row names it first; the field keeps its text.
+                if let caretUTF16 = pullInLinkCaretUTF16,
+                    beginPullInLinkName(fieldText: text, caretUTF16: caretUTF16)
+                {
+                    return
+                }
+                _ = closePullInLinkBand()
+                requestFocus(.pullInReasonField)
+                return
+            case .insert:
+                break
+            }
+        }
         guard let caretUTF16 = pullInLinkCaretUTF16,
             let caret = utf8Offset(in: text, utf16Offset: caretUTF16),
             let accept = pullInLink.acceptEdit(fieldText: text, caretUTF8: caret),
@@ -5913,12 +5972,174 @@ final class CapturePanelModel: ObservableObject {
         requestFocus(.pullInReasonField)
     }
 
+    // MARK: - LINK tasks mode: rejected rows and the NAME stage
+
+    /// The detail strip line for the band: the tasks mode's own strings for
+    /// `((` rows and the NAME stage, else the exact `[[…]]` Return inserts.
+    var pullInLinkDetailLine: String? {
+        if pullInLink.isNaming || pullInLink.isTasks {
+            return pullInLink.tasksDetailLine
+        }
+        return pullInLinkDetailPreview.map { "↵ \($0)" }
+    }
+
+    /// Return on a guarded row: nothing is inserted and the band stays put.
+    func rejectPullInLinkRow() {
+        guard let action = pullInLink.selectedAction,
+            case .disabled(let reason, _) = action
+        else {
+            return
+        }
+        announceStatus(reason)
+        requestFocus(.pullInReasonField)
+    }
+
+    /// Whether the tasks band's NAME stage is open under an active reason.
+    var pullInLinkNaming: Bool {
+        pullInChoice?.activeReasonKey != nil && pullInLink.isNaming
+    }
+
+    /// Return or Tab (or a click) on an ID-less row: open the NAME stage
+    /// against the live reason field. The reason text is never mutated by
+    /// the stage. Returns false, leaving the band as it was, when the live
+    /// text or caret no longer match the answered request.
+    @discardableResult
+    func beginPullInLinkName(fieldText: String, caretUTF16: Int) -> Bool {
+        guard let choice = pullInChoice, choice.activeReasonKey != nil,
+            choice.activeReasonText == fieldText,
+            let caret = utf8Offset(in: fieldText, utf16Offset: caretUTF16),
+            pullInLink.beginName(fieldText: fieldText, caretUTF8: caret),
+            let stage = pullInLink.name
+        else {
+            return false
+        }
+        announceStatus(PullInLinkBandPresentation.nameAnnouncement(for: stage))
+        requestFocus(.taskIDPromptBlockID)
+        return true
+    }
+
+    /// Typing in the NAME stage's ID field.
+    func updatePullInLinkNameID(_ id: String) {
+        guard pullInLink.name != nil else { return }
+        pullInLink.name?.edit(id)
+    }
+
+    /// Tab / ↓ / Ctrl+N and Shift+Tab / ↑ / Ctrl+P cycle bob's suggestions.
+    func cyclePullInLinkNameSuggestion(forward: Bool) {
+        guard pullInLink.name?.cycle(forward: forward) == true else { return }
+        requestFocus(.taskIDPromptBlockID)
+    }
+
+    /// Esc / Ctrl+[ in the NAME stage: back to the list with the filter and
+    /// selection intact. A key while the write is in flight is swallowed.
+    /// Returns true when the key was consumed.
+    @discardableResult
+    func cancelPullInLinkName() -> Bool {
+        guard let stage = pullInLink.name else { return false }
+        if stage.isSaving { return true }
+        _ = pullInLink.cancelName()
+        pullInLinkNameTask?.cancel()
+        requestFocus(.pullInReasonField)
+        announceStatus("Back to the task list")
+        return true
+    }
+
+    /// Return in the NAME stage: validate, write the ID through
+    /// `capture-task-id`, then splice bob's `wikilink_replacement` over bob's
+    /// `((` range. This is the only vault write the band ever causes, and it
+    /// runs only on this explicit Return. A failure keeps the stage open with
+    /// bob's reason; a changed reason draft inserts nothing.
+    func commitPullInLinkName() {
+        guard var stage = pullInLink.name, !stage.isSaving else { return }
+        guard let client = processClient else {
+            stage.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            pullInLink.name = stage
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        if let message = stage.validationMessage {
+            stage.errorMessage = message
+            pullInLink.name = stage
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        stage.isSaving = true
+        stage.errorMessage = nil
+        pullInLink.name = stage
+        let target = stage.target
+        let blockID = stage.authoredID
+        pullInLinkNameTask?.cancel()
+        pullInLinkNameTask = Task { @MainActor in
+            do {
+                let response = try await CaptureSignpost.measure("capture-task-id") {
+                    try await client.assignDependencyTaskID(
+                        notePath: target.notePath,
+                        taskRef: target.taskRef,
+                        blockID: blockID,
+                        allowClosed: target.allowClosed)
+                }
+                guard !Task.isCancelled else { return }
+                completePullInLinkName(response: response)
+            } catch {
+                guard !Task.isCancelled else { return }
+                failPullInLinkName(String(describing: error))
+            }
+        }
+    }
+
+    private func failPullInLinkName(_ message: String) {
+        guard pullInLink.name != nil else { return }
+        pullInLink.name?.isSaving = false
+        pullInLink.name?.errorMessage = message
+        statusText = "Add block ID failed"
+        requestFocus(.taskIDPromptBlockID)
+    }
+
+    private func completePullInLinkName(response: CaptureTaskIDResponse) {
+        guard let stage = pullInLink.name, stage.isSaving else { return }
+        switch response {
+        case .failure(let failure):
+            failPullInLinkName(failure.error)
+        case .success(let success):
+            guard let link = success.wikilinkReplacement, !link.isEmpty else {
+                failPullInLinkName("This Bob is too old for (( links. Update Bob first.")
+                return
+            }
+            let added = "Added ^\(success.blockID) to \(success.relativeTarget)"
+            guard let choice = pullInChoice, choice.activeReasonKey != nil,
+                let caretUTF16 = pullInLinkCaretUTF16,
+                let caret = utf8Offset(in: choice.activeReasonText, utf16Offset: caretUTF16),
+                let accept = stage.splice(
+                    link: link, liveText: choice.activeReasonText, liveCaretUTF8: caret),
+                let range = utf16Range(
+                    in: choice.activeReasonText, byteRange: stage.replacement),
+                let acceptedCaret = utf16Range(
+                    in: accept.text, start: accept.caretUTF8, end: accept.caretUTF8
+                )?.location
+            else {
+                // The ID is written, but the reason moved under the stage:
+                // insert nothing. A fresh `((` now finds the task identified.
+                _ = pullInLink.close()
+                pullInLinkFetchTask?.cancel()
+                announceStatus("\(added); the reason changed, so nothing was inserted")
+                requestFocus(.pullInReasonField)
+                return
+            }
+            let edit = PullInReasonLinkEdit(
+                range: range, insertion: link, newText: accept.text, caretUTF16: acceptedCaret)
+            _ = applyPullInLinkEdit?(edit)
+            didAcceptPullInLink(edit)
+            announceStatus("\(added) and inserted \(link)")
+        }
+    }
+
     /// Close the LINK band only (one layer). Returns true when consumed.
     @discardableResult
     func closePullInLinkBand() -> Bool {
         let consumed = pullInLink.close()
         if consumed {
             pullInLinkFetchTask?.cancel()
+            pullInLinkNameTask?.cancel()
         }
         return consumed
     }

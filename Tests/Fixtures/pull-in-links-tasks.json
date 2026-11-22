@@ -1,0 +1,111 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 22,
+  "replacement": {
+    "start": 14,
+    "end": 22
+  },
+  "context": "wikilink_task",
+  "candidates": [
+    {
+      "replacement": "[[api#^api-docs]]",
+      "ref": "2:7ef42cf4",
+      "note_path": "projects/api.md",
+      "locator": "api",
+      "group": "in_this_note",
+      "hidden": false,
+      "block_id": "api-docs",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Ready",
+      "status_type": "TODO",
+      "text": "API docs overhaul",
+      "section": "API",
+      "depth": 0,
+      "line": 2,
+      "cursor_after": 31,
+      "link_target": "api"
+    },
+    {
+      "replacement": "",
+      "ref": "3:10ef40b2",
+      "note_path": "projects/api.md",
+      "locator": "api",
+      "group": "in_this_note",
+      "hidden": false,
+      "block_id": null,
+      "requires_block_id": true,
+      "block_id_suggestions": [
+        "api-doc-lint",
+        "api-doc"
+      ],
+      "status_symbol": " ",
+      "status_name": "Ready",
+      "status_type": "TODO",
+      "text": "API doc lint",
+      "section": "API",
+      "depth": 0,
+      "line": 3,
+      "link_target": "api"
+    },
+    {
+      "replacement": "",
+      "ref": "1:c06f03a9",
+      "note_path": "done/old.md",
+      "locator": "old",
+      "group": "completed",
+      "hidden": false,
+      "block_id": null,
+      "requires_block_id": true,
+      "block_id_suggestions": [
+        "old-api-doc",
+        "old-api"
+      ],
+      "disabled_reason": "archived tasks can't get an id",
+      "status_symbol": "x",
+      "status_name": "Done",
+      "status_type": "DONE",
+      "text": "Old API doc pass",
+      "section": null,
+      "depth": 0,
+      "line": 1,
+      "link_target": "done/old"
+    },
+    {
+      "replacement": "[[home#^home-api]]",
+      "ref": "1:b62c4685",
+      "note_path": "home.md",
+      "locator": "home",
+      "group": "open",
+      "hidden": false,
+      "block_id": "home-api",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Ready",
+      "status_type": "TODO",
+      "text": "Update API docs",
+      "section": null,
+      "depth": 0,
+      "line": 1,
+      "cursor_after": 32,
+      "link_target": "home"
+    }
+  ],
+  "query": "api do",
+  "picker": {
+    "kind": "wikilink_task",
+    "scope": "vault",
+    "scope_token": "((",
+    "marker_range": {
+      "start": 14,
+      "end": 22
+    },
+    "trigger_removal_range": {
+      "start": 15,
+      "end": 22
+    }
+  }
+}

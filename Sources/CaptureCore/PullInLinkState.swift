@@ -28,15 +28,40 @@ public struct PullInLinkState: Equatable, Sendable {
     public var selectedID: String?
     /// Generation guard: a stale reply never moves a highlight or fills.
     public var generation: UInt64 = 0
+    /// The task the reason row itself is about, so the tasks band can dim it.
+    public var subject: PullInLinkSubject?
+    /// The tasks band's NAME stage, while it names an ID-less task.
+    public var name: PullInLinkNameStage?
+    /// First visible row of the window. The window follows the selection so
+    /// a long `((` list never selects a row the band does not show.
+    public private(set) var windowStart = 0
 
     public init() {}
 
     /// Whether the band is visible: bob reported a link field.
     public var isOpen: Bool { context != nil }
 
-    /// Rows the band shows, capped for the dense pull-in card.
+    /// Rows the band shows: a window of at most `maxRows` rows that always
+    /// contains the selection, for the dense pull-in card.
     public var visibleCandidates: [CaptureCompletionCandidate] {
-        Array(candidates.prefix(PullInLinkBandPresentation.maxRows))
+        let start = min(max(windowStart, 0), candidates.count)
+        let end = min(start + PullInLinkBandPresentation.maxRows, candidates.count)
+        return Array(candidates[start..<end])
+    }
+
+    /// Slide the window just far enough to show the selected row.
+    private mutating func revealSelection() {
+        guard let selectedID,
+            let position = candidates.firstIndex(where: { $0.id == selectedID })
+        else {
+            return
+        }
+        let rows = PullInLinkBandPresentation.maxRows
+        if position < windowStart {
+            windowStart = position
+        } else if position >= windowStart + rows {
+            windowStart = position - rows + 1
+        }
     }
 
     /// 1-based position of the selection, or nil when nothing is selected.
@@ -54,13 +79,18 @@ public struct PullInLinkState: Equatable, Sendable {
     }
 
     /// A new reason edit session: forget the band, arm the next generation.
-    public mutating func beginReason() {
+    /// `subject` names the task the reason row is about; it lasts for the
+    /// session and is dropped by the next plain `beginReason()`.
+    public mutating func beginReason(subject: PullInLinkSubject? = nil) {
         text = ""
         cursorUTF8 = 0
         context = nil
         replacement = CaptureRange(start: 0, end: 0)
         candidates = []
         selectedID = nil
+        name = nil
+        windowStart = 0
+        self.subject = subject
         generation &+= 1
     }
 
@@ -85,6 +115,9 @@ public struct PullInLinkState: Equatable, Sendable {
         generation: UInt64
     ) -> Bool {
         guard generation == self.generation else { return false }
+        // The NAME stage owns the band: a late reply never replaces the rows
+        // under it, so Esc returns to the list that was selected.
+        guard name == nil else { return false }
         self.text = text
         self.cursorUTF8 = cursorUTF8
         self.context = context
@@ -97,6 +130,7 @@ public struct PullInLinkState: Equatable, Sendable {
         } else {
             selectedID = candidates[0].id
         }
+        windowStart = 0
         return true
     }
 
@@ -107,6 +141,8 @@ public struct PullInLinkState: Equatable, Sendable {
         context = nil
         candidates = []
         selectedID = nil
+        name = nil
+        windowStart = 0
         generation &+= 1
         return true
     }
@@ -121,17 +157,20 @@ public struct PullInLinkState: Equatable, Sendable {
     /// ↓ / Ctrl+N: enter the band at the top row, then move down. The
     /// bottom row clamps with an edge bump, no wrap.
     public mutating func moveNext() -> Step? {
-        guard context != nil, !candidates.isEmpty else { return nil }
+        guard context != nil, name == nil, !candidates.isEmpty else { return nil }
         guard let selectedID else {
             self.selectedID = candidates[0].id
+            revealSelection()
             return .enteredTop
         }
         guard let position = candidates.firstIndex(where: { $0.id == selectedID }) else {
             self.selectedID = candidates[0].id
+            revealSelection()
             return .enteredTop
         }
         if position + 1 < candidates.count {
             self.selectedID = candidates[position + 1].id
+            revealSelection()
             return .moved
         }
         return .bumpedBottom
@@ -140,17 +179,20 @@ public struct PullInLinkState: Equatable, Sendable {
     /// ↑ / Ctrl+P: move up; above the top row clears the selection but
     /// leaves the band open (Return then only closes it).
     public mutating func movePrevious() -> Step? {
-        guard context != nil, !candidates.isEmpty else { return nil }
+        guard context != nil, name == nil, !candidates.isEmpty else { return nil }
         guard let selectedID else {
             self.selectedID = candidates[0].id
+            revealSelection()
             return .enteredTop
         }
         guard let position = candidates.firstIndex(where: { $0.id == selectedID }) else {
             self.selectedID = candidates[0].id
+            revealSelection()
             return .enteredTop
         }
         if position > 0 {
             self.selectedID = candidates[position - 1].id
+            revealSelection()
             return .moved
         }
         self.selectedID = nil
@@ -161,8 +203,11 @@ public struct PullInLinkState: Equatable, Sendable {
     /// Returns false for an unknown key.
     @discardableResult
     public mutating func select(id: String) -> Bool {
-        guard context != nil, candidates.contains(where: { $0.id == id }) else { return false }
+        guard context != nil, name == nil, candidates.contains(where: { $0.id == id }) else {
+            return false
+        }
         selectedID = id
+        revealSelection()
         return true
     }
 
@@ -173,7 +218,12 @@ public struct PullInLinkState: Equatable, Sendable {
         guard let range = stringRange(in: text, start: replacement.start, end: cursorUTF8) else {
             return ""
         }
-        return String(text[range])
+        let raw = String(text[range])
+        // A `((` replacement starts at its opener, which is not the query.
+        if isTasks, raw.hasPrefix("((") {
+            return String(raw.dropFirst(2))
+        }
+        return raw
     }
 
     /// Accept the selected row against the LIVE field text and caret. The
@@ -181,9 +231,14 @@ public struct PullInLinkState: Equatable, Sendable {
     /// caret that raced the reply closes the band instead of splicing a
     /// stale range.
     public func acceptEdit(fieldText: String, caretUTF8: Int) -> PullInLinkAcceptEdit? {
-        guard context != nil else { return nil }
+        guard context != nil, name == nil else { return nil }
         guard let candidate = selectedCandidate else { return nil }
         guard fieldText == text, caretUTF8 == cursorUTF8 else { return nil }
+        // A `((` row inserts only when bob says it is usable: ID-less and
+        // guarded rows carry an empty replacement and never splice.
+        if isTasks {
+            guard case .insert? = selectedAction else { return nil }
+        }
         return pullInLinkAcceptEdit(
             draft: fieldText,
             replacement: replacement,
@@ -256,9 +311,14 @@ public func pullInLinkToken(in text: String, replacementStart: Int) -> String? {
     guard let insertionPoint = String.Index(startIndex, within: text) else {
         return nil
     }
+    // A `[[` completion replaces text after its opener; a `((` replacement
+    // begins with the opener itself, so the scan reaches two characters
+    // past the insertion point.
+    let scanEnd = text.index(insertionPoint, offsetBy: 2, limitedBy: text.endIndex)
+        ?? text.endIndex
     let openerRange = text.range(
         of: "[[", options: .backwards,
-        range: text.startIndex..<insertionPoint)
+        range: text.startIndex..<scanEnd)
     guard let openerRange else {
         return nil
     }
@@ -299,31 +359,85 @@ public enum PullInLinkBandPresentation {
 
     /// Header copy. A selection shows `LINK · k of n` with the insert
     /// hint; an open band without one shows the row count and keycaps;
-    /// zero rows names the empty field.
-    public static func header(selectedIndex: Int?, total: Int) -> Header {
+    /// zero rows names the empty field. The tasks mode reads
+    /// `LINK · tasks · k of n`.
+    public static func header(
+        selectedIndex: Int?, total: Int, tasks: Bool = false
+    ) -> Header {
+        let title = tasks ? "\(bandTitle) · \(tasksTitle)" : bandTitle
         if let selectedIndex {
             return Header(
-                title: "\(bandTitle) · \(selectedIndex) of \(total)",
+                title: "\(title) · \(selectedIndex) of \(total)",
                 trailing: "↵ inserts",
                 showsKeycaps: false
             )
         }
         if total == 0 {
             return Header(
-                title: "\(bandTitle) · no match",
+                title: "\(title) · no match",
                 trailing: "",
                 showsKeycaps: false
             )
         }
         return Header(
-            title: "\(bandTitle) · \(total)",
+            title: "\(title) · \(total)",
             trailing: "↑↓ ↵ ⇥",
             showsKeycaps: true
         )
     }
 
+    /// The tasks mode's header word.
+    public static let tasksTitle = "tasks"
+
+    /// The NAME stage header: `LINK · tasks › name it`, with the note the
+    /// ID is written to on the right.
+    public static func nameHeader(for stage: PullInLinkNameStage) -> Header {
+        Header(
+            title: "\(bandTitle) · \(tasksTitle) › name it",
+            trailing: "in \(stage.target.notePath)",
+            showsKeycaps: false
+        )
+    }
+
+    /// The prompt's own task is dimmed with this reason and badge.
+    public static let subjectReason = "The task this prompt is about"
+    public static let subjectBadge = "this prompt"
+    /// A row bob returned with neither a link nor a way to name it.
+    public static let unusableReason = "This task can't be linked"
+    public static let unusableBadge = "unavailable"
+    /// Zero task rows: Return closes the band and inserts nothing.
+    public static let emptyTasksDetail = "↵ closes this list · nothing is inserted"
+
+    /// The detail strip for an ID-less row: what Return will write.
+    public static func namesDetail(for target: PullInLinkNameTarget) -> String {
+        if let first = target.suggestions.first {
+            return "↵ names it ^\(first) in \(target.notePath), then links it"
+        }
+        return "↵ names this task in \(target.notePath), then links it"
+    }
+
+    /// The detail strip in the NAME stage: the ID and the link it will
+    /// produce, or the reason the ID cannot be written.
+    public static func nameDetail(for stage: PullInLinkNameStage) -> String {
+        if stage.isSaving {
+            return "Adding ^\(stage.authoredID)…"
+        }
+        if let message = stage.errorMessage ?? stage.validationMessage {
+            return "⊘ \(message)"
+        }
+        if let link = stage.target.previewLink(blockID: stage.authoredID) {
+            return "↵ adds ^\(stage.authoredID), then links \(link)"
+        }
+        return "↵ adds ^\(stage.authoredID), then links it"
+    }
+
     public static func announcement(index: Int, total: Int, text: String) -> String {
         "Link \(index) of \(total): \(text)"
+    }
+
+    /// Announcement for entering the NAME stage.
+    public static func nameAnnouncement(for stage: PullInLinkNameStage) -> String {
+        "Name a block ID for \(stage.target.taskText): \(stage.authoredID). Return adds it and links."
     }
 
     /// Band height while visible (header + rows + detail strip), for the
@@ -331,5 +445,24 @@ public enum PullInLinkBandPresentation {
     public static func bandHeight(rowCount: Int, hasSelection: Bool) -> Double {
         let rows = Double(min(max(rowCount, 0), maxRows)) * rowHeight
         return headerHeight + rows + (hasSelection ? detailHeight : 0)
+    }
+
+    /// The NAME stage keeps the list's footprint: a header, the pinned task
+    /// row, the ID line, a suggestions row, and the detail strip.
+    public static let nameFieldHeight: Double = 26
+    public static let nameStageHeight: Double =
+        headerHeight + rowHeight + nameFieldHeight + rowHeight + detailHeight
+
+    /// Band height for `state`, covering the list and the NAME stage. A tasks
+    /// band shows a detail strip for zero rows too, so Return's outcome is
+    /// always readable.
+    public static func bandHeight(for state: PullInLinkState) -> Double {
+        if state.isNaming {
+            return nameStageHeight
+        }
+        let showsDetail =
+            state.selectedCandidate != nil || (state.isTasks && state.candidates.isEmpty)
+        return bandHeight(
+            rowCount: state.visibleCandidates.count, hasSelection: showsDetail)
     }
 }

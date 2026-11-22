@@ -397,6 +397,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.processClientDidReplace = { [weak self] in
             self?.flushTypeAheadHoldBeforeFocusOrDismissal()
         }
+        model.applyPullInLinkEdit = { [weak self] edit in
+            self?.applyPullInLinkEdit(edit) ?? false
+        }
     }
 
     deinit {
@@ -2487,11 +2490,23 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .movePullInLinkPrevious:
             return model.movePullInLinkSelection(by: -1)
         case .acceptPullInLink:
-            return acceptPullInLinkFromKeyboard(onFailure: .confirm)
+            return acceptPullInLinkFromKeyboard(onFailure: .stop)
         case .acceptPullInLinkFromTab:
             return acceptPullInLinkFromKeyboard(onFailure: .passThrough)
         case .closePullInLinkBand:
             model.closePullInLinkBand()
+            return true
+        case .commitPullInLinkName:
+            model.commitPullInLinkName()
+            return true
+        case .cancelPullInLinkName:
+            model.cancelPullInLinkName()
+            return true
+        case .cyclePullInLinkNameForward:
+            model.cyclePullInLinkNameSuggestion(forward: true)
+            return true
+        case .cyclePullInLinkNameBackward:
+            model.cyclePullInLinkNameSuggestion(forward: false)
             return true
         case .confirmInboxRouteChoice:
             model.confirmInboxRouteChoice()
@@ -3256,7 +3271,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                         )?.holdsFirstResponder ?? false),
                     pullInLinkOpen: model.pullInLinkBandVisible,
                     pullInLinkCanAccept: model.pullInLinkBandVisible
-                        && model.pullInLink.selectedCandidate != nil,
+                        && model.pullInLink.selectionCanAccept,
+                    pullInLinkNaming: model.pullInLinkNaming,
                     inboxRouteChoiceVisible: model.inboxRouteChoiceVisible,
                 keyIsRepeat: event.isARepeat,
                 pickerHasSelection: model.picker?.selectedRowID != nil,
@@ -3523,21 +3539,46 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     /// What a LINK-band Return/Tab does when there is nothing to insert
-    /// (stale caret, edited text, lost selection): Return confirms the
-    /// visible text like a band-less Return, while Tab passes through to
-    /// the host so focus traversal keeps working.
+    /// (stale caret, edited text, lost selection, zero rows, missing
+    /// editor): the band closes and the key is consumed. Return never
+    /// confirms the Pull-In while the band is open, so the documented
+    /// "Return closes the band without confirming" holds on every failure
+    /// path. Tab passes through to the host so focus traversal keeps
+    /// working.
     private enum PullInLinkAcceptFailure {
-        case confirm
+        case stop
         case passThrough
     }
 
     /// Return/Tab with the LINK band open: splice bob's replacement through
     /// the reason field's editor (one undo step) and park the caret at
-    /// `cursor_after`. A ranged selection, a missing editor, or a stale
-    /// caret closes the band instead of splicing a stale range.
+    /// `cursor_after`. An ID-less `((` row opens the NAME stage instead, and
+    /// a guarded row (or the prompt's own task) inserts nothing and stays
+    /// put. A ranged selection, a missing editor, or a stale caret closes
+    /// the band instead of splicing a stale range.
     private func acceptPullInLinkFromKeyboard(
         onFailure: PullInLinkAcceptFailure
     ) -> Bool {
+        func fail() -> Bool {
+            model.closePullInLinkBand()
+            switch onFailure {
+            case .stop:
+                return true
+            case .passThrough:
+                return false
+            }
+        }
+        if case .disabled? = model.pullInLink.selectedAction {
+            // A guarded row (or the prompt's own task) inserts nothing and
+            // the band stays put: Return is answered, Tab goes to the host.
+            switch onFailure {
+            case .stop:
+                model.rejectPullInLinkRow()
+                return true
+            case .passThrough:
+                return false
+            }
+        }
         guard let panel,
             let field = Self.findPickerFilterField(
                 in: panel.contentView,
@@ -3546,37 +3587,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             ),
             let editor = field.currentEditor() as? NSTextView
         else {
-            model.closePullInLinkBand()
-            switch onFailure {
-            case .confirm:
-                model.confirmPullInReason()
-                return true
-            case .passThrough:
-                return false
-            }
+            return fail()
         }
         let selection = editor.selectedRange()
         guard selection.length == 0 else {
-            model.closePullInLinkBand()
-            switch onFailure {
-            case .confirm:
-                model.confirmPullInReason()
-                return true
-            case .passThrough:
-                return false
+            return fail()
+        }
+        if case .name? = model.pullInLink.selectedAction {
+            guard model.beginPullInLinkName(
+                fieldText: editor.string, caretUTF16: selection.location)
+            else {
+                return fail()
             }
+            return true
         }
         guard let edit = model.pullInReasonLinkEdit(
             fieldText: editor.string, caretUTF16: selection.location)
         else {
-            model.closePullInLinkBand()
-            switch onFailure {
-            case .confirm:
-                model.confirmPullInReason()
-                return true
-            case .passThrough:
-                return false
-            }
+            return fail()
         }
         // End the typed key's coalesced typing run first, so the splice is
         // its own undo step: Undo restores the literal pre-accept draft and
@@ -3587,6 +3615,35 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         editor.setSelectedRange(NSRange(location: edit.caretUTF16, length: 0))
         editor.scrollRangeToVisible(NSRange(location: edit.caretUTF16, length: 0))
         model.didAcceptPullInLink(edit)
+        return true
+    }
+
+    /// The NAME stage success splice. Its block ID field held focus while
+    /// the write ran, so hand focus back to the reason field first, then
+    /// insert bob's link over bob's `((` range as one native undo step.
+    private func applyPullInLinkEdit(_ edit: PullInReasonLinkEdit) -> Bool {
+        guard let panel,
+            let field = Self.findPickerFilterField(
+                in: panel.contentView,
+                identifier: pullInReasonFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
+            )
+        else {
+            return false
+        }
+        if !field.holdsFirstResponder {
+            _ = panel.makeFirstResponder(field)
+        }
+        guard let editor = field.currentEditor() as? NSTextView,
+            NSMaxRange(edit.range) <= (editor.string as NSString).length
+        else {
+            return false
+        }
+        editor.breakUndoCoalescing()
+        editor.insertText(edit.insertion, replacementRange: edit.range)
+        editor.breakUndoCoalescing()
+        editor.setSelectedRange(NSRange(location: edit.caretUTF16, length: 0))
+        editor.scrollRangeToVisible(NSRange(location: edit.caretUTF16, length: 0))
         return true
     }
 
@@ -3714,6 +3771,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         if model.taskIDPromptVisible,
            model.taskIDPrompt?.isSaving != true,
+           let field = Self.findBlockIDField(in: panel.contentView)
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("block-id-focus-repaired")
+            return
+        }
+
+        if model.pullInLinkNaming,
+           model.pullInLink.name?.isSaving != true,
            let field = Self.findBlockIDField(in: panel.contentView)
         {
             field.requestFirstResponder()

@@ -1289,6 +1289,18 @@ struct CapturePullInChoiceState: Equatable {
         return path.isEmpty ? nil : path
     }
 
+    /// The task the reason row itself is about: its exact note path and
+    /// block ID. The tasks band dims bob's row for this same task. Nil when
+    /// the row has no block ID, so a path alone never dims a whole note.
+    var activeReasonSubject: PullInLinkSubject? {
+        guard let activeReasonKey,
+            let row = rows.first(where: { $0.offerKey == activeReasonKey })
+        else {
+            return nil
+        }
+        return PullInLinkSubject(notePath: row.notePath, blockID: row.blockID)
+    }
+
     mutating func updateConsequenceForHighlight() {
         guard let highlighted = highlightedKey,
             let verdict = outcomes.verdicts[highlighted]

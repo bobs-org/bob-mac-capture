@@ -99,6 +99,12 @@ enum CaptureKeyCommand: Equatable {
     case acceptPullInLink
     case acceptPullInLinkFromTab
     case closePullInLinkBand
+    /// NAME stage of the tasks band: write the ID and insert the link.
+    case commitPullInLinkName
+    /// NAME stage: back to the task list with the filter intact.
+    case cancelPullInLinkName
+    case cyclePullInLinkNameForward
+    case cyclePullInLinkNameBackward
     case togglePullInOfferAt(String)
     case confirmInboxRouteChoice
     case confirmInboxRouteChoiceAndOpen
@@ -195,6 +201,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var pullInLinkOpen = false
     /// The LINK band has a selected row to insert.
     var pullInLinkCanAccept = false
+    /// The tasks band's NAME stage owns the keys: its block ID field holds
+    /// first responder while the reason draft stays untouched.
+    var pullInLinkNaming = false
     var inboxRouteChoiceVisible = false
     var keyIsRepeat = false
     /// Defaults true so omitted flags keep selected-row picker Return/Tab.
@@ -504,7 +513,8 @@ struct CaptureKeyCommandRouter {
                 filterIsEmpty: context.pullInFilterIsEmpty,
                 reasonFocused: context.pullInReasonFocused,
                 linkOpen: context.pullInLinkOpen,
-                linkCanAccept: context.pullInLinkCanAccept
+                linkCanAccept: context.pullInLinkCanAccept,
+                linkNaming: context.pullInLinkNaming
             )
         }
 
@@ -854,8 +864,16 @@ struct CaptureKeyCommandRouter {
         filterIsEmpty: Bool,
         reasonFocused: Bool = false,
         linkOpen: Bool = false,
-        linkCanAccept: Bool = false
+        linkCanAccept: Bool = false,
+        linkNaming: Bool = false
     ) -> CaptureKeyCommand? {
+        // The NAME stage's field holds first responder, so neither the
+        // reason keys nor the offer-list keys may see its events: Return
+        // would otherwise confirm the Pull-In.
+        if linkNaming {
+            return pullInLinkNameCommand(
+                for: event, modifiers: modifiers, isRepeat: isRepeat)
+        }
         if reasonFocused {
             if linkOpen {
                 return pullInLinkCommand(
@@ -999,6 +1017,50 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .movePullInLinkNext : nil
         case KeyCode.p:
             return modifiers == .control ? .movePullInLinkPrevious : nil
+        default:
+            return nil
+        }
+    }
+
+    /// Keys for the tasks band's NAME stage. Return (with or without
+    /// Control, Command, or Option) writes the ID and inserts the link on a
+    /// fresh key-down only; Esc and Ctrl+[ go back to the list; Tab, Down,
+    /// and Ctrl+N cycle bob's suggestions forward, Shift+Tab, Up, and Ctrl+P
+    /// back. Text keys stay with the field. Nothing here ever confirms the
+    /// Pull-In or reaches the offer list.
+    private func pullInLinkNameCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !isRepeat else { return .consumeKey }
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys.isEmpty || !keys.intersection([.control, .command, .option]).isEmpty {
+                return .commitPullInLinkName
+            }
+            return .consumeKey
+        case KeyCode.escape:
+            return isRepeat ? .consumeKey : .cancelPullInLinkName
+        case KeyCode.leftBracket:
+            guard modifiers == .control else { return nil }
+            return isRepeat ? .consumeKey : .cancelPullInLinkName
+        case KeyCode.tab:
+            if modifiers.isEmpty { return .cyclePullInLinkNameForward }
+            if modifiers == .shift { return .cyclePullInLinkNameBackward }
+            return nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .cyclePullInLinkNameForward : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .cyclePullInLinkNameBackward : nil
+        case KeyCode.n:
+            return modifiers == .control ? .cyclePullInLinkNameForward : nil
+        case KeyCode.p:
+            return modifiers == .control ? .cyclePullInLinkNameBackward : nil
+        case KeyCode.j:
+            // Ctrl+J never pins while a Cancel reason is being edited.
+            return modifiers == .control ? .consumeKey : nil
         default:
             return nil
         }

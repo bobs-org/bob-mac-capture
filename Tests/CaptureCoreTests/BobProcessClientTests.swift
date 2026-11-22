@@ -2669,6 +2669,100 @@ final class BobProcessClientTests: XCTestCase {
         }
     }
 
+    func testCaptureCompleteTaskLinksSendsFlagAndDecodesTaskRows() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureComplete(
+            "Superseded by ((api do", cursor: 22, linksOnly: true, taskLinks: true,
+            sourceNote: "projects/api.md")
+
+        XCTAssertEqual(response.context, "wikilink_task")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 14, end: 22))
+        XCTAssertEqual(response.candidates.count, 4)
+        XCTAssertEqual(response.candidates[0].replacement, "[[api#^api-docs]]")
+        XCTAssertEqual(response.candidates[0].cursorAfter, 31)
+        XCTAssertEqual(response.candidates[0].linkTarget, "api")
+        XCTAssertTrue(response.candidates[1].requiresBlockID)
+        XCTAssertEqual(response.candidates[1].blockIDSuggestions.first, "api-doc-lint")
+        XCTAssertEqual(
+            response.candidates[2].disabledReason, "archived tasks can't get an id")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --links-only --task-links --source-note projects/api.md --cursor 22 --format json -- Superseded by ((api do"
+            ),
+            record
+        )
+    }
+
+    func testCaptureCompleteTaskLinksNeedsLinksOnly() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        // `--task-links` only exists beside `--links-only`; a bare
+        // completion call never sends it.
+        _ = try? await client.captureComplete(
+            "x ((api", cursor: 7, linksOnly: false, taskLinks: true)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("--task-links"), record)
+    }
+
+    func testCaptureCompleteTaskLinksUnsupportedOptionMapsOldBobAndKeepsLinks() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_TASK_LINKS_UNSUPPORTED": "1",
+            ]
+        )
+
+        XCTAssertFalse(client.taskLinksKnownUnsupported)
+        do {
+            _ = try await client.captureComplete(
+                "Superseded by ((api do", cursor: 22, linksOnly: true, taskLinks: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--task-links")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+        // Remembered per executable identity: fail fast, never spawn again,
+        // and never poison `--links-only`, so `[[` keeps completing.
+        XCTAssertTrue(client.taskLinksKnownUnsupported)
+        XCTAssertFalse(client.linksOnlyKnownUnsupported)
+        do {
+            _ = try await client.captureComplete(
+                "Superseded by ((api do", cursor: 22, linksOnly: true, taskLinks: true)
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--task-links")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+        let notes = try await client.captureComplete(
+            "fix [[sas", cursor: 9, linksOnly: true)
+        XCTAssertEqual(notes.context, "wikilink_note")
+    }
+
     private func fakeBobPath() throws -> String {
         let source = URL(fileURLWithPath: #filePath)
         let packageRoot = source

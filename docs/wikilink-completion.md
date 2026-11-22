@@ -42,10 +42,38 @@ Block) at 22pt with path metadata, and a detail strip names the exact
 wrapping (the bottom row bumps), Return and Tab insert bob's replacement at
 bob's byte range through the field editor — one undo step, caret at
 `cursor_after` — and keep the reason open. Return with no rows closes the
-band without confirming the Pull-In, Tab with no rows passes through to the
-host, and Esc / Control-[ close the band only. Clicking a row inserts it
-without confirming. The event-note editor stays excluded: it escapes `[`,
-so a completed link would be corrupted.
+band without confirming the Pull-In — as does Return on a stale caret, edited
+text, or a missing editor — Tab with no rows passes through to the host, and
+Esc / Control-[ close the band only. Clicking a row inserts it without
+confirming. The event-note editor stays excluded: it escapes `[`, so a
+completed link would be corrupted.
+
+### Task links (`((`)
+
+Typing `((` in the same reason opens the band's tasks mode, headed
+`LINK · tasks · k of n` and requested as `capture-complete --links-only
+--task-links`. bob returns `wikilink_task` rows in its order (This note, In
+Progress, Next, open, then history). Each row shows a status glyph, the task
+text, a group capsule on the first row of each run (empty `((` only), and the
+link it will insert: target, `#^`, then the ID, or `⊕` and bob's first
+suggestion for an ID-less task. Return or Tab on an identified row splices
+bob's `[[target#^id]]` over the `((query` bytes as one undo step. The Pull-In
+row's own task, and any row bob guards, dims, shows its reason in the detail
+strip (`The task this prompt is about`), and stays put on Return.
+
+Return or Tab on an ID-less row turns the band into a NAME stage: the
+reusable block ID field, focused and prefilled with bob's first suggestion
+(Tab and the arrows cycle the rest), above `↵ adds ^id, then links
+[[target#^id]]`. Return runs `bob capture-task-id --note-path --task-ref
+--block-id`, with `--allow-closed` for Done and Cancelled rows. That is the
+only vault write the band causes, and only on that Return. It then splices
+bob's `wikilink_replacement`, returns focus to the reason field, and closes
+the band. Esc returns to the list with the filter intact, and focus moving
+into the ID field never confirms or restores the Pull-In. The reason is not
+edited before the write succeeds; if it changed meanwhile, nothing is
+inserted, and a fresh `((` finds the task identified. A failed write keeps
+the stage open with bob's reason. A bob without `--task-links` keeps `((`
+literal and `[[` working.
 
 Each completion row shows a compact SF Symbol and context label for what will be
 inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Drawer
