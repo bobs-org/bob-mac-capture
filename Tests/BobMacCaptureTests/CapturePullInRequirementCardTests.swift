@@ -105,7 +105,8 @@ final class CapturePullInRequirementCardTests: XCTestCase {
         XCTAssertEqual(state.sections.map(\.ownerKey), [Self.ownerB, Self.ownerA])
         let first = state.sections[0]
         XCTAssertTrue(first.isRequirement)
-        XCTAssertEqual(first.requirementScope, "1 req")
+        XCTAssertEqual(first.requirementScope, "1 reqs")
+        XCTAssertEqual(state.sections[1].requirementScope, "1 req")
         XCTAssertEqual(first.selectableRequirementCount, 1)
         XCTAssertEqual(state.footerSummaryText, "reqs ✓2 ⊘0 →0")
         // Filtering keeps header match and hides nothing for header match.
