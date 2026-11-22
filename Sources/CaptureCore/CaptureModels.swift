@@ -235,7 +235,9 @@ public struct CaptureParseResponse: Codable, Equatable {
     // Additive to schema version 1: `bob capture-parse` omits these keys entirely when
     // a draft has no authored sub-bullets, and older bob versions omit depths even when
     // they provide bodies. Decode both tolerantly and synthesize depth 1 for older bob
-    // responses rather than letting clients index mismatched arrays.
+    // responses rather than letting clients index mismatched arrays. Depths are 1-based
+    // authored levels and may exceed 2 beneath requirement chains; non-positive or
+    // misaligned arrays still synthesize depth 1.
     public let subBullets: [String]
     public let subBulletDepths: [Int]
     public let items: [CaptureParseItem]
@@ -423,7 +425,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         }
         guard let depths,
             depths.count == bodyCount,
-            depths.allSatisfy({ $0 == 1 || $0 == 2 })
+            depths.allSatisfy({ $0 >= 1 })
         else {
             return Array(repeating: 1, count: bodyCount)
         }

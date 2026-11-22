@@ -80,6 +80,17 @@ final class PlainTextPasteTests: XCTestCase {
         XCTAssertEqual(result, "Parent\n  - first\n  - second")
     }
 
+    func testResolverRebasesFlatListOntoFourSpacePlaceholder() {
+        let draft = "Parent\n    - "
+        let (_, result) = resolvePaste(
+            draft: draft,
+            selectedRange: NSRange(location: draft.utf16.count, length: 0),
+            clipboardText: "- first\n  - child"
+        )
+
+        XCTAssertEqual(result, "Parent\n    - first\n      - child")
+    }
+
     func testResolverRebasesIndentedClipboardFromFirstBulletBaseline() {
         let draft = "Parent\n- "
         let (_, result) = resolvePaste(

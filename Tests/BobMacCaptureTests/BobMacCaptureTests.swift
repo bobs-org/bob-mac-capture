@@ -1988,6 +1988,27 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyBulletRowDeletionRangeRemovesIndentedPlaceholderAndPrecedingNewline() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent\n    - \nChild"
+        // Caret right after the placeholder's trailing space, before its own newline.
+        textView.setSelectedRange(NSRange(location: 13, length: 0))
+
+        let range = CapturePanelController.emptyBulletRowDeletionRange(in: textView)
+
+        XCTAssertEqual(range, NSRange(location: 6, length: 7))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeIgnoresOddSpacePlaceholder() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent\n - \nChild"
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
+
+        XCTAssertNil(CapturePanelController.emptyBulletRowDeletionRange(in: textView))
+    }
+
+    @MainActor
     func testMoveLineEdgeCyclesCaretInEditableTextView() {
         let textView = NSTextView(frame: .zero)
         textView.string = "one\ntwo\nthree"
@@ -2548,6 +2569,16 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(nested.text, "Parent\n  - child\n  - ")
         XCTAssertEqual(nested.selection, NSRange(location: "Parent\n  - child\n  - ".utf16.count, length: 0))
+
+        let deeper = try applyBulletEdit(
+            text: "Parent\n    - child",
+            selectedRange: NSRange(location: "Parent\n    - child".utf16.count, length: 0)
+        )
+        XCTAssertEqual(deeper.text, "Parent\n    - child\n    - ")
+        XCTAssertEqual(
+            deeper.selection,
+            NSRange(location: "Parent\n    - child\n    - ".utf16.count, length: 0)
+        )
 
         let parentRow = try applyBulletEdit(
             text: "Parent",
@@ -3961,7 +3992,7 @@ final class BobMacCaptureTests: XCTestCase {
             ("marker glued to body", "Parent\n-body", 9),
             ("one leading space", "Parent\n - one space", 9),
             ("leading tab", "Parent\n\t- tab indented", 9),
-            ("four leading spaces", "Parent\n    - four spaces", 11),
+            ("three leading spaces", "Parent\n   - three spaces", 11),
         ]
 
         for testCase in cases {
@@ -3995,6 +4026,82 @@ final class BobMacCaptureTests: XCTestCase {
                 direction: .decrease,
                 in: alreadyTopLevel,
                 selectedRange: NSRange(location: 8, length: 0)
+            )
+        )
+    }
+
+    func testBulletIndentationEditIncreasesTwoSpaceMarkersWhenPreviousRowAllows() {
+        // Indices: Parent(0-5) \n(6) two spaces + "- first"(7-15) \n(16) two spaces(17-18).
+        let text = "Parent\n  - first\n  - second" as NSString
+        let selection = NSRange(location: 20, length: 0)
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .increase,
+            in: text,
+            selectedRange: selection
+        )
+
+        XCTAssertEqual(
+            edit,
+            CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: 17, length: 0),
+                replacementText: "  ",
+                resultingSelection: NSRange(location: 22, length: 0)
+            )
+        )
+    }
+
+    func testBulletIndentationEditDecreasesFourSpaceMarkersByTwoSpaces() {
+        let text = "Parent\n    - four spaces" as NSString
+        let selection = NSRange(location: 11, length: 0)
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .decrease,
+            in: text,
+            selectedRange: selection
+        )
+
+        XCTAssertEqual(
+            edit,
+            CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: 7, length: 2),
+                replacementText: "",
+                resultingSelection: NSRange(location: 9, length: 0)
+            )
+        )
+    }
+
+    func testBulletIndentationEditDeclinesIncreaseBeyondPreviousRowPlusTwo() {
+        let text = "Parent\n  - nested\n    - deeper" as NSString
+        // "    - deeper" starts at 18; caret sits on the marker.
+        let selection = NSRange(location: 22, length: 0)
+
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: text,
+                selectedRange: selection
+            )
+        )
+    }
+
+    func testBulletIndentationEditIncreasesFourSpaceMarkersWhenPreviousRowAllows() {
+        let text = "Parent\n    - first\n    - second" as NSString
+        // "    - second" starts at 19; caret sits on the marker at 23.
+        let selection = NSRange(location: 23, length: 0)
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .increase,
+            in: text,
+            selectedRange: selection
+        )
+
+        XCTAssertEqual(
+            edit,
+            CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: 19, length: 0),
+                replacementText: "  ",
+                resultingSelection: NSRange(location: 25, length: 0)
             )
         )
     }
@@ -4045,6 +4152,24 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(textView.string, "Parent\n- confirm owner")
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 9, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyBulletIndentationNestsAContinuationUnderThePreviousRow() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n  - first\n  - second"
+        textView.setSelectedRange(NSRange(location: 20, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.applyBulletIndentation(.increase, firstResponder: textView, model: model)
+        )
+        XCTAssertEqual(textView.string, "Parent\n  - first\n    - second")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 22, length: 0))
         XCTAssertNil(model.completionResponse)
     }
 

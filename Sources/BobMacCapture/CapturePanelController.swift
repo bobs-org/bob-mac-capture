@@ -2,8 +2,10 @@ import AppKit
 import CaptureCore
 import SwiftUI
 
-/// Direction of a bullet-indentation edit between Bob's two supported authored-child
-/// prefixes: column zero and exactly two ASCII spaces.
+/// Direction of a bullet-indentation edit across even ASCII-space authored-child
+/// prefixes. Increase is capped at the previous row's depth plus two spaces; decrease
+/// steps any depth of two or more spaces back by two. Bob's parse remains the authority
+/// for whether the resulting hierarchy is valid.
 enum CaptureBulletIndentationDirection {
     case increase
     case decrease
@@ -219,18 +221,22 @@ enum CaptureBulletNewlineEditResolver {
         return NSRange(location: lineStart, length: hyphenOffset + 2)
     }
 
+    /// Even ASCII-space prefix of an authored `-`/`*`/`+` row. Odd spaces, tabs, and
+    /// non-bullet lines return `""` so Ctrl-J still inserts a column-zero `- `.
     private static func supportedAuthoredIndent(in line: String) -> String {
-        for indent in ["  ", ""] {
-            for marker in ["-", "*", "+"] {
-                let prefix = indent + marker
-                guard line.hasPrefix(prefix) else {
-                    continue
-                }
-                let suffix = line.dropFirst(prefix.count)
-                if suffix.isEmpty || suffix.first?.isWhitespace == true {
-                    return indent
-                }
-            }
+        let leadingSpaces = line.prefix(while: { $0 == " " }).count
+        guard leadingSpaces % 2 == 0 else {
+            return ""
+        }
+        let remainder = line.dropFirst(leadingSpaces)
+        guard let marker = remainder.first,
+              marker == "-" || marker == "*" || marker == "+"
+        else {
+            return ""
+        }
+        let suffix = remainder.dropFirst()
+        if suffix.isEmpty || suffix.first?.isWhitespace == true {
+            return String(repeating: " ", count: leadingSpaces)
         }
         return ""
     }
@@ -1513,9 +1519,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     /// Tab/Shift-Tab: indent or outdent the continuation bullet row the caret sits on
-    /// between column zero and exactly two ASCII spaces. Returns `false` without
-    /// changing state whenever `bulletIndentationEdit(direction:in:selectedRange:)`
-    /// declines, so the key event falls through to AppKit's normal focus traversal.
+    /// in two-space steps, increasing only up to the previous row's depth plus two
+    /// spaces and decreasing from any even depth of two or more. Returns `false`
+    /// without changing state whenever
+    /// `bulletIndentationEdit(direction:in:selectedRange:)` declines, so the key
+    /// event falls through to AppKit's normal focus traversal.
     static func applyBulletIndentation(
         _ direction: CaptureBulletIndentationDirection,
         firstResponder: NSResponder?,
@@ -1539,9 +1547,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     /// Resolves the bounded source edit for one continuation bullet row, or `nil` when
     /// the selection or line is out of scope. This is a pure, deterministic helper: it
-    /// only recognizes the two supported source prefixes (column zero and exactly two
-    /// ASCII spaces) and never inspects route markers, parses JSON, or infers capture
-    /// output. Bob's own parse remains authoritative for contextual validity.
+    /// only recognizes even ASCII-space authored prefixes and never inspects route
+    /// markers, parses JSON, or infers capture output. Bob's own parse remains
+    /// authoritative for contextual validity.
     nonisolated static func bulletIndentationEdit(
         direction: CaptureBulletIndentationDirection,
         in text: NSString,
@@ -1564,10 +1572,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         let lineRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
         let lineText = text.substring(with: lineRange) as NSString
+        guard let currentSpaces = authoredBulletLeadingSpaces(lineText) else {
+            return nil
+        }
 
         switch direction {
         case .increase:
-            guard isAuthoredBulletRow(lineText, leadingSpaces: 0) else {
+            let previousSpaces = previousAuthoredBulletLeadingSpaces(in: text, lineStart: lineStart)
+            let maxSpaces = previousSpaces + 2
+            guard currentSpaces + 2 <= maxSpaces else {
                 return nil
             }
             return CaptureBulletIndentationEdit(
@@ -1579,7 +1592,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 )
             )
         case .decrease:
-            guard isAuthoredBulletRow(lineText, leadingSpaces: 2) else {
+            guard currentSpaces >= 2 else {
                 return nil
             }
             let deletionRange = NSRange(location: lineStart, length: 2)
@@ -1605,28 +1618,56 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return range.location
     }
 
-    // Recognizes `-`, `*`, and `+` at the given leading-space depth when the marker is
-    // at end of line (an interactive placeholder) or is followed by a space or tab.
-    // Prose, `-body`, blank rows, leading tabs, and every other depth decline.
-    private nonisolated static func isAuthoredBulletRow(_ lineText: NSString, leadingSpaces: Int) -> Bool {
-        guard lineText.length > leadingSpaces else {
-            return false
+    /// Even ASCII-space count of an authored `-`/`*`/`+` row, or `nil` for prose,
+    /// `-body`, blank rows, leading tabs, and odd-space indents.
+    private nonisolated static func authoredBulletLeadingSpaces(_ lineText: NSString) -> Int? {
+        var leadingSpaces = 0
+        while leadingSpaces < lineText.length,
+              lineText.character(at: leadingSpaces) == Self.asciiSpace
+        {
+            leadingSpaces += 1
         }
-        for index in 0..<leadingSpaces where lineText.character(at: index) != Self.asciiSpace {
-            return false
+        guard leadingSpaces % 2 == 0, leadingSpaces < lineText.length else {
+            return nil
+        }
+        guard Self.isBulletMarkerCharacter(lineText.character(at: leadingSpaces)) else {
+            return nil
         }
 
-        let markerIndex = leadingSpaces
-        guard Self.isBulletMarkerCharacter(lineText.character(at: markerIndex)) else {
-            return false
-        }
-
-        let afterMarker = markerIndex + 1
+        let afterMarker = leadingSpaces + 1
         guard afterMarker < lineText.length else {
-            return true
+            return leadingSpaces
         }
         let nextCharacter = lineText.character(at: afterMarker)
-        return nextCharacter == Self.asciiSpace || nextCharacter == Self.asciiTab
+        guard nextCharacter == Self.asciiSpace || nextCharacter == Self.asciiTab else {
+            return nil
+        }
+        return leadingSpaces
+    }
+
+    /// Leading spaces of the preceding physical line when it is an authored bullet;
+    /// non-bullet previous rows, including the captured parent, count as depth 0.
+    private nonisolated static func previousAuthoredBulletLeadingSpaces(
+        in text: NSString,
+        lineStart: Int
+    ) -> Int {
+        guard lineStart > 0 else {
+            return 0
+        }
+        var previousStart = 0
+        var previousContentsEnd = 0
+        text.getLineStart(
+            &previousStart,
+            end: nil,
+            contentsEnd: &previousContentsEnd,
+            for: NSRange(location: lineStart - 1, length: 0)
+        )
+        let previousRange = NSRange(
+            location: previousStart,
+            length: previousContentsEnd - previousStart
+        )
+        let previousLine = text.substring(with: previousRange) as NSString
+        return authoredBulletLeadingSpaces(previousLine) ?? 0
     }
 
     private nonisolated static func isBulletMarkerCharacter(_ character: unichar) -> Bool {
@@ -4055,9 +4096,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     // Intervenes only when the caret's collapsed selection sits on a physical line whose
-    // complete content is exactly the empty-bullet placeholder `- ` that Ctrl-J inserts.
-    // Every other selection, line, or content passes back `nil` so AppKit's ordinary
-    // Backspace behavior is untouched.
+    // complete content is an even-space empty-bullet placeholder (`- `, `  - `, …) that
+    // Ctrl-J inserts. Every other selection, line, or content passes back `nil` so
+    // AppKit's ordinary Backspace behavior is untouched.
     static func emptyBulletRowDeletionRange(in textView: NSTextView) -> NSRange? {
         let selection = textView.selectedRange()
         guard selection.length == 0 else {
@@ -4074,7 +4115,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             for: NSRange(location: selection.location, length: 0)
         )
         let contentRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
-        guard text.substring(with: contentRange) == "- " else {
+        guard isEmptyAuthoredDashPlaceholder(text, contentRange: contentRange) else {
             return nil
         }
 
@@ -4082,5 +4123,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return contentRange
         }
         return NSRange(location: lineStart - 1, length: contentRange.length + 1)
+    }
+
+    /// True when `contentRange` is exactly even ASCII spaces followed by `- `.
+    private static func isEmptyAuthoredDashPlaceholder(
+        _ text: NSString,
+        contentRange: NSRange
+    ) -> Bool {
+        guard contentRange.length >= 2 else {
+            return false
+        }
+        var leadingSpaces = 0
+        while leadingSpaces < contentRange.length,
+              text.character(at: contentRange.location + leadingSpaces) == asciiSpace
+        {
+            leadingSpaces += 1
+        }
+        guard leadingSpaces % 2 == 0,
+              contentRange.length == leadingSpaces + 2,
+              text.character(at: contentRange.location + leadingSpaces) == hyphen,
+              text.character(at: contentRange.location + leadingSpaces + 1) == asciiSpace
+        else {
+            return false
+        }
+        return true
     }
 }

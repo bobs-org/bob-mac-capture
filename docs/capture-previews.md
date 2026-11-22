@@ -161,8 +161,8 @@ beside the capsule.
 The additive `sub_bullets` field on `capture` output is the exact rendered
   authored child lines, omitted when a draft has no authored bullets.
   `capture-parse` keeps `sub_bullets` as normalized bodies and adds aligned
-  `sub_bullet_depths` (`1` or `2`); missing depths decode as `1`, and
-  mismatched depths are ignored. `capture-parse` also decodes Bob's additive
+  `sub_bullet_depths` (1-based, may exceed 2); missing or invalid depths decode as `1`.
+  `capture-parse` also decodes Bob's additive
   `items` array for batch drafts and the additive `global_destination`
   object. Template parsing adds `template.directive`, range/field/row data,
   and per-row items. Template rows never open pickers; a row-incomplete need

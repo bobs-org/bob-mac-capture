@@ -107,8 +107,8 @@ as Command-Y L does.
 | x / s | In close slots, `x`/`s` become `!`/`*` (sized too: `2xx`→`2x!`, `12xs`→`12x*`, `--1 2xx`→`--1 2x!`, `^r:id=2xs`→`^r:id=2x*`); `Plan 2xx`, `x made 2xx`, and `2Xx` stay literal prose. Time goes before `x`, numbers after it; see [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size) | Same | Native text-field behavior | Native text-field behavior |
 | = | After space/tab, `=` → `~` opens Links To; after bare `~`/`~~` or a relation token, flips direction. Fast `==` (350 ms) types one `=` | In a relation picker, flips Links To ↔ Linked From; fast `==` undoes into the filter | Native text-field behavior | Native text-field behavior |
 | \\ or / | Blank-draft `\` → `/` opens Go To. Else `/` → `#` and `\` → `%` when eligible (`Buy milk \` → `Buy milk %`); `\` stays literal at line start, glued to a word, or after another `\`. `/` stays literal right after an album route (`@eat/`); type `#` for the section menu. `/` also stays literal in `=/`, `[[folder/`, section and Pomodoro names. Same-key double-tap types one literal, closes the menu; Undo restores it | The same rewrite and menu behavior | Native text-field behavior | Native text-field behavior |
-| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
-| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
+| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current continuation bullet by two spaces, at most two deeper than the previous row (normal focus traversal if neither applies) | Accept the selected completion; with no selected row, take the first | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
+| Shift-Tab | Outdent the current continuation bullet by two spaces from any even depth ≥ 2 (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion; with no selected row, select the first | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion; with no selected row, select the last | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Ctrl-D | (no editor binding) | Hide or show the selected type in a `task_type` menu, or the selected history row in a `pomodoro_name`/`pomodoro_start_name` menu, via `bob themes hide`/`unhide`. Typed rows never write; the ghost row stays until the draft changes | Native text-field behavior | Native text-field behavior |
@@ -357,8 +357,8 @@ one literal.
 
 ## Editing the draft
 
-Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
-current authored row's supported indentation (zero or two ASCII spaces). From column zero
+Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying the
+current authored row's even ASCII-space indent. From column zero
 through the first body character of a populated `- ` row, Ctrl-J replaces that row's
 leading whitespace and `- ` prefix with one line terminator while preserving the body;
 only a caret inside or after the body keeps the normal new-row insertion behavior. On a line that
@@ -371,14 +371,11 @@ for a local editor snippet: with a collapsed caret immediately after `--`, it
 replaces those two ASCII hyphens with a single em dash `—` and leaves the caret
 right after it, everywhere else in the editor including inside prose. To submit
 a one-unit earlier shift, type `--` and press Return without pressing Tab first.
-To author a nested row,
-press Ctrl-J from an existing nested row, or press Ctrl-J for a fresh top-level
-placeholder and then Tab before or after typing its body to indent it under the preceding
-first-level bullet. Shift-Tab reverses that, returning a nested bullet to column zero.
-Tab/Shift-Tab only move a continuation bullet between Bob's two supported source
-prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts must still use that
-exact two-space indent; they stop at that ceiling and floor and leave every other line
-untouched. Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
+To nest a row, press Ctrl-J from an existing nested row, or Ctrl-J then Tab to indent
+two spaces deeper than the previous row. Shift-Tab steps two spaces back toward
+column zero. Tab/Shift-Tab move even-space continuation bullets in two-space steps,
+at most two spaces deeper than the previous row; odd spaces, tabs, and other lines
+stay untouched. Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
 toggles the current physical line's case (uppercase unless the span is already all
 uppercase, then lowercase), Escape, Ctrl-[, or a second Control-G cancels silently,
 and any other key beeps and is swallowed. Holding Control-G
@@ -411,7 +408,7 @@ seconds per paste from browser content. When the caret is at the end of an other
 `* `, or `+ ` row and the clipboard begins with a Markdown `-`, `*`, or `+` bullet with
 a body, Command-V treats that row as the first pasted bullet: the row's marker is kept,
 the clipboard's first marker is consumed, and the remaining pasted lines are rebased to
-the row's column-zero or two-space indentation.
+the row's even-space indentation.
 
 ```text
 Plan rollout

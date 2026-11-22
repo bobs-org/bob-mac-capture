@@ -83,15 +83,11 @@ enum PlainTextPasteEditResolver {
     }
 
     private static func parsePlaceholderLine(_ line: String) -> PlaceholderLine? {
-        let indentation: String
-        let remainder: Substring
-        if line.hasPrefix("  ") {
-            indentation = "  "
-            remainder = line.dropFirst(2)
-        } else {
-            indentation = ""
-            remainder = line[...]
+        let leadingSpaces = line.prefix(while: { $0 == " " }).count
+        guard leadingSpaces % 2 == 0 else {
+            return nil
         }
+        let remainder = line.dropFirst(leadingSpaces)
 
         guard let marker = remainder.first,
               isSupportedMarker(marker)
@@ -103,7 +99,10 @@ enum PlainTextPasteEditResolver {
         guard trailing.allSatisfy(isHorizontalWhitespace) else {
             return nil
         }
-        return PlaceholderLine(indentation: indentation, marker: marker)
+        return PlaceholderLine(
+            indentation: String(repeating: " ", count: leadingSpaces),
+            marker: marker
+        )
     }
 
     private static func parsePastedList(_ text: String) -> PastedList? {

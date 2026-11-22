@@ -295,8 +295,7 @@ onto the `@@`; non-absorbable markers such as `@route#Section`, `@route^block-id
 `@route:block-id`, and bare `#` produce an explanatory notice without changing the
 draft. Within each item, the first nonblank line is the parent, followed by zero or more
 authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored children;
-bullets prefixed by exactly two ASCII spaces become nested authored children under the
-nearest preceding first-level authored child.
+each extra two ASCII spaces nests one level deeper.
 A marker (`@route`,
 `@route+block-id` alone to ensure Next and relocate an existing Task Link,
 `@route+block-id #type` (a separate token) alone to ensure Next and retype to `#type`,

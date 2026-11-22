@@ -109,6 +109,54 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.subBulletDepths, [1, 1])
     }
 
+    func testParseResponseDecodesSubBulletDepthsBeyondTwo() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - [ ] nested\\n    - [ ] deeper",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "[ ] nested", "[ ] deeper"],
+              "sub_bullet_depths": [1, 2, 3]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "[ ] nested", "[ ] deeper"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 2, 3])
+    }
+
+    func testParseResponseIgnoresNonPositiveSubBulletDepthsSafely() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - text owner",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "text owner"],
+              "sub_bullet_depths": [1, 0]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "text owner"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 1])
+    }
+
     func testParseResponseDecodesBatchItemsWhenPresent() throws {
         let data = Data(
             """
