@@ -214,7 +214,7 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         let record = temporaryURL()
         var identity = "bob-first"
         let client = BobProcessClient(
-            executablePath: fakeBobPath(),
+            executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
@@ -248,7 +248,7 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         let record = temporaryURL()
         let model = CapturePanelModel(
             processClient: BobProcessClient(
-                executablePath: fakeBobPath(),
+                executablePath: try fakeBobPath(),
                 environment: [
                     "HOME": "/tmp",
                     "PATH": "/usr/bin:/bin",
@@ -391,7 +391,7 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         }
         return CapturePanelModel(
             processClient: BobProcessClient(
-                executablePath: fakeBobPath(),
+                executablePath: try fakeBobPath(),
                 environment: [
                     "HOME": "/tmp",
                     "PATH": "/usr/bin:/bin",
@@ -417,12 +417,23 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         model.pullInChoice = choice
     }
 
-    private func fakeBobPath() -> String {
-        URL(fileURLWithPath: #filePath)
+    private func fakeBobPath() throws -> String {
+        let path = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+        guard FileManager.default.isExecutableFile(atPath: path) else {
+            throw NSError(
+                domain: "CaptureRequirementPipelineTests",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "missing fake-bob at \(path)"
+                ]
+            )
+        }
+        return path
     }
 
     private func fixture(_ name: String) throws -> String {
