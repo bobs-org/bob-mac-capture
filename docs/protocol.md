@@ -230,6 +230,18 @@ Refusals reopen intact; stale picks refresh once and never retry writes. A
 refresh that loses the pinned key clears it visibly. The app × Bob version
 matrix lives with the [Move card](task-pickers.md#move-card-protocol).
 
+Requirement-close support is a separate positive capability:
+`pull_in.reqs.supported` from the same executable's preview gates
+`--req-choice`. When absent, old Bob payloads still decode and no new flag is
+sent. A requirement-only group opens the card; default Met is committable,
+and staged requirement keys are never retried as an ordinary capture. Bob's
+`req_outcomes` receipts are shown once after success, alongside ordinary
+offer receipts. Requirement rows use the same `--pull-in` selection for
+Carry-and-pull, `--carry` for Carry, and `--cancel-offer` for Drop; the Mac
+client sends at most one structural choice per requirement. The wire shape,
+verdict flags, stale and overlap refusals, receipts, and shared RV vectors are
+defined in Bob's [requirement-close contract](https://bobs-org.github.io/task-dependencies/#1225-requirements-on-the-successor-card).
+
 ## Timeouts and guards
 
 Every `bob` call has a 20-second timeout; quit cancels outstanding calls.

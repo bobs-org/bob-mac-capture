@@ -487,6 +487,16 @@ commit; Control-Return behaves like Return while one is staged. The landed
 pin wins over the open-notes landing with a `↗ S` notice line, and a lost
 landing falls back to open notes.
 
+When Bob reports pending requirements, their owner sections appear before
+ordinary offers. Each row shows Bob's depth and consequence; Drop or Carry
+folds its descendants, while Met leaves the branch open. Control-X stages
+Met, Control-Shift-X stages Drop with an optional reason, Control-Shift-T
+stages Carry, Space stages Carry-and-pull, and Tab stages Carry-and-pull
+then advances. Untouched requirements default to Met on Return and remain
+unchecked in the closed task. Shift-Return downgrades Carry-and-pull to
+Carry. Requirement choices, stale refresh, and receipts follow Bob's
+requirement-close contract; see [Protocol](protocol.md#successor-verdict-and-jump-submission).
+
 ## Project-note moves
 
 Move bullets (`- ^id`, `- :id`) show a `↪ Moves N tasks from cash.md` band

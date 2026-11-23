@@ -20,7 +20,7 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         let model = try makeModel(
             record: record,
             dryRun: fixture("capture-req-close-preview.json"),
-            write: fixture("capture-req-close-write.json")
+            write: fixture("capture-req-close-met.json")
         )
         model.plainDraft = "!sase:ship"
         model.preview()
@@ -56,11 +56,9 @@ final class CaptureRequirementPipelineTests: XCTestCase {
         XCTAssertFalse(write.contains("--cancel-offer"), write)
         XCTAssertFalse(write.contains("--complete-offer"), write)
         XCTAssertTrue(
-            model.statusText.contains("✓ 1 requirements met with “Ship parser”"),
+            model.statusText.contains("requirements met with “Ship parser”"),
             model.statusText)
-        XCTAssertTrue(
-            model.statusText.contains("⊘ Dropped “Handles empty input”"),
-            model.statusText)
+        XCTAssertFalse(model.statusText.contains("Dropped"), model.statusText)
         XCTAssertFalse(model.statusText.contains("Write docs"))
         XCTAssertNil(model.pullInChoice)
     }

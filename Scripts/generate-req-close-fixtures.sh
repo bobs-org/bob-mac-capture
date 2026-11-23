@@ -9,6 +9,7 @@ if [[ -z "$bob_bin" || ! -x "$bob_bin" ]]; then
   exit 1
 fi
 bob_version="$("$bob_bin" --version | head -n 1)"
+bob_source_rev="${BOB_SOURCE_REV:-unrecorded}"
 
 scratch_root="$(mktemp -d "$repo_root/.tmp-req-close-fixture.XXXXXX")"
 cleanup() {
@@ -101,6 +102,11 @@ new_vault "$req_vault"
 run_capture "$req_vault" "$scratch_root/req-preview.json" --dry-run --req-choice -- '!sase:ship'
 persist_fixture "$scratch_root/req-preview.json" capture-req-close-preview.json
 
+met_vault="$scratch_root/met-vault"
+new_vault "$met_vault"
+run_capture "$met_vault" "$scratch_root/met.json" --req-choice -- '!sase:ship'
+persist_fixture "$scratch_root/met.json" capture-req-close-met.json
+
 mixed_vault="$scratch_root/mixed-vault"
 new_vault "$mixed_vault" true
 run_capture "$mixed_vault" "$scratch_root/mixed-preview.json" --dry-run --req-choice -- '!sase:ship'
@@ -171,32 +177,45 @@ root = pathlib.Path(sys.argv[1])
 preview = json.loads((root / "req-preview.json").read_text())
 mixed = json.loads((root / "mixed-preview.json").read_text())
 write = json.loads((root / "write.json").read_text())
+met = json.loads((root / "met.json").read_text())
 stale = json.loads((root / "stale.json").read_text())
 legacy = json.loads((root / "legacy.json").read_text())
 assert preview["pull_in"]["reqs"]["supported"] is True
 assert preview["pull_in"]["groups"][0]["kind"] == "requirements"
 assert mixed["pull_in"]["groups"][0]["kind"] == "requirements"
 assert any(group["group"] != "requirements" for group in mixed["pull_in"]["groups"])
+assert met["req_outcomes"] and all(
+    outcome["verdict"] == "met" for outcome in met["req_outcomes"]
+)
+assert "requirements met" in met["req_outcomes"][0]["message"]
 assert any(outcome["verdict"] == "drop" for outcome in write["req_outcomes"])
 assert stale["code"] == "req_close_stale" and stale["current"]["groups"]
 assert "reqs" not in legacy["pull_in"]
 assert all(group.get("kind", group["group"]) != "requirements" for group in legacy["pull_in"]["groups"])
+lines = (root / "met-vault" / "sase.md").read_text().splitlines()
+assert lines == [
+    "- [x] #task Ship parser [id:: ship] ^ship",
+    "\t- [ ] Handles empty input",
+    "\t\t- [ ] Handles zero bytes",
+    "\t- [ ] Handles unicode",
+]
 PY
 
-python3 - "$repo_root/Tests/Fixtures/req_close-provenance.md" "$bob_version" <<'PY'
+python3 - "$repo_root/Tests/Fixtures/req_close-provenance.md" "$bob_version" "$bob_source_rev" <<'PY'
 import pathlib
 import sys
 
-destination, version = sys.argv[1:]
+destination, version, source_rev = sys.argv[1:]
 pathlib.Path(destination).write_text(f'''# Requirement close fixture provenance
 
 Generated with `Scripts/generate-req-close-fixtures.sh` from:
 
 - Bob binary: supplied through `BOB_BIN`
 - Version: {version}
-- Command: `BOB_BIN=<current bob-cli target/debug/bob> Scripts/generate-req-close-fixtures.sh`
+- bob-cli source revision: `{source_rev}`
+- Command: `BOB_SOURCE_REV={source_rev} BOB_BIN=<current bob-cli target/debug/bob> Scripts/generate-req-close-fixtures.sh`
 
-The preview and mixed fixtures are Bob dry runs from disposable synthetic vaults. The write fixture is a real drop verdict with Bob's receipt. The stale fixture changes the row after its preview and records Bob's write-free `req_close_stale` response with `current.groups`. The legacy fixture uses the current Bob's explicit offer-only handshake, then removes only the additive requirement capability and receipts to model a pre-requirements payload.
+The preview and mixed fixtures are Bob dry runs from disposable synthetic vaults. The Met fixture is a real default-Met close: its receipt reports Met, the owner closes, and all requirement checkboxes remain `[ ]`. The write fixture is a real drop verdict with Bob's receipt. The stale fixture changes the row after its preview and records Bob's write-free `req_close_stale` response with `current.groups`. The legacy fixture uses the current Bob's explicit offer-only handshake, then removes only the additive requirement capability and receipts to model a pre-requirements payload.
 
 `req_close/vectors.json` is copied byte for byte from bob-cli's `tests/fixtures/req_close/vectors.json`; bob-cli owns it. Change the source vectors and contract there first, then copy the file and update this README/provenance.
 ''')
