@@ -538,6 +538,18 @@ public final class HighlightsTabsSession {
         return result
     }
 
+    /// Reads one snapshot for the headless task key without touching the
+    /// shared refresh generation, so a concurrent Tabs or save-scan read
+    /// neither cancels this read nor is cancelled by it.
+    public func readSnapshotForTask() async -> HighlightsTabsReadResult {
+        let result = await reader.read()
+        if case let .snapshot(snapshot) = result {
+            lastSnapshot = snapshot
+            touchCurrentTab(in: snapshot)
+        }
+        return result
+    }
+
     /// Samples the current tab's recency without prompting or applying a new snapshot.
     public func sampleCurrentTab() async {
         guard reader.isTrusted() else {

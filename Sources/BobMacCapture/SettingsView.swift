@@ -130,6 +130,15 @@ struct SettingsView: View {
                     Text(RefsHighlightsLinkKey.off.displayName)
                         .tag(RefsHighlightsLinkKey.off)
                 }
+                Picker(
+                    "Reading task key in Highlights",
+                    selection: $settings.refsHighlightsTaskKey
+                ) {
+                    Text(RefsHighlightsTaskKey.ctrlReturn.displayName)
+                        .tag(RefsHighlightsTaskKey.ctrlReturn)
+                    Text(RefsHighlightsTaskKey.off.displayName)
+                        .tag(RefsHighlightsTaskKey.off)
+                }
                 LabeledContent("Highlights app", value: highlightsAppDescription)
                 HStack {
                     Button("Choose…") {

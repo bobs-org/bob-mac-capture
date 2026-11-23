@@ -83,6 +83,12 @@ struct HotKeyConfiguration: Equatable, Hashable {
         modifiers: UInt32(cmdKey),
         displayName: "Command-L"
     )
+
+    static let highlightsControlReturn = HotKeyConfiguration(
+        keyCode: UInt32(kVK_Return),
+        modifiers: UInt32(controlKey),
+        displayName: "Control-Return"
+    )
 }
 
 protocol HotKeyRegistering {
@@ -137,6 +143,7 @@ enum HotKeyAction: UInt32, CaseIterable {
     case refsHighlightsLinks = 7
     case captureAlias = 8
     case refsAlias = 9
+    case refsHighlightsTask = 10
 
     var purpose: String {
         switch self {
@@ -152,6 +159,8 @@ enum HotKeyAction: UInt32, CaseIterable {
             "copy code"
         case .refsHighlightsLinks:
             "copy a link"
+        case .refsHighlightsTask:
+            "open the reading task"
         }
     }
 }

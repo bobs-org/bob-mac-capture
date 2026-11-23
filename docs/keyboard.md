@@ -13,21 +13,22 @@ Ctrl-Tab and Ctrl-Shift-Tab switch panels, keeping the draft and view.
 
 ## Bob Refs shortcuts
 
-These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them. Global Control-Shift-Command-O and `Command-]` toggle the panel from any app; see [Opening Bob Refs](refs.md#opening-bob-refs).
+These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them. Global Control-Shift-Command-O and `Command-]` toggle the panel from any app; see [Opening Bob Refs](refs.md#opening-bob-refs). Takeover rows marked (in Highlights) register only while Highlights or its override app is frontmost.
 
 | Key | Action |
 | --- | --- |
 | Command-S (in Highlights) | Scan after the library PDF saves when the setting is on; the key reaches Highlights unchanged |
 | Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
-| Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults with the focused PDF selected; configurable to Shift-Command-O, Command-E, or Off |
+| Command-T (in Highlights) | While Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults with the focused PDF selected; configurable to Shift-Command-O, Command-E, or Off |
 | Command-Y | Open the Copy card for the selected row |
-| Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off |
+| Command-Y (in Highlights) | While Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off |
 | Command-B | Open the Copy card for the selected row with the code picker pressed |
 | Command-L | Open the Copy card for the selected row with the link picker pressed |
-| Command-B / Command-L (in Highlights) | Registered while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off |
+| Command-B / Command-L (in Highlights) | Open the code or link picker on the focused PDF; yields while Bob Refs is visible, and can be set to Off |
+| Control-Return (in Highlights) | While no Bob panel is visible, open the focused PDF's reading task in Obsidian at the task line, as Command-T then Control-Return would; falls back to Tabs with a reason when it can't, and can be set to Off |
 
-For the Command-Y and Command-B / Command-L Highlights shortcuts, keys typed before the PDF is known replay on the card.
+Keys typed before the PDF is known replay on the Copy card.
 | Control-Return | Open the reading task's file in Obsidian (at the task line) |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
@@ -54,11 +55,10 @@ While the Copy card is open:
 | Up / Down | Move the selection (and the code or link preview well) |
 | Escape / Ctrl-[ | Return to the card from a picker, then to the inspector |
 
-Command-B Return from Highlights copies the code block on the current page.
-Command-L Return copies the link on the current page. Without saved Markdown,
-Command-L Shift-Return opens the current page's web link in the default browser.
-Without saved Markdown, Command-L copies the reference's Markdown link immediately,
-as Command-Y L does.
+Command-B Return and Command-L Return copy the current page's code block and
+link. Without saved Markdown, Command-L Shift-Return opens the page's web link
+in the default browser, and Command-L copies the reference's Markdown link
+immediately, as Command-Y L does.
 
 ### When a Highlights copy key fails
 
@@ -69,10 +69,17 @@ as Command-Y L does.
 - A slow tab read says `Highlights didn't answer — try ⌘B again` or `⌘L again`;
   a failed read says `Couldn't read Highlights — ⌘R retries`.
 - While catalogs load, the card says `Loading code… esc cancels` or
-  `Loading links… esc cancels`. Load failures and unavailable content show the
+  `Loading links… esc cancels`; load failures and unavailable content show the
   Copy card's red reason.
-- If another app owns a chord, a warning toast names it and says which copy action
-  will not work. Change the key in Bob Settings › References.
+- If another app owns a chord, a warning toast names it and the copy action that
+  will not work; change the key in Bob Settings › References.
+
+### When the Highlights task key can't open
+
+- Without Accessibility, Bob Refs shows its Tabs permission card.
+- With no open PDF the banner says `Highlights has no open document`; an unmatched PDF names its filename, and a collision says `Two references match “…” — pick one, then ⌃↩`.
+- A slow read says `Highlights didn't answer — try ⌃↩ again`; a failed read says `Couldn't read Highlights — ⌘R retries`.
+- A task-less reference names its title; when another app owns the chord, a warning toast points at Settings › References.
 
 ## Editor and completion keys
 
@@ -272,11 +279,10 @@ in the open draft. An older Bob shows `Update bob to rename relation labels`.
 
 ## Focus
 
-Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
+Every capture action is reachable from the keyboard alone: the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, Open chip, and stash picker never need a pointer.
-Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt moves keyboard
-focus into its field, and a keystroke arriving while nothing holds focus re-claims
-the field.
+Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt focuses its field,
+and a keystroke with no focused holder re-claims it.
 
 ## Canceled-draft stash keys
 
@@ -332,18 +338,16 @@ Landing rule, from the decoded response:
 4. Else the last `completed` entry.
 5. Else line 1 of the daily note, with no `ref`.
 
-The chosen destination is dispatched as `obsidian://bob-goto-task` with
-`path`, `line`, and `ref` when the entry's ref is valid. A missing or invalid
-ref builds a line-only URL. Nothing in the vault is written. On success the
-panel hides and a nonempty draft is retained like Escape. On a failed open, status is
-`Couldn't open Obsidian` and the panel stays. A failed fetch is
-`Couldn't read today's Pomodoros`. A press while a capture is submitting is
-`Wait for the capture to finish`. A press while Bob is unresolved is
-`Bob is not resolved`. A second press while a fetch or open is already in
-flight does nothing. If the panel is hidden before the result lands, the
-result is dropped. While the stash, saved-template shelf, Add block ID or
-Name Pomodoro prompt, successor-choice card, or a picker is open, Command-\
-is consumed so you finish or cancel that surface first.
+The destination dispatches as `obsidian://bob-goto-task` with `path`, `line`,
+and `ref` when the entry's ref is valid, else a line-only URL; nothing is
+written. On success the panel hides and a nonempty draft is retained like
+Escape. Failures report `Couldn't open Obsidian` (the panel stays),
+`Couldn't read today's Pomodoros`, `Wait for the capture to finish`, or
+`Bob is not resolved`. A second press while a fetch or open is in flight
+does nothing, as does a result landing after the panel hid. While the stash,
+saved-template shelf, Add block ID or Name Pomodoro prompt,
+successor-choice card, or a picker is open, Command-\ is consumed so you
+finish or cancel that surface first.
 
 ## Going to a task from any app (Command-\ then \) {#going-to-a-task-from-any-app}
 
@@ -354,11 +358,10 @@ the blank draft turns into `/` and opens the Go To picker. This depends on the
 alias setting: with it off, `\` still opens Go To inside the panel but the
 global chord only works there.
 
-Contrast with `Command-\` `Command-\`, which opens today's Pomodoro. The
-retained-draft caveat applies: stash (Control-C) or clear a retained capture first.
-Typing `\` `\` right away types one literal `\`, so a draft can still start
-with a capture escape such as `\#fix`. After `#` or `%`, double-tap leaves
-one literal.
+Unlike `Command-\` `Command-\` (today's Pomodoro), this needs no retained
+draft: stash (Control-C) or clear one first. Typing `\` `\` at once types one
+literal `\`, so a draft can still start with an escape like `\#fix`; after
+`#` or `%`, double-tap leaves one literal.
 
 ## Editing the draft
 
@@ -366,54 +369,45 @@ Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying th
 current authored row's even ASCII-space indent. From column zero
 through the first body character of a populated `- ` row, Ctrl-J replaces that row's
 leading whitespace and `- ` prefix with one line terminator while preserving the body;
-only a caret inside or after the body keeps the normal new-row insertion behavior. On a line that
-contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
-placeholder with exactly one blank item separator and puts the caret at the beginning of
-the following line, reusing an existing line terminator when one is already there.
+only a caret inside or after the body keeps the normal new-row insertion behavior. On a line holding only whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
+placeholder with one blank separator, caret at the next line's start, reusing an existing terminator.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
-remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
-for a local editor snippet: with a collapsed caret immediately after `--`, it
-replaces those two ASCII hyphens with a single em dash `—` and leaves the caret
-right after it, everywhere else in the editor including inside prose. To submit
+remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks a local snippet: with a collapsed caret right after `--`, it
+replaces the hyphens with one em dash `—`, caret right after, anywhere in the editor including prose. To submit
 a one-unit earlier shift, type `--` and press Return without pressing Tab first.
 To nest a row, press Ctrl-J from an existing nested row, or Ctrl-J then Tab to indent
 two spaces deeper than the previous row. Shift-Tab steps two spaces back toward
 column zero. Tab/Shift-Tab move even-space continuation bullets in two-space steps,
 at most two spaces deeper than the previous row; odd spaces, tabs, and other lines
-stay untouched. Ctrl-G is a one-key editor leader. After Control-G, the next key is consumed: `u`
-toggles the current physical line's case (uppercase unless the span is already all
-uppercase, then lowercase), Escape, Ctrl-[, or a second Control-G cancels silently,
-and any other key beeps and is swallowed. Holding Control-G
-stays armed. A click, hiding the panel, or losing key focus drops the leader, and
+stay untouched. Ctrl-G is a one-key editor leader: the next key is consumed — `u`
+toggles the physical line's case (uppercase unless already all uppercase,
+then lowercase); Escape, Ctrl-[, or a second Control-G cancels silently;
+any other key beeps and is swallowed. Holding Control-G
+stays armed. A click, hiding the panel, or losing key focus drops the leader;
 the footer reads `⌃G · U toggle line case · esc cancel` while it waits. The toggle
 does not know capture syntax (`x1` becomes `X1`); Bob's live parse re-reads the result.
-All five shortcuts act on the native text view directly, so undo, IME
-composition, and accessibility behave exactly as they do for any other edit, and Bob's
-live parse/preview remains the sole authority for whether the resulting hierarchy is
-contextually valid.
+All five shortcuts act on the native text view, so undo, IME, and accessibility behave natively,
+and Bob's live parse/preview stays the sole authority on the resulting hierarchy.
 
 Ctrl-Shift-J and Ctrl-Shift-K move the caret to the next and previous physical line,
-keeping the column it started from: passing through a shorter line clamps the caret
-to that line's end, and the next press in the same direction restores the original
-column on the first line long enough to hold it. Other input, clicks, or edits reset
+keeping its column: a shorter line clamps the caret to its end, and the next press in
+the same direction restores the column on the first line long enough to hold it. Other input, clicks, or edits reset
 that remembered column. Exact Ctrl-K stays AppKit's native
 delete-to-end-of-paragraph binding.
 
-Word motions treat empty lines as stops; lines holding only spaces are not. A
-selection collapses first — forward motions start from its end and backward
-motions from its start. They only move the caret, so they never touch the
-draft's text, undo history, or an in-flight IME composition. In the
+Word motions stop on empty lines, not on whitespace-only ones. A
+selection collapses first: forward motions start from its end, backward ones
+from its start. They only move the caret, never touching draft text, undo history, or an in-flight IME composition. In the
 editor, Ctrl-H no longer acts as AppKit's delete-backward; Backspace and Ctrl-U
 still delete. Prompts and pickers keep their own Ctrl-H, including the relation
 card's Hidden-section toggle.
 
-Command-V intentionally reads only the clipboard's plain-text flavor: letting AppKit
-choose a rich HTML/RTF flavor forced a synchronous WebKit HTML import that could cost
-seconds per paste from browser content. When the caret is at the end of an otherwise empty `- `,
-`* `, or `+ ` row and the clipboard begins with a Markdown `-`, `*`, or `+` bullet with
-a body, Command-V treats that row as the first pasted bullet: the row's marker is kept,
-the clipboard's first marker is consumed, and the remaining pasted lines are rebased to
-the row's even-space indentation.
+Command-V reads only plain text: letting AppKit choose HTML/RTF forced a synchronous WebKit import
+costing seconds per browser paste. When the caret ends an otherwise empty `- `,
+`* `, or `+ ` row and the clipboard starts with a Markdown bullet with
+a body, Command-V treats that row as the first pasted bullet: its marker is kept,
+the clipboard's first marker is consumed, and later lines rebase to
+the row's even-space indent.
 
 ```text
 Plan rollout

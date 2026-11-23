@@ -372,6 +372,294 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertFalse(fixture.isLinkTakeoverRegistered)
     }
 
+    func testTaskTakeoverRegistersOnlyForHighlights() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .ctrlReturn
+        )
+
+        fixture.takeover.start()
+
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
+    }
+
+    func testTaskTakeoverOffNeverRegisters() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .off
+        )
+
+        fixture.takeover.start()
+
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+    }
+
+    func testTaskTakeoverYieldsWhileRefsOrCaptureIsVisible() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .ctrlReturn
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+
+        fixture.refsVisible = true
+        fixture.takeover.sync()
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsOpen),
+            .highlightsCommandO
+        )
+
+        fixture.refsVisible = false
+        fixture.captureVisible = true
+        fixture.takeover.sync()
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+
+        fixture.captureVisible = false
+        fixture.takeover.sync()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
+    }
+
+    func testOtherTakeoverKeysStayRegisteredWhileCaptureIsVisible() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            tabsKey: .cmdT,
+            copyKey: .cmdY,
+            codeKey: .cmdB,
+            linkKey: .cmdL,
+            taskKey: .ctrlReturn
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+
+        fixture.captureVisible = true
+        fixture.takeover.sync()
+
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsOpen),
+            .highlightsCommandO
+        )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTabs),
+            .highlightsCommandT
+        )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsCopy),
+            .highlightsCommandY
+        )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsCode),
+            .highlightsCommandB
+        )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsLinks),
+            .highlightsCommandL
+        )
+    }
+
+    func testChangingTaskKeySwapsRegistrationLive() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .ctrlReturn
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+
+        fixture.taskKey = .off
+        fixture.takeover.sync()
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+
+        fixture.taskKey = .ctrlReturn
+        fixture.takeover.sync()
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
+    }
+
+    func testTaskTakeoverStopAndTerminationUnregister() async {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .ctrlReturn
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+
+        fixture.takeover.stop()
+
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+        XCTAssertFalse(fixture.isTakeoverRegistered)
+    }
+
+    func testTaskTakeoverUnregistersWhenHighlightsTerminates() async {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            taskKey: .ctrlReturn
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+
+        fixture.frontmost = "com.apple.Safari"
+        fixture.center.post(
+            name: NSWorkspace.didTerminateApplicationNotification,
+            object: nil
+        )
+
+        await fixture.waitUntil { !fixture.isTaskTakeoverRegistered }
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+    }
+
+    func testTaskTakeoverMatchesOverrideAppBundleID() {
+        let fixture = makeTakeover(
+            frontmost: "com.example.HighlightsCopy",
+            openKey: .off,
+            taskKey: .ctrlReturn,
+            override: "com.example.HighlightsCopy"
+        )
+
+        fixture.takeover.start()
+
+        XCTAssertTrue(fixture.isTaskTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
+    }
+
+    func testTaskTakeoverConflictNamesChordAndToastsOnce() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .off,
+            taskKey: .ctrlReturn,
+            failIDs: [.refsHighlightsTask]
+        )
+
+        fixture.takeover.start()
+        fixture.takeover.sync()
+
+        XCTAssertEqual(fixture.errors.count, 2)
+        XCTAssertTrue(
+            fixture.errors.allSatisfy {
+                $0.contains("Control-Return (open the reading task)")
+            }
+        )
+        XCTAssertTrue(
+            fixture.errors.allSatisfy { $0.contains("Settings › References") }
+        )
+        XCTAssertEqual(fixture.conflicts.count, 1)
+        XCTAssertEqual(fixture.conflicts[0].toastTitle, "Control-Return is taken by another app")
+        XCTAssertEqual(
+            fixture.conflicts[0].toastValue,
+            "Opening the reading task from Highlights won't work"
+        )
+
+        fixture.registrar.failIDs = []
+        fixture.takeover.sync()
+        fixture.registrar.failIDs = [HotKeyAction.refsHighlightsTask.rawValue]
+        fixture.takeover.sync()
+        XCTAssertEqual(fixture.conflicts.count, 2)
+
+        fixture.taskKey = .off
+        fixture.takeover.sync()
+        fixture.taskKey = .ctrlReturn
+        fixture.takeover.sync()
+        XCTAssertEqual(fixture.conflicts.count, 3)
+    }
+
+    func testOpenRefsTaskFromHighlightsFallbackPresentsTabsFallback() async {
+        let capture = CapturePanelModel()
+        capture.plainDraft = "keep me"
+        let log = EventLog()
+        var sources: [RefsPresentationSource] = []
+        let coordinator = BobPanelCoordinator(
+            isCaptureVisible: { true },
+            isRefsVisible: { false },
+            closeCaptureRetainingDraft: {
+                capture.closeRetainingDraft()
+                log.events.append("close-retain")
+            },
+            presentCapture: { log.events.append("show-capture") },
+            presentRefs: { log.events.append("show-refs") },
+            presentRefsWithSource: { source in
+                sources.append(source)
+                log.events.append("show-refs")
+            },
+            hideRefs: { log.events.append("hide-refs") },
+            resolveHighlightsTask: { .fallback(message: "boom") }
+        )
+
+        coordinator.openRefsTaskFromHighlights()
+
+        await waitForCoordinator { sources == [.highlightsTaskFallback("boom")] }
+        XCTAssertEqual(sources, [.highlightsTaskFallback("boom")])
+        XCTAssertEqual(log.events, ["close-retain", "show-refs"])
+        XCTAssertEqual(capture.plainDraft, "keep me")
+    }
+
+    func testOpenRefsTaskFromHighlightsOpenedAndDroppedPresentNothing() async {
+        for outcome in [RefsHighlightsTaskOutcome.opened, .dropped] {
+            let log = EventLog()
+            var sources: [RefsPresentationSource] = []
+            let coordinator = BobPanelCoordinator(
+                isCaptureVisible: { false },
+                isRefsVisible: { false },
+                closeCaptureRetainingDraft: {},
+                presentCapture: { log.events.append("show-capture") },
+                presentRefs: { log.events.append("show-refs") },
+                presentRefsWithSource: { source in
+                    sources.append(source)
+                    log.events.append("show-refs")
+                },
+                hideRefs: { log.events.append("hide-refs") },
+                resolveHighlightsTask: { outcome }
+            )
+
+            coordinator.openRefsTaskFromHighlights()
+
+            // Let the resolve task run so a presentation would have landed.
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            XCTAssertEqual(sources, [])
+            XCTAssertEqual(log.events, [])
+        }
+    }
+
+    func testOpenRefsTaskFromHighlightsSkipsResolveWhileRefsIsVisible() async {
+        let log = EventLog()
+        let recorder = ResolveRecorder()
+        let coordinator = BobPanelCoordinator(
+            isCaptureVisible: { false },
+            isRefsVisible: { true },
+            closeCaptureRetainingDraft: {},
+            presentCapture: { log.events.append("show-capture") },
+            presentRefs: { log.events.append("show-refs") },
+            presentRefsWithSource: { _ in log.events.append("show-refs") },
+            hideRefs: { log.events.append("hide-refs") },
+            resolveHighlightsTask: { await recorder.resolve(.opened) }
+        )
+
+        coordinator.openRefsTaskFromHighlights()
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(recorder.called)
+        XCTAssertEqual(log.events, [])
+    }
+
     func testTakeoverConflictNamesChordAndToastsOnlyOnceUntilRecovery() {
         let fixture = makeTakeover(
             frontmost: HighlightsLocator.bundleIdentifier,
@@ -633,6 +921,7 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(settings.refsHighlightsCopyKey, .cmdY)
         XCTAssertEqual(settings.refsHighlightsCodeKey, .cmdB)
         XCTAssertEqual(settings.refsHighlightsLinkKey, .cmdL)
+        XCTAssertEqual(settings.refsHighlightsTaskKey, .ctrlReturn)
         XCTAssertEqual(settings.refsHighlightsAppPath, "")
 
         settings.refsHotkeyEnabled = false
@@ -642,6 +931,7 @@ final class RefsEntryPointsTests: XCTestCase {
         settings.refsHighlightsCopyKey = .off
         settings.refsHighlightsCodeKey = .off
         settings.refsHighlightsLinkKey = .off
+        settings.refsHighlightsTaskKey = .off
         settings.refsHighlightsAppPath = "/Applications/Highlights.app"
 
         XCTAssertFalse(defaults.bool(forKey: "refsHotkeyEnabled"))
@@ -651,6 +941,7 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsCopyKey"), "off")
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsCodeKey"), "off")
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsLinkKey"), "off")
+        XCTAssertEqual(defaults.string(forKey: "refsHighlightsTaskKey"), "off")
         XCTAssertEqual(
             defaults.string(forKey: "refsHighlightsAppPath"),
             "/Applications/Highlights.app"
@@ -664,6 +955,7 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(reloaded.refsHighlightsCopyKey, .off)
         XCTAssertEqual(reloaded.refsHighlightsCodeKey, .off)
         XCTAssertEqual(reloaded.refsHighlightsLinkKey, .off)
+        XCTAssertEqual(reloaded.refsHighlightsTaskKey, .off)
         XCTAssertEqual(reloaded.refsHighlightsAppPath, "/Applications/Highlights.app")
 
         defaults.set("bogus", forKey: "refsHighlightsOpenKey")
@@ -676,6 +968,8 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsCodeKey, .cmdB)
         defaults.set("bogus", forKey: "refsHighlightsLinkKey")
         XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsLinkKey, .cmdL)
+        defaults.set("bogus", forKey: "refsHighlightsTaskKey")
+        XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsTaskKey, .ctrlReturn)
     }
 
     func testVaultRootFallsBackToHomeBob() {
@@ -820,12 +1114,14 @@ final class RefsEntryPointsTests: XCTestCase {
         let originalCopyKey = delegate.settings.refsHighlightsCopyKey
         let originalCodeKey = delegate.settings.refsHighlightsCodeKey
         let originalLinkKey = delegate.settings.refsHighlightsLinkKey
+        let originalTaskKey = delegate.settings.refsHighlightsTaskKey
         let originalPath = delegate.settings.refsHighlightsAppPath
         delegate.settings.refsHighlightsOpenKey = .cmdO
         delegate.settings.refsHighlightsTabsKey = .cmdT
         delegate.settings.refsHighlightsCopyKey = .cmdY
         delegate.settings.refsHighlightsCodeKey = .cmdB
         delegate.settings.refsHighlightsLinkKey = .cmdL
+        delegate.settings.refsHighlightsTaskKey = .ctrlReturn
         delegate.settings.refsHighlightsAppPath = ""
         delegate.highlightsTakeover = fixture.takeover
         delegate.observeRefsSettings()
@@ -835,6 +1131,7 @@ final class RefsEntryPointsTests: XCTestCase {
             delegate.settings.refsHighlightsCopyKey = originalCopyKey
             delegate.settings.refsHighlightsCodeKey = originalCodeKey
             delegate.settings.refsHighlightsLinkKey = originalLinkKey
+            delegate.settings.refsHighlightsTaskKey = originalTaskKey
             delegate.settings.refsHighlightsAppPath = originalPath
         }
 
@@ -859,6 +1156,10 @@ final class RefsEntryPointsTests: XCTestCase {
             fixture.registrar.configuration(for: .refsHighlightsLinks),
             .highlightsCommandL
         )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
 
         delegate.settings.refsHighlightsTabsKey = .cmdE
         XCTAssertEqual(
@@ -876,6 +1177,13 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertFalse(fixture.isCodeTakeoverRegistered)
         delegate.settings.refsHighlightsLinkKey = .off
         XCTAssertFalse(fixture.isLinkTakeoverRegistered)
+        delegate.settings.refsHighlightsTaskKey = .off
+        XCTAssertFalse(fixture.isTaskTakeoverRegistered)
+        delegate.settings.refsHighlightsTaskKey = .ctrlReturn
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTask),
+            .highlightsControlReturn
+        )
 
         delegate.settings.refsHighlightsOpenKey = .ctrlO
         XCTAssertEqual(
@@ -1057,7 +1365,9 @@ final class RefsEntryPointsTests: XCTestCase {
         var copyKey: RefsHighlightsCopyKey
         var codeKey: RefsHighlightsCodeKey
         var linkKey: RefsHighlightsLinkKey
+        var taskKey: RefsHighlightsTaskKey
         var refsVisible = false
+        var captureVisible = false
         var override: String?
         var deactivatedAppBundleID: String?
         var deactivationSamples = 0
@@ -1074,7 +1384,9 @@ final class RefsEntryPointsTests: XCTestCase {
                 copyKey: { [weak self] in self?.copyKey ?? .off },
                 codeKey: { [weak self] in self?.codeKey ?? .off },
                 linkKey: { [weak self] in self?.linkKey ?? .off },
+                taskKey: { [weak self] in self?.taskKey ?? .off },
                 isRefsVisible: { [weak self] in self?.refsVisible == true },
+                isCaptureVisible: { [weak self] in self?.captureVisible == true },
                 overrideBundleID: { [weak self] in self?.override },
                 deactivatedBundleID: { [weak self] _ in self?.deactivatedAppBundleID },
                 onHighlightsDeactivated: { [weak self] in
@@ -1092,6 +1404,7 @@ final class RefsEntryPointsTests: XCTestCase {
             copyKey: RefsHighlightsCopyKey,
             codeKey: RefsHighlightsCodeKey,
             linkKey: RefsHighlightsLinkKey,
+            taskKey: RefsHighlightsTaskKey,
             override: String?,
             failIDs: Set<HotKeyAction>
         ) {
@@ -1101,6 +1414,7 @@ final class RefsEntryPointsTests: XCTestCase {
             self.copyKey = copyKey
             self.codeKey = codeKey
             self.linkKey = linkKey
+            self.taskKey = taskKey
             self.override = override
             registrar.failIDs = Set(failIDs.map(\.rawValue))
         }
@@ -1125,6 +1439,10 @@ final class RefsEntryPointsTests: XCTestCase {
             registrar.liveIDs.contains(HotKeyAction.refsHighlightsLinks.rawValue)
         }
 
+        var isTaskTakeoverRegistered: Bool {
+            registrar.liveIDs.contains(HotKeyAction.refsHighlightsTask.rawValue)
+        }
+
         func waitUntil(
             timeout: TimeInterval = 5,
             _ condition: @MainActor @escaping () -> Bool
@@ -1147,6 +1465,7 @@ final class RefsEntryPointsTests: XCTestCase {
         copyKey: RefsHighlightsCopyKey = .off,
         codeKey: RefsHighlightsCodeKey = .off,
         linkKey: RefsHighlightsLinkKey = .off,
+        taskKey: RefsHighlightsTaskKey = .off,
         override: String? = nil,
         failIDs: Set<HotKeyAction> = []
     ) -> TakeoverFixture {
@@ -1157,6 +1476,7 @@ final class RefsEntryPointsTests: XCTestCase {
             copyKey: copyKey,
             codeKey: codeKey,
             linkKey: linkKey,
+            taskKey: taskKey,
             override: override,
             failIDs: failIDs
         )
@@ -1209,6 +1529,20 @@ final class RefsEntryPointsTests: XCTestCase {
         )
     }
 
+    private func waitForCoordinator(
+        timeout: TimeInterval = 5,
+        _ condition: @MainActor @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("coordinator condition not met before timeout")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     private func waitForEntryPoints(
         timeout: TimeInterval = 15,
         _ condition: @MainActor @escaping () -> Bool
@@ -1226,6 +1560,21 @@ final class RefsEntryPointsTests: XCTestCase {
     private func entryPointsPlanCount(_ recordURL: URL) -> Int {
         let record = (try? String(contentsOf: recordURL)) ?? ""
         return record.components(separatedBy: "argv=plan -f json").count - 1
+    }
+}
+
+/// Records whether the headless task resolve ran, from any executor.
+private final class ResolveRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _called = false
+
+    var called: Bool {
+        lock.withLock { _called }
+    }
+
+    func resolve(_ outcome: RefsHighlightsTaskOutcome) async -> RefsHighlightsTaskOutcome {
+        lock.withLock { _called = true }
+        return outcome
     }
 }
 

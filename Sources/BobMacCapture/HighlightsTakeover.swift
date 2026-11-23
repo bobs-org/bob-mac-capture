@@ -20,6 +20,7 @@ struct HotKeyConflict: Equatable {
         case .refsHighlightsCopy: "Opening the Copy card in Highlights won't work"
         case .refsHighlightsCode: "Copy code in Highlights won't work"
         case .refsHighlightsLinks: "Copy link in Highlights won't work"
+        case .refsHighlightsTask: "Opening the reading task from Highlights won't work"
         case .capture, .captureAlias, .refs, .refsAlias: "Opening Bob Refs won't work"
         }
     }
@@ -46,7 +47,9 @@ final class HighlightsTakeover {
     private let copyKey: () -> RefsHighlightsCopyKey
     private let codeKey: () -> RefsHighlightsCodeKey
     private let linkKey: () -> RefsHighlightsLinkKey
+    private let taskKey: () -> RefsHighlightsTaskKey
     private let isRefsVisible: () -> Bool
+    private let isCaptureVisible: () -> Bool
     private let overrideBundleID: () -> String?
     private let deactivatedBundleID: (Notification) -> String?
     private let onHighlightsDeactivated: () -> Void
@@ -67,6 +70,7 @@ final class HighlightsTakeover {
         let copyKey: RefsHighlightsCopyKey
         let codeKey: RefsHighlightsCodeKey
         let linkKey: RefsHighlightsLinkKey
+        let taskKey: RefsHighlightsTaskKey
         let appPath: String
     }
 
@@ -79,7 +83,9 @@ final class HighlightsTakeover {
         copyKey: @escaping () -> RefsHighlightsCopyKey = { .off },
         codeKey: @escaping () -> RefsHighlightsCodeKey = { .off },
         linkKey: @escaping () -> RefsHighlightsLinkKey = { .off },
+        taskKey: @escaping () -> RefsHighlightsTaskKey = { .off },
         isRefsVisible: @escaping () -> Bool = { false },
+        isCaptureVisible: @escaping () -> Bool = { false },
         overrideBundleID: @escaping () -> String?,
         deactivatedBundleID: @escaping (Notification) -> String? = { notification in
             let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
@@ -99,7 +105,9 @@ final class HighlightsTakeover {
         self.copyKey = copyKey
         self.codeKey = codeKey
         self.linkKey = linkKey
+        self.taskKey = taskKey
         self.isRefsVisible = isRefsVisible
+        self.isCaptureVisible = isCaptureVisible
         self.overrideBundleID = overrideBundleID
         self.deactivatedBundleID = deactivatedBundleID
         self.onHighlightsDeactivated = onHighlightsDeactivated
@@ -147,6 +155,7 @@ final class HighlightsTakeover {
         registry.unregister(.refsHighlightsCopy)
         registry.unregister(.refsHighlightsCode)
         registry.unregister(.refsHighlightsLinks)
+        registry.unregister(.refsHighlightsTask)
     }
 
     /// Syncs each Highlights takeover key with the current settings.
@@ -157,6 +166,7 @@ final class HighlightsTakeover {
             copyKey: copyKey(),
             codeKey: codeKey(),
             linkKey: linkKey(),
+            taskKey: taskKey(),
             overrideBundleID: overrideBundleID()
         )
     }
@@ -168,6 +178,7 @@ final class HighlightsTakeover {
         copyKey: RefsHighlightsCopyKey,
         codeKey: RefsHighlightsCodeKey = .off,
         linkKey: RefsHighlightsLinkKey = .off,
+        taskKey: RefsHighlightsTaskKey = .off,
         appPath: String
     ) {
         sync(
@@ -176,6 +187,7 @@ final class HighlightsTakeover {
             copyKey: copyKey,
             codeKey: codeKey,
             linkKey: linkKey,
+            taskKey: taskKey,
             overrideBundleID: AppDelegate.highlightsOverrideBundleID(path: appPath)
         )
     }
@@ -186,6 +198,7 @@ final class HighlightsTakeover {
         copyKey: RefsHighlightsCopyKey,
         codeKey: RefsHighlightsCodeKey,
         linkKey: RefsHighlightsLinkKey,
+        taskKey: RefsHighlightsTaskKey,
         overrideBundleID: String?
     ) {
         let settings = SettingsSnapshot(
@@ -194,6 +207,7 @@ final class HighlightsTakeover {
             copyKey: copyKey,
             codeKey: codeKey,
             linkKey: linkKey,
+            taskKey: taskKey,
             appPath: overrideBundleID ?? ""
         )
         if let lastSettings {
@@ -212,6 +226,9 @@ final class HighlightsTakeover {
             if lastSettings.linkKey != settings.linkKey {
                 clearReportedConflicts(for: .refsHighlightsLinks)
             }
+            if lastSettings.taskKey != settings.taskKey {
+                clearReportedConflicts(for: .refsHighlightsTask)
+            }
             if lastSettings.appPath != settings.appPath {
                 reportedConflicts.removeAll()
             }
@@ -225,6 +242,7 @@ final class HighlightsTakeover {
             registry.unregister(.refsHighlightsCopy)
             registry.unregister(.refsHighlightsCode)
             registry.unregister(.refsHighlightsLinks)
+            registry.unregister(.refsHighlightsTask)
             return
         }
         sync(action: .refsHighlightsOpen, configuration: openKey.configuration)
@@ -240,6 +258,9 @@ final class HighlightsTakeover {
         sync(action: .refsHighlightsCode, configuration: codeConfiguration)
         let linkConfiguration = isRefsVisible() ? nil : linkKey.configuration
         sync(action: .refsHighlightsLinks, configuration: linkConfiguration)
+        let taskConfiguration =
+            isRefsVisible() || isCaptureVisible() ? nil : taskKey.configuration
+        sync(action: .refsHighlightsTask, configuration: taskConfiguration)
     }
 
     private var expectedBundleID: String {

@@ -35,9 +35,15 @@ public enum RefsPresentationSource: Equatable, Sendable {
     /// its ranked place.
     case panelSwitch
 
+    /// The headless Control-Return fallback: the same fresh Tabs show
+    /// with an optional warning banner naming why the task did not open.
+    /// A nil message (untrusted reader, unloaded library) shows no banner:
+    /// the Tabs permission card or loading state is the explanation.
+    case highlightsTaskFallback(String?)
+
     var isHighlightsKeySession: Bool {
         switch self {
-        case .highlightsTabs, .highlightsCopy: true
+        case .highlightsTabs, .highlightsCopy, .highlightsTaskFallback: true
         default: false
         }
     }
@@ -46,6 +52,15 @@ public enum RefsPresentationSource: Equatable, Sendable {
         if case .highlightsCopy = self { return true }
         return false
     }
+}
+
+/// The headless Control-Return resolve outcome: the task opened, the
+/// press was dropped, or Bob Refs should show the Tabs fallback with an
+/// optional warning banner.
+public enum RefsHighlightsTaskOutcome: Equatable, Sendable {
+    case opened
+    case dropped
+    case fallback(message: String?)
 }
 
 /// A key captured while Command-Y is waiting for the focused PDF.
@@ -729,6 +744,11 @@ public final class RefsPanelModel: ObservableObject {
     private var pendingHighlightsCopyDeadlineTask: Task<Void, Never>?
     /// Test seam for the Command-Y 2 s deadline.
     var highlightsCopyDeadlineNanoseconds: UInt64 = 2_000_000_000
+    /// Test seam for the headless Control-Return 2 s deadline.
+    var highlightsTaskDeadlineNanoseconds: UInt64 = 2_000_000_000
+    /// Guards the headless task resolve: a repeated press while one
+    /// resolve is in flight never opens the task twice.
+    private var highlightsTaskInFlight = false
     private static let highlightsCopyBufferCap = 16
     private var renameTask: Task<Void, Never>?
     private var todayLinkSequence: UInt64 = 0
@@ -990,6 +1010,15 @@ public final class RefsPanelModel: ObservableObject {
         case .highlightsCopy(let entry):
             armPendingHighlightsCopy(entry: entry)
             resetToDefaults(tabs: true, announcement: nil)
+        case .highlightsTaskFallback(let message):
+            // Same fresh Tabs show as Command-T, plus the reason the
+            // headless task open did not happen. Setting the banner after
+            // the reset matters: the reset clears it. The Tabs load that
+            // follows never clears a banner, so the reason stays visible.
+            resetToDefaults(tabs: true, announcement: nil)
+            if let message {
+                banner = RefsBanner(kind: .warning, message: message, actions: [])
+            }
         case .scanResults:
             resetToDefaults(tabs: false)
             arrivals.clearPending()
@@ -2466,6 +2495,110 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
+    /// Resolves the focused Highlights PDF without showing Bob Refs and
+    /// opens its reading task directly. Bob Refs appears only when the
+    /// task cannot open (the coordinator shows `.highlightsTaskFallback`).
+    public func openFocusedHighlightsTask() async -> RefsHighlightsTaskOutcome {
+        // A repeated press never opens the task twice.
+        guard !highlightsTaskInFlight else { return .dropped }
+        highlightsTaskInFlight = true
+        defer { highlightsTaskInFlight = false }
+        // The Tabs permission card is the explanation; never prompt.
+        guard tabsSession.reader.isTrusted() else { return .fallback(message: nil) }
+        // Tabs shows its loading state; do not claim the PDF is unmapped.
+        guard library.lastSuccessAt != nil else { return .fallback(message: nil) }
+        let presentedBefore = presentationCount
+        guard let result = await readTaskTabs() else {
+            // The deadline tripped; the late read lands discarded.
+            return .fallback(message: "Highlights didn't answer — try ⌃↩ again")
+        }
+        // Bob Refs was shown in the meantime (for example by Command-T
+        // or Command-O); the stale read is dropped.
+        guard presentationCount == presentedBefore else { return .dropped }
+        let snapshot: HighlightsTabsSnapshot
+        switch result {
+        case .notRunning:
+            // Highlights quit; stay silent.
+            return .dropped
+        case .notTrusted:
+            return .fallback(message: nil)
+        case .failed:
+            return .fallback(message: "Couldn't read Highlights — ⌘R retries")
+        case .snapshot(let snap):
+            snapshot = snap
+        }
+        // Rank exactly as a fresh Command-T show would, then take its
+        // currentID: the focused PDF. No ids.first fallback.
+        let matched = HighlightsTabMatcher.match(
+            snapshot,
+            items: library.items,
+            vaultRoot: library.vaultRootURL
+        )
+        let ranked = RefsTabsRanker.listing(
+            tabs: matched,
+            items: library.items,
+            query: "",
+            scope: .all,
+            signals: library.signals,
+            recency: tabsSession.recency,
+            highlightsIsFrontmost: snapshot.highlightsIsFrontmost
+        )
+        guard let currentID = ranked.currentID else {
+            return .fallback(message: "Highlights has no open document")
+        }
+        let tabsByRowID = Dictionary(uniqueKeysWithValues: matched.map { ($0.rowID, $0) })
+        guard let tab = tabsByRowID[currentID] else {
+            return .fallback(message: "Highlights has no open document")
+        }
+        if tab.match == .collision {
+            return .fallback(
+                message: "Two references match “\(tab.fileName)” — pick one, then ⌃↩"
+            )
+        }
+        guard tab.match != .none, let itemID = tab.itemID,
+            let item = library.item(id: itemID)
+        else {
+            return .fallback(message: "“\(tab.fileName)” isn't in your Bob library")
+        }
+        guard library.taskURL(for: item) != nil else {
+            return .fallback(message: "“\(item.title.text)” has no reading task")
+        }
+        // Opens through the same helper as openSelected(.task), so the
+        // deep link is identical. Task opens never touch the open log.
+        _ = openReadingTask(for: item)
+        return .opened
+    }
+
+    /// Reads one tab snapshot for the headless task key, racing the
+    /// task deadline. Nil means the deadline tripped first; the late
+    /// read lands discarded. The session read never touches the shared
+    /// refresh generation, so a concurrent Command-S scan read neither
+    /// cancels this read nor is cancelled by it.
+    private func readTaskTabs() async -> HighlightsTabsReadResult? {
+        enum Race: Sendable {
+            case read(HighlightsTabsReadResult)
+            case timeout
+        }
+        let session = tabsSession
+        let nanoseconds = highlightsTaskDeadlineNanoseconds
+        let winner = await withTaskGroup(of: Race.self) { group in
+            group.addTask { .read(await session.readSnapshotForTask()) }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: nanoseconds)
+                return .timeout
+            }
+            let first = await group.next()!
+            group.cancelAll()
+            return first
+        }
+        switch winner {
+        case .timeout:
+            return nil
+        case .read(let result):
+            return result
+        }
+    }
+
     /// Opens the in-panel copy card for the selected available reference.
     /// The target and filesystem facts are frozen until the card closes.
     public func openCopyCard(
@@ -3669,12 +3802,7 @@ public final class RefsPanelModel: ObservableObject {
             opener.openNote(library.noteURL(for: item))
             return true
         case .task:
-            guard let url = library.taskURL(for: item) else {
-                noReadingTaskFeedback()
-                return true
-            }
-            opener.openTask(url, blockID: item.task?.blockID)
-            return true
+            return openReadingTask(for: item)
         case .reveal:
             let pdfMissing = library.signals.missingPDFs.contains(item.id)
             if pdfMissing || library.pdfURL(for: item) == nil {
@@ -3714,6 +3842,18 @@ public final class RefsPanelModel: ObservableObject {
     private func noReadingTaskFeedback() {
         beep()
         AccessibilityNotification.Announcement("No reading task for this reference").post()
+    }
+
+    /// Opens one reference's reading task through the identical deep
+    /// link the panel's Control-Return uses. Shared by `openSelected`
+    /// and the headless Highlights task key.
+    private func openReadingTask(for item: RefItem) -> Bool {
+        guard let url = library.taskURL(for: item) else {
+            noReadingTaskFeedback()
+            return true
+        }
+        opener.openTask(url, blockID: item.task?.blockID)
+        return true
     }
 
     private func reopenClosedTab(_ closed: RefsClosedTab) -> Bool {

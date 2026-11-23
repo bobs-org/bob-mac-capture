@@ -26,6 +26,7 @@ final class BobPanelCoordinator {
     private let isRefsInTabs: () -> Bool
     private let setRefsTabsFilter: (Bool) -> Void
     private let hideRefs: () -> Void
+    private let resolveHighlightsTask: () async -> RefsHighlightsTaskOutcome
     private var returnToCaptureAfterCopy = false
 
     init(
@@ -38,7 +39,8 @@ final class BobPanelCoordinator {
         presentRefsWithSource: ((RefsPresentationSource) -> Void)? = nil,
         isRefsInTabs: @escaping () -> Bool = { false },
         setRefsTabsFilter: @escaping (Bool) -> Void = { _ in },
-        hideRefs: @escaping () -> Void
+        hideRefs: @escaping () -> Void,
+        resolveHighlightsTask: @escaping () async -> RefsHighlightsTaskOutcome = { .dropped }
     ) {
         self.isCaptureVisible = isCaptureVisible
         self.isRefsVisible = isRefsVisible
@@ -50,6 +52,7 @@ final class BobPanelCoordinator {
         self.isRefsInTabs = isRefsInTabs
         self.setRefsTabsFilter = setRefsTabsFilter
         self.hideRefs = hideRefs
+        self.resolveHighlightsTask = resolveHighlightsTask
     }
 
     /// Shows Capture, hiding Refs first when it is visible.
@@ -140,5 +143,21 @@ final class BobPanelCoordinator {
     /// aside so the panel's own Command-Y opens the card for the selection.
     func openRefsCopyFromHighlights(entry: RefsCopyEntry = .card) {
         showRefs(source: .highlightsCopy(entry))
+    }
+
+    /// Opens the focused PDF's reading task without showing Bob Refs.
+    /// Returns at once while Refs is visible; otherwise resolves the
+    /// task headlessly. Only a failure presents anything: the Tabs
+    /// fallback with its reason. A visible Capture draft is retained
+    /// exactly as `showRefs` already does.
+    func openRefsTaskFromHighlights() {
+        guard !isRefsVisible() else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let outcome = await resolveHighlightsTask()
+            guard case .fallback(let message) = outcome else { return }
+            guard !isRefsVisible() else { return }
+            showRefs(source: .highlightsTaskFallback(message))
+        }
     }
 }

@@ -25,7 +25,7 @@ Candidate locations when the override is empty are in [Install](install.md#requi
 | Active binding | Control-Shift-Command-I | Read-only display of the live capture chord. |
 | **Also open Capture with Command-\\** | on | Global. Re-registers immediately when toggled. Off unregisters only that chord. Press it again while Capture is focused to open today's Pomodoro. Press `\` right after it to open Go To. |
 
-One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), the Highlights-frontmost open key (id 3), Tabs key (id 4), Copy key (id 5), code key (id 6), link key (id 7), capture alias (id 8), and Refs alias (id 9). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`, `Capture alias hotkey conflict: …`, or `Refs alias hotkey conflict: …`) in Diagnostics and Recent Activity; takeover conflicts name the chord and action, and toast once per launch. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), the Highlights-frontmost open key (id 3), Tabs key (id 4), Copy key (id 5), code key (id 6), link key (id 7), capture alias (id 8), Refs alias (id 9), and task key (id 10). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`, `Capture alias hotkey conflict: …`, or `Refs alias hotkey conflict: …`) in Diagnostics and Recent Activity; takeover conflicts name the chord and action, and toast once per launch. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## References
 
@@ -39,6 +39,7 @@ One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), R
 | Copy key in Highlights | Command-Y | `Command-Y` or `Off`. Registers only for Highlights or the override app, and only while Bob Refs is hidden, so the panel's own Command-Y can open the Copy card. |
 | Copy code key in Highlights | Command-B | `Command-B` or `Off`. Registers only for Highlights or the override app and yields while Bob Refs is visible. |
 | Copy link key in Highlights | Command-L | `Command-L` or `Off`. Registers only for Highlights or the override app and yields while Bob Refs is visible. |
+| Reading task key in Highlights | Control-Return | `Control-Return` or `Off`. Registers only while Highlights or the override app is frontmost and no Bob panel is visible; opens the focused PDF's reading task in Obsidian. |
 | Highlights app | resolved name, version, and path, or `Not found` | Choose… is limited to `.app`. Use Default clears the override path. |
 | Tell me when Bob updates an open PDF | on | Off suppresses notifications only; footer clauses stay. Caption: "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place." |
 | Scan after ⌘S in Highlights | on | Observes Command-S passively and scans after a library PDF save settles. Shows "Needs Accessibility" when needed; Settings never prompts. |

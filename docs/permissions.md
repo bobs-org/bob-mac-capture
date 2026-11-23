@@ -9,7 +9,7 @@ Recovery steps for a stale Accessibility switch, denied notifications, or a ling
 
 ## Accessibility
 
-Bob Mac Capture needs Accessibility to read Highlights tabs and observe ⌘S while Highlights is frontmost. Command-Y, Command-B, and Command-L in Highlights use that same tab read to open the Copy card on the focused PDF. Settings › References shows "Highlights tabs: Allowed / Not allowed" and never prompts. Tabs never asks at launch. Open Accessibility Settings from the Tabs card (an explicit gesture) clears a stale grant with `tccutil reset Accessibility org.bobs.bob-mac-capture` and then shows the system prompt; if the prompt does not grant trust it opens System Settings › Privacy & Security › Accessibility.
+Bob Mac Capture needs Accessibility to read Highlights tabs and observe ⌘S while Highlights is frontmost. Command-Y, Command-B, and Command-L in Highlights use that same tab read to open the Copy card on the focused PDF, and Control-Return uses it to open the focused PDF's reading task. Settings › References shows "Highlights tabs: Allowed / Not allowed" and never prompts. Tabs never asks at launch. Open Accessibility Settings from the Tabs card (an explicit gesture) clears a stale grant with `tccutil reset Accessibility org.bobs.bob-mac-capture` and then shows the system prompt; if the prompt does not grant trust it opens System Settings › Privacy & Security › Accessibility.
 
 Accessibility is used only against Highlights: it reads window/tab attributes, selects or closes tabs, and passively checks key-down characters and modifier flags for ⌘S. It never consumes or re-posts the key; key-event text is not stored or logged. Names stay in memory. Bob Refs quits Highlights only after closing its last document. Tab names and closed-tab entries are never persisted.
 
@@ -75,7 +75,8 @@ decoded previews stay in a bounded in-memory cache; nothing new is
 written to disk. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘O and ⌘]
 binding flags, the Highlights-frontmost open key, the Highlights Tabs
-key (`refsHighlightsTabsKey`, default `cmdT`), the Highlights
+key (`refsHighlightsTabsKey`, default `cmdT`), the Highlights task key
+(`refsHighlightsTaskKey`, default `ctrlReturn`), the Highlights
 override path, the scan-after-Highlights-save toggle, and the preview
 notes page size). Accessibility is used
 only against Highlights: it reads window and tab attributes, selects or

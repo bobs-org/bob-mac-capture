@@ -239,6 +239,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     self?.panelCoordinator?.openRefsCopyFromHighlights(entry: .links)
                 }
+            case .refsHighlightsTask:
+                CaptureSignpost.event("refs-task-hotkey-received")
+                Task { @MainActor in self?.panelCoordinator?.openRefsTaskFromHighlights() }
             }
         }
         registerHotKey()
@@ -821,7 +824,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setRefsTabsFilter: { enabled in
                 model.perform(.setTabsFilter(enabled))
             },
-            hideRefs: { [weak self] in self?.refsPanelController?.hide() }
+            hideRefs: { [weak self] in self?.refsPanelController?.hide() },
+            resolveHighlightsTask: { [weak model] in
+                await model?.openFocusedHighlightsTask() ?? .dropped
+            }
         )
         controller.copyDismisser = { [weak self] in
             self?.panelCoordinator?.dismissRefsAfterCopy()
@@ -845,7 +851,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             copyKey: { settings.refsHighlightsCopyKey },
             codeKey: { settings.refsHighlightsCodeKey },
             linkKey: { settings.refsHighlightsLinkKey },
+            taskKey: { settings.refsHighlightsTaskKey },
             isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
+            isCaptureVisible: { [weak self] in self?.panelController?.isVisible == true },
             overrideBundleID: {
                 Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
             },
@@ -859,6 +867,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         highlightsTakeover = takeover
         takeover.start()
+        panelController?.onVisibilityChange = { [weak self] in
+            self?.highlightsTakeover?.sync()
+        }
 
         let saveMonitor = HighlightsSaveKeyMonitor(
             notificationCenter: NSWorkspace.shared.notificationCenter,
@@ -949,17 +960,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings.$refsHighlightsAppPath
             )
             .combineLatest(
-                settings.$refsHighlightsCodeKey.combineLatest(settings.$refsHighlightsLinkKey)
+                settings.$refsHighlightsCodeKey.combineLatest(
+                    settings.$refsHighlightsLinkKey,
+                    settings.$refsHighlightsTaskKey
+                )
             )
             .sink { [weak self] base, extraKeys in
                 let (openKey, tabsKey, copyKey, path) = base
-                let (codeKey, linkKey) = extraKeys
+                let (codeKey, linkKey, taskKey) = extraKeys
                 self?.highlightsTakeover?.sync(
                     openKey: openKey,
                     tabsKey: tabsKey,
                     copyKey: copyKey,
                     codeKey: codeKey,
                     linkKey: linkKey,
+                    taskKey: taskKey,
                     appPath: path
                 )
                 self?.highlightsSaveKeyMonitor?.sync()

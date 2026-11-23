@@ -426,6 +426,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         panel?.isVisible == true
     }
 
+    /// Fired after the panel orders in or out, so the Highlights
+    /// takeover can re-sync the Control-Return registration.
+    var onVisibilityChange: () -> Void = {}
+
     func show() {
         let token = CaptureSignpost.begin("panel-order")
         let prepareToken = CaptureSignpost.begin(CaptureSignpost.capturePrepare)
@@ -453,6 +457,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.requestFocus(.editor)
         CaptureSignpost.end(token)
         CaptureSignpost.event("editor-focus-requested")
+        onVisibilityChange()
     }
 
     func showEventNotes(url: String? = nil) {
@@ -496,6 +501,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         flushTypeAheadHoldBeforeFocusOrDismissal()
         model.prepareForRetainedClose()
         return true
+    }
+
+    func windowWillClose(_: Notification) {
+        onVisibilityChange()
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
@@ -2634,6 +2643,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.prepareForDismissal()
         editorLeaderAnchor = nil
         panel?.orderOut(nil)
+        onVisibilityChange()
     }
 
     private func installKeyMonitorIfNeeded() {

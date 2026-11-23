@@ -507,39 +507,43 @@ link finishes if the panel hides.
 ### Opening Bob Refs
 
 - Control-Shift-Command-O toggles Refs; Settings can turn it off.
-- Command-] also toggles Refs. It is on by default (Settings › References) and is independent of the Control-Shift-Command-O toggle.
+- Command-] also toggles Refs, on by default (Settings › References) and independent of the Control-Shift-Command-O toggle.
 - While Highlights is frontmost, Command-O opens Bob Refs instead of
   Highlights' Open… dialog. Settings can switch the takeover to
   Control-O or turn it Off. The takeover registers only while
-  Highlights — or the override app picked in Settings — is frontmost,
-  so Command-O and Control-O keep working everywhere else, and
-  Highlights' File › Open… still opens its own dialog. The panel never
-  activates, so Highlights stays frontmost and the same key closes the
-  panel again.
+  Highlights or its Settings override app is frontmost, so the chords
+  work everywhere else and Highlights' File › Open… keeps its dialog.
+  The panel never activates, so Highlights stays frontmost and the same
+  key closes it again.
 - While Highlights is frontmost and Bob Refs is hidden, Command-T opens
   Tabs from fresh defaults with the focused PDF selected. It registers only
   for Highlights or its override, yields to visible Refs where it toggles
   Tabs, and can be changed to Shift-Command-O, Command-E, or Off.
 - While Highlights is frontmost and Bob Refs is hidden, Command-Y opens
-  the Copy card on the focused PDF; Command-B and Command-L start in its
-  code and link pickers. Settings › References can turn each chord Off.
-  They register only for Highlights or the override app and yield to the
-  panel while it is visible. Command-C stays Highlights' Copy. Keys typed
-  before the PDF is known replay on the card; see [Keyboard](keyboard.md).
+  the Copy card on the focused PDF, with Command-B and Command-L starting
+  in its code and link pickers; Settings › References can turn each chord
+  Off. They yield to the panel while it is visible. Command-C stays
+  Highlights' Copy, and keys typed before the PDF is known replay on the
+  card; see [Keyboard](keyboard.md).
+- While Highlights is frontmost and no Bob panel is visible, Control-Return
+  opens the focused PDF's reading task in Obsidian at the task line, as
+  Command-T then Control-Return would. Failures land on Tabs with a reason,
+  and Settings › References can turn it Off. It yields to visible Bob Refs
+  and Capture, so Capture's own Control-Return keeps working over Highlights.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10
   seconds of an untouched show). A Ctrl+Tab switch always restores the
-  remembered view and never resets for an arrival. The Highlights Tabs key
-  opens from fresh defaults with Tabs on and the focused PDF selected, and
-  nothing there is remembered. A Tabs show defers a new-reference reset to
-  the next ordinary show. Ctrl-C resets the view to fresh-launch defaults.
+  remembered view and never resets for an arrival. Highlights-key shows
+  open from fresh defaults and are never remembered; a Tabs show defers a
+  new-reference reset to the next ordinary show. Ctrl-C resets the view to
+  fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected. Clicking an open-PDF update
   notification opens Bob Refs and selects that reference when it is in
   the catalog.
-- The menu-bar item offers Bob Refs… directly below Capture, with the
-  same shortcut shown for display.
+- The menu-bar item offers Bob Refs… below Capture, with the same
+  shortcut shown.
 - Only one Bob panel is ever visible: opening Refs while Capture is
   open retains the capture draft first (`BobPanelCoordinator`), and
   opening Capture hides Refs. Ctrl+Tab switches between the panels
@@ -566,22 +570,20 @@ Tabs lists every document open in Highlights. A matched tab uses its
 reference note row. A collision or a file outside the library stays in
 the list as a dim row with its filename and a clear match status.
 
-Press Command-T while Highlights is frontmost and Bob Refs is hidden to
-open Tabs; Settings › References can change this to Shift-Command-O,
-Command-E, or Off. Inside Bob Refs, Command-T toggles Tabs; the filter
-combines with kind scopes and keeps the current query. The current tab
-comes first; the rest follow most-recently-active order, tab-bar order
-breaking ties, unmatched tabs last. Every Tabs preselection selects the
-focused PDF.
+Inside Bob Refs, Command-T toggles Tabs; the filter combines with kind
+scopes and keeps the current query. The current tab comes first; the rest
+follow most-recently-active order, tab-bar order breaking ties, unmatched
+tabs last. Every Tabs preselection selects the focused PDF. The
+Control-Return task key lands here on failure, with its reason in a
+warning banner.
 
-A Tabs show keeps the selected row while that tab is still open. Every
-Tabs show preselects the focused PDF. Command-T from Highlights opens from
-fresh defaults and is never remembered.
+A Tabs show keeps the selected row while that tab is still open and
+preselects the focused PDF.
 
-Return, Tab, or double-click switches to the existing tab. Switching
-keeps its page, does not change reading state, and does not add an entry
-to the open log. On a collision or unmatched Tabs row, Command-Return and
-Control-Return show the same warning instead of opening. Control-X closes the selected tab, including collision
+Return, Tab, or double-click switches to the existing tab, keeping its
+page, changing no reading state, and adding no open-log entry. On a
+collision or unmatched row, Command-Return and Control-Return warn instead
+of opening. Control-X closes the selected tab, including collision
 and unmatched rows: the row folds out, the next row is selected, and the
 panel stays up for repeated closes.
 Hovered and selected Tabs rows also show a Close Tab button (⌃X).

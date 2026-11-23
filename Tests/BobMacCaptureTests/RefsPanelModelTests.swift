@@ -2696,6 +2696,291 @@ final class RefsPanelModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Headless Highlights task key
+
+    private func makeTaskTabsHarness(
+        records: [RefRecord],
+        tabsReader: FakeTabsReader? = nil
+    ) async throws -> Harness {
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: records)
+        let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: tabsReader)
+        await harness.waitForSnapshot(ids: Set(records.map(\.path)))
+        return harness
+    }
+
+    func testHighlightsTaskOpensFocusedPDFTaskWithoutPresenting() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let path = "ref/chat/task_row.md"
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: path, taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        let items = harness.library.items
+        XCTAssertEqual(items.count, 1)
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+        )
+        let presentedBefore = harness.model.presentationCount
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(harness.opener.taskOpens.count, 1)
+        XCTAssertEqual(
+            harness.opener.taskOpens.first?.url,
+            harness.vault.appendingPathComponent("sase.md")
+        )
+        XCTAssertEqual(harness.opener.taskOpens.first?.blockID, "ref-attention")
+        XCTAssertTrue(harness.opener.noteOpens.isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(path), 0)
+        XCTAssertEqual(harness.model.presentationCount, presentedBefore)
+    }
+
+    func testHighlightsTaskUnmatchedPDF() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let path = "ref/chat/task_row.md"
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: path, taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(fileNames: ["ghost.pdf"], frontmost: true))
+        )
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(
+            outcome,
+            .fallback(message: "“ghost.pdf” isn't in your Bob library")
+        )
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskCollision() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try await makeTaskTabsHarness(
+            records: [
+                Self.taskRecord(path: "ref/chat/alpha.md", taskPath: "sase.md"),
+                Self.taskRecord(path: "ref/chat/beta.md", taskPath: "sase.md"),
+            ],
+            tabsReader: reader
+        )
+        // Both rows share the task_record PDF stem, so the focused tab
+        // matches two references.
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(fileNames: ["task_row.pdf"], frontmost: true))
+        )
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(
+            outcome,
+            .fallback(message: "Two references match “task_row.pdf” — pick one, then ⌃↩")
+        )
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskNoDocuments() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(fileNames: [], frontmost: true))
+        )
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .fallback(message: "Highlights has no open document"))
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskFailedRead() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        reader.setNextResult(.failed("AX timed out"))
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(
+            outcome,
+            .fallback(message: "Couldn't read Highlights — ⌘R retries")
+        )
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskTimeoutShowsRetryMessage() async throws {
+        let reader = FakeTabsReader(isTrusted: true, readDelayNanoseconds: 400_000_000)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        harness.model.highlightsTaskDeadlineNanoseconds = 50_000_000
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(
+            outcome,
+            .fallback(message: "Highlights didn't answer — try ⌃↩ again")
+        )
+        // The late read lands discarded: nothing opens after it.
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+        XCTAssertEqual(reader.readCount, 1)
+    }
+
+    func testHighlightsTaskWithoutReadingTask() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let path = "ref/chat/task_row.md"
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: path, taskPath: nil)],
+            tabsReader: reader
+        )
+        let items = harness.library.items
+        XCTAssertEqual(items.count, 1)
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+        )
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .fallback(message: "“Task row” has no reading task"))
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskUntrustedReadsNothing() async throws {
+        let reader = FakeTabsReader(isTrusted: false)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .fallback(message: nil))
+        XCTAssertEqual(reader.readCount, 0)
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskLibraryNotLoadedReadsNothing() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let fetcher = FakeRefsFetcher()
+        fetcher.listError = NSError(domain: "test", code: 1)
+        let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+        XCTAssertNil(harness.library.lastSuccessAt)
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .fallback(message: nil))
+        XCTAssertEqual(reader.readCount, 0)
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskNotRunningStaysSilent() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        reader.setNextResult(.notRunning)
+
+        let outcome = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(outcome, .dropped)
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskSecondCallWhileInFlightDrops() async throws {
+        let reader = FakeTabsReader(isTrusted: true, readDelayNanoseconds: 300_000_000)
+        let path = "ref/chat/task_row.md"
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: path, taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        let items = harness.library.items
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+        )
+        harness.model.highlightsTaskDeadlineNanoseconds = 30_000_000_000
+
+        let first = Task { await harness.model.openFocusedHighlightsTask() }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        let second = await harness.model.openFocusedHighlightsTask()
+
+        XCTAssertEqual(second, .dropped)
+        XCTAssertEqual(await first.value, .opened)
+        XCTAssertEqual(harness.opener.taskOpens.count, 1)
+    }
+
+    func testHighlightsTaskPresentationDuringReadDrops() async throws {
+        let reader = FakeTabsReader(isTrusted: true, readDelayNanoseconds: 300_000_000)
+        let harness = try await makeTaskTabsHarness(
+            records: [Self.taskRecord(path: "ref/chat/task_row.md", taskPath: "sase.md")],
+            tabsReader: reader
+        )
+        let items = harness.library.items
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+        )
+        harness.model.highlightsTaskDeadlineNanoseconds = 30_000_000_000
+
+        let first = Task { await harness.model.openFocusedHighlightsTask() }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        harness.model.prepareForPresentation()
+        XCTAssertEqual(await first.value, .dropped)
+        XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+    }
+
+    func testHighlightsTaskFallbackShowKeepsTabsAndBannerUntilLibraryRestores() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let kept = "ref/chat/small_reading.md"
+        await harness.waitForModel { $0.listing.contains(id: kept) }
+        harness.model.setQuery("small_reading")
+        let items = Array(harness.library.items.prefix(2))
+        XCTAssertEqual(items.count, 2)
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+        )
+
+        harness.model.prepareForPresentation(source: .highlightsTaskFallback("boom"))
+
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertEqual(harness.model.banner?.kind, .warning)
+        XCTAssertEqual(harness.model.banner?.message, "boom")
+        XCTAssertEqual(harness.model.banner?.actions, [])
+        await harness.waitForModel { $0.tabsState == .loaded }
+        XCTAssertEqual(harness.model.banner?.message, "boom")
+
+        harness.model.prepareForPresentation(source: .library)
+
+        XCTAssertFalse(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.query, "small")
+        XCTAssertNil(harness.model.banner)
+        XCTAssertEqual(harness.model.selectedID, kept)
+    }
+
+    func testHighlightsTaskFallbackWithoutMessageShowsTabsNotRunning() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        reader.setNextResult(.notRunning)
+
+        harness.model.prepareForPresentation(source: .highlightsTaskFallback(nil))
+
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertNil(harness.model.banner)
+        await harness.waitForModel { $0.tabsState == .notRunning }
+        XCTAssertNil(harness.model.banner)
+    }
+
     func testDefaultAppOpenRecords() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()

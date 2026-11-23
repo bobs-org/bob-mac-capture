@@ -88,6 +88,39 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertEqual(pressed, HotKeyAction.allCases)
     }
 
+    func testHandleRoutesHighlightsTaskByID() {
+        let registrar = FakeHotKeyRegistrar()
+        var pressed: [HotKeyAction] = []
+        let registry = HotKeyRegistry(registrar: registrar) {
+            pressed.append($0)
+        }
+
+        XCTAssertEqual(HotKeyAction.refsHighlightsTask.rawValue, 10)
+        XCTAssertEqual(
+            registry.handle(
+                hotKeyID: HotKeyRegistry.identifier(for: .refsHighlightsTask)
+            ),
+            noErr
+        )
+        XCTAssertEqual(pressed, [.refsHighlightsTask])
+    }
+
+    func testHighlightsControlReturnPreset() {
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsControlReturn.keyCode,
+            UInt32(kVK_Return)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsControlReturn.modifiers,
+            UInt32(controlKey)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsControlReturn.displayName,
+            "Control-Return"
+        )
+        XCTAssertEqual(HotKeyAction.refsHighlightsTask.purpose, "open the reading task")
+    }
+
     func testHandleRejectsUnknownIDAndForeignSignature() {
         let registrar = FakeHotKeyRegistrar()
         var pressed: [HotKeyAction] = []
@@ -332,6 +365,7 @@ final class HotKeyRegistryTests: XCTestCase {
             + RefsHighlightsCopyKey.allCases.compactMap(\.configuration)
             + RefsHighlightsCodeKey.allCases.compactMap(\.configuration)
             + RefsHighlightsLinkKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsTaskKey.allCases.compactMap(\.configuration)
         for other in others {
             let collides =
                 alias.keyCode == other.keyCode && alias.modifiers == other.modifiers
@@ -356,6 +390,7 @@ final class HotKeyRegistryTests: XCTestCase {
             + RefsHighlightsCopyKey.allCases.compactMap(\.configuration)
             + RefsHighlightsCodeKey.allCases.compactMap(\.configuration)
             + RefsHighlightsLinkKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsTaskKey.allCases.compactMap(\.configuration)
         for other in others {
             let collides =
                 alias.keyCode == other.keyCode && alias.modifiers == other.modifiers
