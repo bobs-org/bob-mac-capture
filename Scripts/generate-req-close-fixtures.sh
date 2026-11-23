@@ -194,7 +194,7 @@ assert "reqs" not in legacy["pull_in"]
 assert all(group.get("kind", group["group"]) != "requirements" for group in legacy["pull_in"]["groups"])
 lines = (root / "met-vault" / "sase.md").read_text().splitlines()
 assert lines == [
-    "- [x] #task Ship parser [id:: ship] ^ship",
+    "- [x] #task Ship parser [id:: ship]  [completion:: 2026-10-05] ^ship",
     "\t- [ ] Handles empty input",
     "\t\t- [ ] Handles zero bytes",
     "\t- [ ] Handles unicode",
