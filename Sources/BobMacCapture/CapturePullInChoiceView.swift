@@ -304,9 +304,14 @@ struct CapturePullInChoiceCard: View {
     private var pullInFilterBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                Image(systemName: filterCapsuleGlyph)
-                    .foregroundStyle(filterCapsuleColor)
-                    .accessibilityHidden(true)
+                if choice.showsRequirementFilterMark {
+                    RequirementMark(state: .pending, size: 11)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: filterCapsuleGlyph)
+                        .foregroundStyle(filterCapsuleColor)
+                        .accessibilityHidden(true)
+                }
                 Text(filterCapsuleTitle)
                     .font(.caption.weight(.semibold))
             }
@@ -379,6 +384,9 @@ struct CapturePullInChoiceCard: View {
     }
 
     private var filterCapsuleTitle: String {
+        if choice.showsRequirementFilterMark {
+            return "Requirements"
+        }
         if let capsule = choice.authoredCopy?.capsule, !capsule.isEmpty {
             return capsule
         }
@@ -769,10 +777,8 @@ struct CapturePullInSectionHeader: View {
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                         .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: isCollapsed)
                         .accessibilityHidden(true)
-                    if section.isRequirement {
-                        Text("⌗")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(glyphColor)
+                    if section.showsRequirementMark {
+                        RequirementMark(state: .pending, size: 11)
                             .accessibilityHidden(true)
                     } else {
                         Image(systemName: section.glyph)
@@ -1254,11 +1260,11 @@ struct CapturePullInOfferRow: View {
     }
 }
 
-/// One requirement row: depth glyph, bob-authored text, verdict and
+/// One requirement row: state mark, bob-authored text, verdict and
 /// consequence, optional drop reason, fold count and jump pin. There is no
 /// native checkbox: Met is the absence of a staged choice, and Bob supplies
-/// the consequence copy. Depth glyphs reuse the marker rule (depth 1 is
-/// ⌗⌗, depth 2 ⌗⌗⌗, depth 3+ ⌗⌗⌗⌗); exact depth lives in accessibility.
+/// the consequence copy. Indentation carries depth; the fixed mark previews
+/// the staged outcome. Exact depth lives in accessibility.
 @available(macOS 26.0, *)
 struct CapturePullInRequirementRow: View {
     let choice: CapturePullInChoiceState
@@ -1281,7 +1287,7 @@ struct CapturePullInRequirementRow: View {
     private var verdictText: String {
         switch staged {
         case .none:
-            return "Met"
+            return "Met with task"
         case .drop:
             return "Drop"
         case .carry:
@@ -1304,20 +1310,18 @@ struct CapturePullInRequirementRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(CapturePullInChoiceSection.depthGlyph(for: row.req.depth))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.teal)
-                .frame(width: 34, alignment: .trailing)
+            RequirementMark(state: .staged(staged))
+                .padding(.leading, CGFloat(max(0, min(row.req.depth, 4) - 1)) * 12)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(row.req.text)
                         .font(.body)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(staged?.isDrop == true ? .secondary : .primary)
+                        .strikethrough(staged?.isDrop == true)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .layoutPriority(1)
-                        .padding(.leading, CGFloat(max(0, min(row.req.depth, 4) - 1)) * 12)
                     Spacer(minLength: 6)
                     Text(verdictText)
                         .font(.caption.weight(.semibold))

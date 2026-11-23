@@ -868,7 +868,10 @@ struct CaptureAgendaRowView: View {
         glyph: String?
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if let glyph, !glyph.isEmpty {
+            if let req = row.req {
+                RequirementMark(state: req.state)
+                    .accessibilityHidden(true)
+            } else if let glyph, !glyph.isEmpty {
                 CaptureAgendaStatusGlyph(symbol: glyph, base: base)
             } else if row.kind == .childLine {
                 Text("•")
@@ -884,7 +887,11 @@ struct CaptureAgendaRowView: View {
     }
 
     private func styledInlineText(base: Font, color: Color, italic: Bool) -> Text {
-        var text = CaptureAgendaRowInlineText.text(row.text, base: base, color: color)
+        let ink: Color = row.req?.state.textIsMuted == true ? .secondary : color
+        var text = CaptureAgendaRowInlineText.text(row.text, base: base, color: ink)
+        if row.req?.state == .dropped {
+            text = text.strikethrough()
+        }
         if italic {
             text = text.italic()
         }

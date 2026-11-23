@@ -59,6 +59,11 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
   All** action and up to five draft rows; longer stashes scroll only the row viewport,
   and screen-constrained layouts preserve the fixed picker action before row height.
 
+Agenda requirements use the preview's teal diamond: hollow pending, filled met,
+faded moot/excluded, slashed dropped, or carried arrow. Bob's annotations control
+replacement of `[c]` bytes; older responses keep them. VoiceOver names state and level.
+See [Idle agenda](idle-agenda.md).
+
 Canceling or completing the prompt restores focus to the capture editor. The editor starts at one visual line, tracks rendered content up to its screen-derived budget, then scrolls internally for longer drafts.
 
 The Go To `/` ⇄ `//` scope swap never unmounts the picker card: continuation

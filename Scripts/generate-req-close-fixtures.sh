@@ -71,6 +71,7 @@ run_capture() {
   local vault="$1"
   local output="$2"
   shift 2
+  local status=0
   env -i \
     PATH="$PATH" \
     XDG_CONFIG_HOME="$scratch_root/config" \
@@ -82,7 +83,14 @@ run_capture() {
     BOB_NOW="2026-10-05 09:30:00" \
     TZ="UTC0" \
     "$bob_bin" capture -b "$vault" --no-clip --format json "$@" \
-    > "$output" 2> "$output.stderr"
+    > "$output" 2> "$output.stderr" || status=$?
+  if (( status != 0 )); then
+    cat "$output.stderr" >&2
+    if [[ ! -s "$output.stderr" ]]; then
+      cat "$output" >&2
+    fi
+  fi
+  return "$status"
 }
 
 persist_fixture() {
@@ -164,6 +172,9 @@ if isinstance(pull_in, dict):
         group for group in pull_in.get("groups", [])
         if group.get("kind", group.get("group")) != "requirements"
     ]
+for block in payload.get("task_blocks", []) + payload.get("pomodoro_blocks", []):
+    for line in block.get("lines", []):
+        line.pop("req", None)
 pathlib.Path(sys.argv[2]).write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 PY
 persist_fixture "$scratch_root/legacy.json" capture-req-close-legacy.json
@@ -182,6 +193,13 @@ stale = json.loads((root / "stale.json").read_text())
 legacy = json.loads((root / "legacy.json").read_text())
 assert preview["pull_in"]["reqs"]["supported"] is True
 assert preview["pull_in"]["groups"][0]["kind"] == "requirements"
+assert preview["pull_in"]["groups"][0]["copy"]["glyph"] == "requirement"
+assert preview["pull_in"]["groups"][0]["copy"]["scope"] == "3 requirements in 2 branches"
+assert [line["req"] for line in preview["task_blocks"][0]["lines"] if "req" in line] == [
+    {"depth": 1, "state": "met"},
+    {"depth": 2, "state": "met"},
+    {"depth": 1, "state": "met"},
+]
 assert mixed["pull_in"]["groups"][0]["kind"] == "requirements"
 assert any(group["group"] != "requirements" for group in mixed["pull_in"]["groups"])
 assert met["req_outcomes"] and all(
@@ -215,7 +233,9 @@ Generated with `Scripts/generate-req-close-fixtures.sh` from:
 - bob-cli source revision: `{source_rev}`
 - Command: `BOB_SOURCE_REV={source_rev} BOB_BIN=<current bob-cli target/debug/bob> Scripts/generate-req-close-fixtures.sh`
 
-The preview and mixed fixtures are Bob dry runs from disposable synthetic vaults. The Met fixture is a real default-Met close: its receipt reports Met, the owner closes, and all requirement checkboxes remain `[ ]`. The write fixture is a real drop verdict with Bob's receipt. The stale fixture changes the row after its preview and records Bob's write-free `req_close_stale` response with `current.groups`. The legacy fixture uses the current Bob's explicit offer-only handshake, then removes only the additive requirement capability and receipts to model a pre-requirements payload.
+The requirement group uses the semantic `requirement` glyph token and full `requirements` scope wording. Task-block requirement lines carry Bob's `req: {{depth, state}}` annotation; a close preview reports `met` even though stored checkboxes stay `[ ]`.
+
+The preview and mixed fixtures are Bob dry runs from disposable synthetic vaults. The Met fixture is a real default-Met close: its receipt reports Met, the owner closes, and all requirement checkboxes remain `[ ]`. The write fixture is a real drop verdict with Bob's receipt. The stale fixture changes the row after its preview and records Bob's write-free `req_close_stale` response with `current.groups`. The legacy fixture uses the current Bob's explicit offer-only handshake, then removes the additive requirement capability, receipts, and line annotations to model a pre-requirements payload.
 
 `req_close/vectors.json` is copied byte for byte from bob-cli's `tests/fixtures/req_close/vectors.json`; bob-cli owns it. Change the source vectors and contract there first, then copy the file and update this README/provenance.
 ''')

@@ -51,13 +51,12 @@ Live preview calls `bob capture --dry-run [--no-clip] --format json -- <draft>`,
   preview calm and shows Bob's `template_missing_rows` message. Non-info
   template diagnostics underline the matching typed text.
 
-Showing the panel refreshes the preview. While the panel is key with a
-  clip-directive parse, pasteboard changes re-run the debounced preview
+Showing the panel refreshes previews. While key with a
+  clip-directive parse, pasteboard changes trigger debounced previews
   (counter behavior in [panel](capture-panel.md#live-preview-and-clipboard-semantics)).
-  Polling stops when the panel hides, loses focus, the draft is removed, or
-  the clip evidence lapses. A visible past preview re-requests one dry run at
-  each five-minute boundary; windows always come from Bob. Refreshes never
-  edit the draft or submit, and failures keep the refusal with no stale card.
+  Polling stops on hide, focus loss, draft removal, or lapsed clip evidence.
+  Visible past previews refresh every five-minute boundary using Bob's windows.
+  Refreshes never edit or submit; failures show refusals without stale cards.
 
 ## Clip card
 
@@ -392,6 +391,11 @@ Whenever Bob reports batch-level `pomodoro_blocks`, every Pomodoro the capture
   target**, **Merged**, or **Moved** capsules; moved captions name the source. Tombstones
   fold removed runs, and `section_blocks` render a section target before tombstones.
 
+Bob-annotated requirements replace the checkbox with one teal diamond: hollow pending,
+filled met, faded moot/excluded, slashed dropped, or carried arrow. Indentation shows
+depth. Met text is muted; dropped text is also struck. Diff gutters, washes, removed-line
+treatment, and source bytes stay intact. Without `req`, checkboxes render normally.
+
 ## Deterministic scheduling
 
 The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle
@@ -456,37 +460,34 @@ background; the app never touches the network.
 
 ## Successor offers
 
-On `!` completion, `x` close, and project captures, Bob supplies successor
-offers; Return opens their grouped card. Bob's order and copy set headings and
-captions; relation groups name the next task. Project offers show the new
-project and its `^prj` task.
+On `!` completion, `x` close, and project captures, Return opens Bob's grouped
+successor offers in Bob's order and wording. Relation headings name the next task;
+project offers show the new project and its `^prj` task.
 
 Rows start unselected: Leave, Pull in, Done, or Cancel. Buttons show
 `Pull In {a}`, `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`.
-The strip shows Bob's consequence or refusal reason. Cancel reasons offer
-`USED BEFORE` and `LINK` bands; their key behavior is in
+The strip shows Bob's consequence or refusal. Cancel reasons offer
+`USED BEFORE` and `LINK` bands; see
 [Keyboard](keyboard.md#successor-choices), [Log Recall](https://bobs-org.github.io/log-recall/),
-and [Wikilink completion](wikilink-completion.md). Unavailable bands stay
-hidden. `@route`
+and [Wikilink completion](wikilink-completion.md). Unavailable bands hide. `@route`
 previews up to five offers with tag, lane, destination, and fold; Shift-Return
-returns without writing, while status changes route. Space toggles the row;
+returns without writing; status changes route. Space toggles;
 Tab toggles and advances; Shift-Tab moves back.
-`nothing_to_pull_in` shows `Nothing ready in ‹route›`. Without a chooser, muted
-lines explain status. Relation picks notify once; diffs link, successors unlock,
+`nothing_to_pull_in` shows `Nothing ready in ‹route›`. Without a chooser,
+muted lines explain status. Relation picks notify once; diffs link, successors unlock,
 and project picks count as Task Links.
 
-Control-J pins one offer as the jump successor, shown by its `Jump` capsule,
-footer chip, and `↗ S` suffix; pressing again clears it. The pin survives
-marks, verdicts, filters, and refusal reopens; it fires on commit. Control-Return
-acts like Return while pinned. Bob's landing wins over open notes; a lost
-landing falls back to them.
+Control-J toggles one jump successor (`Jump` capsule, footer chip, `↗ S` suffix).
+The pin survives marks, verdicts, filters, and refusal reopens, firing on commit.
+While pinned, Control-Return acts like Return. Bob's landing overrides open notes,
+falling back to them if lost.
 
-Pending requirements appear before ordinary offers, grouped by owner. Rows
-show Bob's depth and consequence; Met leaves descendants open, while Drop or
-Carry folds them. Untouched rows default to Met without checking requirements.
-See [Keyboard](keyboard.md#successor-choices) for keys and
-[Protocol](protocol.md#successor-verdict-and-jump-submission) for refresh and
-receipts.
+Pending requirements precede offers, grouped by owner and indented by Bob's depth.
+Rows, header, and filter use teal diamonds. Default **Met with task** stays hollow
+until closing. Staged Drop slashes the diamond and strikes text; Own task and Pull in
+show arrows. Met leaves descendants open; Drop/Carry folds them. Requirements never
+tick independently. See [Keyboard](keyboard.md#successor-choices) for keys and
+[Protocol](protocol.md#successor-verdict-and-jump-submission) for refresh and receipts.
 
 ## Project-note moves
 

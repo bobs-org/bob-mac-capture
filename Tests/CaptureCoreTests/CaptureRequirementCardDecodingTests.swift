@@ -11,9 +11,13 @@ final class CaptureRequirementCardDecodingTests: XCTestCase {
 
         let group = try XCTUnwrap(preview.allRequirementGroups.first)
         XCTAssertEqual(group.effectiveKind, "requirements")
+        XCTAssertEqual(group.copy?.glyph, "requirement")
+        XCTAssertEqual(
+            preview.taskBlocks.first?.lines.compactMap(\.req).map(\.state),
+            [.met, .met, .met])
         XCTAssertEqual(group.owner?.taskKey, "sase.md#^ship")
         XCTAssertEqual(group.requirementOwnerKey, group.owner?.key)
-        XCTAssertEqual(group.copy?.scope, "3 reqs in 2 branches")
+        XCTAssertEqual(group.copy?.scope, "3 requirements in 2 branches")
         XCTAssertEqual(
             group.copy?.footer, "⌃X met · ⌃⇧X drop · ⌃⇧T own task · space pull in · ⌃J jump")
         XCTAssertEqual(group.rows.map(\.req.siblingPath), [[1], [1, 1], [2]])

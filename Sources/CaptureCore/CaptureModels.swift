@@ -2458,6 +2458,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
     /// `>` merge in this capture wrote; omitted elsewhere. Older Bob omits
     /// it entirely.
     public let origin: String?
+    public let req: CaptureRequirementAnnotation?
 
     public init(
         text: String,
@@ -2465,7 +2466,8 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         change: CapturePomodoroBlockChange = .unchanged,
         before: String? = nil,
         reason: String? = nil,
-        origin: String? = nil
+        origin: String? = nil,
+        req: CaptureRequirementAnnotation? = nil
     ) {
         self.text = text
         self.depth = depth
@@ -2473,6 +2475,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         self.before = before
         self.reason = reason
         self.origin = origin
+        self.req = req
     }
 
     public init(from decoder: Decoder) throws {
@@ -2487,6 +2490,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         before = try container.decodeIfPresent(String.self, forKey: .before)
         reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? nil
         origin = (try? container.decodeIfPresent(String.self, forKey: .origin)) ?? nil
+        req = try? container.decodeIfPresent(CaptureRequirementAnnotation.self, forKey: .req)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2496,6 +2500,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         case before
         case reason
         case origin
+        case req
     }
 }
 

@@ -1,10 +1,11 @@
 import AppKit
 import CaptureCore
+import SwiftUI
 import XCTest
 
 @testable import BobMacCapture
 
-/// card_ui: requirement sections render first with Bob copy, depth glyphs,
+/// card_ui: requirement sections render first with Bob copy, state marks,
 /// folds, consequences and summaries; Ctrl+X / Ctrl+Shift+X / Ctrl+Shift+T /
 /// Space / Tab / Ctrl+J wire through router, controller and reason UI while
 /// ordinary offers, text focus, mark-all and Esc stay intact.
@@ -57,8 +58,8 @@ final class CapturePullInRequirementCardTests: XCTestCase {
         let copy = CapturePullInGroupCopy(
             title: title ?? "Requirements · “\(ownerText)”",
             why: why ?? "Met when it closes",
-            tag: nil, fold: nil, glyph: "⌗⌗",
-            scope: scope ?? "\(rows.count) reqs",
+            tag: nil, fold: nil, glyph: "requirement",
+            scope: scope ?? "\(rows.count) requirements",
             history: history, footer: footer, hint: nil)
         return CapturePullInGroup(
             group: "requirements", kind: "requirements", owner: owner,
@@ -84,11 +85,63 @@ final class CapturePullInRequirementCardTests: XCTestCase {
             rows: ordinary, highlightedKey: highlighted)
     }
 
-    func testDepthGlyphsFollowMarkerRule() {
-        XCTAssertEqual(CapturePullInChoiceSection.depthGlyph(for: 1), "⌗⌗")
-        XCTAssertEqual(CapturePullInChoiceSection.depthGlyph(for: 2), "⌗⌗⌗")
-        XCTAssertEqual(CapturePullInChoiceSection.depthGlyph(for: 3), "⌗⌗⌗⌗")
-        XCTAssertEqual(CapturePullInChoiceSection.depthGlyph(for: 5), "⌗⌗⌗⌗")
+    func testRequirementMarkFollowsStagedVerdictAndReturnsToPending() {
+        let row = makeReq(
+            key: "req", n: 1, owner: Self.ownerA, path: "1", depth: 1, text: "Scope")
+        let group = makeGroup(ownerKey: Self.ownerA, ownerText: "Ship", rows: [row])
+        var state = makeState(reqRows: [row], groups: [group], highlighted: "req")
+        XCTAssertTrue(state.sections[0].showsRequirementMark)
+        XCTAssertTrue(state.showsRequirementFilterMark)
+        XCTAssertEqual(
+            CaptureRequirementState.staged(state.requirementChoice(for: "req")), .pending)
+        state.beginRequirementDrop("req")
+        state.confirmRequirementDrop()
+        XCTAssertEqual(
+            CaptureRequirementState.staged(state.requirementChoice(for: "req")), .dropped)
+        state.stageRequirementMet("req")
+        XCTAssertEqual(
+            CaptureRequirementState.staged(state.requirementChoice(for: "req")), .pending)
+        state.stageRequirementCarry("req")
+        XCTAssertEqual(
+            CaptureRequirementState.staged(state.requirementChoice(for: "req")), .carried)
+        state.stageRequirementMet("req")
+        state.stageRequirementCarryPulled("req")
+        XCTAssertEqual(
+            CaptureRequirementState.staged(state.requirementChoice(for: "req")), .carried)
+    }
+
+    func testRenderPendingDroppedAndCarriedRequirementRows() throws {
+        let rows = (1...3).map { n in
+            makeReq(
+                key: "r\(n)", n: n, owner: Self.ownerA, path: "\(n)", depth: 1,
+                text: [
+                    "Handles supported input", "Preserves obsolete output", "Adds a new format",
+                ][n - 1])
+        }
+        let group = makeGroup(ownerKey: Self.ownerA, ownerText: "Ship parser", rows: rows)
+        var choice = makeState(reqRows: rows, groups: [group])
+        choice.beginRequirementDrop("r2")
+        choice.confirmRequirementDrop()
+        choice.stageRequirementCarry("r3")
+        let model = CapturePanelModel()
+        let view = CapturePullInChoiceCard(model: model, choice: choice, previewMode: true)
+            .padding(12)
+        for width in [CGFloat(420), CGFloat(760)] {
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                try RenderFixtureWriter.write(
+                    view, name: "requirement-pull-in-\(Int(width))", width: width,
+                    appearance: appearance)
+            }
+        }
+    }
+
+    func testRequirementHeaderAcceptsGroupOrSemanticGlyph() {
+        XCTAssertTrue(CapturePullInChoiceSection(group: "requirements").showsRequirementMark)
+        XCTAssertTrue(
+            CapturePullInChoiceSection(
+                group: "future", copy: CapturePullInGroupCopy(glyph: "requirement")
+            ).showsRequirementMark)
+        XCTAssertFalse(CapturePullInChoiceSection(group: "hand_off").showsRequirementMark)
     }
 
     func testRequirementSectionsLeadWithBobCopyAndCounts() {
@@ -98,15 +151,15 @@ final class CapturePullInRequirementCardTests: XCTestCase {
             key: "k2", n: 2, owner: Self.ownerB, path: "1", depth: 1, text: "Beta")
         let gA = makeGroup(
             ownerKey: Self.ownerA, ownerText: "Ship", rows: [r1],
-            scope: "1 req", why: "Met when it closes", history: "Filed yesterday")
+            scope: "1 requirement", why: "Met when it closes", history: "Filed yesterday")
         let gB = makeGroup(ownerKey: Self.ownerB, ownerText: "Docs", rows: [r2])
         // Bob order is B then A in groups; sections must preserve Bob order.
         var state = makeState(reqRows: [r1, r2], groups: [gB, gA], highlighted: "k1")
         XCTAssertEqual(state.sections.map(\.ownerKey), [Self.ownerB, Self.ownerA])
         let first = state.sections[0]
         XCTAssertTrue(first.isRequirement)
-        XCTAssertEqual(first.requirementScope, "1 reqs")
-        XCTAssertEqual(state.sections[1].requirementScope, "1 req")
+        XCTAssertEqual(first.requirementScope, "1 requirements")
+        XCTAssertEqual(state.sections[1].requirementScope, "1 requirement")
         XCTAssertEqual(first.selectableRequirementCount, 1)
         XCTAssertEqual(state.footerSummaryText, "reqs ✓2 ⊘0 →0")
         // Filtering keeps header match and hides nothing for header match.

@@ -98,6 +98,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// Walk attention marks on the title row. Part of the measure key so
     /// the height cache invalidates when marks change.
     public let walkMarks: [CaptureAgendaWalkMark]
+    public let req: CaptureRequirementAnnotation?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -116,7 +117,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         calendarRail: CaptureAgendaRailData? = nil,
         sessionOffClock: Bool = false,
         hintDimmed: Bool = false,
-        walkMarks: [CaptureAgendaWalkMark] = []
+        walkMarks: [CaptureAgendaWalkMark] = [],
+        req: CaptureRequirementAnnotation? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -135,6 +137,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.sessionOffClock = sessionOffClock
         self.hintDimmed = hintDimmed
         self.walkMarks = walkMarks
+        self.req = req
     }
 }
 
@@ -188,6 +191,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// Walk attention marks for the title row's trailing edge. Empty for
     /// every other row.
     public let walkMarks: [CaptureAgendaWalkMark]
+    public let req: CaptureRequirementAnnotation?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -211,7 +215,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         calendarRail: CaptureAgendaRailData? = nil,
         sessionOffClock: Bool = false,
         hintDimmed: Bool = false,
-        walkMarks: [CaptureAgendaWalkMark] = []
+        walkMarks: [CaptureAgendaWalkMark] = [],
+        req: CaptureRequirementAnnotation? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -235,6 +240,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.sessionOffClock = sessionOffClock
         self.hintDimmed = hintDimmed
         self.walkMarks = walkMarks
+        self.req = req
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -253,7 +259,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             calendarRail: calendarRail,
             sessionOffClock: sessionOffClock,
             hintDimmed: hintDimmed,
-            walkMarks: walkMarks
+            walkMarks: walkMarks,
+            req: req
         )
     }
 
@@ -1213,6 +1220,17 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// its depth and kind.
     static func childRowsForLines(_ lines: [CaptureAgendaLine]) -> [CaptureAgendaRow] {
         lines.map { line in
+            if let req = line.req {
+                let text = req.agendaText(line.text)
+                return CaptureAgendaRow(
+                    kind: .childLine,
+                    text: text,
+                    depth: line.depth,
+                    lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
+                    accessibilityLabel: "\(req.accessibilityLabel), \(spokenIconText(text))",
+                    req: req
+                )
+            }
             switch (line.kind, line.log) {
             case (.logMarker, .work):
                 return CaptureAgendaRow(

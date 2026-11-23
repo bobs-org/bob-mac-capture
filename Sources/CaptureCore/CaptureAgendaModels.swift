@@ -501,19 +501,22 @@ public struct CaptureAgendaLine: Decodable, Equatable, Sendable {
     public let kind: CaptureAgendaLineKind
     public let statusSymbol: String?
     public let log: CaptureAgendaLog?
+    public let req: CaptureRequirementAnnotation?
 
     public init(
         text: String = "",
         depth: Int = 1,
         kind: CaptureAgendaLineKind = .bullet,
         statusSymbol: String? = nil,
-        log: CaptureAgendaLog? = nil
+        log: CaptureAgendaLog? = nil,
+        req: CaptureRequirementAnnotation? = nil
     ) {
         self.text = text
         self.depth = depth
         self.kind = kind
         self.statusSymbol = statusSymbol
         self.log = log
+        self.req = req
     }
 
     public init(from decoder: Decoder) throws {
@@ -523,6 +526,7 @@ public struct CaptureAgendaLine: Decodable, Equatable, Sendable {
         kind = try container.decodeIfPresent(CaptureAgendaLineKind.self, forKey: .kind) ?? .bullet
         statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
         log = try container.decodeIfPresent(CaptureAgendaLog.self, forKey: .log)
+        req = try? container.decodeIfPresent(CaptureRequirementAnnotation.self, forKey: .req)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -531,6 +535,7 @@ public struct CaptureAgendaLine: Decodable, Equatable, Sendable {
         case kind
         case statusSymbol = "status_symbol"
         case log
+        case req
     }
 }
 

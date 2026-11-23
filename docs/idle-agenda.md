@@ -27,6 +27,13 @@ off-clock pill to the Now header. The title line keeps its Worked summary and ad
 dashed `◌ 1h off-clock` chip when Bob reports off-clock minutes in
 `completed_summary.off_clock`.
 
+Requirement children carry one teal mark from Bob's optional `req` annotation. Hollow
+means pending, filled means met, faded means moot or excluded, slashed means dropped,
+and an arrow means carried. The mark replaces the leading checkbox text; indentation
+shows depth, and VoiceOver names the state and exact level. Met text is muted without
+a strike; dropped text is muted and struck. Without the annotation, lines render as
+before, including ordinary checkbox text.
+
 ## Walk attention
 
 The title row's trailing edge can show bare monospaced `s`, `w`, and `b` marks

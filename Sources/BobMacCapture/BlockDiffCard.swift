@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Shared batch-level block diff card: a status rail, a diff gutter, indent
 /// guides, change washes, and verbatim tinted lines. Every line is exactly
-/// what Bob will write — tinting never adds, drops, or reorders characters —
+/// what Bob will write; annotated requirement checkboxes display as diamonds,
 /// and rows wrap instead of truncating. No animation; the pane updates on
 /// every keystroke.
 struct BlockDiffCard: View {
@@ -217,7 +217,9 @@ struct BlockDiffCard: View {
 
     @ViewBuilder
     private func rowContent(_ row: CaptureBlockDiffRow) -> some View {
-        if row.isRelationSuccessor {
+        if let req = row.req, let checkboxIndex = row.requirementCheckboxIndex {
+            requirementRow(row, req: req, checkboxIndex: checkboxIndex)
+        } else if row.isRelationSuccessor {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 diffText(row)
                 Image(systemName: "link")
@@ -263,14 +265,34 @@ struct BlockDiffCard: View {
         }
     }
 
-    private func diffText(_ row: CaptureBlockDiffRow) -> some View {
+    private func requirementRow(
+        _ row: CaptureBlockDiffRow, req: CaptureRequirementAnnotation, checkboxIndex: Int
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            diffText(row, tokens: Array(row.tokens[..<checkboxIndex]))
+            RequirementMark(state: req.state)
+                .accessibilityHidden(true)
+            diffText(row, tokens: Array(row.tokens[(checkboxIndex + 1)...]))
+                .strikethrough(req.state == .dropped || row.change == .removed)
+        }
+        .opacity(row.change == .removed ? 0.55 : 1)
+        .help(req.accessibilityLabel)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(req.accessibilityLabel), \(row.change.rawValue), \(row.content)")
+    }
+
+    private func diffText(
+        _ row: CaptureBlockDiffRow, tokens: [CapturePomodoroLineToken]? = nil
+    ) -> some View {
         // One text view per row, built the way the close card builds its
         // hint: verbatim bytes with display-only tinting, wrapping as a
         // unit so continuation lines keep the hanging indent.
         Text(
-            row.tokens.map { token in
+            (tokens ?? row.tokens).map { token in
                 var part = AttributedString(token.text)
-                part.foregroundColor = tokenColor(for: token)
+                part.foregroundColor =
+                    row.req?.state.textIsMuted == true || row.change == .removed
+                    ? .secondary : tokenColor(for: token)
                 if token.role == .timeRange || token.role == .name {
                     part.inlinePresentationIntent = .stronglyEmphasized
                 }

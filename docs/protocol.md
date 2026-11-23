@@ -3,7 +3,8 @@ title: "Mac Capture protocol"
 description: "Bob Mac Capture subprocess commands, JSON boundaries, capability requirements, and compatibility."
 ---
 
-Bob Mac Capture owns presentation and process orchestration. Bob owns capture grammar, completion, previews, and vault mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). New capture contracts land in `bob` first; the app decodes and presents them.
+The app presents and orchestrates; Bob owns grammar, completion, previews, and vault
+mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Contracts land in `bob` first.
 
 Capabilities are response-driven: unknown spans render neutral, contexts generic; missing fields follow the compatibility table.
 
@@ -224,9 +225,13 @@ answer chaining, and optional decoding.
 
 `pull_in.close.supported` gates `--complete-offer`/`--cancel-offer`;
 `pull_in.jump.supported` gates `--jump-offer`. Pin-only commits send
-`--pull-in none`. Bob returns `jump.landing` re-found after writes or `null`.
-Refusals reopen intact; stale picks refresh once without writes, and lost pins
-clear. See the [Move-card protocol](task-pickers.md#move-card-protocol).
+`--pull-in none`. Bob re-finds `jump.landing` after writes, or returns `null`.
+Refusals reopen intact; stale picks refresh once without writing; lost pins clear.
+See [Move-card protocol](task-pickers.md#move-card-protocol).
+
+`copy.glyph: "requirement"` or `group: "requirements"` selects requirement marks,
+including legacy text glyphs. Row `run` stays an opaque fallback; marks follow
+staged verdicts.
 
 Same-executable preview capability `pull_in.reqs.supported` gates
 `--req-choice`; legacy Bob receives no flag and staged keys never retry as
@@ -238,22 +243,19 @@ defines flags, refusals, and vectors.
 
 Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 
-If Bob rejects `--refuse-override` as unexpected (exit 2), the app retries without
-it and remembers the answer per executable. `--require-pull-in-choice` is never retried: it goes out
-only after a preview from that executable advertised `pull_in.supported`;
-it also notes that this Bob lacks successor-choice
-checks. `--require-inbox-route-choice` goes out under the same positive gate (a
-preview, or any decoded capture JSON, carrying `inbox_route.supported == true`),
-and an older Bob that still receives it retries without the flag the same way. Other
-failures and stale-key refusals never retry. The app only sends explicit offer keys
-from a matching preview or write-free refusal back to `bob capture`. An older bob
-never overrides on `=`, so the `--refuse-override` retry is safe.
+If Bob rejects `--refuse-override` as unexpected (exit 2), retry without it and
+remember per executable that successor-choice checks are unavailable. Older Bob
+never overrides on `=`, making this safe. `--require-pull-in-choice` requires that
+executable's preview to advertise `pull_in.supported` and never retries.
+`--require-inbox-route-choice` requires preview or capture JSON with
+`inbox_route.supported == true`; an older Bob rejecting it retries without it.
+Other failures and stale-key refusals never retry. Explicit offer keys come only
+from matching previews or write-free refusals.
 
-If Bob rejects `-a` / `--attended` on `ref scan` (exit 2), the app retries
-without that flag and remembers the answer per executable, like the capture
-guard flags.
+Rejection of `ref scan -a` / `--attended` (exit 2) similarly retries without the
+flag and caches the answer per executable.
 
-Template saves send `--template-origin` only after that executable’s template-list succeeds; see [Saved templates](saved-templates.md).
+`--template-origin` requires that executable's successful template-list; see [Saved templates](saved-templates.md).
 
 ## Required commands
 
@@ -346,6 +348,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `source_role`, `absorbed[].role`, and `explicit` on `pomodoro_merge` | Implied-pick **Current** / **Next** capsules and the `Same as` caption | Older bob omits them and the card renders as before | Upgrade `bob` for implied-merge captions |
 | `pomodoro_split_type` / `pomodoro_merge_dest` needs and completion contexts | Bob's candidates drive the type and destination pickers | No picker rows; the incomplete draft stays visible | Upgrade `bob` for split and merge pickers |
 | `drawer` completion context, `target`, candidate `group` / `detail` / `entry_count` / `note_count` / `last_seen` / `creates` / `refused` / `consequence` | New drawer in This task/Recent groups; Bob's counts; refused rows dim and no-op on Return; selected-row consequence footer | Older Bob lacks the context (requires grammar 5); without `detail`, hide counts; without `consequence`, keep the key hint | Upgrade `bob` for the full menu |
+| `req: {depth, state}` on preview block lines and agenda `items[].lines[]` | One teal requirement mark from Bob's state; indentation carries depth | Missing or malformed objects use ordinary rendering; unknown state strings use pending | Upgrade `bob` for requirement marks |
 | `drawer` object on a sub-bullet capture item (`title`, `key`, `created`) | `new drawer` capsule beside the item header and the drawer title in summaries | Older Bob responses omit drawer-specific header details and the capsule | Upgrade `bob` for the capsule |
 | `directive` completion context, `initial_selection: none` | `%` menu with Bob's token, name, summary, and detail; Return captures as typed; Tab takes the first row | Older bob omits the context, so `%` stays ordinary text; omitted `initial_selection` keeps first-row selection | Upgrade `bob` for `%` menus |
 | `block_id.owner_line`, `block_id.splice` on `project_task_block_id` | Accepted nested-line IDs land on the owning task line; caret returns to the typing point; card names the owner | Uses the typing-line `replacement` range, as before | Upgrade `bob` for nested-line prompts |

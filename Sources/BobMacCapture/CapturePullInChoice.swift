@@ -20,6 +20,8 @@ enum CapturePullInGlyph {
             return "tray.and.arrow.down.fill"
         case "notebook", "notebook_note", "notebook_sub_note":
             return "book.closed"
+        case "requirement", "requirements":
+            return "diamond"
         case "relation":
             return "link"
         default:
@@ -362,6 +364,10 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
         group == "requirements"
     }
 
+    var showsRequirementMark: Bool {
+        isRequirement || copy?.glyph == "requirement"
+    }
+
     var isNewProject: Bool {
         let offers = rows.compactMap(\.offerRow)
         return group == "project" && !offers.isEmpty
@@ -506,7 +512,7 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     }
 
     /// Bob-authored scope line for a requirement section (for example
-    /// "4 reqs"). History is the vault-stored context line; footer carries
+    /// "4 requirements"). History is the vault-stored context line; footer carries
     /// the canonical key hints. All three are optional additive copy.
     var requirementScope: String? {
         pullInNonempty(copy?.scope)
@@ -525,13 +531,6 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
     /// requirement rows, not ordinary offers.
     var selectableRequirementCount: Int {
         requirementRows.filter(\.isSelectable).count
-    }
-
-    /// Depth glyph for a requirement row: depth 1 is ⌗⌗, depth 2 is ⌗⌗⌗,
-    /// depth 3+ is ⌗⌗⌗⌗. Exact depth belongs in accessible text, never in
-    /// the glyph alone.
-    static func depthGlyph(for depth: Int) -> String {
-        String(repeating: "⌗", count: min(max(depth, 1), 3) + 1)
     }
 
     private var relationWhyFallback: String? {
@@ -894,6 +893,11 @@ struct CapturePullInChoiceState: Equatable {
     var isNewProjectPrompt: Bool {
         let offers = rows.compactMap(\.offerRow)
         return !offers.isEmpty && offers.allSatisfy { $0.trigger == "project_created" }
+    }
+
+    var showsRequirementFilterMark: Bool {
+        authoredCopy?.glyph == "requirement"
+            || (!sections.isEmpty && sections.allSatisfy(\.showsRequirementMark))
     }
 
     var isOnlyKeepMoving: Bool {

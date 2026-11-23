@@ -71,14 +71,17 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
                 change: line.change,
                 beforeContent: line.before.map(Self.stripped),
                 isHeadline: isHeadline,
-                tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline),
+                tokens: line.req == nil
+                    ? CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline)
+                    : CapturePomodoroLineTokens.tokenizeTaskRow(content, isHeadline: isHeadline),
                 isUnblocked: line.change == .added && line.reason == "unblocked",
                 isKeepMoving: line.change == .added && line.reason == "keep_moving",
                 isRelationSuccessor: line.change == .added && line.reason == "relation",
                 keepMovingProjectName: Self.keepMovingProjectName(
                     in: line,
                     rows: keepMovingRows
-                )
+                ),
+                req: line.req
             )
         }
 
