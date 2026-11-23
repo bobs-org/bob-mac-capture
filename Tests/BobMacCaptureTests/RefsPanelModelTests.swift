@@ -2913,7 +2913,8 @@ final class RefsPanelModelTests: XCTestCase {
         let second = await harness.model.openFocusedHighlightsTask()
 
         XCTAssertEqual(second, .dropped)
-        XCTAssertEqual(await first.value, .opened)
+        let firstResult = await first.value
+        XCTAssertEqual(firstResult, .opened)
         XCTAssertEqual(harness.opener.taskOpens.count, 1)
     }
 
@@ -2932,7 +2933,8 @@ final class RefsPanelModelTests: XCTestCase {
         let first = Task { await harness.model.openFocusedHighlightsTask() }
         try? await Task.sleep(nanoseconds: 100_000_000)
         harness.model.prepareForPresentation()
-        XCTAssertEqual(await first.value, .dropped)
+        let firstResult = await first.value
+        XCTAssertEqual(firstResult, .dropped)
         XCTAssertTrue(harness.opener.taskOpens.isEmpty)
     }
 
