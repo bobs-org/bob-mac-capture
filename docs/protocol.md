@@ -222,25 +222,17 @@ answer chaining, and optional decoding.
 
 ## Successor verdict and jump submission
 
-`pull_in.close.supported` gates `--complete-offer` and `--cancel-offer`;
-`pull_in.jump.supported` gates `--jump-offer KEY` after them, else the app
-refuses. A pin-only commit sends `--pull-in none`. `bob` answers with a top-level `jump` object: `landing` is an
-`open_notes`-shaped entry re-found after the writes, or `null` when lost.
-Refusals reopen intact; stale picks refresh once and never retry writes. A
-refresh that loses the pinned key clears it visibly. The app × Bob version
-matrix lives with the [Move card](task-pickers.md#move-card-protocol).
+`pull_in.close.supported` gates `--complete-offer`/`--cancel-offer`;
+`pull_in.jump.supported` gates `--jump-offer`. Pin-only commits send
+`--pull-in none`. Bob returns `jump.landing` re-found after writes or `null`.
+Refusals reopen intact; stale picks refresh once without writes, and lost pins
+clear. See the [Move-card protocol](task-pickers.md#move-card-protocol).
 
-Requirement-close support is a separate positive capability:
-`pull_in.reqs.supported` from the same executable's preview gates
-`--req-choice`. When absent, old Bob payloads still decode and no new flag is
-sent. A requirement-only group opens the card; default Met is committable,
-and staged requirement keys are never retried as an ordinary capture. Bob's
-`req_outcomes` receipts are shown once after success, alongside ordinary
-offer receipts. Requirement rows use the same `--pull-in` selection for
-Carry-and-pull, `--carry` for Carry, and `--cancel-offer` for Drop; the Mac
-client sends at most one structural choice per requirement. The wire shape,
-verdict flags, stale and overlap refusals, receipts, and shared RV vectors are
-defined in Bob's [requirement-close contract](https://bobs-org.github.io/task-dependencies/#1225-requirements-on-the-successor-card).
+Same-executable preview capability `pull_in.reqs.supported` gates
+`--req-choice`; legacy Bob receives no flag and staged keys never retry as
+ordinary capture. Requirement-only groups open the card; default Met commits.
+Show `req_outcomes` once. Bob's [requirement-close contract](https://bobs-org.github.io/task-dependencies/#1225-requirements-on-the-successor-card)
+defines flags, refusals, and vectors.
 
 ## Timeouts and guards
 

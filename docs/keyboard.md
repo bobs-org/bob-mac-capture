@@ -202,12 +202,10 @@ card returns to the Move card with its marks. See [Move card](task-pickers.md#mo
 
 Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Command-X stays Cut. Control-J pins the jump successor on the highlighted row (again clears); Return lands there after writes. Needs `pull_in.jump`: older Bobs hide the hint, report `Jump needs a newer bob`, and consume the key in Cancel reason. In Cancel reason, Control-N/P, Up/Down walk `USED BEFORE` (Esc restores, next backs out, Return writes); `[[` or `((` opens `LINK` — arrows move, Return/Tab insert at bob's bytes (ID-less: NAME first), empty Return only closes, Esc closes (see [Capture previews](capture-previews.md), [Log Recall](https://bobs-org.github.io/log-recall/)).
 
-Requirement rows in the same card use Control-X for Met, Control-Shift-X
-for Drop and its optional reason, Control-Shift-T for Carry, Space for
-Carry-and-pull, and Tab for Carry-and-pull then advance. Return with no
-staged requirement verdict defaults to Met without changing requirement
-checkboxes. Shift-Return downgrades Carry-and-pull to Carry. Control-J may
-pin a requirement row for navigation; it does not change that row's verdict.
+Requirements: Control-X=Met; Control-Shift-X=Drop (optional reason);
+Control-Shift-T=Carry; Space=Carry-and-pull; Tab repeats/advances. Return
+defaults Met; Shift-Return keeps Carry without pulling; Control-J pins
+navigation only.
 
 ## Inbox routing
 

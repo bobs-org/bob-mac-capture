@@ -456,23 +456,18 @@ background; the app never touches the network.
 
 ## Successor offers
 
-On `!` completion, `x` close, and project captures, Bob returns successor
-offers. Return opens the grouped card before writing. Group order and copy set
-headings and captions; relation groups name the next task and avoid dependency
-language. Missing copy uses legacy presentation. Project offers show the new
+On `!` completion, `x` close, and project captures, Bob supplies successor
+offers; Return opens their grouped card. Bob's order and copy set headings and
+captions; relation groups name the next task. Project offers show the new
 project and its `^prj` task.
 
 Rows start unselected: Leave, Pull in, Done, or Cancel. Buttons show
 `Pull In {a}`, `Close {n}`, or both; outcomes show `✓ Done` or `⊘ Cancel`.
-The strip shows Bob's consequence or refusal reason. The Cancel reason field
-offers a `USED BEFORE` band (`N× · age`, 3 rows after 2 typed characters,
-nothing preselected; see
-[Log Recall](https://bobs-org.github.io/log-recall/)):
-Control-N/P, Up/Down fill, typing adopts, Esc restores, clicks never commit,
-Return writes; no `bob`, old `bob`, fetch failure: zero pixels.
-`[[` or `((` swaps in a `LINK` band
-([Wikilink completion](wikilink-completion.md)): arrows move, Return/Tab
-insert at bob's bytes, Esc closes. `@route`
+The strip shows Bob's consequence or refusal reason. Cancel reasons offer
+`USED BEFORE` and `LINK` bands; their key behavior is in
+[Keyboard](keyboard.md#successor-choices), [Log Recall](https://bobs-org.github.io/log-recall/),
+and [Wikilink completion](wikilink-completion.md). Unavailable bands stay
+hidden. `@route`
 previews up to five offers with tag, lane, destination, and fold; Shift-Return
 returns without writing, while status changes route. Space toggles the row;
 Tab toggles and advances; Shift-Tab moves back.
@@ -480,22 +475,18 @@ Tab toggles and advances; Shift-Tab moves back.
 lines explain status. Relation picks notify once; diffs link, successors unlock,
 and project picks count as Task Links.
 
-Control-J pins one offer as the jump successor: a solid accent `Jump`
-capsule, a `⌃J Jump` footer chip, and a `· ↗ “S”` summary suffix. The pin
-survives marks, verdicts, filters, and refusal reopens, and fires on every
-commit; Control-Return behaves like Return while one is staged. The landed
-pin wins over the open-notes landing with a `↗ S` notice line, and a lost
-landing falls back to open notes.
+Control-J pins one offer as the jump successor, shown by its `Jump` capsule,
+footer chip, and `↗ S` suffix; pressing again clears it. The pin survives
+marks, verdicts, filters, and refusal reopens; it fires on commit. Control-Return
+acts like Return while pinned. Bob's landing wins over open notes; a lost
+landing falls back to them.
 
-When Bob reports pending requirements, their owner sections appear before
-ordinary offers. Each row shows Bob's depth and consequence; Drop or Carry
-folds its descendants, while Met leaves the branch open. Control-X stages
-Met, Control-Shift-X stages Drop with an optional reason, Control-Shift-T
-stages Carry, Space stages Carry-and-pull, and Tab stages Carry-and-pull
-then advances. Untouched requirements default to Met on Return and remain
-unchecked in the closed task. Shift-Return downgrades Carry-and-pull to
-Carry. Requirement choices, stale refresh, and receipts follow Bob's
-requirement-close contract; see [Protocol](protocol.md#successor-verdict-and-jump-submission).
+Pending requirements appear before ordinary offers, grouped by owner. Rows
+show Bob's depth and consequence; Met leaves descendants open, while Drop or
+Carry folds them. Untouched rows default to Met without checking requirements.
+See [Keyboard](keyboard.md#successor-choices) for keys and
+[Protocol](protocol.md#successor-verdict-and-jump-submission) for refresh and
+receipts.
 
 ## Project-note moves
 
