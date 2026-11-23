@@ -1178,6 +1178,125 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testRequirementMarkerConcealsWhenCaretIsElsewhere() throws {
+        let draft = "- [ ] hand req"
+        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
+        let parse = Self.parse(draft: draft, spans: [span])
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                cursorUTF8: 0,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertEqual(Self.strings(in: text, where: Self.isClearForeground), ["[ ] "])
+        XCTAssertEqual(
+            CapturePanelModel.concealedRequirementMarkerSpans(
+                ranges: ranges,
+                draft: draft,
+                cursorUTF8: 0
+            ).map(\.start),
+            [2]
+        )
+    }
+
+    func testRequirementMarkerRevealsWhenCaretIsOnSpan() throws {
+        let draft = "- [ ] hand req"
+        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
+        let parse = Self.parse(draft: draft, spans: [span])
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+
+        for cursor in [2, 4, 6] {
+            var text = AttributedString(draft)
+            XCTAssertFalse(
+                CapturePanelModel.paintHighlighting(
+                    &text,
+                    parse: parse,
+                    draft: draft,
+                    ranges: ranges,
+                    cursorUTF8: cursor,
+                    concealRouteStartGlyphs: true
+                )
+            )
+            XCTAssertEqual(String(text.characters), draft)
+            XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+            XCTAssertTrue(
+                CapturePanelModel.concealedRequirementMarkerSpans(
+                    ranges: ranges,
+                    draft: draft,
+                    cursorUTF8: cursor
+                ).isEmpty
+            )
+        }
+    }
+
+    func testRequirementMarkerRevealsWhenSelectionIntersectsSpan() throws {
+        let draft = "- [ ] hand req"
+        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
+        let parse = Self.parse(draft: draft, spans: [span])
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                cursorUTF8: nil,
+                selectionUTF8: 4..<10,
+                concealRouteStartGlyphs: true
+            )
+        )
+        XCTAssertEqual(String(text.characters), draft)
+        XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+        XCTAssertTrue(
+            CapturePanelModel.concealedRequirementMarkerSpans(
+                ranges: ranges,
+                draft: draft,
+                cursorUTF8: nil,
+                selectionUTF8: 4..<10
+            ).isEmpty
+        )
+    }
+
+    func testRequirementMarkerOverlayFollowsLiveCaret() throws {
+        let model = CapturePanelModel()
+        let draft = "- [ ] hand req"
+        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
+        let parse = Self.parse(draft: draft, spans: [span])
+        model.plainDraft = draft
+        model.latestParse = parse
+        let outside = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: 0)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: outside)
+        model.applyEditorHighlightingForTests(parse: parse, draft: draft, cursorUTF8: 0)
+        XCTAssertEqual(model.requirementMarkerSpans().map(\.start), [2])
+        XCTAssertEqual(
+            Self.strings(in: model.attributedDraft, where: Self.isClearForeground),
+            ["[ ] "]
+        )
+
+        let inside = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: 2)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: inside)
+        model.editorSelectionDidChange(cursorUTF8Offset: 2)
+        XCTAssertTrue(model.requirementMarkerSpans().isEmpty)
+        XCTAssertTrue(
+            Self.strings(in: model.attributedDraft, where: Self.isClearForeground).isEmpty
+        )
+        XCTAssertEqual(String(model.attributedDraft.characters), draft)
+    }
+
     private static func parse(draft: String, spans: [CaptureSpan]) -> CaptureParseResponse {
         CaptureParseResponse(
             ok: true,

@@ -1301,6 +1301,9 @@ final class CapturePanelModel: ObservableObject {
     /// over a sealed project-note marker can put its manila wash back after the
     /// picker's accent wash comes off.
     private var paintedSpanRanges: (draft: String, ranges: [ValidatedCaptureSpan])?
+    /// Concealed `req_marker` starts from the last highlight paint. A caret
+    /// move that changes this set re-paints without a reparse.
+    private var lastConcealedRequirementMarkerStarts: [Int] = []
 
     /// Numbered Task Link count of the running Pomodoro, derived from
     /// the agenda store's snapshot (or its plain-lane fallback on an old
@@ -1940,6 +1943,8 @@ final class CapturePanelModel: ObservableObject {
 
     /// Current Bob-authored requirement spans, used only for the visual
     /// glyph overlay. The checkbox bytes remain in the draft and in copies.
+    /// Caret-adjacent markers stay out so the overlay does not cover the
+    /// revealed `[ ] ` bytes.
     func requirementMarkerSpans() -> [CaptureSpan] {
         guard showsRecordRouteEmoji,
               let painted = paintedSpanRanges,
@@ -1947,12 +1952,65 @@ final class CapturePanelModel: ObservableObject {
         else {
             return []
         }
-        return painted.ranges.compactMap { item in
-            guard item.span.kind == "req_marker",
-                  let depth = item.span.depth,
-                  depth > 0,
-                  item.span.end - item.span.start == 4,
-                  String(painted.draft[item.range]) == "[ ] "
+        return Self.concealedRequirementMarkerSpans(
+            ranges: painted.ranges,
+            draft: painted.draft,
+            cursorUTF8: collapsedSelectionUTF8Offset(),
+            selectionUTF8: utf8SelectionRange(of: editorSelection)
+        )
+    }
+
+    /// A depth-bearing `[ ] ` req_marker is caret-adjacent when the
+    /// collapsed caret's UTF-8 offset lies in `[span.start, span.end]`
+    /// (inclusive) or a non-empty selection intersects the span.
+    static func isRequirementMarkerCaretAdjacent(
+        span: CaptureSpan,
+        cursorUTF8: Int?,
+        selectionUTF8: Range<Int>? = nil
+    ) -> Bool {
+        if let selection = selectionUTF8, selection.lowerBound < selection.upperBound {
+            return selection.lowerBound < span.end && selection.upperBound > span.start
+        }
+        guard let cursor = cursorUTF8 else {
+            return false
+        }
+        return cursor >= span.start && cursor <= span.end
+    }
+
+    static func isDepthBearingRequirementMarker(
+        span: CaptureSpan,
+        draftRange: Range<String.Index>,
+        draft: String
+    ) -> Bool {
+        guard span.kind == "req_marker",
+              let depth = span.depth,
+              depth > 0,
+              span.end - span.start == 4,
+              String(draft[draftRange]) == "[ ] "
+        else {
+            return false
+        }
+        return true
+    }
+
+    /// Overlay spans: depth-bearing `[ ] ` markers that the caret is not on.
+    static func concealedRequirementMarkerSpans(
+        ranges: [ValidatedCaptureSpan],
+        draft: String,
+        cursorUTF8: Int?,
+        selectionUTF8: Range<Int>? = nil
+    ) -> [CaptureSpan] {
+        ranges.compactMap { item in
+            guard isDepthBearingRequirementMarker(
+                span: item.span,
+                draftRange: item.range,
+                draft: draft
+            ),
+                !isRequirementMarkerCaretAdjacent(
+                    span: item.span,
+                    cursorUTF8: cursorUTF8,
+                    selectionUTF8: selectionUTF8
+                )
             else {
                 return nil
             }
@@ -3910,14 +3968,23 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func editorSelectionDidChange() {
-        editorSelectionDidChange(cursorUTF8Offset: collapsedSelectionUTF8Offset())
+        editorSelectionDidChange(
+            cursorUTF8Offset: collapsedSelectionUTF8Offset(),
+            selectionUTF8: utf8SelectionRange(of: editorSelection)
+        )
     }
 
     func editorSelectionDidChange(to selection: AttributedTextSelection) {
-        editorSelectionDidChange(cursorUTF8Offset: collapsedSelectionUTF8Offset(of: selection))
+        editorSelectionDidChange(
+            cursorUTF8Offset: collapsedSelectionUTF8Offset(of: selection),
+            selectionUTF8: utf8SelectionRange(of: selection)
+        )
     }
 
-    func editorSelectionDidChange(cursorUTF8Offset: Int?) {
+    func editorSelectionDidChange(
+        cursorUTF8Offset: Int?,
+        selectionUTF8: Range<Int>? = nil
+    ) {
         let insertionOffset = cursorUTF8Offset
         if let ignoredOffset = programmaticSelectionOffsetToIgnore {
             if ignoredOffset == insertionOffset {
@@ -3988,7 +4055,15 @@ final class CapturePanelModel: ObservableObject {
         // paint (the unconfigured-theme underline) refreshes via the
         // selection-triggered analysis below, which paints with this event's
         // caret: by the time the async parse returns, the live selection may
-        // already belong to the next move.
+        // already belong to the next move. Requirement-marker concealment is
+        // the one lockstep exception: it re-paints the current parse only
+        // when adjacency actually changes, never mutates the draft bytes,
+        // and skips the write when the concealed set is unchanged.
+
+        refreshRequirementMarkerConcealmentIfNeeded(
+            cursorUTF8: insertionOffset,
+            selectionUTF8: selectionUTF8 ?? utf8SelectionRange(of: editorSelection)
+        )
 
         // A caret-only move never auto-opens the picker; at most it shows the
         // reopen chip.
@@ -4009,6 +4084,29 @@ final class CapturePanelModel: ObservableObject {
             return utf8Offset(in: attributedDraft, at: index)
         case .ranges(_):
             return nil
+        }
+    }
+
+    func utf8SelectionRange(of selection: AttributedTextSelection) -> Range<Int>? {
+        switch selection.indices(in: attributedDraft) {
+        case .insertionPoint:
+            return nil
+        case .ranges(let rangeSet):
+            var lower: Int?
+            var upper: Int?
+            for range in rangeSet.ranges {
+                guard let start = utf8Offset(in: attributedDraft, at: range.lowerBound),
+                      let end = utf8Offset(in: attributedDraft, at: range.upperBound)
+                else {
+                    continue
+                }
+                lower = min(lower ?? start, start)
+                upper = max(upper ?? end, end)
+            }
+            guard let lower, let upper, lower < upper else {
+                return nil
+            }
+            return lower..<upper
         }
     }
 
@@ -23105,7 +23203,8 @@ final class CapturePanelModel: ObservableObject {
     private func applyHighlighting(
         parse: CaptureParseResponse,
         draft: String,
-        cursorUTF8: Int? = nil
+        cursorUTF8: Int? = nil,
+        selectionUTF8: Range<Int>? = nil
     ) {
         let ranges = validatedSpanRanges(in: draft, spans: parse.spans)
         if ranges == nil {
@@ -23119,6 +23218,8 @@ final class CapturePanelModel: ObservableObject {
         } else {
             paintedSpanRanges = nil
         }
+        let resolvedCursor = cursorUTF8 ?? collapsedSelectionUTF8Offset()
+        let resolvedSelection = selectionUTF8 ?? utf8SelectionRange(of: editorSelection)
         var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
@@ -23127,11 +23228,20 @@ final class CapturePanelModel: ObservableObject {
                 parse: parse,
                 draft: draft,
                 ranges: ranges,
-                cursorUTF8: cursorUTF8 ?? collapsedSelectionUTF8Offset(),
+                cursorUTF8: resolvedCursor,
+                selectionUTF8: resolvedSelection,
                 concealRouteStartGlyphs: showsRecordRouteEmoji
             )
         }
         isApplyingProgrammaticDraft = false
+        lastConcealedRequirementMarkerStarts = showsRecordRouteEmoji
+            ? Self.concealedRequirementMarkerSpans(
+                ranges: ranges ?? [],
+                draft: draft,
+                cursorUTF8: resolvedCursor,
+                selectionUTF8: resolvedSelection
+            ).map(\.start)
+            : []
         if ignoredMalformedSpan {
             statusText = "Ignored malformed parse spans"
         }
@@ -23149,6 +23259,7 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         ranges: [ValidatedCaptureSpan]?,
         cursorUTF8: Int? = nil,
+        selectionUTF8: Range<Int>? = nil,
         concealRouteStartGlyphs: Bool = false
     ) -> Bool {
         guard let ranges else {
@@ -23161,6 +23272,7 @@ final class CapturePanelModel: ObservableObject {
             draft: draft,
             ranges: ranges,
             cursorUTF8: cursorUTF8,
+            selectionUTF8: selectionUTF8,
             concealRouteStartGlyphs: concealRouteStartGlyphs
         )
     }
@@ -23172,6 +23284,49 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         applyHighlighting(parse: parse, draft: plainDraft)
+    }
+
+    /// Re-paints when the caret enters or leaves a `req_marker` without a
+    /// reparse. Attribute paint only; the draft bytes stay untouched.
+    private func refreshRequirementMarkerConcealmentIfNeeded(
+        cursorUTF8: Int?,
+        selectionUTF8: Range<Int>?
+    ) {
+        guard showsRecordRouteEmoji,
+              let parse = latestParse, parse.input == plainDraft,
+              let painted = paintedSpanRanges, painted.draft == plainDraft
+        else {
+            return
+        }
+        let starts = Self.concealedRequirementMarkerSpans(
+            ranges: painted.ranges,
+            draft: painted.draft,
+            cursorUTF8: cursorUTF8,
+            selectionUTF8: selectionUTF8
+        ).map(\.start)
+        guard starts != lastConcealedRequirementMarkerStarts else {
+            return
+        }
+        applyHighlighting(
+            parse: parse,
+            draft: plainDraft,
+            cursorUTF8: cursorUTF8,
+            selectionUTF8: selectionUTF8
+        )
+    }
+
+    func applyEditorHighlightingForTests(
+        parse: CaptureParseResponse,
+        draft: String,
+        cursorUTF8: Int? = nil,
+        selectionUTF8: Range<Int>? = nil
+    ) {
+        applyHighlighting(
+            parse: parse,
+            draft: draft,
+            cursorUTF8: cursorUTF8,
+            selectionUTF8: selectionUTF8
+        )
     }
 
     /// Typed text inherits the previous character's attributes, so clear every
@@ -23193,6 +23348,7 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         ranges: [ValidatedCaptureSpan],
         cursorUTF8: Int? = nil,
+        selectionUTF8: Range<Int>? = nil,
         concealRouteStartGlyphs: Bool = false
     ) -> Bool {
         clearEditorHighlightAttributes(&text)
@@ -23258,14 +23414,20 @@ final class CapturePanelModel: ObservableObject {
                 }
             }
             if concealRouteStartGlyphs,
-               item.span.kind == "req_marker",
-               let depth = item.span.depth,
-               depth > 0,
-               item.span.end - item.span.start == 4,
-               String(draft[item.range]) == "[ ] "
+               Self.isDepthBearingRequirementMarker(
+                   span: item.span,
+                   draftRange: item.range,
+                   draft: draft
+               ),
+               !Self.isRequirementMarkerCaretAdjacent(
+                   span: item.span,
+                   cursorUTF8: cursorUTF8,
+                   selectionUTF8: selectionUTF8
+               )
             {
                 // The checkbox is semantic storage. Bob's depth-bearing span
                 // reserves its visual slot for the quiet hash run below.
+                // The caret on those bytes reveals the raw `[ ] `.
                 text[lower..<upper].foregroundColor = .clear
             }
             if item.span.projectNote != nil {

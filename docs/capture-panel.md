@@ -143,6 +143,9 @@ states, and announcements.
   brown with no wash; a modifier value this app does not know still gets the wash but
   recolors nothing. Typing the `@` seal right after `@route^id` or `@route:id` opens no
   picker or completion and is never sent to `capture-rewrite`.
+- A depth-bearing requirement marker conceals its `[ ] ` bytes behind a quiet hash run.
+  The caret on those bytes, or a selection that intersects them, reveals the raw
+  checkbox; Backspace still deletes the whole marker.
 
 The agenda UI behind the store above is described in [Idle agenda](idle-agenda.md).
 
@@ -455,19 +458,19 @@ dotted purple underline; existing sections do not.
 
 A glued `#` after a resolved `@route+block-id`, once the item has body text, names a
 **drawer**: a direct child bullet of the task whose whole text is an ALL-CAPS title
-(`REQUIREMENTS`, `FUTURE WORK`), with its notes nested beneath. Typing `Text @foo+bar#`
+(`NOTES`, `FUTURE WORK`), with its notes nested beneath. Typing `Text @foo+bar#`
 opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare-`#` menus:
 
 ```text
 ╭─ DRAWER · ^bar Upgrade Postgres (foo) ─────────────────────╮
 │ ON THIS TASK                                                │
-│   REQUIREMENTS                                    3 notes   │
+│   NOTES                                           3 notes   │
 │   FUTURE WORK                                     1 note    │
 │ RECENT                                                      │
 │   MOTIVATION                  used in 12 notes · 3 days ago │
 │   ACCEPTANCE                  used in 4 notes · last week   │
 ├─────────────────────────────────────────────────────────────┤
-│ Adds after "2 GB RAM" in REQUIREMENTS                       │
+│ Adds after "2 GB RAM" in NOTES                              │
 ╰─────────────────────────────────────────────────────────────╯
 ```
 
@@ -479,7 +482,7 @@ opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare
   near-duplicate of a drawer used elsewhere) is dimmed with Bob's reason, and **Return** on
   it does nothing.
 - **Footer.** The footer shows Bob's one-line consequence for the selected row, such as
-  `Adds after "2 GB RAM" in REQUIREMENTS`, or the key hint when nothing is selected.
+  `Adds after "2 GB RAM" in NOTES`, or the key hint when nothing is selected.
 - **Counts and ages** (`3 notes`, `used in 12 notes · 3 days ago`) are Bob's `detail`
   text. The app counts nothing itself.
 - **Keys.** The same as the other unselected menus: **Return** submits the draft

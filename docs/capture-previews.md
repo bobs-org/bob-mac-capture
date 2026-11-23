@@ -149,8 +149,8 @@ route change end the group.
 
 ## Drawer captures
 
-A sub-bullet filed in a task drawer (`Text @foo+bar#requirements`) shows the
-header `Sub-bullet under ^bar › REQUIREMENTS` above the task card. When Bob's
+A sub-bullet filed in a task drawer (`Text @foo+bar#notes`) shows the
+header `Sub-bullet under ^bar › NOTES` above the task card. When Bob's
 per-item `drawer` object reports `created`, the header adds a dashed
 **new drawer** capsule. A separate `#type` on the same item retypes the task
 in the same transaction, so Bob's `Type` row renders beneath the header
