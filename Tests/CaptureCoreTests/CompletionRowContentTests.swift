@@ -4,6 +4,15 @@ import XCTest
 @testable import CaptureCore
 
 final class CompletionRowContentTests: XCTestCase {
+    func testRequirementMarkerHasItsOwnSemanticCategory() {
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "req_marker"), .requirementMarker)
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)),
+            .requirementMarker
+        )
+    }
+
     func testMergeInSpansUseArrowAndRouteColorFamilies() {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_arrow"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "merge_in_source"), .route)

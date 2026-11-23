@@ -1178,123 +1178,223 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
-    func testRequirementMarkerConcealsWhenCaretIsElsewhere() throws {
-        let draft = "- [ ] hand req"
-        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
-        let parse = Self.parse(draft: draft, spans: [span])
-        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
-        var text = AttributedString(draft)
-
-        XCTAssertFalse(
-            CapturePanelModel.paintHighlighting(
-                &text,
-                parse: parse,
-                draft: draft,
-                ranges: ranges,
-                cursorUTF8: 0,
-                concealRouteStartGlyphs: true
-            )
-        )
-        XCTAssertEqual(String(text.characters), draft)
-        XCTAssertEqual(Self.strings(in: text, where: Self.isClearForeground), ["[ ] "])
-        XCTAssertEqual(
-            CapturePanelModel.concealedRequirementMarkerSpans(
-                ranges: ranges,
-                draft: draft,
-                cursorUTF8: 0
-            ).map(\.start),
-            [2]
-        )
-    }
-
-    func testRequirementMarkerRevealsWhenCaretIsOnSpan() throws {
-        let draft = "- [ ] hand req"
-        let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
-        let parse = Self.parse(draft: draft, spans: [span])
-        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
-
-        for cursor in [2, 4, 6] {
+    func testRequirementChipPaintsOnlyThreeBytesAtEveryDepth() throws {
+        let draft = "Ship 🧭\n- [ ] hand req"
+        let start = "Ship 🧭\n- ".utf8.count
+        for depth in [1, 2, 3, 16] {
+            let span = CaptureSpan(start: start, end: start + 4, kind: "req_marker", depth: depth)
+            let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
             var text = AttributedString(draft)
+            // Simulate attributes inherited from the old concealed marker.
+            text.foregroundColor = .clear
+            text.backgroundColor = .orange
             XCTAssertFalse(
                 CapturePanelModel.paintHighlighting(
-                    &text,
-                    parse: parse,
-                    draft: draft,
-                    ranges: ranges,
-                    cursorUTF8: cursor,
-                    concealRouteStartGlyphs: true
+                    &text, parse: Self.parse(draft: draft, spans: [span]),
+                    draft: draft, ranges: ranges, concealRouteStartGlyphs: true
                 )
             )
             XCTAssertEqual(String(text.characters), draft)
+            XCTAssertEqual(Self.strings(in: text, where: { $0.backgroundColor != nil }), ["[ ]"])
+            XCTAssertEqual(Self.strings(in: text, where: { $0.foregroundColor != nil }), ["[ ]"])
+            XCTAssertEqual(Self.strings(in: text, where: { $0.foregroundColor == .teal }), ["[ ]"])
             XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
-            XCTAssertTrue(
-                CapturePanelModel.concealedRequirementMarkerSpans(
-                    ranges: ranges,
-                    draft: draft,
-                    cursorUTF8: cursor
-                ).isEmpty
+            let wash = CaptureEditorPalette.requirementWash(
+                increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
             )
+            XCTAssertEqual(Self.strings(in: text, where: { $0.backgroundColor == wash }), ["[ ]"])
         }
     }
 
-    func testRequirementMarkerRevealsWhenSelectionIntersectsSpan() throws {
+    func testRequirementWashUsesRecordRouteContrastLevels() {
+        XCTAssertEqual(
+            CaptureEditorPalette.requirementWash(increaseContrast: false), .teal.opacity(0.16))
+        XCTAssertEqual(
+            CaptureEditorPalette.requirementWash(increaseContrast: true), .teal.opacity(0.28))
+    }
+
+    func testRequirementChipRequiresBobsDepthBearingSpan() throws {
+        let draft = "- [ ] hand req"
+        for spans in [
+            [],
+            [CaptureSpan(start: 2, end: 6, kind: "req_marker")],
+            [CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 0)],
+            [CaptureSpan(start: 2, end: 5, kind: "req_marker", depth: 1)],
+        ] {
+            var text = AttributedString(draft)
+            let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+            CapturePanelModel.paintHighlighting(
+                &text, parse: Self.parse(draft: draft, spans: spans), draft: draft, ranges: ranges
+            )
+            XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+            XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
+        }
+    }
+
+    func testRequirementChipPaintIsIndependentOfCaretAndOverlayGate() throws {
         let draft = "- [ ] hand req"
         let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
         let parse = Self.parse(draft: draft, spans: [span])
         let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: [span]))
-        var text = AttributedString(draft)
-
-        XCTAssertFalse(
-            CapturePanelModel.paintHighlighting(
-                &text,
-                parse: parse,
-                draft: draft,
-                ranges: ranges,
-                cursorUTF8: nil,
-                selectionUTF8: 4..<10,
-                concealRouteStartGlyphs: true
-            )
-        )
-        XCTAssertEqual(String(text.characters), draft)
-        XCTAssertTrue(Self.strings(in: text, where: Self.isClearForeground).isEmpty)
-        XCTAssertTrue(
-            CapturePanelModel.concealedRequirementMarkerSpans(
-                ranges: ranges,
-                draft: draft,
-                cursorUTF8: nil,
-                selectionUTF8: 4..<10
-            ).isEmpty
-        )
+        var expected = AttributedString(draft)
+        CapturePanelModel.paintHighlighting(&expected, parse: parse, draft: draft, ranges: ranges)
+        for cursor in [0, 2, 3, 4, 5, 6, draft.utf8.count] {
+            for concealRoute in [false, true] {
+                var text = AttributedString(draft)
+                CapturePanelModel.paintHighlighting(
+                    &text, parse: parse, draft: draft, ranges: ranges,
+                    cursorUTF8: cursor, concealRouteStartGlyphs: concealRoute
+                )
+                XCTAssertEqual(text, expected)
+            }
+        }
     }
 
-    func testRequirementMarkerOverlayFollowsLiveCaret() throws {
+    func testRequirementSelectionCallbacksNeverWriteAttributedDraft() throws {
         let model = CapturePanelModel()
         let draft = "- [ ] hand req"
         let span = CaptureSpan(start: 2, end: 6, kind: "req_marker", depth: 1)
         let parse = Self.parse(draft: draft, spans: [span])
         model.plainDraft = draft
         model.latestParse = parse
-        let outside = try XCTUnwrap(
-            attributedStringIndex(in: model.attributedDraft, utf8Offset: 0)
-        )
-        model.editorSelection = AttributedTextSelection(insertionPoint: outside)
         model.applyEditorHighlightingForTests(parse: parse, draft: draft, cursorUTF8: 0)
-        XCTAssertEqual(model.requirementMarkerSpans().map(\.start), [2])
-        XCTAssertEqual(
-            Self.strings(in: model.attributedDraft, where: Self.isClearForeground),
-            ["[ ] "]
-        )
+        let painted = model.attributedDraft
+        var paints = 0
+        let observer = model.$attributedDraft.dropFirst().sink { _ in paints += 1 }
+        defer { observer.cancel() }
 
-        let inside = try XCTUnwrap(
-            attributedStringIndex(in: model.attributedDraft, utf8Offset: 2)
+        for cursor in [0, 2, 4, 6, draft.utf8.count] {
+            let index = try XCTUnwrap(
+                attributedStringIndex(in: model.attributedDraft, utf8Offset: cursor)
+            )
+            model.editorSelection = AttributedTextSelection(insertionPoint: index)
+            model.editorSelectionDidChange(to: model.editorSelection)
+            XCTAssertEqual(model.attributedDraft, painted)
+        }
+        let lower = try XCTUnwrap(attributedStringIndex(in: model.attributedDraft, utf8Offset: 3))
+        let upper = try XCTUnwrap(attributedStringIndex(in: model.attributedDraft, utf8Offset: 10))
+        model.editorSelection = AttributedTextSelection(range: lower..<upper)
+        model.editorSelectionDidChange(to: model.editorSelection)
+        XCTAssertEqual(model.attributedDraft, painted)
+        XCTAssertEqual(paints, 0)
+    }
+
+    func testPickerClearRestoresRequirementChip() {
+        let draft = "Ship 🧭\n- [ ] hand req"
+        let start = "Ship 🧭\n- ".utf8.count
+        let span = CaptureSpan(start: start, end: start + 4, kind: "req_marker", depth: 1)
+        let marker = CaptureRange(start: start, end: start + 4)
+        let wash = CaptureEditorPalette.requirementWash(
+            increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         )
-        model.editorSelection = AttributedTextSelection(insertionPoint: inside)
-        model.editorSelectionDidChange(cursorUTF8Offset: 2)
-        XCTAssertTrue(model.requirementMarkerSpans().isEmpty)
+        for dismissPanel in [false, true] {
+            let model = CapturePanelModel()
+            model.installBlockIDPickerForPreviews(
+                field: nil, candidates: [], context: "task_block_id",
+                replacement: marker, draft: draft, restoreCursor: start + 2
+            )
+            // Exercise an overlapping marker range, including the unwashed space.
+            model.pickerMarkerHighlight = marker
+            model.applyEditorHighlightingForTests(
+                parse: Self.parse(draft: draft, spans: [span]), draft: draft)
+            XCTAssertEqual(
+                Self.strings(in: model.attributedDraft, where: { $0.backgroundColor != nil }).joined(),
+                "[ ] "
+            )
+            if dismissPanel {
+                model.prepareForDismissal()
+            } else {
+                model.cancelPicker()
+            }
+            XCTAssertNil(model.picker)
+            XCTAssertNil(model.pickerMarkerHighlight)
+            XCTAssertEqual(model.collapsedSelectionUTF8Offset(), start + 2)
+            XCTAssertEqual(
+                Self.strings(in: model.attributedDraft, where: { $0.backgroundColor != nil }),
+                ["[ ]"]
+            )
+            XCTAssertEqual(
+                Self.strings(in: model.attributedDraft, where: { $0.backgroundColor == wash }),
+                ["[ ]"]
+            )
+            XCTAssertEqual(
+                Self.strings(in: model.attributedDraft, where: { $0.foregroundColor == .teal }),
+                ["[ ]"]
+            )
+            XCTAssertEqual(model.plainDraft, draft)
+            XCTAssertTrue(
+                Self.strings(in: model.attributedDraft, where: Self.isClearForeground).isEmpty)
+        }
+    }
+
+    func testRequirementSpaceExpansionAndImmediateBackspace() async throws {
+        let (model, editor) = Self.requirementEditor("Ship 🧭\n- [")
+        defer { model.closeRetainingDraft() }
+        model.noteRequirementMarkerExpansionIntent(
+            typed: " ", text: editor.string, selectedRange: editor.selectedRange(),
+            hasMarkedText: false
+        )
+        editor.insertText(" ", replacementRange: editor.selectedRange())
+        model.plainDraft = editor.string
+        model.editorTextDidChange(cursorUTF8Offset: editor.string.utf8.count)
+        try await Self.waitForRequirement { model.plainDraft == "Ship 🧭\n- [ ] " }
+        XCTAssertEqual(editor.string, "Ship 🧭\n- [ ] ")
+        XCTAssertEqual(editor.selectedRange().location, (editor.string as NSString).length)
         XCTAssertTrue(
-            Self.strings(in: model.attributedDraft, where: Self.isClearForeground).isEmpty
+            CapturePanelController.deleteRequirementMarkerInEditableTextView(
+                firstResponder: editor, model: model
+            ))
+        XCTAssertEqual(editor.string, "Ship 🧭\n- ")
+    }
+
+    func testRequirementBackspaceUsesParsedMarkerAfterOvertypeArmClears() async throws {
+        let (model, editor) = Self.requirementEditor("Ship 🧭\n- [ ] ")
+        defer { model.closeRetainingDraft() }
+        model.editorTextDidChange(cursorUTF8Offset: editor.string.utf8.count)
+        try await Self.waitForRequirement {
+            Self.strings(in: model.attributedDraft, where: { $0.backgroundColor != nil }) == ["[ ]"]
+        }
+        model.cancelRequirementMarkerOvertype()
+        XCTAssertTrue(
+            CapturePanelController.deleteRequirementMarkerInEditableTextView(
+                firstResponder: editor, model: model
+            ))
+        XCTAssertEqual(editor.string, "Ship 🧭\n- ")
+    }
+
+    private static func requirementEditor(_ draft: String) -> (CapturePanelModel, NSTextView) {
+        let fakeBob = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/fake-bob")
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: fakeBob.path,
+                environment: [
+                    "HOME": "/tmp", "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_PARSE_FIXTURE": "capture-parse-requirement-marker.json",
+                ]
+            ),
+            debounceNanoseconds: 0
         )
-        XCTAssertEqual(String(model.attributedDraft.characters), draft)
+        let editor = NSTextView()
+        editor.isEditable = true
+        editor.string = draft
+        editor.setSelectedRange(NSRange(location: (draft as NSString).length, length: 0))
+        model.plainDraft = draft
+        model.applyNativeRewriteEdit = { edit in
+            CapturePanelController.applySeparatorToggleInEditableTextView(
+                edit, firstResponder: editor)
+        }
+        return (model, editor)
+    }
+
+    private static func waitForRequirement(_ condition: @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTFail("Timed out waiting for requirement editor")
     }
 
     private static func parse(draft: String, spans: [CaptureSpan]) -> CaptureParseResponse {

@@ -69,6 +69,11 @@ enum CaptureEditorPalette {
         Color(nsColor: .systemBrown).opacity(increaseContrast ? 0.26 : 0.16)
     }
 
+    /// Native chip on the real `[ ]` bytes; the trailing space stays unwashed.
+    static func requirementWash(increaseContrast: Bool) -> Color {
+        Color.teal.opacity(increaseContrast ? 0.28 : 0.16)
+    }
+
     static func color(for category: CaptureSemanticCategory) -> Color {
         switch category {
         case .route:
@@ -82,6 +87,8 @@ enum CaptureEditorPalette {
         case .priority:
             return .orange
         case .directive:
+            return .teal
+        case .requirementMarker:
             return .teal
         case .wikilinkDelimiter:
             return .secondary

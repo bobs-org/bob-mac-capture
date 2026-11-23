@@ -34,6 +34,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case relationSuccessorLabel
     case taskType
     case taskTypeMarker
+    case requirementMarker
     case pomodoroStart
     case pomodoroPastSegment
     case pomodoroPastRepair
@@ -96,6 +97,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .route
     case "blocked_task_sigil":
         return .blockedTaskSigil
+    case "req_marker":
+        return .requirementMarker
     case "blocked_task_note":
         return .route
     case "blocked_task_block_id":

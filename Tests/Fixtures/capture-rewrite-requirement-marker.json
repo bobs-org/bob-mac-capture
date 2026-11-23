@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Ship 🧭\n- [ ","text":"Ship 🧭\n- [ ] ","changed":true,"cursor":16,"rule":"expand_req_marker","edits":[{"range":{"start":13,"end":14},"replacement":" ] "}],"summary":"Expanded requirement marker"}

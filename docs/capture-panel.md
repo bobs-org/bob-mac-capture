@@ -143,9 +143,11 @@ states, and announcements.
   brown with no wash; a modifier value this app does not know still gets the wash but
   recolors nothing. Typing the `@` seal right after `@route^id` or `@route:id` opens no
   picker or completion and is never sent to `capture-rewrite`.
-- A depth-bearing requirement marker conceals its `[ ] ` bytes behind a quiet hash run.
-  The caret on those bytes, or a selection that intersects them, reveals the raw
-  checkbox; Backspace still deletes the whole marker.
+- A depth-bearing requirement marker shows the real `[ ]` bytes as a teal chip, with a
+  16% teal wash (28% with Increase Contrast). The leading `- ` and trailing space stay
+  unstyled. The chip stays visible while typing, selecting, wrapping, and scrolling;
+  moving the caret never hides or reveals bytes. Typing `- [` followed by Space still
+  expands the marker, and Backspace still removes the whole `[ ] ` marker.
 
 The agenda UI behind the store above is described in [Idle agenda](idle-agenda.md).
 

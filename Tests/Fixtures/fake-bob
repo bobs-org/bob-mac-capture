@@ -2186,6 +2186,10 @@ JSON
         exit 0
       fi
     fi
+    if [[ "${draft}" == $'Ship 🧭\n- [ ' ]]; then
+      cat "${fixtures_dir}/capture-rewrite-requirement-marker.json"
+      exit 0
+    fi
     if [[ "${FAKE_BOB_MODIFIER_ALIAS_UNCHANGED:-}" == "1" \
        && ("${draft}" == "@home ." || "${draft}" == "Buy milk ;") ]]; then
       printf '{"ok":true,"schema_version":1,"input":'

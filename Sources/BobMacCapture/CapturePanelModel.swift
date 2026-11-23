@@ -1298,12 +1298,8 @@ final class CapturePanelModel: ObservableObject {
     /// the selection, undo, or `editorTextDidChange`.
     var pickerMarkerHighlight: CaptureRange?
     /// The validated spans of the latest highlight paint, so closing a picker
-    /// over a sealed project-note marker can put its manila wash back after the
-    /// picker's accent wash comes off.
+    /// can restore semantic chips after the picker's accent wash comes off.
     private var paintedSpanRanges: (draft: String, ranges: [ValidatedCaptureSpan])?
-    /// Concealed `req_marker` starts from the last highlight paint. A caret
-    /// move that changes this set re-paints without a reparse.
-    private var lastConcealedRequirementMarkerStarts: [Int] = []
 
     /// Numbered Task Link count of the running Pomodoro, derived from
     /// the agenda store's snapshot (or its plain-lane fallback on an old
@@ -1939,83 +1935,6 @@ final class CapturePanelModel: ObservableObject {
             return []
         }
         return CaptureRecordRouteAdornment.all(in: parse)
-    }
-
-    /// Current Bob-authored requirement spans, used only for the visual
-    /// glyph overlay. The checkbox bytes remain in the draft and in copies.
-    /// Caret-adjacent markers stay out so the overlay does not cover the
-    /// revealed `[ ] ` bytes.
-    func requirementMarkerSpans() -> [CaptureSpan] {
-        guard showsRecordRouteEmoji,
-              let painted = paintedSpanRanges,
-              painted.draft == plainDraft
-        else {
-            return []
-        }
-        return Self.concealedRequirementMarkerSpans(
-            ranges: painted.ranges,
-            draft: painted.draft,
-            cursorUTF8: collapsedSelectionUTF8Offset(),
-            selectionUTF8: utf8SelectionRange(of: editorSelection)
-        )
-    }
-
-    /// A depth-bearing `[ ] ` req_marker is caret-adjacent when the
-    /// collapsed caret's UTF-8 offset lies in `[span.start, span.end]`
-    /// (inclusive) or a non-empty selection intersects the span.
-    static func isRequirementMarkerCaretAdjacent(
-        span: CaptureSpan,
-        cursorUTF8: Int?,
-        selectionUTF8: Range<Int>? = nil
-    ) -> Bool {
-        if let selection = selectionUTF8, selection.lowerBound < selection.upperBound {
-            return selection.lowerBound < span.end && selection.upperBound > span.start
-        }
-        guard let cursor = cursorUTF8 else {
-            return false
-        }
-        return cursor >= span.start && cursor <= span.end
-    }
-
-    static func isDepthBearingRequirementMarker(
-        span: CaptureSpan,
-        draftRange: Range<String.Index>,
-        draft: String
-    ) -> Bool {
-        guard span.kind == "req_marker",
-              let depth = span.depth,
-              depth > 0,
-              span.end - span.start == 4,
-              String(draft[draftRange]) == "[ ] "
-        else {
-            return false
-        }
-        return true
-    }
-
-    /// Overlay spans: depth-bearing `[ ] ` markers that the caret is not on.
-    static func concealedRequirementMarkerSpans(
-        ranges: [ValidatedCaptureSpan],
-        draft: String,
-        cursorUTF8: Int?,
-        selectionUTF8: Range<Int>? = nil
-    ) -> [CaptureSpan] {
-        ranges.compactMap { item in
-            guard isDepthBearingRequirementMarker(
-                span: item.span,
-                draftRange: item.range,
-                draft: draft
-            ),
-                !isRequirementMarkerCaretAdjacent(
-                    span: item.span,
-                    cursorUTF8: cursorUTF8,
-                    selectionUTF8: selectionUTF8
-                )
-            else {
-                return nil
-            }
-            return item.span
-        }
     }
 
     /// The footer bare-album one-key fix, only while the parse still
@@ -3969,22 +3888,17 @@ final class CapturePanelModel: ObservableObject {
 
     func editorSelectionDidChange() {
         editorSelectionDidChange(
-            cursorUTF8Offset: collapsedSelectionUTF8Offset(),
-            selectionUTF8: utf8SelectionRange(of: editorSelection)
+            cursorUTF8Offset: collapsedSelectionUTF8Offset()
         )
     }
 
     func editorSelectionDidChange(to selection: AttributedTextSelection) {
         editorSelectionDidChange(
-            cursorUTF8Offset: collapsedSelectionUTF8Offset(of: selection),
-            selectionUTF8: utf8SelectionRange(of: selection)
+            cursorUTF8Offset: collapsedSelectionUTF8Offset(of: selection)
         )
     }
 
-    func editorSelectionDidChange(
-        cursorUTF8Offset: Int?,
-        selectionUTF8: Range<Int>? = nil
-    ) {
+    func editorSelectionDidChange(cursorUTF8Offset: Int?) {
         let insertionOffset = cursorUTF8Offset
         if let ignoredOffset = programmaticSelectionOffsetToIgnore {
             if ignoredOffset == insertionOffset {
@@ -4055,15 +3969,7 @@ final class CapturePanelModel: ObservableObject {
         // paint (the unconfigured-theme underline) refreshes via the
         // selection-triggered analysis below, which paints with this event's
         // caret: by the time the async parse returns, the live selection may
-        // already belong to the next move. Requirement-marker concealment is
-        // the one lockstep exception: it re-paints the current parse only
-        // when adjacency actually changes, never mutates the draft bytes,
-        // and skips the write when the concealed set is unchanged.
-
-        refreshRequirementMarkerConcealmentIfNeeded(
-            cursorUTF8: insertionOffset,
-            selectionUTF8: selectionUTF8 ?? utf8SelectionRange(of: editorSelection)
-        )
+        // already belong to the next move.
 
         // A caret-only move never auto-opens the picker; at most it shows the
         // reopen chip.
@@ -11397,8 +11303,7 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
-        // The picker's accent wash replaced the project-note chip on a sealed
-        // marker; put the manila wash back under the same range. Resolved
+        // Restore any semantic chip the picker's accent wash replaced. Resolved
         // before the transform: `plainDraft` reads `attributedDraft`, which the
         // transform holds for writing.
         let chipRanges = paintedSpanRanges.flatMap { painted in
@@ -11414,6 +11319,9 @@ final class CapturePanelModel: ObservableObject {
             text[lower..<upper].backgroundColor = nil
             if let chipRanges {
                 Self.paintProjectNoteWash(&text, ranges: chipRanges, within: stringRange)
+                Self.paintRequirementMarkerChips(
+                    &text, draft: draftSnapshot, ranges: chipRanges, within: stringRange
+                )
             }
         }
         isApplyingProgrammaticDraft = false
@@ -12589,10 +12497,10 @@ final class CapturePanelModel: ObservableObject {
         if plainDraft == openPicker.draftSnapshot,
            stringRange(in: plainDraft, start: openPicker.restoreCursor, end: openPicker.restoreCursor) != nil
         {
-            setPlainDraft(
-                plainDraft,
+            // Only the caret moved; keep the semantic paint restored above.
+            restoreSelection(
                 cursorUTF8Offset: openPicker.restoreCursor,
-                suppressSelectionCallbacks: true
+                suppressEditorCallbacks: true
             )
         }
         requestFocus(.editor)
@@ -13778,10 +13686,10 @@ final class CapturePanelModel: ObservableObject {
         if plainDraft == openPicker.draftSnapshot,
            stringRange(in: plainDraft, start: openPicker.restoreCursor, end: openPicker.restoreCursor) != nil
         {
-            setPlainDraft(
-                plainDraft,
+            // Retaining the draft also retains its restored semantic paint.
+            restoreSelection(
                 cursorUTF8Offset: openPicker.restoreCursor,
-                suppressSelectionCallbacks: true
+                suppressEditorCallbacks: true
             )
         }
     }
@@ -23203,8 +23111,7 @@ final class CapturePanelModel: ObservableObject {
     private func applyHighlighting(
         parse: CaptureParseResponse,
         draft: String,
-        cursorUTF8: Int? = nil,
-        selectionUTF8: Range<Int>? = nil
+        cursorUTF8: Int? = nil
     ) {
         let ranges = validatedSpanRanges(in: draft, spans: parse.spans)
         if ranges == nil {
@@ -23219,7 +23126,6 @@ final class CapturePanelModel: ObservableObject {
             paintedSpanRanges = nil
         }
         let resolvedCursor = cursorUTF8 ?? collapsedSelectionUTF8Offset()
-        let resolvedSelection = selectionUTF8 ?? utf8SelectionRange(of: editorSelection)
         var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
@@ -23229,19 +23135,10 @@ final class CapturePanelModel: ObservableObject {
                 draft: draft,
                 ranges: ranges,
                 cursorUTF8: resolvedCursor,
-                selectionUTF8: resolvedSelection,
                 concealRouteStartGlyphs: showsRecordRouteEmoji
             )
         }
         isApplyingProgrammaticDraft = false
-        lastConcealedRequirementMarkerStarts = showsRecordRouteEmoji
-            ? Self.concealedRequirementMarkerSpans(
-                ranges: ranges ?? [],
-                draft: draft,
-                cursorUTF8: resolvedCursor,
-                selectionUTF8: resolvedSelection
-            ).map(\.start)
-            : []
         if ignoredMalformedSpan {
             statusText = "Ignored malformed parse spans"
         }
@@ -23259,7 +23156,6 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         ranges: [ValidatedCaptureSpan]?,
         cursorUTF8: Int? = nil,
-        selectionUTF8: Range<Int>? = nil,
         concealRouteStartGlyphs: Bool = false
     ) -> Bool {
         guard let ranges else {
@@ -23272,7 +23168,6 @@ final class CapturePanelModel: ObservableObject {
             draft: draft,
             ranges: ranges,
             cursorUTF8: cursorUTF8,
-            selectionUTF8: selectionUTF8,
             concealRouteStartGlyphs: concealRouteStartGlyphs
         )
     }
@@ -23286,46 +23181,15 @@ final class CapturePanelModel: ObservableObject {
         applyHighlighting(parse: parse, draft: plainDraft)
     }
 
-    /// Re-paints when the caret enters or leaves a `req_marker` without a
-    /// reparse. Attribute paint only; the draft bytes stay untouched.
-    private func refreshRequirementMarkerConcealmentIfNeeded(
-        cursorUTF8: Int?,
-        selectionUTF8: Range<Int>?
-    ) {
-        guard showsRecordRouteEmoji,
-              let parse = latestParse, parse.input == plainDraft,
-              let painted = paintedSpanRanges, painted.draft == plainDraft
-        else {
-            return
-        }
-        let starts = Self.concealedRequirementMarkerSpans(
-            ranges: painted.ranges,
-            draft: painted.draft,
-            cursorUTF8: cursorUTF8,
-            selectionUTF8: selectionUTF8
-        ).map(\.start)
-        guard starts != lastConcealedRequirementMarkerStarts else {
-            return
-        }
-        applyHighlighting(
-            parse: parse,
-            draft: plainDraft,
-            cursorUTF8: cursorUTF8,
-            selectionUTF8: selectionUTF8
-        )
-    }
-
     func applyEditorHighlightingForTests(
         parse: CaptureParseResponse,
         draft: String,
-        cursorUTF8: Int? = nil,
-        selectionUTF8: Range<Int>? = nil
+        cursorUTF8: Int? = nil
     ) {
         applyHighlighting(
             parse: parse,
             draft: draft,
-            cursorUTF8: cursorUTF8,
-            selectionUTF8: selectionUTF8
+            cursorUTF8: cursorUTF8
         )
     }
 
@@ -23348,7 +23212,6 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         ranges: [ValidatedCaptureSpan],
         cursorUTF8: Int? = nil,
-        selectionUTF8: Range<Int>? = nil,
         concealRouteStartGlyphs: Bool = false
     ) -> Bool {
         clearEditorHighlightAttributes(&text)
@@ -23357,6 +23220,10 @@ final class CapturePanelModel: ObservableObject {
             ? Set(CaptureRecordRouteAdornment.all(in: parse).map(\.start))
             : []
         for item in ranges {
+            // Requirement chips paint only `[ ]`, not the span's trailing space.
+            if item.span.kind == "req_marker" {
+                continue
+            }
             guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
                   let upper = AttributedString.Index(item.range.upperBound, within: text)
             else {
@@ -23412,23 +23279,6 @@ final class CapturePanelModel: ObservableObject {
                         text[glyphLower..<glyphUpper].foregroundColor = .clear
                     }
                 }
-            }
-            if concealRouteStartGlyphs,
-               Self.isDepthBearingRequirementMarker(
-                   span: item.span,
-                   draftRange: item.range,
-                   draft: draft
-               ),
-               !Self.isRequirementMarkerCaretAdjacent(
-                   span: item.span,
-                   cursorUTF8: cursorUTF8,
-                   selectionUTF8: selectionUTF8
-               )
-            {
-                // The checkbox is semantic storage. Bob's depth-bearing span
-                // reserves its visual slot for the quiet hash run below.
-                // The caret on those bytes reveals the raw `[ ] `.
-                text[lower..<upper].foregroundColor = .clear
             }
             if item.span.projectNote != nil {
                 // Every span of a sealed project-note marker, whatever the
@@ -23502,6 +23352,7 @@ final class CapturePanelModel: ObservableObject {
                 }
             }
         }
+        paintRequirementMarkerChips(&text, draft: draft, ranges: ranges)
         paintRecordValueRanges(&text, parse: parse, draft: draft)
         if parse.template != nil {
             for diagnostic in parse.diagnostics where diagnostic.severity != "info" && diagnostic.code != "template_missing_rows" {
@@ -23518,6 +23369,38 @@ final class CapturePanelModel: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Bob's depth-bearing spans authorize chips; never infer requirements from text.
+    /// Paint the three visible marker bytes in native text storage so selection,
+    /// wrapping, and scrolling need no separate geometry or caret repaint.
+    static func paintRequirementMarkerChips(
+        _ text: inout AttributedString,
+        draft: String,
+        ranges: [ValidatedCaptureSpan],
+        within bounds: Range<String.Index>? = nil
+    ) {
+        let wash = CaptureEditorPalette.requirementWash(
+            increaseContrast: NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        )
+        for item in ranges where item.span.kind == "req_marker" {
+            guard let depth = item.span.depth, depth > 0,
+                item.span.end - item.span.start == 4,
+                String(draft[item.range]) == "[ ] "
+            else {
+                continue
+            }
+            let chip = item.range.lowerBound..<draft.index(before: item.range.upperBound)
+            guard bounds.map({ chip.overlaps($0) }) ?? true,
+                let lower = AttributedString.Index(chip.lowerBound, within: text),
+                let upper = AttributedString.Index(chip.upperBound, within: text)
+            else {
+                continue
+            }
+            text[lower..<upper].foregroundColor = CaptureEditorPalette.color(
+                for: .requirementMarker)
+            text[lower..<upper].backgroundColor = wash
+        }
     }
 
     /// Tints each field's `value_ranges` from the record that owns the
