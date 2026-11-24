@@ -893,9 +893,6 @@ struct CaptureKeyCommandRouter {
                 return repeated ? .consumeKey : .cancelMailClose
             }
         }
-        if modifiers == .command, event.keyCode == KeyCode.return {
-            return .openMailCloseGmail
-        }
         return .consumeKey
     }
 
