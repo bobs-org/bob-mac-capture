@@ -205,9 +205,20 @@ A named project requiring a link blocks Return and Shift-Return until a `:`
 pick is made (or the name is removed). Escape from a following successor
 card returns to the Move card with its marks. See [Move card](task-pickers.md#move-card).
 
+## Mail Close card
+
+Guarded closes keep the draft on the card.
+
+| Key | Action |
+| --- | --- |
+| `Y` | Confirm |
+| Command-Return | Open `gmail_url` |
+| Return | Hint and stay |
+| Escape / `q` / Control-[ | Keep the draft |
+
 ## Successor choices
 
-Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves Done/Cancel, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Command-X stays Cut. Control-J pins the jump successor on the highlighted row (again clears); Return lands there after writes. Needs `pull_in.jump`: older Bobs hide the hint, report `Jump needs a newer bob`, and consume the key in Cancel reason. In Cancel reason, Control-N/P, Up/Down walk `USED BEFORE` (Esc restores, next backs out, Return writes); `[[` or `((` opens `LINK` — arrows move, Return/Tab insert at bob's bytes (ID-less: NAME first), empty Return only closes, Esc closes (see [Capture previews](capture-previews.md), [Log Recall](https://bobs-org.github.io/log-recall/)).
+Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves verdicts, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Control-J pins the jump successor; Return lands there after writes. Needs `pull_in.jump`. In Cancel reason, Control-N/P and Up/Down walk `USED BEFORE`; `[[` or `((` opens `LINK` (see [Capture previews](capture-previews.md)).
 
 Requirements: Control-X=Met; Control-Shift-X=Drop (optional reason);
 Control-Shift-T=Carry; Space=Carry-and-pull; Tab repeats/advances. Return

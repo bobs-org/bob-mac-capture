@@ -27,6 +27,12 @@ A `=` override restart or swap previews on the same start card with an orange
   keeps the draft, re-previews, and asks for Return again; a flag rejection
   retries without it per the [protocol gate](protocol.md#timeouts-and-guards).
 
+## Email task closes
+
+With `mail_close`, the first row is a banner and Return tints orange in
+  warning. Guarded submits keep the draft on the card; `Y` resubmits. Older Bob
+  omits it.
+
 ## Calendar-aware start previews
 
 Bob supplies buffered MEET runs, far-run warnings, event-conflict fit
@@ -35,8 +41,7 @@ Both cards show `pomodoro_clock_mixed` in orange and VoiceOver.
 
 ## Templates
 
-  Template fields decode tolerantly (an older Bob omits them; unknown span
-  kinds render neutral), and an older Bob refuses `%t` drafts before writing.
+  Template fields decode tolerantly; older Bob refuses `%t` drafts.
 
 Templates: [Saved templates](saved-templates.md).
 
@@ -51,12 +56,10 @@ Live preview calls `bob capture --dry-run [--no-clip] --format json -- <draft>`,
   preview calm and shows Bob's `template_missing_rows` message. Non-info
   template diagnostics underline the matching typed text.
 
-Showing the panel refreshes previews. While key with a
-  clip-directive parse, pasteboard changes trigger debounced previews
-  (counter behavior in [panel](capture-panel.md#live-preview-and-clipboard-semantics)).
-  Polling stops on hide, focus loss, draft removal, or lapsed clip evidence.
-  Visible past previews refresh every five-minute boundary using Bob's windows.
-  Refreshes never edit or submit; failures show refusals without stale cards.
+Showing the panel refreshes previews. With a clip-directive parse, pasteboard
+  changes trigger debounced previews. Polling stops on hide, focus loss, draft
+  removal, or lapsed evidence. Past previews refresh every five minutes.
+  Refreshes never write; failures show refusals.
 
 ## Clip card
 

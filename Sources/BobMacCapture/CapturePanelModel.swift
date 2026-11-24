@@ -627,6 +627,14 @@ private struct CaptureMoveChoiceSubmitContext {
     var jumpCapabilityAdvertised = false
 }
 
+private struct CaptureMailCloseSubmitContext {
+    let report: CaptureMailCloseReport
+    let draft: String
+    let clientIdentity: String
+    var openAfterCapture: Bool
+    let seed: String
+}
+
 private struct PendingExplicitSubmitIntent: Equatable {
     let draft: String
     let processClientIdentity: String
@@ -887,6 +895,9 @@ final class CapturePanelModel: ObservableObject {
     private var moveChoiceAcknowledgedDraft: String?
     private var moveChoiceContext: CaptureMoveChoiceSubmitContext?
     private var rememberedMoveChoice: CaptureMoveChoiceState?
+    @Published var mailCloseReport: CaptureMailCloseReport?
+    @Published var mailCloseMessage: String?
+    private var mailCloseContext: CaptureMailCloseSubmitContext?
     @Published var pullInChoice: CapturePullInChoiceState?
     /// Cancel `USED BEFORE` recall for the pull-in reason field. The band
     /// never owns focus; the field stays first responder throughout.
@@ -997,6 +1008,7 @@ final class CapturePanelModel: ObservableObject {
             cancelSimilarTasks(clear: true)
             previewPullInSnapshot = nil
             resetMoveChoice()
+            resetMailClose()
             inboxRouteChoice = nil
             inboxRouteChoiceContext = nil
             activeInboxRouteSubmitContext = nil
@@ -2044,9 +2056,18 @@ final class CapturePanelModel: ObservableObject {
     var inlinePromptVisible: Bool {
         taskIDPrompt != nil || pomodoroNamePrompt != nil || relationLabelPrompt != nil
             || moveChoice != nil || pullInChoice != nil || inboxRouteChoice != nil
+            || mailCloseReport != nil
     }
 
     var moveChoiceVisible: Bool { moveChoice != nil }
+
+    var mailCloseVisible: Bool { mailCloseReport != nil }
+
+    /// Live-preview `mail_close` report, if the current preview guards an email-task close.
+    var mailClosePreview: CaptureMailCloseReport? {
+        previewResults.compactMap(\.mailClose).first
+            ?? previewResult?.mailClose
+    }
 
     var pullInChoiceVisible: Bool {
         pullInChoice != nil
@@ -2737,11 +2758,12 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// True when any capture in the on-screen preview is a restart or swap,
+    /// or guards an email-task close in the warning tone,
     /// so the footer's primary Return tints orange.
     var primaryActionIsOverride: Bool {
         previewResults.contains { capture in
             CapturePomodoroStartPresentation(capture: capture)?.isOverride == true
-        }
+        } || mailClosePreview?.isWarning == true
     }
 
     /// The footer's primary action verb. Single close, start, toggle, link,
@@ -2965,6 +2987,8 @@ final class CapturePanelModel: ObservableObject {
         recordRefusalPresentation = nil
         previewResult = nil
         previewResults = []
+        // The Mail Close card owns its refusal payload; a preview refresh
+        // must not dismiss it while the draft is unchanged.
         previewGlobalDestination = nil
         previewOpenPlan = nil
         previewOutputsDraft = nil
@@ -3705,6 +3729,7 @@ final class CapturePanelModel: ObservableObject {
         }
 
         invalidateMoveChoiceForEdit(draft)
+        invalidateMailCloseForEdit(draft)
         if let hiddenThemeDraftSnapshot, hiddenThemeDraftSnapshot != draft {
             temporarilyHiddenThemeKey = nil
             self.hiddenThemeDraftSnapshot = nil
@@ -4438,7 +4463,8 @@ final class CapturePanelModel: ObservableObject {
         requirementSubmission: CaptureRequirementSubmission? = nil,
         requirementCapabilityProof: CaptureRequirementCapabilityProof? = nil,
         jumpOffer: String? = nil,
-        jumpCapabilityAdvertised: Bool = false
+        jumpCapabilityAdvertised: Bool = false,
+        mailCloseDigest: String? = nil
     ) {
         cancelSimilarTasks(clear: true)
         guard let processClient else {
@@ -4513,7 +4539,8 @@ final class CapturePanelModel: ObservableObject {
                         requireInboxRouteChoice: true,
                         inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
                         templateOrigin: currentDraftHasTemplate ? templateOrigin : nil,
-                        expectPastWindows: expectPastWindows
+                        expectPastWindows: expectPastWindows,
+                        mailCloseDigest: mailCloseDigest
                     )
                 }
                 await MainActor.run {
@@ -4815,6 +4842,90 @@ final class CapturePanelModel: ObservableObject {
         moveChoiceMessage = nil
         moveChoiceAcknowledgedDraft = nil
         moveChoiceCapabilityWarning = nil
+    }
+
+    func openMailClose(
+        report: CaptureMailCloseReport,
+        draft: String,
+        processClientIdentity: String,
+        openAfterCapture: Bool,
+        seed: String
+    ) {
+        mailCloseReport = report
+        mailCloseMessage = nil
+        mailCloseContext = CaptureMailCloseSubmitContext(
+            report: report, draft: draft, clientIdentity: processClientIdentity,
+            openAfterCapture: openAfterCapture, seed: seed
+        )
+        editorInputLocked = true
+        requestFocus(.editor)
+        announceStatus(report.title)
+    }
+
+    func confirmMailClose(openAfterCapture: Bool = false) {
+        guard let context = mailCloseContext, let report = mailCloseReport,
+            let processClient, !isSubmitting, !isPreviewing,
+            context.draft == plainDraft,
+            context.clientIdentity == processClient.identityToken
+        else { return }
+        let shouldOpen = context.openAfterCapture || openAfterCapture
+        let digest = report.digest
+        mailCloseReport = nil
+        mailCloseMessage = nil
+        let capturedContext = CaptureMailCloseSubmitContext(
+            report: report, draft: context.draft, clientIdentity: context.clientIdentity,
+            openAfterCapture: shouldOpen, seed: context.seed
+        )
+        mailCloseContext = capturedContext
+        clearEditorInputLockIfFree()
+        dispatchCapture(
+            draft: context.draft,
+            openAfterCapture: shouldOpen,
+            selection: nil,
+            capabilityAdvertised: false,
+            seed: context.seed,
+            inboxRouteCapabilityAdvertised: false,
+            mailCloseDigest: digest
+        )
+    }
+
+    func cancelMailClose() {
+        mailCloseReport = nil
+        mailCloseMessage = nil
+        mailCloseContext = nil
+        clearEditorInputLockIfFree()
+        requestFocus(.editor)
+        announceStatus("Kept the email task open")
+    }
+
+    func hintMailClose() {
+        guard let report = mailCloseReport else { return }
+        let verb = report.verb.isEmpty ? "close" : report.verb
+        mailCloseMessage = "Press Y to \(verb) — Esc keeps the draft"
+        announceStatus(mailCloseMessage ?? "Press Y to confirm")
+    }
+
+    func openMailCloseInGmail() {
+        guard let report = mailCloseReport else { return }
+        let urlString = report.tasks.flatMap(\.mails).first(where: { !$0.gmailURL.isEmpty })?.gmailURL
+        guard let urlString, let url = URL(string: urlString) else { return }
+        Self.openObsidianURL(url) { _ in }
+        announceStatus("Opened the thread in Gmail")
+    }
+
+    private func resetMailClose() {
+        mailCloseReport = nil
+        mailCloseMessage = nil
+        mailCloseContext = nil
+    }
+
+    private func invalidateMailCloseForEdit(_ draft: String) {
+        if mailCloseContext?.draft != draft {
+            mailCloseReport = nil
+            mailCloseMessage = nil
+            mailCloseContext = nil
+            clearEditorInputLockIfFree()
+        }
     }
 
     private func currentPullInPreview(
@@ -7662,6 +7773,7 @@ final class CapturePanelModel: ObservableObject {
         clearTaskIDPrompt()
         clearPomodoroNamePrompt()
         resetMoveChoice()
+        resetMailClose()
         pullInChoice = nil
         inboxRouteChoice = nil
         inboxRouteChoiceContext = nil
@@ -19058,6 +19170,7 @@ final class CapturePanelModel: ObservableObject {
         case .success(let success):
             let captures = success.normalizedCaptures
             let openPlan = CaptureOpenPlan(openNotes: success.openNotes, captures: captures)
+            resetMailClose()
             invalidateAnalysis()
             rememberRefParent(captures: captures)
             lastSuccess = captures.first
@@ -19202,6 +19315,34 @@ final class CapturePanelModel: ObservableObject {
                     trigger: .selection
                 )
                 statusText = "A Pomodoro is running — review the override, then press Return again"
+                return
+            }
+            if failure.code == "mail_close_confirmation_required"
+                || failure.code == "mail_close_confirmation_mismatch"
+            {
+                guard plainDraft == draft,
+                    processClient?.identityToken == processClientIdentity
+                else { return }
+                guard let report = failure.mailClose else {
+                    errorMessage = failure.error
+                    errorCode = failure.code
+                    statusText = failure.error
+                    announceStatus(failure.error)
+                    return
+                }
+                errorMessage = nil
+                errorCode = nil
+                scheduleAnalysis(
+                    cursorUTF8Offset: nil,
+                    requestCompletion: false,
+                    trigger: .selection
+                )
+                openMailClose(
+                    report: report, draft: draft,
+                    processClientIdentity: processClientIdentity,
+                    openAfterCapture: openAfterCapture, seed: choiceSeed
+                )
+                statusText = report.title
                 return
             }
             if let code = failure.code, code.hasPrefix("move_choice_") {

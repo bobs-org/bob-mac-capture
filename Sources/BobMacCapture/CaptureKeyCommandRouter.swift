@@ -70,6 +70,10 @@ enum CaptureKeyCommand: Equatable {
     case confirmMoveChoiceAndOpen
     case chooseNoMoves
     case cancelMoveChoice
+    case confirmMailClose
+    case cancelMailClose
+    case hintMailClose
+    case openMailCloseGmail
     case nextMoveChoice
     case previousMoveChoice
     case toggleMoveChoice
@@ -194,6 +198,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var moveChoiceVisible = false
     var moveChoiceFilterFocused = false
     var moveChoiceFilterIsEmpty = true
+    var mailCloseVisible = false
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
@@ -502,6 +507,9 @@ struct CaptureKeyCommandRouter {
             )
         }
 
+        if context.mailCloseVisible {
+            return mailCloseCommand(for: event, modifiers: modifiers, context: context)
+        }
         if context.moveChoiceVisible {
             return moveChoiceCommand(for: event, modifiers: modifiers, context: context)
         }
@@ -855,6 +863,40 @@ struct CaptureKeyCommandRouter {
             return .editMoveChoiceFilter(text)
         }
         return nil
+    }
+
+    private func mailCloseCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        let repeated = context.keyIsRepeat || event.isARepeat
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !repeated else { return .consumeKey }
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys == .command { return .openMailCloseGmail }
+            if keys.isEmpty { return .hintMailClose }
+            return .consumeKey
+        case KeyCode.escape:
+            return repeated ? .consumeKey : .cancelMailClose
+        case KeyCode.leftBracket:
+            if modifiers == .control { return repeated ? .consumeKey : .cancelMailClose }
+            return .consumeKey
+        default: break
+        }
+        if modifiers.subtracting(.shift).isEmpty, let text = event.characters {
+            if text == "y" || text == "Y" {
+                return repeated ? .consumeKey : .confirmMailClose
+            }
+            if text == "q" || text == "Q" {
+                return repeated ? .consumeKey : .cancelMailClose
+            }
+        }
+        if modifiers == .command, event.keyCode == KeyCode.return {
+            return .openMailCloseGmail
+        }
+        return .consumeKey
     }
 
     private func pullInChoiceCommand(

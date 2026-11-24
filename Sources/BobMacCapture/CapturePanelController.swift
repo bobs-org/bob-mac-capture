@@ -2486,6 +2486,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cancelMoveChoice:
             model.cancelMoveChoice()
             return true
+        case .confirmMailClose:
+            model.confirmMailClose()
+            return true
+        case .cancelMailClose:
+            model.cancelMailClose()
+            return true
+        case .hintMailClose:
+            model.hintMailClose()
+            return true
+        case .openMailCloseGmail:
+            model.openMailCloseInGmail()
+            return true
         case .nextMoveChoice:
             model.moveMoveChoiceHighlight(by: 1)
             return true
@@ -3339,6 +3351,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     model.relationLabelPromptVisible
                     && ((panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false),
                     pickerSourceIsRelation: model.pickerSourceIsRelation,
+                    mailCloseVisible: model.mailCloseVisible,
                     moveChoiceVisible: model.moveChoiceVisible,
                     moveChoiceFilterFocused: model.moveChoiceVisible
                         && (Self.findPickerFilterField(

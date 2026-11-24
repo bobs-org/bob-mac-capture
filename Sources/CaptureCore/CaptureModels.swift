@@ -5455,6 +5455,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive batch-level parent-task move choices. Older Bob binaries omit
     /// this field; malformed data degrades to nil so it cannot fail capture.
     public let moveChoice: CaptureMoveChoice?
+    /// Additive batch-level `mail_close` report on dry-run JSON. Older Bob
+    /// omits it; malformed data degrades to nil so it cannot fail capture.
+    public let mailClose: CaptureMailCloseReport?
     // Additive batch-level `pomodoro_blocks`: every Pomodoro the capture
     // touches, creates, or reports, in its final after-state. Older Bob
     // omits it entirely, and a malformed value decodes as empty so it can
@@ -5595,6 +5598,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         reqOutcomes: [CaptureRequirementOutcome] = [],
         inboxRoute: CaptureInboxRoute? = nil,
         moveChoice: CaptureMoveChoice? = nil,
+        mailClose: CaptureMailCloseReport? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [CaptureWarning] = [],
@@ -5697,6 +5701,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.reqOutcomes = reqOutcomes
         self.inboxRoute = inboxRoute
         self.moveChoice = moveChoice
+        self.mailClose = mailClose
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
         self.sectionBlocks = sectionBlocks
@@ -5926,6 +5931,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
         moveChoice =
             (try? container.decodeIfPresent(CaptureMoveChoice.self, forKey: .moveChoice)) ?? nil
+        mailClose =
+            (try? container.decodeIfPresent(CaptureMailCloseReport.self, forKey: .mailClose)) ?? nil
         pomodoroBlocks =
             (try? container.decodeIfPresent(
                 [CapturePomodoroBlock].self,
@@ -6078,6 +6085,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case reqOutcomes = "req_outcomes"
         case inboxRoute = "inbox_route"
         case moveChoice = "move_choice"
+        case mailClose = "mail_close"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
         case sectionBlocks = "section_blocks"
@@ -8354,6 +8362,10 @@ public struct CaptureCommandFailure: Codable, Equatable {
     public let recordDraft: String?
     public let recordMissing: [String]
     public let recordInvalid: [CaptureRecordInvalidField]
+    /// Additive `mail_close` payload on `mail_close_confirmation_required`
+    /// and `mail_close_confirmation_mismatch`. Older Bob omits it;
+    /// malformed data degrades to nil so it can never fail the failure decode.
+    public let mailClose: CaptureMailCloseReport?
     /// Refused offer-close row, when this failure's code is
     /// `offer_close_refused`.
     public var offerCloseRefused: CaptureOfferCloseRefused? {
@@ -8394,7 +8406,8 @@ public struct CaptureCommandFailure: Codable, Equatable {
         refused: CaptureInboxRouteRefused? = nil,
         recordDraft: String? = nil,
         recordMissing: [String] = [],
-        recordInvalid: [CaptureRecordInvalidField] = []
+        recordInvalid: [CaptureRecordInvalidField] = [],
+        mailClose: CaptureMailCloseReport? = nil
     ) {
         self.ok = ok
         self.error = error
@@ -8411,6 +8424,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         self.recordDraft = recordDraft
         self.recordMissing = recordMissing
         self.recordInvalid = recordInvalid
+        self.mailClose = mailClose
     }
 
     public init(from decoder: Decoder) throws {
@@ -8446,6 +8460,8 @@ public struct CaptureCommandFailure: Codable, Equatable {
                 CaptureLossyArray<CaptureRecordInvalidField>.self,
                 forKey: .recordInvalid
             ))?.values ?? []
+        mailClose =
+            (try? container.decodeIfPresent(CaptureMailCloseReport.self, forKey: .mailClose)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -8464,6 +8480,7 @@ public struct CaptureCommandFailure: Codable, Equatable {
         case recordDraft = "draft"
         case recordMissing = "missing"
         case recordInvalid = "invalid"
+        case mailClose = "mail_close"
     }
 }
 
@@ -12462,6 +12479,172 @@ public struct CaptureMoveChoicePomodoro: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case line
         case name
+    }
+}
+
+/// Batch-level `mail_close` report on dry-run success and confirmation
+/// refusals. Every string, row, and digest comes from bob; the Mac renders
+/// them verbatim. Older Bob omits the whole object and malformed additive
+/// rows degrade individually instead of failing the capture response.
+public struct CaptureMailCloseReport: Codable, Equatable, Sendable {
+    public let digest: String
+    public let verb: String
+    public let title: String
+    public let subtitle: String
+    public let tone: String
+    public let consequence: String
+    public let confirm: String
+    public let tasks: [CaptureMailCloseTask]
+
+    public init(
+        digest: String = "",
+        verb: String = "",
+        title: String = "",
+        subtitle: String = "",
+        tone: String = "",
+        consequence: String = "",
+        confirm: String = "",
+        tasks: [CaptureMailCloseTask] = []
+    ) {
+        self.digest = digest
+        self.verb = verb
+        self.title = title
+        self.subtitle = subtitle
+        self.tone = tone
+        self.consequence = consequence
+        self.confirm = confirm
+        self.tasks = tasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        digest = (try? container.decodeIfPresent(String.self, forKey: .digest)) ?? ""
+        verb = (try? container.decodeIfPresent(String.self, forKey: .verb)) ?? ""
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        subtitle = (try? container.decodeIfPresent(String.self, forKey: .subtitle)) ?? ""
+        tone = (try? container.decodeIfPresent(String.self, forKey: .tone)) ?? ""
+        consequence = (try? container.decodeIfPresent(String.self, forKey: .consequence)) ?? ""
+        confirm = (try? container.decodeIfPresent(String.self, forKey: .confirm)) ?? ""
+        tasks = (try? container.decodeIfPresent([CaptureMailCloseTask].self, forKey: .tasks)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case digest
+        case verb
+        case title
+        case subtitle
+        case tone
+        case consequence
+        case confirm
+        case tasks
+    }
+
+    /// Warning tone when any orphaned row waits on Bryan.
+    public var isWarning: Bool { tone == "warning" }
+}
+
+/// One guarded email-task close, uncapped in JSON.
+public struct CaptureMailCloseTask: Codable, Equatable, Sendable {
+    public let path: String
+    public let line: Int
+    public let blockID: String?
+    public let before: String
+    public let after: String
+    public let verb: String
+    public let label: String
+    public let turnLine: String?
+    public let mails: [CaptureMailCloseMail]
+
+    public init(
+        path: String = "",
+        line: Int = 0,
+        blockID: String? = nil,
+        before: String = "",
+        after: String = "",
+        verb: String = "",
+        label: String = "",
+        turnLine: String? = nil,
+        mails: [CaptureMailCloseMail] = []
+    ) {
+        self.path = path
+        self.line = line
+        self.blockID = blockID
+        self.before = before
+        self.after = after
+        self.verb = verb
+        self.label = label
+        self.turnLine = turnLine
+        self.mails = mails
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockID = try? container.decodeIfPresent(String.self, forKey: .blockID)
+        before = (try? container.decodeIfPresent(String.self, forKey: .before)) ?? ""
+        after = (try? container.decodeIfPresent(String.self, forKey: .after)) ?? ""
+        verb = (try? container.decodeIfPresent(String.self, forKey: .verb)) ?? ""
+        label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? ""
+        turnLine = try? container.decodeIfPresent(String.self, forKey: .turnLine)
+        mails = (try? container.decodeIfPresent([CaptureMailCloseMail].self, forKey: .mails)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case line
+        case blockID = "block_id"
+        case before
+        case after
+        case verb
+        case label
+        case turnLine = "turn_line"
+        case mails
+    }
+}
+
+/// Mail-note facts for one guarded task.
+public struct CaptureMailCloseMail: Codable, Equatable, Sendable {
+    public let note: String
+    public let title: String
+    public let who: String
+    public let turn: String?
+    public let turnSince: String?
+    public let gmailURL: String
+
+    public init(
+        note: String = "",
+        title: String = "",
+        who: String = "",
+        turn: String? = nil,
+        turnSince: String? = nil,
+        gmailURL: String = ""
+    ) {
+        self.note = note
+        self.title = title
+        self.who = who
+        self.turn = turn
+        self.turnSince = turnSince
+        self.gmailURL = gmailURL
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        note = (try? container.decodeIfPresent(String.self, forKey: .note)) ?? ""
+        title = (try? container.decodeIfPresent(String.self, forKey: .title)) ?? ""
+        who = (try? container.decodeIfPresent(String.self, forKey: .who)) ?? ""
+        turn = try? container.decodeIfPresent(String.self, forKey: .turn)
+        turnSince = try? container.decodeIfPresent(String.self, forKey: .turnSince)
+        gmailURL = (try? container.decodeIfPresent(String.self, forKey: .gmailURL)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case note
+        case title
+        case who
+        case turn
+        case turnSince = "turn_since"
+        case gmailURL = "gmail_url"
     }
 }
 

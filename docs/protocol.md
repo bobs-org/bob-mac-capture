@@ -221,6 +221,11 @@ absolute executable path (see [Install](install.md#requirements)).
 [Move-card protocol](task-pickers.md#move-card-protocol) documents slots, refusals,
 answer chaining, and optional decoding.
 
+## Mail-close submission
+
+Dry-run JSON may carry `mail_close`; `Y` resubmits with `--mail-close`. Older
+  Bob omits it.
+
 ## Successor verdict and jump submission
 
 `pull_in.close.supported` gates `--complete-offer`/`--cancel-offer`;
@@ -243,14 +248,11 @@ defines flags, refusals, and vectors.
 
 Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 
-If Bob rejects `--refuse-override` as unexpected (exit 2), retry without it and
-remember per executable that successor-choice checks are unavailable. Older Bob
-never overrides on `=`, making this safe. `--require-pull-in-choice` requires that
-executable's preview to advertise `pull_in.supported` and never retries.
-`--require-inbox-route-choice` requires preview or capture JSON with
-`inbox_route.supported == true`; an older Bob rejecting it retries without it.
-Other failures and stale-key refusals never retry. Explicit offer keys come only
-from matching previews or write-free refusals.
+If Bob rejects `--refuse-override` (exit 2), retry without it per executable.
+  `--require-pull-in-choice` needs `pull_in.supported` in that preview and never
+  retries. `--require-inbox-route-choice` needs `inbox_route.supported`; older Bob
+  retries without it. Other failures never retry. Offer keys come only from
+  matching previews or write-free refusals.
 
 Rejection of `ref scan -a` / `--attended` (exit 2) similarly retries without the
 flag and caches the answer per executable.
@@ -305,6 +307,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `headline` on `capture-pomodoros --tasks` (today's Daily Headline display text)
 - `walks` `counts` (s=`walk`, legacy fallback=`commitments`; w=`excess`; b=`waiting`), `tier`/`label`/`reason`; unknown families ignored
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
+- `mail_close` on success
 - `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
 - `place_menu` chrome; notebook section candidates (`group`, `detail`, `refused`, `consequence`, `creates`, `cursor_after`); span `notebook` / `section_action` / `title`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
@@ -385,6 +388,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `pull_in.copy` `{title,capsule,glyph}`, group `copy` `{title,why,tag,fold,glyph}`, `after`, `label`, `event`, and `folded.already_started` / `waits_for` | Bob supplies chooser title, capsule, reason, tag, fold, glyph, relation target identity, and folded-reason line | Missing copy uses legacy per-group Swift wording/order; missing group metadata or fold counts adds no copy | Upgrade `bob` for Bob-authored Pull-In copy |
 | Block-diff `reason: relation`, task-block role `relation_successor` | A `link` badge with “Offered by your relation link” help, and relation-successor task styling | Unknown reasons and roles keep their existing neutral fallback | Upgrade `bob` for relation block cues |
 | Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
+| `mail_close` | Banner and card | No card | Upgrade `bob` |
 | `sub_bullet_depths`, route-only `global_destination`, `items` | Exact children; batch route declaration and per-item route overrides | Depth 1; per-item targets | Upgrade `bob` for global declarations |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
 | `task_link_count`, `max_task_link_count` | Auto-inserted `,` in `x`/link lists and `x=` lists | Older bob can assist `x`/link lists from the plain count; `x=` stays unassisted | Upgrade `bob` for `x=` assist |

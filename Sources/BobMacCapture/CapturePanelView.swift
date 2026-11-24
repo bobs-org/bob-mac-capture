@@ -726,6 +726,8 @@ struct CapturePanelView: View {
     private var footerRegion: some View {
         if model.moveChoiceVisible {
             EmptyView()
+        } else if model.mailCloseVisible {
+            EmptyView()
         } else if model.inboxRouteChoiceVisible {
             CaptureInboxRouteChoiceFooter(model: model)
                 .fixedSize(horizontal: false, vertical: true)
@@ -803,7 +805,20 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if let choice = model.moveChoice {
+        if let report = model.mailCloseReport {
+            CaptureMailCloseCard(
+                report: report,
+                message: model.mailCloseMessage,
+                onConfirm: { model.confirmMailClose() },
+                onOpenGmail: { model.openMailCloseInGmail() },
+                onCancel: { model.cancelMailClose() }
+            )
+            .onGeometryChange(for: CGFloat.self) {
+                $0.size.height
+            } action: { height in
+                updateMeasuredAuxiliaryContentHeight(height)
+            }
+        } else if let choice = model.moveChoice {
             CaptureMoveChoiceCard(
                 choice: Binding(get: { model.moveChoice ?? choice }, set: model.updateMoveChoice),
                 todayBadge: model.moveChoiceTodayBadge,
@@ -4101,6 +4116,9 @@ struct PreviewPane: View {
             Text("All items \u{2192} \(globalDestination.destinationLabel)")
                 .fontWeight(.semibold)
                 .accessibilityLabel("All items to \(globalDestination.destinationLabel)")
+        }
+        if let mailClose = success.mailClose {
+            CaptureMailCloseBanner(report: mailClose)
         }
 
         // A sole transfer hosts the TODAY badge inside its card. Other

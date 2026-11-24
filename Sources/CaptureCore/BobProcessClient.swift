@@ -1326,7 +1326,8 @@ public final class BobProcessClient: @unchecked Sendable {
         requireInboxRouteChoice: Bool = false,
         inboxRouteCapabilityAdvertised: Bool = false,
         templateOrigin: String? = nil,
-        expectPastWindows: String? = nil
+        expectPastWindows: String? = nil,
+        mailCloseDigest: String? = nil
     ) async throws -> CaptureCommandResponse {
         let requestIdentity = identityToken
         let reqSubmission = requirementSubmission ?? CaptureRequirementSubmission()
@@ -1514,6 +1515,9 @@ public final class BobProcessClient: @unchecked Sendable {
         let sendRefuseOverride = refuseOverride && !refuseOverrideKnownUnsupported
         if sendRefuseOverride {
             arguments.append("--refuse-override")
+        }
+        if let mailCloseDigest, !mailCloseDigest.isEmpty {
+            arguments += ["--mail-close", mailCloseDigest]
         }
         let currentIdentity = requestIdentity
         let maySendTemplateOrigin = stateQueue.sync {
