@@ -3351,7 +3351,6 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     model.relationLabelPromptVisible
                     && ((panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false),
                     pickerSourceIsRelation: model.pickerSourceIsRelation,
-                    mailCloseVisible: model.mailCloseVisible,
                     moveChoiceVisible: model.moveChoiceVisible,
                     moveChoiceFilterFocused: model.moveChoiceVisible
                         && (Self.findPickerFilterField(
@@ -3360,6 +3359,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                             firstResponder: panel?.firstResponder
                         )?.holdsFirstResponder ?? false),
                     moveChoiceFilterIsEmpty: model.moveChoice?.filterText.isEmpty ?? true,
+                    mailCloseVisible: model.mailCloseVisible,
                     pullInChoiceVisible: model.pullInChoiceVisible,
                     pullInFilterFocused: model.pullInChoiceVisible
                         && (Self.findPickerFilterField(
