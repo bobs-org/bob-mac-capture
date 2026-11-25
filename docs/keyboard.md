@@ -9,7 +9,7 @@ Successor cards: [Capture previews](capture-previews.md); stash: [Capture panel]
 
 Ctrl-Tab and Ctrl-Shift-Tab switch panels, keeping the draft and view.
 
-[Event note bindings](event-notes.md).
+[Event note bindings](event-notes.md). [Meeting notes bindings](meeting-notes.md).
 
 ## Bob Refs shortcuts
 
@@ -29,6 +29,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Control-Return (in Highlights) | While no Bob panel is visible, open the focused PDF's reading task in Obsidian at the task line, as Command-T then Control-Return would; falls back to Tabs with a reason when it can't, and can be set to Off |
 
 Keys typed before the PDF is known replay on the Copy card.
+| Command-1 … Command-6 | Scope All, Chats, Papers, Articles, Docs, Meetings |
 | Control-Return | Open the reading task's file in Obsidian (at the task line) |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
@@ -126,6 +127,7 @@ immediately, as Command-Y L does.
 | Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | \ | From a blank draft, replace it with `/` to open Go To; on a bare `/` draft right after, type a literal `\`; otherwise consume the key (reopening from the chip when visible) | Same as in the editor | Native text-field behavior | Native text-field behavior |
 | Command-J | Join the focus calendar event in the default browser when the draft is empty and the band shows a join link; with a nonempty draft the key is unconsumed | Unconsumed (completion stays open) | Native text-field behavior | Native text-field behavior |
+| Command-M | Open [Meeting notes](meeting-notes.md); focused Notes files that event | Unconsumed (completion stays open) | Native text-field behavior | Native text-field behavior |
 | Command-S | Save the current `%t` draft | Save the current `%t` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
 | Command-1…5 | Focus that similar-tasks row and open its strip; pressing the same key again unfocuses it | Close completion, then focus that row | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |

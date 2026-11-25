@@ -827,6 +827,53 @@ public struct CaptureAgendaEventPomodoro: Decodable, Equatable, Sendable {
     }
 }
 
+/// Filed-notes state for one agenda meeting row. Bob owns the state;
+/// the client never infers it from titles or calendar URLs.
+public struct CaptureAgendaMeetingNotes: Decodable, Equatable, Sendable {
+    public let state: String
+    public let note: String?
+    public let task: String?
+
+    public init(state: String = "missing", note: String? = nil, task: String? = nil) {
+        self.state = state
+        self.note = note
+        self.task = task
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decodeIfPresent(String.self, forKey: .state) ?? "missing"
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+        task = try container.decodeIfPresent(String.self, forKey: .task)
+    }
+
+    public var isFiled: Bool { state == "filed" }
+    public var isMissing: Bool { state == "missing" }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case note
+        case task
+    }
+}
+
+extension CaptureAgendaEventRow {
+    /// Whether this row offers the Meeting Notes `Notes` action.
+    /// Started task rows with Bob's exact event token and a missing
+    /// filed state qualify; future, cancelled, filed, unknown-state,
+    /// and ID-less rows never do. Tokens are never inferred.
+    public var offersMeetingNotesAction: Bool {
+        guard kind == .task else { return false }
+        guard let blockID, !blockID.isEmpty else { return false }
+        guard let eventRef, !eventRef.isEmpty else { return false }
+        guard let meetingNotes, meetingNotes.isMissing else { return false }
+        if let statusType, statusType.lowercased() == "cancelled" { return false }
+        if statusSymbol == "x" { return false }
+        if let phase, phase == .upcoming { return false }
+        return true
+    }
+}
+
 /// One event in the agenda's `events` block: a timed calendar row.
 public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
     public let line: Int
@@ -851,6 +898,11 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
     /// The event's pre/post-event buffer; nil on an older bob and when
     /// the event carries none. A malformed buffer decodes as nil.
     public let buffer: CaptureEventBuffer?
+    /// The exact EVENT token, for example `20261123#^standup`. Nil on an
+    /// older bob and on rows without a `^id`. Never inferred client-side.
+    public let eventRef: String?
+    /// Filed-notes state for the meeting. Nil on an older bob.
+    public let meetingNotes: CaptureAgendaMeetingNotes?
 
     public init(
         line: Int = 0,
@@ -872,7 +924,9 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         calendarURL: String? = nil,
         location: String? = nil,
         pomodoro: CaptureAgendaEventPomodoro? = nil,
-        buffer: CaptureEventBuffer? = nil
+        buffer: CaptureEventBuffer? = nil,
+        eventRef: String? = nil,
+        meetingNotes: CaptureAgendaMeetingNotes? = nil
     ) {
         self.line = line
         self.blockID = blockID
@@ -894,6 +948,8 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         self.location = location
         self.pomodoro = pomodoro
         self.buffer = buffer
+        self.eventRef = eventRef
+        self.meetingNotes = meetingNotes
     }
 
     public init(from decoder: Decoder) throws {
@@ -925,6 +981,11 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
             forKey: .pomodoro
         )
         buffer = (try? container.decodeIfPresent(CaptureEventBuffer.self, forKey: .buffer)) ?? nil
+        eventRef = try container.decodeIfPresent(String.self, forKey: .eventRef)
+        meetingNotes = try container.decodeIfPresent(
+            CaptureAgendaMeetingNotes.self,
+            forKey: .meetingNotes
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -944,6 +1005,8 @@ public struct CaptureAgendaEventRow: Decodable, Equatable, Sendable {
         case untracked
         case root
         case home
+        case eventRef = "event_ref"
+        case meetingNotes = "meeting_notes"
         case joinURL = "join_url"
         case calendarURL = "calendar_url"
         case location

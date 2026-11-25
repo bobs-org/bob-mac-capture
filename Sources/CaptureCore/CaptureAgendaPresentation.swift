@@ -1433,6 +1433,12 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
     /// True while the event's buffer is in progress: the capsule tints
     /// with the event hue instead of the secondary color.
     public let bufferActive: Bool
+    /// Bob's exact EVENT token for the Meeting Notes action. Nil on an
+    /// older bob and on rows without a `^id`. Never inferred.
+    public let eventMeetingRef: String?
+    /// Whether this row offers the Meeting Notes `Notes` action:
+    /// a started task with an event token and missing filed state.
+    public let offersMeetingNotes: Bool
 
     public init(
         timeText: String = "",
@@ -1444,7 +1450,9 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         countdownText: String? = nil,
         startHint: String? = nil,
         bufferLabel: String? = nil,
-        bufferActive: Bool = false
+        bufferActive: Bool = false,
+        eventMeetingRef: String? = nil,
+        offersMeetingNotes: Bool = false
     ) {
         self.timeText = timeText
         self.hue = hue
@@ -1456,6 +1464,8 @@ public struct CaptureAgendaCalendarRowData: Hashable, Equatable, Sendable {
         self.startHint = startHint
         self.bufferLabel = bufferLabel
         self.bufferActive = bufferActive
+        self.eventMeetingRef = eventMeetingRef
+        self.offersMeetingNotes = offersMeetingNotes
     }
 }
 
@@ -2213,7 +2223,9 @@ extension CaptureAgendaPresentation {
             countdownText: countdown,
             startHint: startHint,
             bufferLabel: bufferLabel,
-            bufferActive: bufferActive
+            bufferActive: bufferActive,
+            eventMeetingRef: row.eventRef,
+            offersMeetingNotes: row.offersMeetingNotesAction
         )
         let spokenRange =
             CaptureAgendaClock.accessibilityRangeText(

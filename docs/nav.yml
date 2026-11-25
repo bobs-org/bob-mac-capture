@@ -26,6 +26,8 @@
   path: typing-tips.md
 - title: Event notes
   path: event-notes.md
+- title: Meeting notes
+  path: meeting-notes.md
 - title: Saved templates
   path: saved-templates.md
 - title: Wikilink completion

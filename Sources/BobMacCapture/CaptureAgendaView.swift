@@ -24,6 +24,8 @@ struct CaptureAgendaPaneView: View {
     var onJoinEvent: (URL) -> Void = { _ in }
     var onOpenEventNote: (String?) -> Void = { _ in }
     var onEventNoteFocusChange: (Bool, String?) -> Void = { _, _ in }
+    var onOpenMeetingNotes: (String?) -> Void = { _ in }
+    var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
     var onContentWidthChange: (CGFloat) -> Void = { _ in }
 
     var body: some View {
@@ -34,6 +36,8 @@ struct CaptureAgendaPaneView: View {
             onJoinEvent: onJoinEvent,
             onOpenEventNote: onOpenEventNote,
             onEventNoteFocusChange: onEventNoteFocusChange,
+            onOpenMeetingNotes: onOpenMeetingNotes,
+            onMeetingNotesFocusChange: onMeetingNotesFocusChange,
             onContentWidthChange: onContentWidthChange
         )
         Group {
@@ -111,6 +115,8 @@ struct CaptureAgendaRowsView: View {
     var onJoinEvent: (URL) -> Void = { _ in }
     var onOpenEventNote: (String?) -> Void = { _ in }
     var onEventNoteFocusChange: (Bool, String?) -> Void = { _, _ in }
+    var onOpenMeetingNotes: (String?) -> Void = { _ in }
+    var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
     var onContentWidthChange: (CGFloat) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -137,7 +143,9 @@ struct CaptureAgendaRowsView: View {
                         onExpand: onExpand,
                         onJoinEvent: onJoinEvent,
                         onOpenEventNote: onOpenEventNote,
-                        onEventNoteFocusChange: onEventNoteFocusChange
+                        onEventNoteFocusChange: onEventNoteFocusChange,
+                        onOpenMeetingNotes: onOpenMeetingNotes,
+                        onMeetingNotesFocusChange: onMeetingNotesFocusChange
                     )
                 case .group(let group, let indices, let spacerBefore):
                     if spacerBefore {
@@ -156,7 +164,9 @@ struct CaptureAgendaRowsView: View {
                         onExpand: onExpand,
                         onJoinEvent: onJoinEvent,
                         onOpenEventNote: onOpenEventNote,
-                        onEventNoteFocusChange: onEventNoteFocusChange
+                        onEventNoteFocusChange: onEventNoteFocusChange,
+                        onOpenMeetingNotes: onOpenMeetingNotes,
+                        onMeetingNotesFocusChange: onMeetingNotesFocusChange
                     )
                 case .calendar(let indices, let spacerBefore):
                     if spacerBefore {
@@ -175,7 +185,9 @@ struct CaptureAgendaRowsView: View {
                         onExpand: onExpand,
                         onJoinEvent: onJoinEvent,
                         onOpenEventNote: onOpenEventNote,
-                        onEventNoteFocusChange: onEventNoteFocusChange
+                        onEventNoteFocusChange: onEventNoteFocusChange,
+                        onOpenMeetingNotes: onOpenMeetingNotes,
+                        onMeetingNotesFocusChange: onMeetingNotesFocusChange
                     )
                 }
             }
@@ -383,6 +395,8 @@ struct CaptureAgendaGroupView: View {
     var onJoinEvent: (URL) -> Void = { _ in }
     var onOpenEventNote: (String?) -> Void = { _ in }
     var onEventNoteFocusChange: (Bool, String?) -> Void = { _, _ in }
+    var onOpenMeetingNotes: (String?) -> Void = { _ in }
+    var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
@@ -396,7 +410,9 @@ struct CaptureAgendaGroupView: View {
                     onExpand: onExpand,
                     onJoinEvent: onJoinEvent,
                     onOpenEventNote: onOpenEventNote,
-                    onEventNoteFocusChange: onEventNoteFocusChange
+                    onEventNoteFocusChange: onEventNoteFocusChange,
+                    onOpenMeetingNotes: onOpenMeetingNotes,
+                    onMeetingNotesFocusChange: onMeetingNotesFocusChange
                 )
             }
         }
@@ -474,6 +490,8 @@ struct CaptureAgendaCalendarView: View {
     var onJoinEvent: (URL) -> Void = { _ in }
     var onOpenEventNote: (String?) -> Void = { _ in }
     var onEventNoteFocusChange: (Bool, String?) -> Void = { _, _ in }
+    var onOpenMeetingNotes: (String?) -> Void = { _ in }
+    var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -486,7 +504,9 @@ struct CaptureAgendaCalendarView: View {
                     onExpand: onExpand,
                     onJoinEvent: onJoinEvent,
                     onOpenEventNote: onOpenEventNote,
-                    onEventNoteFocusChange: onEventNoteFocusChange
+                    onEventNoteFocusChange: onEventNoteFocusChange,
+                    onOpenMeetingNotes: onOpenMeetingNotes,
+                    onMeetingNotesFocusChange: onMeetingNotesFocusChange
                 )
             }
         }
@@ -516,8 +536,11 @@ struct CaptureAgendaRowView: View {
     var onJoinEvent: (URL) -> Void = { _ in }
     var onOpenEventNote: (String?) -> Void = { _ in }
     var onEventNoteFocusChange: (Bool, String?) -> Void = { _, _ in }
+    var onOpenMeetingNotes: (String?) -> Void = { _ in }
+    var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var eventNoteButtonIsFocused: Bool
+    @FocusState private var meetingNotesButtonIsFocused: Bool
 
     /// Whether the row's accessory renders as a chip button: every
     /// row whose presentation names an expansion action, plus the
@@ -549,8 +572,13 @@ struct CaptureAgendaRowView: View {
             .onChange(of: eventNoteButtonIsFocused) { _, focused in
                 onEventNoteFocusChange(focused, focused ? row.calendar?.eventNoteURL : nil)
             }
+            .onChange(of: meetingNotesButtonIsFocused) { _, focused in
+                onMeetingNotesFocusChange(
+                    focused, focused ? row.calendar?.eventMeetingRef : nil)
+            }
             .onDisappear {
                 onEventNoteFocusChange(false, nil)
+                onMeetingNotesFocusChange(false, nil)
             }
             .padding(.bottom, bottomPad)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1425,6 +1453,22 @@ struct CaptureAgendaRowView: View {
                 .accessibilityHint(data.eventNoteURL == nil
                     ? "Opens the event picker because this row has no calendar URL."
                     : "Opens the private event note for this calendar event.")
+                if data.offersMeetingNotes {
+                    Button {
+                        onOpenMeetingNotes(data.eventMeetingRef)
+                    } label: {
+                        Text("Notes")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .focused($meetingNotesButtonIsFocused)
+                    .accessibilityLabel("File meeting notes for \(row.text)")
+                    .accessibilityHint("Opens the Meeting Notes sheet for this event.")
+                }
                 if let countdown = data.countdownText {
                     Text(countdown)
                         .font(.callout.monospacedDigit())

@@ -9,6 +9,9 @@ event you cannot edit — from inside Bob Mac Capture. Bob owns parsing, validat
 precedence, and vault writes; the app owns the picker, the editor, and process
 orchestration ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)).
 
+For clipboard meeting notes filed as references, use [Meeting notes](meeting-notes.md)
+(Command-M) instead; the two modes are mutually exclusive.
+
 ## Entry routes
 
 - **Command-E** from any capture draft, empty or not. Control-E keeps line motion.

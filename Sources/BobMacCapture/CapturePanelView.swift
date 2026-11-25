@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import Combine
 import SwiftUI
@@ -491,6 +492,7 @@ struct CapturePreviewPaneHeightPolicy: Equatable {
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
     @ObservedObject var eventNotes: GcalNotePanelModel
+    @ObservedObject var meetingNotes: MeetingNotesPanelModel
     var onContentMetricsChange: (CapturePanelContentMetrics) -> Void = { _ in }
     @FocusState private var focusedControl: CapturePanelFocusTarget?
     @AccessibilityFocusState private var errorIsFocused: Bool
@@ -503,10 +505,12 @@ struct CapturePanelView: View {
     init(
         model: CapturePanelModel,
         eventNotes: GcalNotePanelModel? = nil,
+        meetingNotes: MeetingNotesPanelModel? = nil,
         onContentMetricsChange: @escaping (CapturePanelContentMetrics) -> Void = { _ in }
     ) {
         self.model = model
         self.eventNotes = eventNotes ?? GcalNotePanelModel()
+        self.meetingNotes = meetingNotes ?? MeetingNotesPanelModel()
         self.onContentMetricsChange = onContentMetricsChange
     }
 
@@ -540,9 +544,9 @@ struct CapturePanelView: View {
     private var eventNoteObservedContent: some View {
         ZStack {
             agendaObservedContent
-                .opacity(eventNotes.isPresented ? 0 : 1)
-                .allowsHitTesting(!eventNotes.isPresented)
-                .accessibilityHidden(eventNotes.isPresented)
+                .opacity(eventNotes.isPresented || meetingNotes.isPresented ? 0 : 1)
+                .allowsHitTesting(!eventNotes.isPresented && !meetingNotes.isPresented)
+                .accessibilityHidden(eventNotes.isPresented || meetingNotes.isPresented)
             if eventNotes.isPresented {
                 GcalNotePickerView(model: eventNotes)
                     .frame(height: GcalNotePanelMetrics.resolved(
@@ -550,11 +554,30 @@ struct CapturePanelView: View {
                         editing: eventNotes.showsEditor
                     ).contentHeight)
             }
+            if meetingNotes.isPresented {
+                MeetingNotesPanelView(
+                    model: meetingNotes,
+                    onOpenNote: { notePath in
+                        Self.openMeetingFiledNote(
+                            notePath, vaultRootPath: model.agendaStore?.vaultRootPath ?? "")
+                    }
+                )
+                .frame(height: MeetingNotesPanelMetrics.resolved(
+                    availableScreenHeight: model.availableScreenHeight,
+                    writing: meetingNotes.isWriting
+                ).contentHeight)
+            }
         }
         .onChange(of: eventNotes.isPresented) { _, _ in
             reportContentMetrics()
         }
         .onChange(of: eventNotes.revision) { _, _ in
+            reportContentMetrics()
+        }
+        .onChange(of: meetingNotes.isPresented) { _, _ in
+            reportContentMetrics()
+        }
+        .onChange(of: meetingNotes.revision) { _, _ in
             reportContentMetrics()
         }
     }
@@ -941,6 +964,10 @@ struct CapturePanelView: View {
                 onEventNoteFocusChange: { focused, url in
                     eventNotes.setCalendarNoteActionFocused(focused, url: url)
                 },
+                onOpenMeetingNotes: { meetingNotes.present(eventRef: $0) },
+                onMeetingNotesFocusChange: { focused, ref in
+                    meetingNotes.setMeetingActionFocused(focused, eventRef: ref)
+                },
                 onContentWidthChange: { width in
                     guard model.agendaContentWidth != width else {
                         return
@@ -1127,6 +1154,19 @@ struct CapturePanelView: View {
             )
             return
         }
+        if meetingNotes.isPresented {
+            let height = MeetingNotesPanelMetrics.resolved(
+                availableScreenHeight: model.availableScreenHeight,
+                writing: meetingNotes.isWriting
+            ).contentHeight
+            onContentMetricsChange(
+                CapturePanelContentMetrics(
+                    idealContentHeight: height,
+                    minimumVisibleContentHeight: height
+                )
+            )
+            return
+        }
         guard measuredEditorHeight.isFinite,
               measuredEditorHeight > 1,
               measuredFooterHeight.isFinite,
@@ -1149,6 +1189,19 @@ struct CapturePanelView: View {
         }
         updateSimilarTasksFolded()
         onContentMetricsChange(metrics)
+    }
+
+    static func openMeetingFiledNote(_ notePath: String, vaultRootPath: String) {
+        let absolute: String
+        if notePath.hasPrefix("/") {
+            absolute = notePath
+        } else if !vaultRootPath.isEmpty {
+            absolute = (vaultRootPath as NSString).appendingPathComponent(notePath)
+        } else {
+            return
+        }
+        guard let url = ObsidianOpenURL.url(forAbsolutePath: absolute) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Fold every similar-tasks band before the auxiliary region would

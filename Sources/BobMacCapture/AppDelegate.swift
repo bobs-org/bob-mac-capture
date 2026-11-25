@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: CapturePanelController?
     var panelModel: CapturePanelModel?
     var eventNotePanelModel: GcalNotePanelModel?
+    var meetingNotesPanelModel: MeetingNotesPanelModel?
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
     private var walkAttentionStore: WalkAttentionStore?
@@ -127,6 +128,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.agendaStore?.refresh(reason: .show)
         }
         self.eventNotePanelModel = eventNotePanelModel
+        let meetingNotesPanelModel = MeetingNotesPanelModel(
+            processClient: processClient,
+            onAgendaRefresh: { [weak self] in
+                self?.agendaStore?.refresh(reason: .show)
+            }
+        )
+        meetingNotesPanelModel.onReceipt = { [weak self] _ in
+            self?.agendaStore?.refresh(reason: .show)
+        }
+        self.meetingNotesPanelModel = meetingNotesPanelModel
         // The Agenda toggle applies live: the store keeps refreshing
         // for the close-list bounds while the model stops measuring,
         // planning, and showing.
@@ -182,7 +193,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     )
             }
             .store(in: &agendaCancellables)
-        panelController = CapturePanelController(model: model, eventNotes: eventNotePanelModel)
+        panelController = CapturePanelController(
+            model: model,
+            eventNotes: eventNotePanelModel,
+            meetingNotes: meetingNotesPanelModel
+        )
         panelController?.prewarm()
         // Prefetch after prewarm so the first hotkey after login already
         // has agenda data without slowing the show path.
@@ -444,6 +459,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyEquivalent: ""
             )
         )
+        menu.addItem(
+            NSMenuItem(
+                title: "File Meeting Notes…",
+                action: #selector(openMeetingNotesPanel),
+                keyEquivalent: ""
+            )
+        )
         let refsItem = NSMenuItem(
             title: "Bob Refs…",
             action: #selector(openRefsPanel),
@@ -506,6 +528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refsLibrary?.setFetcher(nil)
         }
         eventNotePanelModel?.setProcessClient(processClient)
+        meetingNotesPanelModel?.setProcessClient(processClient)
         updateStatusItemAppearance()
     }
 
@@ -1100,6 +1123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuItem.isHidden = hidden
             return !hidden
         }
+        if menuItem.action == #selector(AppDelegate.openMeetingNotesPanel) {
+            let hidden = meetingNotesPanelModel?.menuItemShouldBeHidden == true
+            menuItem.isHidden = hidden
+            return !hidden
+        }
         guard menuItem.action == #selector(AppDelegate.pastePlainText(_:)) else {
             return true
         }
@@ -1120,6 +1148,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showCapturePanel()
         }
         panelController?.showEventNotes()
+    }
+
+    @objc private func openMeetingNotesPanel() {
+        if panelCoordinator != nil {
+            panelCoordinator?.showCapture()
+        } else {
+            showCapturePanel()
+        }
+        panelController?.showMeetingNotes()
     }
 
     @objc private func openRefsPanel() {

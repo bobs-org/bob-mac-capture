@@ -285,6 +285,7 @@ private final class CapturePanelWindow: NSPanel {
 final class CapturePanelController: NSObject, NSWindowDelegate {
     private let model: CapturePanelModel
     private let eventNotes: GcalNotePanelModel
+    let meetingNotes: MeetingNotesPanelModel
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
@@ -332,14 +333,37 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var cachedEditor = CaptureEditorTextConfiguration.CachedEditorTextView()
     private weak var eventNoteReturnResponder: NSResponder?
 
-    init(model: CapturePanelModel, eventNotes: GcalNotePanelModel? = nil) {
+    init(
+        model: CapturePanelModel,
+        eventNotes: GcalNotePanelModel? = nil,
+        meetingNotes: MeetingNotesPanelModel? = nil
+    ) {
         self.model = model
         let eventNotes = eventNotes ?? GcalNotePanelModel()
         self.eventNotes = eventNotes
+        self.meetingNotes = meetingNotes ?? MeetingNotesPanelModel()
         super.init()
         eventNotes.onPresentationChange = { [weak self] isPresented in
             guard let self else { return }
             if isPresented {
+                self.meetingNotes.leave()
+                self.eventNoteReturnResponder = self.panel?.firstResponder
+            } else if self.panel?.isVisible == true,
+                      let responder = self.eventNoteReturnResponder
+            {
+                self.eventNoteReturnResponder = nil
+                DispatchQueue.main.async { [weak self, weak responder] in
+                    guard let self, let responder, self.panel?.isVisible == true else { return }
+                    _ = self.panel?.makeFirstResponder(responder)
+                }
+            } else {
+                self.eventNoteReturnResponder = nil
+            }
+        }
+        self.meetingNotes.onPresentationChange = { [weak self] isPresented in
+            guard let self else { return }
+            if isPresented {
+                self.eventNotes.leave()
                 self.eventNoteReturnResponder = self.panel?.firstResponder
             } else if self.panel?.isVisible == true,
                       let responder = self.eventNoteReturnResponder
@@ -464,7 +488,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if !isVisible {
             show()
         }
+        meetingNotes.leave()
         eventNotes.present(url: url)
+    }
+
+    func showMeetingNotes(eventRef: String? = nil) {
+        if !isVisible {
+            show()
+        }
+        eventNotes.leave()
+        meetingNotes.present(eventRef: eventRef)
     }
 
     /// Builds the event Carbon consumed for Command-\ so tests and the alias path
@@ -867,7 +900,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let hostingView = NSHostingView(
             rootView: CapturePanelView(
                 model: model,
-                eventNotes: eventNotes
+                eventNotes: eventNotes,
+                meetingNotes: meetingNotes
             ) { [weak self] metrics in
                 self?.receiveContentMetrics(metrics)
             }
@@ -2410,6 +2444,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return eventNotes.undoLastMutation()
         case .gcalNotePassThrough:
             return false
+        case .openMeetingNotes(let eventRef):
+            showMeetingNotes(eventRef: eventRef)
+            return true
+        case .meetingNotesEscape:
+            meetingNotes.handleEscape()
+            return true
+        case .meetingNotesMoveNext:
+            meetingNotes.moveSelection(1)
+            return true
+        case .meetingNotesMovePrevious:
+            meetingNotes.moveSelection(-1)
+            return true
+        case .meetingNotesOpenSelected:
+            meetingNotes.openSelectedMeeting()
+            return true
+        case .meetingNotesFile:
+            meetingNotes.file()
+            return true
+        case .meetingNotesRetry:
+            meetingNotes.retryPreview()
+            return true
+        case .meetingNotesPassThrough:
+            return false
         case .switchPanel:
             let switcher = panelSwitcher
             DispatchQueue.main.async {
@@ -2652,6 +2709,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         CaptureSignpost.event("panel-dismiss")
         flushTypeAheadHoldBeforeFocusOrDismissal()
         eventNotes.leave()
+        meetingNotes.leave()
         model.prepareForDismissal()
         editorLeaderAnchor = nil
         panel?.orderOut(nil)
@@ -3107,6 +3165,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if eventNotes.isPresented {
             return routeEventNoteKeyDown(event)
         }
+        if meetingNotes.isPresented {
+            return routeMeetingNotesKeyDown(event)
+        }
         if isReplayingTypeAheadKeys, !isDispatchingReplayedKey {
             if Self.typeAheadKeyKind(for: event) != nil {
                 // Keep physical edit/submit keys behind the already-buffered
@@ -3125,7 +3186,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if absorbRequirementMarkerOvertypeIfNeeded(event) {
             return nil
         }
-        if event.keyCode == 14 {
+        if event.keyCode == 14 || event.keyCode == 46 {
             let editor = panel?.firstResponder as? NSTextView
             let command = keyRouter.command(
                 for: event,
@@ -3134,11 +3195,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     editorHasMarkedText: editor?.hasMarkedText() ?? false,
                     calendarNoteActionIsFocused: eventNotes.calendarNoteActionIsFocused,
                     focusedCalendarNoteURL: eventNotes.focusedCalendarURL,
+                    meetingNotesActionIsFocused: meetingNotes.meetingActionIsFocused,
+                    focusedMeetingRef: meetingNotes.focusedMeetingRef,
                     captureSubmitInFlight: model.isSubmitting
                 )
             )
             if case .openGcalNote(let url)? = command {
                 showEventNotes(url: url)
+                return nil
+            }
+            if case .openMeetingNotes(let eventRef)? = command {
+                showMeetingNotes(eventRef: eventRef)
                 return nil
             }
             if command == .consumeKey {
@@ -3547,6 +3614,57 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .consumeKey:
             return nil
         case .gcalNotePassThrough:
+            return event
+        default:
+            return event
+        }
+    }
+
+    private func routeMeetingNotesKeyDown(_ event: NSEvent) -> NSEvent? {
+        let firstResponder = panel?.firstResponder
+        let editor = firstResponder as? NSTextView
+        // SwiftUI filter fields surface as NSTextField (or its field
+        // editor); q must type there and only escapes elsewhere.
+        let filterFocused = firstResponder is NSTextField
+            || (editor != nil && meetingNotes.session?.state == .choosingMeeting)
+        let command = keyRouter.command(
+            for: event,
+            context: CaptureKeyRoutingContext(
+                keyIsRepeat: event.isARepeat,
+                editorHasMarkedText: editor?.hasMarkedText() ?? false,
+                meetingNotesModeVisible: true,
+                meetingNotesIsWriting: meetingNotes.isWriting,
+                meetingNotesCanFile: meetingNotes.session?.canFile == true,
+                meetingNotesFilterFocused: filterFocused
+            )
+        )
+        guard let command else { return event }
+        switch command {
+        case .switchPanel:
+            let switcher = panelSwitcher
+            DispatchQueue.main.async { switcher() }
+            return nil
+        case .meetingNotesEscape:
+            meetingNotes.handleEscape()
+            return nil
+        case .meetingNotesMoveNext:
+            meetingNotes.moveSelection(1)
+            return nil
+        case .meetingNotesMovePrevious:
+            meetingNotes.moveSelection(-1)
+            return nil
+        case .meetingNotesOpenSelected:
+            meetingNotes.openSelectedMeeting()
+            return nil
+        case .meetingNotesFile:
+            meetingNotes.file()
+            return nil
+        case .meetingNotesRetry:
+            meetingNotes.retryPreview()
+            return nil
+        case .consumeKey:
+            return nil
+        case .meetingNotesPassThrough:
             return event
         default:
             return event

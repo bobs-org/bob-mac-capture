@@ -159,6 +159,14 @@ enum CaptureKeyCommand: Equatable {
     case gcalNoteToggleScope
     case gcalNoteUndo
     case gcalNotePassThrough
+    case openMeetingNotes(String?)
+    case meetingNotesEscape
+    case meetingNotesMoveNext
+    case meetingNotesMovePrevious
+    case meetingNotesOpenSelected
+    case meetingNotesFile
+    case meetingNotesRetry
+    case meetingNotesPassThrough
     case switchPanel
     case armEditorLeader
     case cancelEditorLeader
@@ -247,6 +255,12 @@ struct CaptureKeyRoutingContext: Equatable {
     var gcalNoteCanUndoMutation = false
     var calendarNoteActionIsFocused = false
     var focusedCalendarNoteURL: String? = nil
+    var meetingNotesModeVisible = false
+    var meetingNotesIsWriting = false
+    var meetingNotesCanFile = false
+    var meetingNotesFilterFocused = false
+    var meetingNotesActionIsFocused = false
+    var focusedMeetingRef: String? = nil
     var captureSubmitInFlight = false
 }
 
@@ -361,6 +375,7 @@ struct CaptureKeyCommandRouter {
         static let r: UInt16 = 15
         static let e: UInt16 = 14
         static let z: UInt16 = 6
+        static let m: UInt16 = 46
         static let n: UInt16 = 45
         static let o: UInt16 = 31
         static let p: UInt16 = 35
@@ -465,6 +480,71 @@ struct CaptureKeyCommandRouter {
             return .gcalNotePassThrough
         }
 
+        if context.meetingNotesModeVisible {
+            if context.editorHasMarkedText {
+                return .meetingNotesPassThrough
+            }
+            if event.keyCode == KeyCode.escape,
+                modifiers.subtracting(.capsLock).isEmpty
+            {
+                return context.keyIsRepeat || event.isARepeat
+                    ? .consumeKey : .meetingNotesEscape
+            }
+            if event.keyCode == KeyCode.leftBracket, modifiers == .control {
+                return context.keyIsRepeat || event.isARepeat
+                    ? .consumeKey : .meetingNotesEscape
+            }
+            if !context.meetingNotesFilterFocused,
+                modifiers.subtracting(.capsLock).isEmpty,
+                event.characters == "q" || event.characters == "Q"
+            {
+                return context.keyIsRepeat || event.isARepeat
+                    ? .consumeKey : .meetingNotesEscape
+            }
+            if event.keyCode == KeyCode.m,
+                modifiers.subtracting(.capsLock) == .command
+            {
+                return .consumeKey
+            }
+            if event.keyCode == KeyCode.e,
+                modifiers.subtracting(.capsLock) == .command
+            {
+                return .consumeKey
+            }
+            if context.meetingNotesIsWriting {
+                return .consumeKey
+            }
+            if event.keyCode == KeyCode.arrowDown,
+                modifiers.intersection([.command, .control, .option, .shift]).isEmpty
+            {
+                return .meetingNotesMoveNext
+            }
+            if event.keyCode == KeyCode.arrowUp,
+                modifiers.intersection([.command, .control, .option, .shift]).isEmpty
+            {
+                return .meetingNotesMovePrevious
+            }
+            if event.keyCode == KeyCode.n, modifiers == .control {
+                return .meetingNotesMoveNext
+            }
+            if event.keyCode == KeyCode.p, modifiers == .control {
+                return .meetingNotesMovePrevious
+            }
+            if event.keyCode == KeyCode.return || event.keyCode == KeyCode.keypadEnter {
+                if context.keyIsRepeat || event.isARepeat {
+                    return .consumeKey
+                }
+                if Self.strippedReturnModifiers(modifiers).isEmpty {
+                    return context.meetingNotesCanFile
+                        ? .meetingNotesFile : .meetingNotesOpenSelected
+                }
+            }
+            // Keep native filter typing (q stays typeable there, Ctrl+[
+            // never types), but prevent capture commands from acting on
+            // the covered sheet.
+            return .meetingNotesPassThrough
+        }
+
         if event.keyCode == KeyCode.e,
            modifiers.subtracting(.capsLock) == .command
         {
@@ -476,6 +556,20 @@ struct CaptureKeyCommandRouter {
             }
             return .openGcalNote(
                 context.calendarNoteActionIsFocused ? context.focusedCalendarNoteURL : nil
+            )
+        }
+
+        if event.keyCode == KeyCode.m,
+           modifiers.subtracting(.capsLock) == .command
+        {
+            if context.editorHasMarkedText {
+                return nil
+            }
+            if context.keyIsRepeat || event.isARepeat || context.captureSubmitInFlight {
+                return .consumeKey
+            }
+            return .openMeetingNotes(
+                context.meetingNotesActionIsFocused ? context.focusedMeetingRef : nil
             )
         }
 
