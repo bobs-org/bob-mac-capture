@@ -128,14 +128,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.agendaStore?.refresh(reason: .show)
         }
         self.eventNotePanelModel = eventNotePanelModel
-        let meetingNotesPanelModel = MeetingNotesPanelModel(
-            processClient: processClient,
-            onAgendaRefresh: { [weak self] in
-                self?.agendaStore?.refresh(reason: .show)
+        let meetingNotesPanelModel = MeetingNotesPanelModel(processClient: processClient)
+        meetingNotesPanelModel.onReceipt = { [weak self] receipt in
+            switch receipt.outcome {
+            case .filed, .queued:
+                self?.handleCaptureSuccess()
+            default:
+                break
             }
-        )
-        meetingNotesPanelModel.onReceipt = { [weak self] _ in
-            self?.agendaStore?.refresh(reason: .show)
         }
         self.meetingNotesPanelModel = meetingNotesPanelModel
         // The Agenda toggle applies live: the store keeps refreshing

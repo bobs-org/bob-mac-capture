@@ -138,6 +138,20 @@ public struct MeetingNotesMeeting: Decodable, Equatable, Sendable {
         eventID = try container.decodeIfPresent(String.self, forKey: .eventID)
         notes = try container.decodeIfPresent(MeetingNotesLink.self, forKey: .notes)
     }
+
+    /// Bob's event token is the selectable identity. Tokenless rows get a
+    /// distinct presentation id and are never assigned a synthesized EVENT.
+    public func presentationIdentity(at index: Int) -> String {
+        if let eventRef, !eventRef.isEmpty {
+            return "ref:\(eventRef)"
+        }
+        return "anon:\(index):\(path):\(date):\(start):\(end):\(title):\(blockID ?? "")"
+    }
+
+    public var canSelect: Bool {
+        guard let eventRef else { return false }
+        return !eventRef.isEmpty
+    }
 }
 
 public struct MeetingNotesLink: Decodable, Equatable, Sendable {

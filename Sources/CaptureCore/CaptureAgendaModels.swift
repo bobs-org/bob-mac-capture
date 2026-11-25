@@ -842,7 +842,9 @@ public struct CaptureAgendaMeetingNotes: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        state = try container.decodeIfPresent(String.self, forKey: .state) ?? "missing"
+        // An absent state is unknown, not missing. Only Bob's explicit
+        // `missing` value offers the Notes action.
+        state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
         note = try container.decodeIfPresent(String.self, forKey: .note)
         task = try container.decodeIfPresent(String.self, forKey: .task)
     }
@@ -860,15 +862,16 @@ public struct CaptureAgendaMeetingNotes: Decodable, Equatable, Sendable {
 extension CaptureAgendaEventRow {
     /// Whether this row offers the Meeting Notes `Notes` action.
     /// Started task rows with Bob's exact event token and a missing
-    /// filed state qualify; future, cancelled, filed, unknown-state,
-    /// and ID-less rows never do. Tokens are never inferred.
+    /// filed state qualify, including x/DONE. Future, cancelled (`-`),
+    /// filed, unknown-state, malformed/missing-state, and ID-less rows
+    /// never do. Tokens are never inferred.
     public var offersMeetingNotesAction: Bool {
         guard kind == .task else { return false }
         guard let blockID, !blockID.isEmpty else { return false }
         guard let eventRef, !eventRef.isEmpty else { return false }
         guard let meetingNotes, meetingNotes.isMissing else { return false }
         if let statusType, statusType.lowercased() == "cancelled" { return false }
-        if statusSymbol == "x" { return false }
+        if statusSymbol == "-" { return false }
         if let phase, phase == .upcoming { return false }
         return true
     }

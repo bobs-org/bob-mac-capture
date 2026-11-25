@@ -65,19 +65,10 @@ Capabilities are response-driven: unknown spans render neutral, contexts generic
   `task_links`; count them once as Linked, never again as pulled-in successors.
   Either separator plus seal uses existing `project_note` completion intent;
   new intents would be misread as `link` by older Macs.
-  Lists under a lone `@file` or `@file#section` header (grammar 6; the gate requires
-  grammar 5) add the `list` object on `capture` results and `capture-parse` items,
-  the `list_item` need, and `block_id.owner_line` / `block_id.splice` on
-  `project_task_block_id` completions. The app applies the splice and groups results
-  by `list` ([Capture lists](capture-lists.md)); it never splits a draft or places an ID itself.
-  Bulk templates require Bob's additive `template` / `template_row` parse and capture
-  objects, field-indexed `template_placeholder` and `template_field` spans, the
-  `template_row` incomplete need, and the `template` route-completion candidate.
-  Notebook capture requires notebook metadata on `capture-targets` and route
-  candidates (`title`, `summary`, `owner`, `breadcrumb`), notebook note rows
-  with `item_kind: "note"` in parent-task completion, `destination_kind: "notebook"`
-  on notebook block-ID fields, and the per-item `notebook` summary plus
-  `note_files[]` for notebook creation. Grammar 26 adds
+  Lists, bulk templates, and notebooks use the additive fields in the
+  compatibility table. The app applies Bob's list splice and groups results
+  by `list` ([Capture lists](capture-lists.md)); it never splits a draft or
+  places an ID itself. Grammar 26 adds
   `notebook_section_bullet`, span `notebook` / `section_action`, and
   `place_menu` chrome for drawer and notebook section menus.
   Task Wikilink picks require `capture-parse` spans
@@ -414,45 +405,20 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Album `title` / `summary` / `owner` / `breadcrumb` on record `capture-targets` and route rows, per-item `album` on `record` / `record_note` / `note_files[]`, and the `album_holds_no_tasks` rewrite | Album-named record route rows, album destinations on record previews and success copy, and the one-key `@stem/` footer fix | Rows, headlines, and captions keep the legacy route/path layout; the refusal stays a plain status message | Upgrade `bob` for album display |
 | Explicit unknown block-ID `intent` | Opens the New ID composer without showing task-link candidates | Missing intent keeps the legacy Link behavior | The app treats unrecognized intent values as unsupported |
 
-The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
-that rejects the command is remembered for that executable identity, so the app keeps
-the band hidden without retrying on later drafts. Changing the executable identity
-rechecks support.
+`capture-related` waits 350 ms; an older bob is remembered per executable identity.
 
 ## Meeting notes
 
-`bob ref meet` owns meeting selection, note normalization, parent eligibility,
-content hashing, and every vault write. The app passes an optional event token
-as one opaque argv element and uses `-c` so Bob reads the clipboard. It does
-not read, parse, or retain clipboard contents itself.
+`bob ref meet` owns matching, hashing, and vault writes. The app passes one
+opaque EVENT argv and `-c`; it never parses notes. Sheet keys and receipts:
+[Meeting notes](meeting-notes.md).
 
-- List recent rows with `ref meet -l -f json`.
-- Preview with `ref meet [EVENT] -c -d -f json`.
-- File with `ref meet EVENT -c -f json --expect-sha256 HEX`.
-
-Preview and file may also pass `--parent NOTE`, `--status next|ready|wip|read`,
-and `--overwrite`. Omit status initially so Bob's configured status wins. A
-preview is approved only when it returns `outcome: "would_file"`, an event
-`meeting.ref`, and `notes.sha256`. Filing pins that returned event ref and
-exact hash. If the clipboard changed, Bob returns `notes_changed`; discard the
-old approval and preview again before another Return can file.
-
-All responses use schema 1 and `ok`. List rows may have null `ref`, `block_id`,
-or `root`. Meeting matches are in `candidates[]` as `{meeting, detail,
-evidence}`. Parent choices are in `parent_candidates[]` with Bob's `route`,
-`kind`, `label`, `aliases`, and optional `status`. `existing` carries `note`,
-`task`, and `status`. Structured choice refusals can exit 2 while still
-providing valid JSON; decode the envelope before interpreting the process
-status. Other malformed output, process failures, and any schema version other
-than 1 are surfaced as errors.
-
-The file response keeps `filed` and `queued` distinct. It may include a commit,
-page count, warnings, and a queue object with `path`, `reason`, and `detail`.
-A queued receipt points to `bob ref scan` and does not imply that a note exists
-to open.
-
-If an older Bob reports exit 2 with the `unrecognized subcommand 'meet'`
-signature, the client caches that capability result for the executable
-identity. Other exit-2 responses, including valid JSON choice errors, remain
-normal command results. Rechecking Bob or replacing the executable clears the
-unsupported result.
+Commands: `ref meet -l -f json`; `ref meet [EVENT] -c -d -f json`; `ref meet
+EVENT -c -f json --expect-sha256 HEX`. Optional `--parent NOTE`, `--status
+next|ready|wip|read`, `--overwrite`. Omit status so Bob's default wins. File
+only `would_file` with `meeting.ref` and `notes.sha256`. Schema 1; null list
+`ref`/`block_id`/`root`; `candidates[]`, `parent_candidates[]`, `existing`.
+Exit-2 JSON choices decode; other failures and schema ≠ 1 error. Filed vs
+queued stay distinct; queued means `bob ref scan`. Exit 2 `unrecognized
+subcommand 'meet'` caches unsupported per executable; Recheck Bob or a new
+identity probes again.

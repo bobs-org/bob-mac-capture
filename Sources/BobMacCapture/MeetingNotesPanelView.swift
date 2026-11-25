@@ -46,6 +46,10 @@ struct MeetingNotesPanelView: View {
             }
         }
         .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { model.onOpenNote = onOpenNote }
+        .onChange(of: model.revision) { _, _ in
+            model.onOpenNote = onOpenNote
+        }
     }
 
     private var missingBobView: some View {
@@ -92,12 +96,13 @@ struct MeetingNotesPanelView: View {
                 Text(notice).font(.caption).foregroundStyle(.secondary)
             }
             TextField("Filter meetings", text: $model.filterText)
-            .textFieldStyle(.roundedBorder)
-            .focused($filterIsFocused)
-            .accessibilityLabel("Filter meetings")
+                .textFieldStyle(.roundedBorder)
+                .focused($filterIsFocused)
+                .accessibilityLabel("Filter meetings")
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(model.pickerMeetings, id: \.path) { meeting in
+                    ForEach(model.pickerRows, id: \.id) { row in
+                        let meeting = row.meeting
                         Button {
                             model.selectMeeting(meeting)
                         } label: {
@@ -118,15 +123,21 @@ struct MeetingNotesPanelView: View {
                                         .background(.quaternary, in: Capsule())
                                         .accessibilityLabel("Already filed")
                                 }
-                                if meeting.eventRef == model.selectedMeetingRef {
+                                if meeting.canSelect, meeting.eventRef == model.selectedMeetingRef {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(.secondary)
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(meeting.canSelect ? 1 : 0.45)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Select meeting \(meeting.title)")
+                        .disabled(!meeting.canSelect)
+                        .accessibilityLabel(
+                            meeting.canSelect
+                                ? "Select meeting \(meeting.title)"
+                                : "Unavailable meeting \(meeting.title)"
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,11 +161,18 @@ struct MeetingNotesPanelView: View {
                         Button {
                             model.chooseParent(choice)
                         } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(choice.label).font(.callout.weight(.medium))
-                                Text(choice.route)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(choice.label).font(.callout.weight(.medium))
+                                    Text(choice.route)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if choice.route == model.selectedParentRoute {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -178,12 +196,26 @@ struct MeetingNotesPanelView: View {
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
             }
-            Text("Replace the existing note with the current clipboard?")
+            Text("Choose whether to open the existing note, review a replacement, or keep it.")
                 .font(.callout)
-            HStack(spacing: 8) {
-                Button("Review replacement preview") { model.confirmReplace() }
-                    .accessibilityLabel("Review replacement preview")
-                Button("Keep existing") { model.declineReplace() }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(model.replaceActions, id: \.self) { action in
+                    Button {
+                        model.activateReplaceAction(action)
+                    } label: {
+                        HStack {
+                            Text(action.title)
+                            Spacer()
+                            if action == model.selectedReplaceAction {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(action.title)
+                }
             }
         }
         .padding(18)
@@ -219,7 +251,7 @@ struct MeetingNotesPanelView: View {
                             .accessibilityLabel("Auto-match evidence")
                     }
                     Button("Change meeting") {
-                        session?.retryList()
+                        model.showChooser()
                     }
                     .accessibilityHint("Shows the recent meeting list.")
                     if !summary.tldr.isEmpty {
@@ -251,6 +283,10 @@ struct MeetingNotesPanelView: View {
                     }
                     ForEach(MeetingNotesPresentation.warnings(for: response), id: \.self) { warning in
                         Text(warning).font(.caption).foregroundStyle(.orange)
+                    }
+                    if let warning = MeetingNotesPresentation.commitWarning(for: response) {
+                        Text(warning).font(.caption).foregroundStyle(.orange)
+                            .accessibilityLabel("Commit warning")
                     }
                     if let notice = session?.notice, !notice.isEmpty {
                         Text(notice).font(.caption).foregroundStyle(.secondary)
@@ -321,11 +357,11 @@ struct MeetingNotesPanelView: View {
                 Text("Run bob ref scan to file the queued notes.")
                     .font(.caption).foregroundStyle(.secondary)
                     .accessibilityLabel("Queued next step")
-            } else if let filing = response?.filing {
+            } else if filed, let filing = response?.filing {
                 Text(filing.note).font(.callout.monospaced())
                     .textSelection(.enabled)
                 HStack(spacing: 8) {
-                    Button("Open note") { onOpenNote(filing.note) }
+                    Button("Open note") { model.openExistingOrFiledNote() }
                         .accessibilityLabel("Open filed meeting note")
                     Button("Done") { model.leave() }
                 }
@@ -335,6 +371,10 @@ struct MeetingNotesPanelView: View {
             }
             ForEach(MeetingNotesPresentation.warnings(for: response), id: \.self) { warning in
                 Text(warning).font(.caption).foregroundStyle(.orange)
+            }
+            if let warning = MeetingNotesPresentation.commitWarning(for: response) {
+                Text(warning).font(.caption).foregroundStyle(.orange)
+                    .accessibilityLabel("Commit warning")
             }
             if let notice = session?.notice, !notice.isEmpty {
                 Text(notice).font(.caption).foregroundStyle(.secondary)

@@ -2,6 +2,17 @@ import AppKit
 import CaptureCore
 import SwiftUI
 
+private struct MeetingNotesActionsEnabledKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var meetingNotesActionsEnabled: Bool {
+        get { self[MeetingNotesActionsEnabledKey.self] }
+        set { self[MeetingNotesActionsEnabledKey.self] = newValue }
+    }
+}
+
 /// Idle-agenda views: the agenda pane renders `CaptureAgendaPlan`
 /// rows verbatim. All wording, fold decisions, and row order come
 /// from `CaptureAgendaPresentation` and `CaptureAgendaFitPlanner`; the
@@ -539,6 +550,7 @@ struct CaptureAgendaRowView: View {
     var onOpenMeetingNotes: (String?) -> Void = { _ in }
     var onMeetingNotesFocusChange: (Bool, String?) -> Void = { _, _ in }
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.meetingNotesActionsEnabled) private var meetingNotesActionsEnabled
     @FocusState private var eventNoteButtonIsFocused: Bool
     @FocusState private var meetingNotesButtonIsFocused: Bool
 
@@ -1453,7 +1465,7 @@ struct CaptureAgendaRowView: View {
                 .accessibilityHint(data.eventNoteURL == nil
                     ? "Opens the event picker because this row has no calendar URL."
                     : "Opens the private event note for this calendar event.")
-                if data.offersMeetingNotes {
+                if data.offersMeetingNotes, meetingNotesActionsEnabled {
                     Button {
                         onOpenMeetingNotes(data.eventMeetingRef)
                     } label: {

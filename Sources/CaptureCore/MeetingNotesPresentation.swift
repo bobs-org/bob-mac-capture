@@ -58,8 +58,14 @@ public enum MeetingNotesPresentation {
     }
 
     public static func transcriptDisposition(for response: MeetingNotesResponse?) -> String? {
-        response?.notes?.shape.flatMap { shape in
-            shape.isEmpty ? nil : shape
+        response?.notes?.transcript.flatMap { transcript in
+            transcript.isEmpty ? nil : transcript
+        }
+    }
+
+    public static func commitWarning(for response: MeetingNotesResponse?) -> String? {
+        response?.commitWarning.flatMap { warning in
+            warning.isEmpty ? nil : warning
         }
     }
 

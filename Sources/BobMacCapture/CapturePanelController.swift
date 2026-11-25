@@ -346,6 +346,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         eventNotes.onPresentationChange = { [weak self] isPresented in
             guard let self else { return }
             if isPresented {
+                if self.meetingNotes.isWriting {
+                    self.eventNotes.leave()
+                    return
+                }
                 self.meetingNotes.leave()
                 self.eventNoteReturnResponder = self.panel?.firstResponder
             } else if self.panel?.isVisible == true,
@@ -363,6 +367,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         self.meetingNotes.onPresentationChange = { [weak self] isPresented in
             guard let self else { return }
             if isPresented {
+                if self.eventNotes.session?.navigationDeferred == true {
+                    self.meetingNotes.leave()
+                    return
+                }
                 self.eventNotes.leave()
                 self.eventNoteReturnResponder = self.panel?.firstResponder
             } else if self.panel?.isVisible == true,
@@ -376,6 +384,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             } else {
                 self.eventNoteReturnResponder = nil
             }
+        }
+        self.meetingNotes.entryGate = { [weak self] in
+            guard let self else { return false }
+            if self.model.isSubmitting { return false }
+            if self.eventNotes.session?.navigationDeferred == true { return false }
+            return true
         }
         model.panelDismisser = { [weak self] in self?.hidePanel() }
         // Settles the layout while the panel is hidden: when a new
@@ -485,6 +499,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func showEventNotes(url: String? = nil) {
+        if meetingNotes.isWriting { return }
         if !isVisible {
             show()
         }
@@ -493,6 +508,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func showMeetingNotes(eventRef: String? = nil) {
+        if meetingNotes.isWriting { return }
+        if eventNotes.session?.navigationDeferred == true { return }
+        if model.isSubmitting { return }
+        if meetingNotes.entryShouldBeHidden { return }
         if !isVisible {
             show()
         }
@@ -2704,6 +2723,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     private func hidePanel() {
+        if meetingNotes.isWriting { return }
+        if eventNotes.session?.navigationDeferred == true { return }
         let token = CaptureSignpost.begin(CaptureSignpost.captureDismiss)
         defer { CaptureSignpost.end(token) }
         CaptureSignpost.event("panel-dismiss")
@@ -3195,9 +3216,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     editorHasMarkedText: editor?.hasMarkedText() ?? false,
                     calendarNoteActionIsFocused: eventNotes.calendarNoteActionIsFocused,
                     focusedCalendarNoteURL: eventNotes.focusedCalendarURL,
-                    meetingNotesActionIsFocused: meetingNotes.meetingActionIsFocused,
+                    meetingNotesActionIsFocused: meetingNotes.hasMeetingActionFocus,
                     focusedMeetingRef: meetingNotes.focusedMeetingRef,
-                    captureSubmitInFlight: model.isSubmitting
+                    captureSubmitInFlight: model.isSubmitting,
+                    meetingNotesKnownUnsupported: meetingNotes.entryShouldBeHidden
                 )
             )
             if case .openGcalNote(let url)? = command {
@@ -3622,25 +3644,31 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     private func routeMeetingNotesKeyDown(_ event: NSEvent) -> NSEvent? {
         let firstResponder = panel?.firstResponder
-        let editor = firstResponder as? NSTextView
-        // SwiftUI filter fields surface as NSTextField (or its field
-        // editor); q must type there and only escapes elsewhere.
-        let filterFocused = firstResponder is NSTextField
-            || (editor != nil && meetingNotes.session?.state == .choosingMeeting)
+        let filterFocused = Self.meetingNotesFilterIsFocused(
+            firstResponder: firstResponder,
+            choosingMeeting: meetingNotes.session?.state == .choosingMeeting
+        )
+        let markedText = Self.meetingNotesSheetHasMarkedText(
+            firstResponder: firstResponder,
+            filterFocused: filterFocused
+        )
         let command = keyRouter.command(
             for: event,
             context: CaptureKeyRoutingContext(
                 keyIsRepeat: event.isARepeat,
-                editorHasMarkedText: editor?.hasMarkedText() ?? false,
+                editorHasMarkedText: markedText,
                 meetingNotesModeVisible: true,
                 meetingNotesIsWriting: meetingNotes.isWriting,
                 meetingNotesCanFile: meetingNotes.session?.canFile == true,
-                meetingNotesFilterFocused: filterFocused
+                meetingNotesFilterFocused: filterFocused,
+                meetingNotesKnownUnsupported: meetingNotes.entryShouldBeHidden,
+                meetingNotesSurface: meetingNotes.keySurface
             )
         )
         guard let command else { return event }
         switch command {
         case .switchPanel:
+            if meetingNotes.isWriting { return nil }
             let switcher = panelSwitcher
             DispatchQueue.main.async { switcher() }
             return nil
@@ -3667,8 +3695,33 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .meetingNotesPassThrough:
             return event
         default:
-            return event
+            return nil
         }
+    }
+
+    /// The sheet's filter is an NSTextField or its field editor. The covered
+    /// capture NSTextView is never a field editor, so q and IME stay on the
+    /// sheet.
+    static func meetingNotesFilterIsFocused(
+        firstResponder: NSResponder?,
+        choosingMeeting: Bool
+    ) -> Bool {
+        guard choosingMeeting else { return false }
+        if firstResponder is NSTextField { return true }
+        if let textView = firstResponder as? NSTextView, textView.isFieldEditor {
+            return true
+        }
+        return false
+    }
+
+    static func meetingNotesSheetHasMarkedText(
+        firstResponder: NSResponder?,
+        filterFocused: Bool
+    ) -> Bool {
+        guard let textView = firstResponder as? NSTextView, textView.hasMarkedText() else {
+            return false
+        }
+        return textView.isFieldEditor || filterFocused
     }
 
     /// Records the one-shot fast double-tap probe for a second alias key

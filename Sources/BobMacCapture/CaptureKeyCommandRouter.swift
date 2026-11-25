@@ -174,6 +174,16 @@ enum CaptureKeyCommand: Equatable {
     case rejectEditorLeaderKey
 }
 
+enum MeetingNotesKeySurface: Equatable {
+    case inactive
+    case choosingMeeting
+    case choosingParent
+    case confirmingReplace
+    case preview
+    case writing
+    case other
+}
+
 struct CaptureKeyRoutingContext: Equatable {
     var similarRowsVisible = false
     var similarRowFocused = false
@@ -262,6 +272,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var meetingNotesActionIsFocused = false
     var focusedMeetingRef: String? = nil
     var captureSubmitInFlight = false
+    var meetingNotesKnownUnsupported = false
+    var meetingNotesSurface: MeetingNotesKeySurface = .inactive
 }
 
 struct CaptureKeyCommandRouter {
@@ -511,38 +523,52 @@ struct CaptureKeyCommandRouter {
             {
                 return .consumeKey
             }
-            if context.meetingNotesIsWriting {
+            if context.meetingNotesIsWriting || context.meetingNotesSurface == .writing {
                 return .consumeKey
             }
+            let choiceSurface =
+                context.meetingNotesSurface == .choosingMeeting
+                || context.meetingNotesSurface == .choosingParent
+                || context.meetingNotesSurface == .confirmingReplace
             if event.keyCode == KeyCode.arrowDown,
                 modifiers.intersection([.command, .control, .option, .shift]).isEmpty
             {
-                return .meetingNotesMoveNext
+                return choiceSurface ? .meetingNotesMoveNext : .consumeKey
             }
             if event.keyCode == KeyCode.arrowUp,
                 modifiers.intersection([.command, .control, .option, .shift]).isEmpty
             {
-                return .meetingNotesMovePrevious
+                return choiceSurface ? .meetingNotesMovePrevious : .consumeKey
             }
             if event.keyCode == KeyCode.n, modifiers == .control {
-                return .meetingNotesMoveNext
+                return choiceSurface ? .meetingNotesMoveNext : .consumeKey
             }
             if event.keyCode == KeyCode.p, modifiers == .control {
-                return .meetingNotesMovePrevious
+                return choiceSurface ? .meetingNotesMovePrevious : .consumeKey
             }
             if event.keyCode == KeyCode.return || event.keyCode == KeyCode.keypadEnter {
                 if context.keyIsRepeat || event.isARepeat {
                     return .consumeKey
                 }
                 if Self.strippedReturnModifiers(modifiers).isEmpty {
-                    return context.meetingNotesCanFile
-                        ? .meetingNotesFile : .meetingNotesOpenSelected
+                    switch context.meetingNotesSurface {
+                    case .choosingMeeting, .choosingParent, .confirmingReplace:
+                        return .meetingNotesOpenSelected
+                    case .preview:
+                        return context.meetingNotesCanFile
+                            ? .meetingNotesFile : .consumeKey
+                    default:
+                        return .consumeKey
+                    }
                 }
             }
-            // Keep native filter typing (q stays typeable there, Ctrl+[
-            // never types), but prevent capture commands from acting on
-            // the covered sheet.
-            return .meetingNotesPassThrough
+            // Filter typing stays native. Every other key is consumed so
+            // it cannot mutate the covered capture editor. Ctrl+[ already
+            // escaped above and never types.
+            if context.meetingNotesFilterFocused {
+                return .meetingNotesPassThrough
+            }
+            return .consumeKey
         }
 
         if event.keyCode == KeyCode.e,
@@ -565,7 +591,9 @@ struct CaptureKeyCommandRouter {
             if context.editorHasMarkedText {
                 return nil
             }
-            if context.keyIsRepeat || event.isARepeat || context.captureSubmitInFlight {
+            if context.keyIsRepeat || event.isARepeat || context.captureSubmitInFlight
+                || context.meetingNotesKnownUnsupported
+            {
                 return .consumeKey
             }
             return .openMeetingNotes(

@@ -960,11 +960,18 @@ struct CapturePanelView: View {
                 presentation: presentation,
                 onExpand: { model.expandAgendaUnit($0) },
                 onJoinEvent: { model.joinCalendarEvent($0) },
-                onOpenEventNote: { eventNotes.present(url: $0) },
+                onOpenEventNote: {
+                    if meetingNotes.isWriting { return }
+                    eventNotes.present(url: $0)
+                },
                 onEventNoteFocusChange: { focused, url in
                     eventNotes.setCalendarNoteActionFocused(focused, url: url)
                 },
-                onOpenMeetingNotes: { meetingNotes.present(eventRef: $0) },
+                onOpenMeetingNotes: {
+                    if eventNotes.session?.navigationDeferred == true { return }
+                    if model.isSubmitting { return }
+                    meetingNotes.present(eventRef: $0)
+                },
                 onMeetingNotesFocusChange: { focused, ref in
                     meetingNotes.setMeetingActionFocused(focused, eventRef: ref)
                 },
@@ -975,6 +982,7 @@ struct CapturePanelView: View {
                     model.agendaContentWidth = width
                 }
             )
+            .environment(\.meetingNotesActionsEnabled, !meetingNotes.entryShouldBeHidden)
         }
         .layoutPriority(0)
         .accessibilityElement(children: .contain)

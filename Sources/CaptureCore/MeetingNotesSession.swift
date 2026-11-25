@@ -53,6 +53,15 @@ public final class MeetingNotesSession {
 
     public var isActive: Bool { state != .inactive }
     public var canOpenExisting: Bool { state == .confirmingReplace && response?.existing != nil }
+    public var existingNotePath: String? {
+        if state == .confirmingReplace, let existing = response?.existing?.note, !existing.isEmpty {
+            return existing
+        }
+        if state == .filed, let note = response?.filing?.note, !note.isEmpty {
+            return note
+        }
+        return nil
+    }
     public var canOpenFiledNote: Bool {
         state == .filed && response?.outcome == .filed && response?.filing?.note != nil
     }
@@ -85,11 +94,24 @@ public final class MeetingNotesSession {
     private let process: MeetingNotesProcess
     private var sessionGeneration: UInt64 = 0
     private var previewGeneration: UInt64 = 0
+    private var listGeneration: UInt64 = 0
     private var listTask: Task<Void, Never>?
     private var previewTask: Task<Void, Never>?
     private var writeTask: Task<Void, Never>?
     private var pendingLeave = false
     private var receiptNotified = false
+    private var chooserUsesRecentList = false
+    private var chooserReturnPreview: PreviewSnapshot?
+
+    private struct PreviewSnapshot {
+        var response: MeetingNotesResponse
+        var previewOptions: MeetingNotesOptions
+        var eventToken: String?
+        var parent: String?
+        var statusOverride: MeetingNotesStatus?
+        var overwrite: Bool
+        var notice: String?
+    }
 
     private var currentOptions: MeetingNotesOptions {
         MeetingNotesOptions(
@@ -133,9 +155,12 @@ public final class MeetingNotesSession {
         listWarnings = []
         meetings = []
         notice = nil
+        chooserUsesRecentList = false
+        chooserReturnPreview = nil
         listState = .loading
         state = .loading
-        loadList(session: sessionGeneration)
+        listGeneration &+= 1
+        loadList(session: sessionGeneration, list: listGeneration)
         requestPreview()
     }
 
@@ -148,12 +173,66 @@ public final class MeetingNotesSession {
         cancelReads()
         state = .loading
         listState = .loading
-        loadList(session: sessionGeneration)
+        chooserUsesRecentList = false
+        chooserReturnPreview = nil
+        listGeneration &+= 1
+        loadList(session: sessionGeneration, list: listGeneration)
         requestPreview()
+    }
+
+    /// Open the recent-meeting chooser from a preview. The current list stays
+    /// visible while a fresh list loads; Escape restores the previous preview
+    /// without filing or keeping a changed selection.
+    public func showChooser() {
+        guard canChangeOptions else { return }
+        if state == .previewReady, let response, let previewOptions {
+            chooserReturnPreview = PreviewSnapshot(
+                response: response,
+                previewOptions: previewOptions,
+                eventToken: eventToken,
+                parent: parent,
+                statusOverride: statusOverride,
+                overwrite: overwrite,
+                notice: notice
+            )
+        } else {
+            chooserReturnPreview = nil
+        }
+        chooserUsesRecentList = true
+        if meetingChoices.isEmpty {
+            meetingChoices = meetings
+        }
+        state = .choosingMeeting
+        retryList()
+    }
+
+    /// Restore the preview that **Change meeting** left, or report that there
+    /// is no valid preview to return to so the sheet can close.
+    @discardableResult
+    public func cancelChooser() -> Bool {
+        guard state == .choosingMeeting else { return false }
+        guard let snapshot = chooserReturnPreview else { return false }
+        previewGeneration &+= 1
+        previewTask?.cancel()
+        chooserReturnPreview = nil
+        chooserUsesRecentList = false
+        response = snapshot.response
+        previewOptions = snapshot.previewOptions
+        eventToken = snapshot.eventToken
+        parent = snapshot.parent
+        statusOverride = snapshot.statusOverride
+        overwrite = snapshot.overwrite
+        notice = snapshot.notice
+        meetingChoices = []
+        parentChoices = []
+        state = .previewReady
+        return true
     }
 
     public func selectMeeting(_ meeting: MeetingNotesMeeting) {
         guard canChangeOptions, canSelect(meeting) else { return }
+        chooserReturnPreview = nil
+        chooserUsesRecentList = false
         eventToken = meeting.eventRef
         parent = nil
         overwrite = false
@@ -162,6 +241,8 @@ public final class MeetingNotesSession {
 
     public func selectMeeting(eventToken: String) {
         guard !eventToken.isEmpty, canChangeOptions else { return }
+        chooserReturnPreview = nil
+        chooserUsesRecentList = false
         self.eventToken = eventToken
         parent = nil
         overwrite = false
@@ -222,7 +303,8 @@ public final class MeetingNotesSession {
     public func retryList() {
         guard state != .inactive else { return }
         listState = .loading
-        loadList(session: sessionGeneration)
+        listGeneration &+= 1
+        loadList(session: sessionGeneration, list: listGeneration)
     }
 
     /// Return is accepted only for the current would-file preview. The write
@@ -279,18 +361,20 @@ public final class MeetingNotesSession {
         meetingChoices = []
         parentChoices = []
         listWarnings = []
+        chooserUsesRecentList = false
+        chooserReturnPreview = nil
         listState = .idle
         state = .inactive
     }
 
-    private func loadList(session token: UInt64) {
+    private func loadList(session token: UInt64, list listToken: UInt64) {
         listTask?.cancel()
         listTask = Task { [weak self, process] in
             do {
                 let result = try await process.meetingNotesList()
-                await self?.receiveList(result, session: token)
+                await self?.receiveList(result, session: token, list: listToken)
             } catch {
-                await self?.receiveListError(error, session: token)
+                await self?.receiveListError(error, session: token, list: listToken)
             }
         }
     }
@@ -319,8 +403,14 @@ public final class MeetingNotesSession {
         }
     }
 
-    private func receiveList(_ result: MeetingNotesListResponse, session token: UInt64) {
-        guard token == sessionGeneration, state != .inactive else { return }
+    private func receiveList(
+        _ result: MeetingNotesListResponse,
+        session token: UInt64,
+        list listToken: UInt64
+    ) {
+        guard token == sessionGeneration, listToken == listGeneration, state != .inactive else {
+            return
+        }
         guard result.ok else {
             listState = .failed("Bob could not load the recent meeting list.")
             if state == .choosingMeeting && meetingChoices.isEmpty {
@@ -332,7 +422,7 @@ public final class MeetingNotesSession {
         meetings = result.meetings
         listWarnings = result.warnings
         listState = .loaded
-        if state == .choosingMeeting && meetingChoices.isEmpty {
+        if state == .choosingMeeting, meetingChoices.isEmpty || chooserUsesRecentList {
             meetingChoices = result.meetings
             if meetingChoices.isEmpty {
                 state = .empty
@@ -341,8 +431,10 @@ public final class MeetingNotesSession {
         }
     }
 
-    private func receiveListError(_ error: Error, session token: UInt64) {
-        guard token == sessionGeneration, state != .inactive else { return }
+    private func receiveListError(_ error: Error, session token: UInt64, list listToken: UInt64) {
+        guard token == sessionGeneration, listToken == listGeneration, state != .inactive else {
+            return
+        }
         if isUnsupported(error) {
             state = .unsupported
             listState = .failed("Meeting notes require an updated Bob command.")
@@ -371,8 +463,8 @@ public final class MeetingNotesSession {
                 )
                 return
             }
-            previewOptions = options
             if result.meeting?.eventRef == nil || result.notes?.sha256 == nil {
+                previewOptions = options
                 setRecoverable(
                     code: "incomplete_preview",
                     message:
@@ -381,6 +473,15 @@ public final class MeetingNotesSession {
                 )
                 return
             }
+            if let matched = result.meeting?.eventRef, !matched.isEmpty {
+                eventToken = matched
+            }
+            previewOptions = MeetingNotesOptions(
+                eventToken: eventToken,
+                parent: options.parent,
+                status: options.status,
+                overwrite: options.overwrite
+            )
             state = .previewReady
             return
         }
@@ -396,7 +497,9 @@ public final class MeetingNotesSession {
         }
         switch error.code {
         case "ambiguous_meeting", "no_meeting":
+            chooserReturnPreview = nil
             meetingChoices = result.candidates.map(\.meeting)
+            chooserUsesRecentList = meetingChoices.isEmpty
             if meetingChoices.isEmpty {
                 meetingChoices = meetings
             }
@@ -476,7 +579,9 @@ public final class MeetingNotesSession {
                     code: error.code, message: error.message, hint: error.hint
                 ) : .choosingParent
         case "ambiguous_meeting", "no_meeting":
+            chooserReturnPreview = nil
             meetingChoices = result.candidates.map(\.meeting)
+            chooserUsesRecentList = meetingChoices.isEmpty
             if meetingChoices.isEmpty { meetingChoices = meetings }
             state = meetingChoices.isEmpty ? .empty : .choosingMeeting
         case "no_notes", "notes_unreadable":

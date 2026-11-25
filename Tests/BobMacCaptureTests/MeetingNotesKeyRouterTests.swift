@@ -103,20 +103,51 @@ final class MeetingNotesKeyRouterTests: XCTestCase {
             router.command(
                 for: ret,
                 context: CaptureKeyRoutingContext(
-                    meetingNotesModeVisible: true, meetingNotesCanFile: true)),
+                    meetingNotesModeVisible: true,
+                    meetingNotesCanFile: true,
+                    meetingNotesSurface: .preview)),
             .meetingNotesFile
         )
         XCTAssertEqual(
             router.command(
                 for: ret,
-                context: CaptureKeyRoutingContext(meetingNotesModeVisible: true)),
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true,
+                    meetingNotesSurface: .choosingMeeting)),
             .meetingNotesOpenSelected
+        )
+        XCTAssertEqual(
+            router.command(
+                for: ret,
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true,
+                    meetingNotesSurface: .choosingParent)),
+            .meetingNotesOpenSelected
+        )
+        XCTAssertEqual(
+            router.command(
+                for: ret,
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true,
+                    meetingNotesCanFile: true,
+                    meetingNotesSurface: .confirmingReplace)),
+            .meetingNotesOpenSelected
+        )
+        XCTAssertEqual(
+            router.command(
+                for: ret,
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true,
+                    meetingNotesSurface: .preview)),
+            .consumeKey
         )
         XCTAssertEqual(
             router.command(
                 for: keyEvent(keyCode: 36, characters: "\r", isRepeat: true),
                 context: CaptureKeyRoutingContext(
-                    meetingNotesModeVisible: true, meetingNotesCanFile: true)),
+                    meetingNotesModeVisible: true,
+                    meetingNotesCanFile: true,
+                    meetingNotesSurface: .preview)),
             .consumeKey
         )
         XCTAssertEqual(
@@ -130,19 +161,51 @@ final class MeetingNotesKeyRouterTests: XCTestCase {
 
     func testMeetingNotesModeMovesAndConsumesCommandChords() {
         let router = CaptureKeyCommandRouter()
-        let base = CaptureKeyRoutingContext(meetingNotesModeVisible: true)
+        let chooser = CaptureKeyRoutingContext(
+            meetingNotesModeVisible: true, meetingNotesSurface: .choosingMeeting)
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 125, characters: ""), context: base),
+            router.command(for: keyEvent(keyCode: 125, characters: ""), context: chooser),
             .meetingNotesMoveNext
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 126, characters: ""), context: base),
+            router.command(for: keyEvent(keyCode: 126, characters: ""), context: chooser),
             .meetingNotesMovePrevious
         )
         XCTAssertEqual(
             router.command(
+                for: keyEvent(keyCode: 125, characters: ""),
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true, meetingNotesSurface: .preview)),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
                 for: keyEvent(keyCode: 46, modifiers: .command, characters: "m"),
-                context: base),
+                context: chooser),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 0, characters: "a"),
+                context: CaptureKeyRoutingContext(meetingNotesModeVisible: true)),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 0, characters: "a"),
+                context: CaptureKeyRoutingContext(
+                    meetingNotesModeVisible: true, meetingNotesFilterFocused: true)),
+            .meetingNotesPassThrough
+        )
+    }
+
+    func testCommandMIsConsumedWhenMeetingNotesAreKnownUnsupported() {
+        let router = CaptureKeyCommandRouter()
+        let commandM = keyEvent(keyCode: 46, modifiers: .command, characters: "m")
+        XCTAssertEqual(
+            router.command(
+                for: commandM,
+                context: CaptureKeyRoutingContext(meetingNotesKnownUnsupported: true)),
             .consumeKey
         )
     }

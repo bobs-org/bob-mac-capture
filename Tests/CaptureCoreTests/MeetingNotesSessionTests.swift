@@ -311,7 +311,7 @@ final class MeetingNotesSessionTests: XCTestCase {
         let (session, process) = makeSession(
             listHandler: { rows },
             previewHandler: { _ in preview },
-            fileHandler: { _ in await gate.wait() }
+            fileHandler: { _ in try await gate.wait() }
         )
         var refreshes = 0
         var receipts = 0
@@ -334,6 +334,83 @@ final class MeetingNotesSessionTests: XCTestCase {
         XCTAssertEqual(receipts, 1)
         session.file()
         XCTAssertEqual(process.fileRequests.count, 1)
+    }
+
+    func testShowChooserKeepsCurrentListAndEscapeRestoresPreview() async throws {
+        let rows = try list()
+        let preview = try response("preview.json")
+        let filed = try response("filed.json")
+        let (session, process) = makeSession(
+            listHandler: { rows },
+            previewHandler: { _ in preview },
+            fileHandler: { _ in filed }
+        )
+        session.enter()
+        await waitUntil { session.state == .previewReady }
+        let previewCount = process.previewRequests.count
+        session.showChooser()
+        XCTAssertEqual(session.state, .choosingMeeting)
+        XCTAssertFalse(session.meetingChoices.isEmpty)
+        XCTAssertTrue(session.cancelChooser())
+        XCTAssertEqual(session.state, .previewReady)
+        XCTAssertEqual(session.eventToken, "20261124#^spruce-sync")
+        XCTAssertEqual(process.previewRequests.count, previewCount)
+        XCTAssertTrue(session.canFile)
+    }
+
+    func testLateListCannotReplaceNewerChooserGeneration() async throws {
+        let first = try list()
+        let second = try list("list-same-path.json")
+        let preview = try response("preview.json")
+        let filed = try response("filed.json")
+        let lists = LockedCounter()
+        let (session, _) = makeSession(
+            listHandler: {
+                let index = lists.increment()
+                if index == 1 {
+                    await delayIgnoringCancellation(0.2)
+                    return first
+                }
+                return second
+            },
+            previewHandler: { _ in preview },
+            fileHandler: { _ in filed }
+        )
+        session.enter()
+        session.retryList()
+        await waitUntil { session.meetings.count == 3 }
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertEqual(session.meetings.count, 3)
+        XCTAssertEqual(
+            session.meetings.map(\.eventRef),
+            ["20261124#^spruce-sync", "20261124#^orchard", nil]
+        )
+    }
+
+    func testSamePathTokenlessRowCannotBeSelected() async throws {
+        let rows = try list("list-same-path.json")
+        let preview = try response("preview.json")
+        let filed = try response("filed.json")
+        let (session, process) = makeSession(
+            listHandler: { rows },
+            previewHandler: { _ in preview },
+            fileHandler: { _ in filed }
+        )
+        session.enter()
+        await waitUntil { session.meetings.count == 3 }
+        let identities = session.meetings.enumerated().map {
+            $0.element.presentationIdentity(at: $0.offset)
+        }
+        XCTAssertEqual(Set(identities).count, 3)
+        let tokenless = try XCTUnwrap(session.meetings.first { $0.eventRef == nil })
+        let before = process.previewRequests.count
+        session.selectMeeting(tokenless)
+        XCTAssertEqual(process.previewRequests.count, before)
+        let selectable = try XCTUnwrap(
+            session.meetings.first { $0.eventRef == "20261124#^orchard" })
+        session.selectMeeting(selectable)
+        await waitUntil { session.eventToken == "20261124#^orchard" }
+        XCTAssertEqual(session.eventToken, "20261124#^orchard")
     }
 }
 
@@ -397,14 +474,26 @@ private final class FakeMeetingNotesProcess: MeetingNotesProcess, @unchecked Sen
 }
 
 private actor MeetingNotesResponseGate {
-    private var continuation: CheckedContinuation<MeetingNotesResponse, Never>?
+    enum GateError: Error { case timeout }
+
+    private var continuation: CheckedContinuation<MeetingNotesResponse, Error>?
     private var result: MeetingNotesResponse?
 
-    func wait() async -> MeetingNotesResponse {
+    func wait(nanoseconds: UInt64 = 8_000_000_000) async throws -> MeetingNotesResponse {
         if let result { return result }
-        return await withCheckedContinuation { continuation in
+        return try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
+            Task {
+                try await Task.sleep(nanoseconds: nanoseconds)
+                await self.timeout()
+            }
         }
+    }
+
+    func timeout() {
+        guard continuation != nil, result == nil else { return }
+        continuation?.resume(throwing: GateError.timeout)
+        continuation = nil
     }
 
     func resolve(_ response: MeetingNotesResponse) {
@@ -422,10 +511,12 @@ private final class LockedCounter: @unchecked Sendable {
         defer { lock.unlock() }
         return storedValue
     }
-    func increment() {
+    @discardableResult
+    func increment() -> Int {
         lock.lock()
+        defer { lock.unlock() }
         storedValue += 1
-        lock.unlock()
+        return storedValue
     }
 }
 

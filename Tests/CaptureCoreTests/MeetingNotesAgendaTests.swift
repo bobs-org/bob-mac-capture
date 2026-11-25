@@ -50,7 +50,17 @@ final class MeetingNotesAgendaTests: XCTestCase {
 
     func testNewBobStartedRowOffersNotesAction() throws {
         let data = """
-        {"line":10,"block_id":"standup","kind":"task","title":"Standup","phase":"running","status_symbol":" ","status_type":"TODO","event_ref":"20261123#^standup","meeting_notes":{"state":"missing"}}
+        {
+          "line":10,
+          "block_id":"standup",
+          "kind":"task",
+          "title":"Standup",
+          "phase":"running",
+          "status_symbol":" ",
+          "status_type":"TODO",
+          "event_ref":"20261123#^standup",
+          "meeting_notes":{"state":"missing"}
+        }
         """.data(using: .utf8)!
         let row = try JSONDecoder().decode(CaptureAgendaEventRow.self, from: data)
         XCTAssertEqual(row.eventRef, "20261123#^standup")
@@ -66,8 +76,35 @@ final class MeetingNotesAgendaTests: XCTestCase {
         XCTAssertFalse(makeRow(phase: .upcoming).offersMeetingNotesAction)
     }
 
-    func testCancelledRowOffersNoAction() {
-        XCTAssertFalse(makeRow(statusSymbol: "x", statusType: "CANCELLED").offersMeetingNotesAction)
+    func testCancelledDashRowOffersNoAction() {
+        XCTAssertFalse(
+            makeRow(statusSymbol: "-", statusType: "CANCELLED").offersMeetingNotesAction)
+    }
+
+    func testDoneXRowStillOffersNotesAction() {
+        XCTAssertTrue(makeRow(statusSymbol: "x", statusType: "DONE").offersMeetingNotesAction)
+        XCTAssertTrue(
+            makeRow(phase: .ended, statusSymbol: "X", statusType: "DONE")
+                .offersMeetingNotesAction)
+    }
+
+    func testAbsentMeetingNotesStateOffersNoAction() throws {
+        let data = """
+        {
+          "line":10,
+          "block_id":"standup",
+          "kind":"task",
+          "title":"Standup",
+          "phase":"running",
+          "status_symbol":" ",
+          "status_type":"TODO",
+          "event_ref":"20261123#^standup",
+          "meeting_notes":{}
+        }
+        """.data(using: .utf8)!
+        let row = try JSONDecoder().decode(CaptureAgendaEventRow.self, from: data)
+        XCTAssertEqual(row.meetingNotes?.state, "")
+        XCTAssertFalse(row.offersMeetingNotesAction)
     }
 
     func testFiledRowOffersNoAction() {
@@ -93,14 +130,23 @@ final class MeetingNotesAgendaTests: XCTestCase {
 
     func testPresentationCarriesMeetingRefAndEligibility() {
         let row = makeRow()
-        let calendar = CaptureAgendaPresentation.makeCalendarEventRow(row, countdown: nil, startHint: nil)
+        let calendar = CaptureAgendaPresentation.makeCalendarEventRow(
+            row, countdown: nil, startHint: nil)
         XCTAssertEqual(calendar.calendar?.eventMeetingRef, "20261123#^standup")
+        XCTAssertEqual(calendar.calendar?.offersMeetingNotes, true)
+    }
+
+    func testEndedDonePresentationStillOffersNotes() {
+        let row = makeRow(phase: .ended, statusSymbol: "x", statusType: "DONE")
+        let calendar = CaptureAgendaPresentation.makeCalendarEventRow(
+            row, countdown: nil, startHint: nil)
         XCTAssertEqual(calendar.calendar?.offersMeetingNotes, true)
     }
 
     func testPresentationDropsActionForOldBob() {
         let row = makeRow(eventRef: nil, state: nil)
-        let calendar = CaptureAgendaPresentation.makeCalendarEventRow(row, countdown: nil, startHint: nil)
+        let calendar = CaptureAgendaPresentation.makeCalendarEventRow(
+            row, countdown: nil, startHint: nil)
         XCTAssertNil(calendar.calendar?.eventMeetingRef)
         XCTAssertEqual(calendar.calendar?.offersMeetingNotes, false)
     }
@@ -116,5 +162,57 @@ final class MeetingNotesAgendaTests: XCTestCase {
         XCTAssertEqual(
             MeetingNotesPresentation.dateSpan(for: meeting), "2026-11-23 · 13:00–13:30")
         XCTAssertTrue(MeetingNotesPresentation.filedRowMark(for: meeting!) == false)
+    }
+
+    func testTranscriptDispositionReadsTranscriptNotShape() throws {
+        let preview = try JSONDecoder().decode(
+            MeetingNotesResponse.self,
+            from: Data(
+                contentsOf: URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("Fixtures/meeting-notes/preview.json")
+            )
+        )
+        XCTAssertEqual(preview.notes?.shape, "wispr_plain_text")
+        XCTAssertEqual(
+            MeetingNotesPresentation.transcriptDisposition(for: preview), "omitted")
+        XCTAssertEqual(
+            MeetingNotesPresentation.commitWarning(for: preview), nil)
+
+        let filed = try JSONDecoder().decode(
+            MeetingNotesResponse.self,
+            from: Data(
+                contentsOf: URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("Fixtures/meeting-notes/filed.json")
+            )
+        )
+        XCTAssertEqual(
+            MeetingNotesPresentation.transcriptDisposition(for: filed), "omitted")
+        XCTAssertEqual(
+            MeetingNotesPresentation.commitWarning(for: filed), "remote unavailable")
+    }
+
+    func testSamePathMeetingsKeepDistinctPresentationIdentities() throws {
+        let list = try JSONDecoder().decode(
+            MeetingNotesListResponse.self,
+            from: Data(
+                contentsOf: URL(fileURLWithPath: #filePath)
+                    .deletingLastPathComponent()
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("Fixtures/meeting-notes/list-same-path.json")
+            )
+        )
+        XCTAssertEqual(Set(list.meetings.map(\.path)).count, 1)
+        let ids = list.meetings.enumerated().map { $0.element.presentationIdentity(at: $0.offset) }
+        XCTAssertEqual(Set(ids).count, 3)
+        XCTAssertEqual(ids[0], "ref:20261124#^spruce-sync")
+        XCTAssertEqual(ids[1], "ref:20261124#^orchard")
+        XCTAssertTrue(ids[2].hasPrefix("anon:2:"))
+        XCTAssertTrue(list.meetings[0].canSelect)
+        XCTAssertTrue(list.meetings[1].canSelect)
+        XCTAssertFalse(list.meetings[2].canSelect)
     }
 }

@@ -202,17 +202,24 @@ final class RefsStoresTests: XCTestCase {
         XCTAssertEqual(store.load(), [fresh])
     }
 
-    func testOpenLogKeepsOnlyTheNewestTwoThousand() {
+    func testOpenLogKeepsOnlyTheNewestTwoThousand() throws {
         let now = Date(timeIntervalSince1970: 1_760_000_000)
         let store = RefsOpenLogStore(fileURL: openLogURL, now: { now })
-        for index in 0..<2_005 {
-            store.append(
+        // Seed one file so this cap test does not fsync 2005 growing writes.
+        try writeOpenLog(
+            (0..<2_004).map { index in
                 RefsOpenEvent(
                     path: "ref/chat/\(index).md",
                     at: now.addingTimeInterval(TimeInterval(index))
                 )
+            }
+        )
+        store.append(
+            RefsOpenEvent(
+                path: "ref/chat/2004.md",
+                at: now.addingTimeInterval(2_004)
             )
-        }
+        )
 
         let loaded = store.load()
 
@@ -309,25 +316,34 @@ final class RefsStoresTests: XCTestCase {
         XCTAssertEqual(store.load().mark(for: "ref/b.md")?.state, .seen)
     }
 
-    func testNewMarksPruneStaleThenKeepTheNewestTwoThousand() {
+    func testNewMarksPruneStaleThenKeepTheNewestTwoThousand() throws {
         let now = Date(timeIntervalSince1970: 1_760_000_000)
         let store = RefsNewMarkStore(fileURL: newMarksURL, now: { now })
-        store.apply(
-            path: "ref/old.md",
-            mark: RefsNewMark(
+        var seed: [RefsNewMarkEntry] = [
+            RefsNewMarkEntry(
+                path: "ref/old.md",
                 state: .new,
                 at: now.addingTimeInterval(TimeInterval(-366 * 24 * 3_600))
             )
-        )
-        for index in 0..<2_005 {
-            store.apply(
-                path: "ref/n\(index).md",
-                mark: RefsNewMark(
+        ]
+        seed.append(
+            contentsOf: (0..<2_004).map { index in
+                RefsNewMarkEntry(
+                    path: "ref/n\(index).md",
                     state: .seen,
                     at: now.addingTimeInterval(TimeInterval(index))
                 )
+            }
+        )
+        // Seed one file so this cap test does not fsync 2006 growing writes.
+        try writeNewMarks(seed)
+        store.apply(
+            path: "ref/n2004.md",
+            mark: RefsNewMark(
+                state: .seen,
+                at: now.addingTimeInterval(2_004)
             )
-        }
+        )
 
         let loaded = store.load()
         XCTAssertNil(loaded.mark(for: "ref/old.md"))
@@ -366,6 +382,18 @@ final class RefsStoresTests: XCTestCase {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let value = try XCTUnwrap(attributes[.posixPermissions] as? NSNumber)
         return value.uint16Value
+    }
+
+    private func writeOpenLog(_ opens: [RefsOpenEvent]) throws {
+        try RefsStoreCodecs.ensureParentDirectory(for: openLogURL, fileManager: .default)
+        let data = try RefsStoreCodecs.encoder().encode(RefsOpenLogFile(opens: opens))
+        try RefsStoreCodecs.writeAtomically(data, to: openLogURL, fileManager: .default)
+    }
+
+    private func writeNewMarks(_ marks: [RefsNewMarkEntry]) throws {
+        try RefsStoreCodecs.ensureParentDirectory(for: newMarksURL, fileManager: .default)
+        let data = try RefsStoreCodecs.encoder().encode(RefsNewMarksFile(marks: marks))
+        try RefsStoreCodecs.writeAtomically(data, to: newMarksURL, fileManager: .default)
     }
 }
 
