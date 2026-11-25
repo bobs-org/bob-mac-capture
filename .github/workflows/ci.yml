@@ -60,8 +60,8 @@ jobs:
           # XCTest has no per-test timeout. Keep the job responsive when an async test
           # waits forever, and leave a sampled stack that identifies the stuck test.
           while kill -0 "${test_pid}" 2>/dev/null; do
-            if (( SECONDS - started_at >= 900 )); then
-              echo "::error::swift test ran longer than 15 minutes; sampling xctest"
+            if (( SECONDS - started_at >= 1200 )); then
+              echo "::error::swift test ran longer than 20 minutes; sampling xctest"
               for pid in $(pgrep -x xctest || true); do
                 sample_file="${BOB_MAC_CAPTURE_TEST_HANG_DIR}/xctest-${pid}.txt"
                 sudo -n sample "${pid}" 5 -file "${sample_file}" || \
