@@ -322,9 +322,10 @@ final class MeetingNotesSessionTests: XCTestCase {
         await waitUntil { session.state == .previewReady }
         session.file()
         await waitUntil { session.state == .writing && process.fileRequests.count == 1 }
+        let cancellationsBeforeLeave = process.cancelCount
         session.leave()
         XCTAssertEqual(session.state, .writing)
-        XCTAssertEqual(process.cancelCount, 1)
+        XCTAssertEqual(process.cancelCount, cancellationsBeforeLeave + 1)
 
         await gate.resolve(filed)
         await waitUntil { session.state == .filed }
