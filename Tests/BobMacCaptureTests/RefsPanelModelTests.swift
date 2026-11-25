@@ -2964,7 +2964,7 @@ final class RefsPanelModelTests: XCTestCase {
         harness.model.prepareForPresentation(source: .library)
 
         XCTAssertFalse(harness.model.tabsFilter)
-        XCTAssertEqual(harness.model.query, "small")
+        XCTAssertEqual(harness.model.query, "small_reading")
         XCTAssertNil(harness.model.banner)
         XCTAssertEqual(harness.model.selectedID, kept)
     }
