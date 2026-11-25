@@ -49,6 +49,7 @@ public enum RefsKeyRouter {
         static let three: UInt16 = 20
         static let four: UInt16 = 21
         static let five: UInt16 = 23
+        static let six: UInt16 = 22
         static let zero: UInt16 = 29
         static let r: UInt16 = 15
         static let t: UInt16 = 17
@@ -220,6 +221,8 @@ public enum RefsKeyRouter {
             return flags == .command ? .setScope(.articles) : nil
         case KeyCode.five:
             return flags == .command ? .setScope(.docs) : nil
+        case KeyCode.six:
+            return flags == .command ? .setScope(.meetings) : nil
         case KeyCode.zero:
             // ⌘0 toggles Newest. Caps Lock never blocks it; Shift-⌘0
             // and the keypad 0 are unbound. While IME-composing it

@@ -15,6 +15,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind(refType: "books"), .book)
         XCTAssertEqual(RefKind(refType: "slides"), .slides)
         XCTAssertEqual(RefKind(refType: "podcasts"), .podcast)
+        XCTAssertEqual(RefKind(refType: "meetings"), .meeting)
         XCTAssertEqual(RefKind(refType: "podcast"), .other(raw: "podcast"))
         XCTAssertEqual(RefKind(refType: "code"), .other(raw: "code"))
         XCTAssertEqual(RefKind(refType: nil), .other(raw: nil))
@@ -26,6 +27,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.book.label, "Book")
         XCTAssertEqual(RefKind.slides.label, "Slides")
         XCTAssertEqual(RefKind.podcast.label, "Podcast")
+        XCTAssertEqual(RefKind.meeting.label, "Meeting")
         XCTAssertEqual(RefKind(refType: "code").label, "Code")
         XCTAssertEqual(RefKind(refType: nil).label, "Reference")
 
@@ -36,6 +38,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.book.symbolName, "books.vertical")
         XCTAssertEqual(RefKind.slides.symbolName, "rectangle.on.rectangle")
         XCTAssertEqual(RefKind.podcast.symbolName, "mic")
+        XCTAssertEqual(RefKind.meeting.symbolName, "person.2.fill")
         XCTAssertEqual(RefKind(refType: "code").symbolName, "doc")
     }
 
@@ -44,6 +47,7 @@ final class RefsModelTests: XCTestCase {
         XCTAssertEqual(RefKind.paper.scope, .papers)
         XCTAssertEqual(RefKind.article.scope, .articles)
         XCTAssertEqual(RefKind.doc.scope, .docs)
+        XCTAssertEqual(RefKind.meeting.scope, .meetings)
         XCTAssertNil(RefKind.book.scope)
         XCTAssertNil(RefKind.slides.scope)
         XCTAssertNil(RefKind.podcast.scope)
@@ -59,11 +63,14 @@ final class RefsModelTests: XCTestCase {
         XCTAssertTrue(RefScope.articles.contains(.article))
         XCTAssertFalse(RefScope.articles.contains(.doc))
         XCTAssertTrue(RefScope.docs.contains(.doc))
+        XCTAssertTrue(RefScope.meetings.contains(.meeting))
+        XCTAssertFalse(RefScope.meetings.contains(.doc))
         XCTAssertFalse(RefScope.docs.contains(.other(raw: "code")))
         XCTAssertTrue(RefScope.all.contains(.podcast))
         XCTAssertFalse(RefScope.articles.contains(.podcast))
         XCTAssertEqual(RefScope.all.label, "All")
-        XCTAssertEqual(RefScope.allCases.map(\.rawValue), [1, 2, 3, 4, 5])
+        XCTAssertEqual(RefScope.meetings.label, "Meetings")
+        XCTAssertEqual(RefScope.allCases.map(\.rawValue), [1, 2, 3, 4, 5, 6])
     }
 
     func testStatusMappingTable() {

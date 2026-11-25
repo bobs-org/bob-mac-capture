@@ -13,6 +13,7 @@ final class RefsKeyRouterTests: XCTestCase {
         static let three: UInt16 = 20
         static let four: UInt16 = 21
         static let five: UInt16 = 23
+        static let six: UInt16 = 22
         static let a: UInt16 = 0
         static let r: UInt16 = 15
         static let t: UInt16 = 17
@@ -328,6 +329,7 @@ final class RefsKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyCode.three, .command), .setScope(.papers))
         XCTAssertEqual(route(KeyCode.four, .command), .setScope(.articles))
         XCTAssertEqual(route(KeyCode.five, .command), .setScope(.docs))
+        XCTAssertEqual(route(KeyCode.six, .command), .setScope(.meetings))
         XCTAssertNil(route(KeyCode.two))
     }
 

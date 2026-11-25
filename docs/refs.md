@@ -364,7 +364,7 @@ you.
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
 | Command-0 | Toggle Newest: every reference by date added, newest first, grouped by day then month; typing still filters |
-| Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
+| Command-1 … Command-6 | Scope All, Chats, Papers, Articles, Docs, Meetings |
 | Command-R | Refresh library, Today, and git dates now; re-rank |
 | Command-S | Scan for new references now (`bob ref scan -a -w` in the background; an older `bob` is retried without `-a`); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |

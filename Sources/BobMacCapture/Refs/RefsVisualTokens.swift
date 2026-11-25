@@ -241,6 +241,8 @@ enum RefsVisualTokens {
             return .indigo
         case .podcast:
             return .cyan
+        case .meeting:
+            return .mint
         case .book, .slides, .other:
             return .secondary
         }
@@ -281,6 +283,8 @@ enum RefsVisualTokens {
             return .article
         case .docs:
             return .doc
+        case .meetings:
+            return .meeting
         }
     }
 }

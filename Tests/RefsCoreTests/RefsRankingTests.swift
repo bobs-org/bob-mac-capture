@@ -379,6 +379,26 @@ final class RefsRankingTests: XCTestCase {
         }
     }
 
+    func testMeetingKindWordsScopeAndCaption() {
+        let meeting = makeItem(
+            id: "ref/meetings/release-planning", title: "Quarterly Release Planning",
+            kind: .meeting, state: .ready, added: "2026-10-01"
+        )
+        let signals = makeSignals()
+        for query in ["meeting", "meetings", "notes"] {
+            let listing = RefsRanker.listing(
+                [meeting], query: query, scope: .meetings, signals: signals
+            )
+            XCTAssertEqual(listing.orderedIDs, [meeting.id], "query: \(query)")
+            XCTAssertEqual(listing.matches[meeting.id]?.secondary?.field, .kind)
+        }
+        XCTAssertTrue(RefScope.meetings.contains(meeting.kind))
+        XCTAssertEqual(
+            RefsCaption.caption(for: meeting, in: .ready, signals: signals),
+            "Meeting · added Oct 1"
+        )
+    }
+
     func testHarnessSeparatesKindsAndSinksDropped() {
         let items = [
             makeItem(

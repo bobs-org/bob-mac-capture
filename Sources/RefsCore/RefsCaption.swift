@@ -33,7 +33,7 @@ public enum RefsCaption {
         // when it is the matched stem or secondary field.
         var parts: [(text: String, ranges: [Range<Int>])] = [(item.kind.label, [])]
         switch item.kind {
-        case .paper, .article, .doc, .podcast:
+        case .paper, .article, .doc, .podcast, .meeting:
             if let author = item.author, !author.isEmpty {
                 parts.append((author, []))
             }
@@ -87,7 +87,7 @@ public enum RefsCaption {
             return false
         }
         switch item.kind {
-        case .paper, .article, .doc, .podcast:
+        case .paper, .article, .doc, .podcast, .meeting:
             return true
         case .chat, .book, .slides, .other:
             return false
