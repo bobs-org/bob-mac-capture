@@ -226,73 +226,68 @@ note_goto_parse_fixture() {
   esac
 }
 
-case "${command}" in
-  ref)
-    ref_subcommand="${1:-}"
-    shift || true
-    if [[ "${ref_subcommand}" != "meet" ]]; then
-      printf "error: unrecognized subcommand '%s'\n" "${ref_subcommand}" >&2
-      exit 2
-    fi
-    if [[ "${FAKE_BOB_MEETING_NOTES_UNSUPPORTED:-}" == "1" ]]; then
-      printf "error: unrecognized subcommand 'meet'\n\nUsage: bob ref [COMMAND]\n" >&2
-      exit 2
-    fi
-    if [[ -n "${FAKE_BOB_MEETING_NOTES_ARGV_PATH:-}" ]]; then
-      python3 - "${FAKE_BOB_MEETING_NOTES_ARGV_PATH}" ref meet "$@" <<'PY'
+meeting_notes() {
+  if [[ "${FAKE_BOB_MEETING_NOTES_UNSUPPORTED:-}" == "1" ]]; then
+    printf "error: unrecognized subcommand 'meet'\n\nUsage: bob ref [COMMAND]\n" >&2
+    exit 2
+  fi
+  if [[ -n "${FAKE_BOB_MEETING_NOTES_ARGV_PATH:-}" ]]; then
+    python3 - "${FAKE_BOB_MEETING_NOTES_ARGV_PATH}" ref meet "$@" <<'PY'
 import json, sys
 with open(sys.argv[1], "a", encoding="utf-8") as output:
     output.write(json.dumps(sys.argv[2:], ensure_ascii=False) + "\n")
 PY
-    fi
-    operation="preview"
-    for argument in "$@"; do
-      case "${argument}" in
-        -l|--list) operation="list" ;;
-        -d|--dry-run) operation="preview" ;;
-        --expect-sha256) operation="write" ;;
-      esac
-    done
-    fixture=""
-    if [[ -n "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP:-}" && -f "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP}" ]]; then
-      fixture="$(python3 - "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP}" "${operation}" <<'PY'
+  fi
+  operation="preview"
+  for argument in "$@"; do
+    case "${argument}" in
+      -l|--list) operation="list" ;;
+      -d|--dry-run) operation="preview" ;;
+      --expect-sha256) operation="write" ;;
+    esac
+  done
+  fixture=""
+  if [[ -n "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP:-}" && -f "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP}" ]]; then
+    fixture="$(python3 - "${FAKE_BOB_MEETING_NOTES_FIXTURE_MAP}" "${operation}" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as source:
     print(json.load(source).get(sys.argv[2], ""))
 PY
 )"
-    fi
-    if [[ -z "${fixture}" ]]; then
-      case "${operation}" in
-        list) fixture="${FAKE_BOB_MEETING_NOTES_LIST_FIXTURE:-meeting-notes/list.json}" ;;
-        preview) fixture="${FAKE_BOB_MEETING_NOTES_PREVIEW_FIXTURE:-meeting-notes/preview.json}" ;;
-        write) fixture="${FAKE_BOB_MEETING_NOTES_WRITE_FIXTURE:-meeting-notes/filed.json}" ;;
-      esac
-    fi
-    delay_seconds=""
+  fi
+  if [[ -z "${fixture}" ]]; then
     case "${operation}" in
-      list) delay_seconds="${FAKE_BOB_MEETING_NOTES_LIST_DELAY_SECONDS:-}" ;;
-      preview) delay_seconds="${FAKE_BOB_MEETING_NOTES_PREVIEW_DELAY_SECONDS:-}" ;;
-      write) delay_seconds="${FAKE_BOB_MEETING_NOTES_WRITE_DELAY_SECONDS:-}" ;;
+      list) fixture="${FAKE_BOB_MEETING_NOTES_LIST_FIXTURE:-meeting-notes/list.json}" ;;
+      preview) fixture="${FAKE_BOB_MEETING_NOTES_PREVIEW_FIXTURE:-meeting-notes/preview.json}" ;;
+      write) fixture="${FAKE_BOB_MEETING_NOTES_WRITE_FIXTURE:-meeting-notes/filed.json}" ;;
     esac
-    if [[ -n "${delay_seconds}" ]]; then
-      sleep "${delay_seconds}" &
-      wait $!
-    fi
-    if [[ "${FAKE_BOB_MEETING_NOTES_EMPTY:-}" == "1" ]]; then
-      exit "${FAKE_BOB_MEETING_NOTES_EXIT:-0}"
-    fi
-    if [[ -n "${FAKE_BOB_MEETING_NOTES_STDOUT:-}" ]]; then
-      printf '%s\n' "${FAKE_BOB_MEETING_NOTES_STDOUT}"
-      exit "${FAKE_BOB_MEETING_NOTES_EXIT:-0}"
-    fi
-    if [[ "${fixture}" == /* ]]; then
-      cat "${fixture}"
-    else
-      cat "${fixtures_dir}/${fixture}"
-    fi
+  fi
+  delay_seconds=""
+  case "${operation}" in
+    list) delay_seconds="${FAKE_BOB_MEETING_NOTES_LIST_DELAY_SECONDS:-}" ;;
+    preview) delay_seconds="${FAKE_BOB_MEETING_NOTES_PREVIEW_DELAY_SECONDS:-}" ;;
+    write) delay_seconds="${FAKE_BOB_MEETING_NOTES_WRITE_DELAY_SECONDS:-}" ;;
+  esac
+  if [[ -n "${delay_seconds}" ]]; then
+    sleep "${delay_seconds}" &
+    wait $!
+  fi
+  if [[ "${FAKE_BOB_MEETING_NOTES_EMPTY:-}" == "1" ]]; then
     exit "${FAKE_BOB_MEETING_NOTES_EXIT:-0}"
-    ;;
+  fi
+  if [[ -n "${FAKE_BOB_MEETING_NOTES_STDOUT:-}" ]]; then
+    printf '%s\n' "${FAKE_BOB_MEETING_NOTES_STDOUT}"
+    exit "${FAKE_BOB_MEETING_NOTES_EXIT:-0}"
+  fi
+  if [[ "${fixture}" == /* ]]; then
+    cat "${fixture}"
+  else
+    cat "${fixtures_dir}/${fixture}"
+  fi
+  exit "${FAKE_BOB_MEETING_NOTES_EXIT:-0}"
+}
+
+case "${command}" in
   gcal)
     gcal_subcommand="${1:-}"
     shift || true
@@ -6519,7 +6514,9 @@ JSON
     # (for example refs-list-golden.json) or an absolute path.
     subcommand="${1:-}"
     shift || true
-    if [[ "${subcommand}" == "list" ]]; then
+    if [[ "${subcommand}" == "meet" ]]; then
+      meeting_notes "$@"
+    elif [[ "${subcommand}" == "list" ]]; then
       if [[ " $* " == *" -g "* ]]; then
         # FAKE_BOB_REFS_GIT_EXIT fails only the `-g` pass, so tests can
         # prove a git-date failure keeps the published snapshot.
