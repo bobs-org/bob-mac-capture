@@ -1,0 +1,1 @@
+{"ok":false,"schema_version":1,"command":"ref meet","generated_at":"2026-11-24T15:00:00","error":{"code":"no_notes","message":"meeting notes are empty","hint":"copy notes and retry"}}

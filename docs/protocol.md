@@ -418,3 +418,41 @@ The app waits 350 ms after an edit before requesting `capture-related`. An older
 that rejects the command is remembered for that executable identity, so the app keeps
 the band hidden without retrying on later drafts. Changing the executable identity
 rechecks support.
+
+## Meeting notes
+
+`bob ref meet` owns meeting selection, note normalization, parent eligibility,
+content hashing, and every vault write. The app passes an optional event token
+as one opaque argv element and uses `-c` so Bob reads the clipboard. It does
+not read, parse, or retain clipboard contents itself.
+
+- List recent rows with `ref meet -l -f json`.
+- Preview with `ref meet [EVENT] -c -d -f json`.
+- File with `ref meet EVENT -c -f json --expect-sha256 HEX`.
+
+Preview and file may also pass `--parent NOTE`, `--status next|ready|wip|read`,
+and `--overwrite`. Omit status initially so Bob's configured status wins. A
+preview is approved only when it returns `outcome: "would_file"`, an event
+`meeting.ref`, and `notes.sha256`. Filing pins that returned event ref and
+exact hash. If the clipboard changed, Bob returns `notes_changed`; discard the
+old approval and preview again before another Return can file.
+
+All responses use schema 1 and `ok`. List rows may have null `ref`, `block_id`,
+or `root`. Meeting matches are in `candidates[]` as `{meeting, detail,
+evidence}`. Parent choices are in `parent_candidates[]` with Bob's `route`,
+`kind`, `label`, `aliases`, and optional `status`. `existing` carries `note`,
+`task`, and `status`. Structured choice refusals can exit 2 while still
+providing valid JSON; decode the envelope before interpreting the process
+status. Other malformed output, process failures, and any schema version other
+than 1 are surfaced as errors.
+
+The file response keeps `filed` and `queued` distinct. It may include a commit,
+page count, warnings, and a queue object with `path`, `reason`, and `detail`.
+A queued receipt points to `bob ref scan` and does not imply that a note exists
+to open.
+
+If an older Bob reports exit 2 with the `unrecognized subcommand 'meet'`
+signature, the client caches that capability result for the executable
+identity. Other exit-2 responses, including valid JSON choice errors, remain
+normal command results. Rechecking Bob or replacing the executable clears the
+unsupported result.

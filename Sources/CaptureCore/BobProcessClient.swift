@@ -75,6 +75,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedRelatedIdentity: String?
     private var unsupportedGmailPeekIdentity: String?
     private var unsupportedGcalNoteIdentity: String?
+    private var unsupportedMeetingNotesIdentity: String?
     private var unsupportedLogHistoryIdentity: String?
     private var unsupportedLinksOnlyIdentity: String?
     private var unsupportedTaskLinksIdentity: String?
@@ -226,6 +227,27 @@ public final class BobProcessClient: @unchecked Sendable {
                 return false
             }
             return true
+        }
+    }
+
+    /// Whether this executable has already rejected `ref meet`. The cache is
+    /// scoped to the executable identity, so replacing Bob permits a new probe.
+    public var meetingNotesKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedMeetingNotesIdentity else { return false }
+            let identity = identityToken
+            if unsupportedMeetingNotesIdentity != identity {
+                self.unsupportedMeetingNotesIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Forget an unsupported result so callers can explicitly recheck Bob.
+    public func recheckMeetingNotesCapability() {
+        stateQueue.sync {
+            unsupportedMeetingNotesIdentity = nil
         }
     }
 
@@ -522,6 +544,106 @@ public final class BobProcessClient: @unchecked Sendable {
             lane: "gcal-note-write",
             cancelsPreviousInLane: false
         )
+    }
+
+    /// Lists Bob's recent meeting rows. This uses its own lane so the list can
+    /// finish independently of clipboard preview.
+    public func meetingNotesList() async throws -> MeetingNotesListResponse {
+        try await decodeMeetingNotes(
+            arguments: ["ref", "meet", "-l", "-f", "json"],
+            as: MeetingNotesListResponse.self,
+            lane: "meeting-notes-list"
+        )
+    }
+
+    /// Reads the system clipboard through Bob and previews the proposed filing.
+    /// Event references are appended as one opaque argv element.
+    public func meetingNotesPreview(
+        _ options: MeetingNotesOptions
+    ) async throws -> MeetingNotesResponse {
+        var arguments = Self.meetingNotesArguments(options)
+        arguments += ["-c", "-d", "-f", "json"]
+        return try await decodeMeetingNotes(
+            arguments: arguments,
+            as: MeetingNotesResponse.self,
+            lane: "meeting-notes-preview"
+        )
+    }
+
+    /// Files only the clipboard bytes Bob previewed. The longer, bounded
+    /// timeout allows PDF rendering; this lane is never replaced by a later
+    /// request, and reads use separate lanes.
+    public func meetingNotesFile(
+        _ request: MeetingNotesFileRequest
+    ) async throws -> MeetingNotesResponse {
+        var arguments = Self.meetingNotesArguments(request.options)
+        arguments += ["-c", "-f", "json", "--expect-sha256", request.sha256]
+        return try await decodeMeetingNotes(
+            arguments: arguments,
+            as: MeetingNotesResponse.self,
+            lane: "meeting-notes-write",
+            cancelsPreviousInLane: false,
+            timeout: 180
+        )
+    }
+
+    public func cancelMeetingNotesReads() {
+        cancelLanes(["meeting-notes-list", "meeting-notes-preview"])
+    }
+
+    private static func meetingNotesArguments(_ options: MeetingNotesOptions) -> [String] {
+        var arguments = ["ref", "meet"]
+        if let eventToken = options.eventToken {
+            arguments.append(eventToken)
+        }
+        if let parent = options.parent {
+            arguments += ["--parent", parent]
+        }
+        if let status = options.status {
+            arguments += ["--status", status.rawValue]
+        }
+        if options.overwrite {
+            arguments.append("--overwrite")
+        }
+        return arguments
+    }
+
+    private func decodeMeetingNotes<T: Decodable & SchemaVersioned>(
+        arguments: [String],
+        as type: T.Type,
+        lane: String,
+        cancelsPreviousInLane: Bool = true,
+        timeout: TimeInterval = BobProcessClient.defaultTimeout
+    ) async throws -> T {
+        if meetingNotesKnownUnsupported {
+            throw BobClientError.unsupportedCommand("ref meet")
+        }
+        do {
+            return try await decodeReport(
+                arguments: arguments,
+                expectedSchema: 1,
+                lane: lane,
+                cancelsPreviousInLane: cancelsPreviousInLane,
+                timeout: timeout
+            )
+        } catch let error as BobClientError {
+            if case .processFailed(_, let exitStatus, let stderr) = error,
+                Self.isUnsupportedMeetingNotesFailure(exitStatus: exitStatus, stderr: stderr)
+            {
+                stateQueue.sync {
+                    unsupportedMeetingNotesIdentity = identityToken
+                }
+                throw BobClientError.unsupportedCommand("ref meet")
+            }
+            throw error
+        }
+    }
+
+    static func isUnsupportedMeetingNotesFailure(exitStatus: Int32, stderr: String) -> Bool {
+        guard exitStatus == 2 else { return false }
+        let normalized = stderr.lowercased()
+        return normalized.hasPrefix("error: unrecognized subcommand 'meet'")
+            || normalized.hasPrefix("error: unrecognized subcommand \"meet\"")
     }
 
     private static func gcalNoteSelectionArguments(
