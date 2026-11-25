@@ -86,8 +86,8 @@ immediately, as Command-Y L does.
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |
-| Return | Capture, then close the panel | Accept the selected completion; with no selected row, capture the draft as typed | Add the ID and select the task | Name the Pomodoro and select it |
-| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows; no row, capture and open as typed. Relation picker: open the card | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
+| Return | Capture/close; caret Go To re-resolves and opens | Accept the selected completion; with no selected row, capture the draft as typed | Add the ID and select the task | Name the Pomodoro and select it |
+| Control-Return | Capture/open notes; caret Go To re-resolves and opens | Accept, then capture and open if no picker or prompt follows; no row, capture and open as typed. Relation picker: open the card | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
 | Command-Return | Same as Control-Return | Same as Control-Return | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline; at the end of a lone `@file` or `@file#section` header that bob's parse reports as needing a `list_item`, insert `\n- ` to start the first bullet | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |

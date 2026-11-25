@@ -226,6 +226,18 @@ note_goto_parse_fixture() {
   esac
 }
 
+caret_goto_parse_fixture() {
+  case "$1" in
+    "@bob^focus") echo task-caret-goto-parse-found.json ;;
+    "@bob^archived-focus") echo task-caret-goto-parse-archived.json ;;
+    "@taxes^refund-notes") echo task-caret-goto-parse-notebook.json ;;
+    "@bob^focuz") echo task-caret-goto-parse-missing-block.json ;;
+    "@missing_note^x") echo task-caret-goto-parse-missing-note.json ;;
+    "@bob^duplicate") echo task-caret-goto-parse-duplicate.json ;;
+    *) return 1 ;;
+  esac
+}
+
 meeting_notes() {
   if [[ "${FAKE_BOB_MEETING_NOTES_UNSUPPORTED:-}" == "1" ]]; then
     printf "error: unrecognized subcommand 'meet'\n\nUsage: bob ref [COMMAND]\n" >&2
@@ -489,6 +501,21 @@ PY
     ;;
   capture-parse)
     draft="${*: -1}"
+    if [[ "${FAKE_BOB_CARET_GOTO_FIXTURES:-}" == "1" ]]; then
+      caret_fixture="$(caret_goto_parse_fixture "$draft" || true)"
+      if [[ -n "${FAKE_BOB_CARET_GOTO_REFRESH_FIXTURE:-}" \
+         && -n "${FAKE_BOB_RECORD_PATH:-}" \
+         && -f "${FAKE_BOB_RECORD_PATH}" ]]; then
+        caret_parse_count="$(grep -c '^argv=capture-parse' "${FAKE_BOB_RECORD_PATH}" || true)"
+        if ((caret_parse_count > 1)); then
+          caret_fixture="${FAKE_BOB_CARET_GOTO_REFRESH_FIXTURE}"
+        fi
+      fi
+      if [[ -n "$caret_fixture" ]]; then
+        cat "${fixtures_dir}/${caret_fixture}" | inject_parse_grammar
+        exit 0
+      fi
+    fi
     if [[ "${FAKE_BOB_NOTE_GOTO_FIXTURES:-}" == "1" ]]; then
       note_fixture="$(note_goto_parse_fixture "$draft" || true)"
       if [[ -n "$note_fixture" ]]; then

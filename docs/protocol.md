@@ -6,7 +6,7 @@ description: "Bob Mac Capture subprocess commands, JSON boundaries, capability r
 The app presents and orchestrates; Bob owns grammar, completion, previews, and vault
 mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Contracts land in `bob` first.
 
-Capabilities are response-driven: unknown spans render neutral, contexts generic; missing fields follow the compatibility table.
+Caret Go To uses `task_goto.goto`; older Bob omits it. Unknown responses render neutrally.
 
 ## Capability requirements
 

@@ -505,7 +505,7 @@ whether the drawer is new.
 
 ## Live Preview and Clipboard Semantics
 
-The continuously updated preview below the editor calls
+The live preview calls
 `bob capture --dry-run [--no-clip] --format json` on every debounced edit. `--no-clip`
 is omitted only when the same draft's accepted parse reported a `%c` directive span on
 a compatible grammar, so Bob reads the clipboard through the same path the capture
@@ -523,6 +523,8 @@ counter reads no content. A `$<N>` random
 schedule is rolled once per
 draft and reused by every subsequent live preview and by the final submission, so the
 displayed scheduled date always matches what gets written.
+
+Caret Go To skips preview and re-resolves before opening.
 
 ## Submit
 

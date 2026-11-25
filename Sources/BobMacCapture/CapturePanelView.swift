@@ -819,6 +819,7 @@ struct CapturePanelView: View {
             || model.destinationSummary != nil
             || model.errorMessage != nil
             || model.previewState != .idle
+            || model.caretGoto != nil
             || model.agendaVisible
             || model.relationCapabilityWarning != nil || model.moveChoiceCapabilityWarning != nil
             || model.captureGrammarWarning != nil
@@ -1087,7 +1088,10 @@ struct CapturePanelView: View {
                 .id(AuxiliarySection.error)
             }
 
-            if model.previewState != .idle {
+            if let caretGoto = model.caretGoto {
+                CaptureCaretGotoCard(model: model, goto: caretGoto)
+                    .id(AuxiliarySection.caretGoto)
+            } else if model.previewState != .idle {
                 PreviewPane(model: model)
                     .id(AuxiliarySection.preview)
             }
@@ -1431,7 +1435,237 @@ struct CapturePanelView: View {
         case pickerChip
         case destination
         case error
+        case caretGoto
         case preview
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CaptureCaretGotoCard: View {
+    @ObservedObject var model: CapturePanelModel
+    let goto: CaptureCaretGoto
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch goto.status {
+            case .found:
+                foundCard
+            case .missingNote:
+                missHeader("No note named \(goto.notePath ?? "\(goto.route).md")")
+                teachingLine
+            case .missingBlockID:
+                missHeader("No ^\(goto.blockID) in \(goto.notePath ?? "\(goto.route).md")")
+                if !goto.suggestions.isEmpty {
+                    Text("DID YOU MEAN")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .tracking(0.7)
+                    ForEach(Array(goto.suggestions.prefix(3).enumerated()), id: \.offset) {
+                        index, row in
+                        suggestionRow(row, index: index)
+                    }
+                }
+                teachingLine
+            case .duplicateBlockID:
+                missHeader(
+                    "^\(goto.blockID) appears \(goto.hits.count)× in "
+                        + "\(goto.notePath ?? "\(goto.route).md")"
+                )
+                ForEach(Array(goto.hits.enumerated()), id: \.offset) { _, row in
+                    Button {
+                        model.acceptCaretGotoHit(row)
+                    } label: {
+                        destinationRow(row, locator: "line \(row.line)")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "Open \(row.notePath) line \(row.line): \(row.text)"
+                    )
+                }
+                Text("Block IDs should be unique — fix one in Obsidian.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .unknown:
+                missHeader("Go To details unavailable")
+                Text("Update bob to resolve this address.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(10)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .layoutPriority(1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Go To destination")
+    }
+
+    private var foundCard: some View {
+        Group {
+            if let landing = goto.landing {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("↗ GO TO")
+                            .font(.caption.weight(.semibold))
+                            .tracking(0.7)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Text("\(landing.notePath) · line \(landing.line)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    destinationRow(landing, locator: nil)
+                    HStack(spacing: 5) {
+                        if goto.archived || landing.archived {
+                            badge("Archived · \(landing.notePath)")
+                        }
+                        if landing.targetKind == "notebook_note" {
+                            badge("Note")
+                        } else if landing.targetKind != "task" {
+                            badge(landing.targetKind.capitalized)
+                        }
+                        if landing.statusName == "Done" {
+                            badge("Done")
+                        } else if landing.statusName == "Canceled" {
+                            badge("Canceled")
+                        }
+                    }
+                    Divider()
+                    Text("Opens in Obsidian · nothing is written")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            } else {
+                missHeader("Go To destination unavailable")
+            }
+        }
+    }
+
+    private var teachingLine: some View {
+        Text("Add task text after the ID to create a task with this ID.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func missHeader(_ text: String) -> some View {
+        Label(text, systemImage: "questionmark.circle")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func suggestionRow(_ row: CaptureGotoRow, index: Int) -> some View {
+        Button {
+            model.applyCaretGotoSuggestion(row)
+        } label: {
+            HStack(spacing: 8) {
+                statusGlyph(for: row)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.text)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    HStack(spacing: 4) {
+                        Text("^\(row.blockID)")
+                            .foregroundStyle(.indigo)
+                        Text("·")
+                        Text("\(row.notePath) · line \(row.line)")
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption.monospaced())
+                }
+                Spacer(minLength: 4)
+                Text("⌘\(index + 1)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(
+            KeyEquivalent(Character(String(index + 1))),
+            modifiers: .command
+        )
+        .accessibilityLabel("Use \(row.draft ?? "")")
+    }
+
+    private func destinationRow(_ row: CaptureGotoRow, locator: String?) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            statusGlyph(for: row)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(row.text)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 4) {
+                    if let statusName = row.statusName {
+                        Text(statusName)
+                    }
+                    if let section = row.section {
+                        if row.statusName != nil { Text("·") }
+                        Text(section)
+                    }
+                    if row.statusName != nil || row.section != nil { Text("·") }
+                    Text("^\(row.blockID)")
+                        .foregroundStyle(.indigo)
+                    if let locator {
+                        Text("·")
+                        Text(locator).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func statusGlyph(for row: CaptureGotoRow) -> some View {
+        if row.targetKind == "task" {
+            let style = CaptureEditorPalette.taskStatus(
+                CapturePickerTaskStatus(symbol: row.statusSymbol, name: row.statusName)
+            )
+            Image(systemName: style.symbol)
+                .foregroundStyle(style.color)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+        } else {
+            Image(systemName: symbolName(for: row))
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func symbolName(for row: CaptureGotoRow) -> String {
+        switch row.targetKind {
+        case "notebook_note": return "book.closed"
+        case "heading": return "number"
+        case "bullet": return "list.bullet"
+        default: return "text.alignleft"
+        }
+    }
+
+    private func badge(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.background.opacity(0.6), in: Capsule())
     }
 }
 
@@ -1548,14 +1782,16 @@ private struct CapturePanelFooter: View {
                     || model.pomodoroNamePrompt?.isSaving == true
                     || model.pickerVisible
             )
-            Button("Preview") {
-                model.preview()
+            if model.caretGoto == nil {
+                Button("Preview") {
+                    model.preview()
+                }
+                .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
+                .disabled(
+                    !model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible
+                        || model.pickerVisible
+                )
             }
-            .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
-            .disabled(
-                !model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible
-                    || model.pickerVisible
-            )
             if includeOpenChip, model.openHintChipVisible {
                 CaptureOpenHintChip(model: model)
             }
@@ -6937,7 +7173,8 @@ struct PreviewPane: View {
 
     @ViewBuilder
     private func similarTasksBand(forCaptureIndex index: Int) -> some View {
-        if let item = SimilarTasksBandPolicy.visibleItem(
+        if model.caretGoto == nil,
+           let item = SimilarTasksBandPolicy.visibleItem(
             in: model.similarTasks,
             captureIndex: index,
             parseItems: model.similarTasksParseItems

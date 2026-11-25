@@ -640,6 +640,7 @@ private struct PendingExplicitSubmitIntent: Equatable {
     let processClientIdentity: String
     let analysisGeneration: UInt64
     let openAfterCapture: Bool
+    let caretGotoOnly: Bool
 }
 
 private struct CaptureRecordAnalysisRequest: Equatable {
@@ -2620,6 +2621,22 @@ final class CapturePanelModel: ObservableObject {
         return Self.pickerNeed(in: latestParse) == .mergeInSource
     }
 
+    /// Bob's caret Go To payload, but only while it belongs to this exact
+    /// draft, analysis generation, and process client.
+    var caretGoto: CaptureCaretGoto? {
+        guard let processClient,
+              let parse = latestParse,
+              parse.mode == "task_goto",
+              parse.input == plainDraft,
+              lastAppliedParseDraft == plainDraft,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient.identityToken
+        else {
+            return nil
+        }
+        return parse.goto
+    }
+
     /// The live preview's toggle presentation, when the current draft is exactly one
     /// `task_toggle` item. `nil` for an empty draft, a non-toggle draft, or a batch of
     /// more than one item, where "Set Next"/"Set Open" would misname the primary action.
@@ -2772,6 +2789,9 @@ final class CapturePanelModel: ObservableObject {
     /// via its presentation. It never varies with `dryRun` — it always names
     /// what Return will do next.
     var primaryActionTitle: String {
+        if caretGoto != nil {
+            return "Go To ↗"
+        }
         if !previewResults.isEmpty, previewResults.allSatisfy({ $0.kind == "note_pull" }) {
             return "Pull In"
         }
@@ -2830,7 +2850,15 @@ final class CapturePanelModel: ObservableObject {
 
     /// The footer Open chip uses the same enablement as Capture.
     var primaryActionEnabled: Bool {
-        hasDraft
+        if let caretGoto {
+            return hasDraft
+                && caretGoto.status == .found
+                && !taskGotoDispatchInFlight
+                && !isSubmitting
+                && !inlinePromptVisible
+                && !pickerVisible
+        }
+        return hasDraft
             && !isSubmitting
             && !inlinePromptVisible
             && !pickerVisible
@@ -2860,7 +2888,7 @@ final class CapturePanelModel: ObservableObject {
     /// while this draft has no preview yet, and while the open plan is
     /// non-empty. The chip button is disabled until Capture is enabled.
     var openHintChipVisible: Bool {
-        hasDraft && openHintPresentation.isAvailable
+        caretGoto == nil && hasDraft && openHintPresentation.isAvailable
     }
 
     static func isControlHeldAlone(_ flags: NSEvent.ModifierFlags) -> Bool {
@@ -4150,7 +4178,10 @@ final class CapturePanelModel: ObservableObject {
     /// Carries an explicit submit or submit-and-open gesture through the
     /// analysis required after Bob inserts the accepted completion. The
     /// continuation is tied to that exact draft, client, and analysis.
-    private func submitAfterCurrentAnalysis(openAfterCapture: Bool) {
+    private func submitAfterCurrentAnalysis(
+        openAfterCapture: Bool,
+        caretGotoOnly: Bool = false
+    ) {
         cancelPendingExplicitSubmit()
         guard let processClient, let analysisTask, hasDraft else {
             return
@@ -4159,11 +4190,38 @@ final class CapturePanelModel: ObservableObject {
             draft: plainDraft,
             processClientIdentity: processClient.identityToken,
             analysisGeneration: analysisGeneration,
-            openAfterCapture: openAfterCapture
+            openAfterCapture: openAfterCapture,
+            caretGotoOnly: caretGotoOnly
         )
         pendingExplicitSubmitIntent = intent
         pendingExplicitSubmitTask = Task { [weak self, processClient, analysisTask] in
-            await analysisTask.value
+            if intent.caretGotoOnly {
+                let completed = await withTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        await analysisTask.value
+                        return true
+                    }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        return false
+                    }
+                    let result = await group.next() ?? false
+                    group.cancelAll()
+                    return result
+                }
+                guard completed else {
+                    guard let self,
+                          self.pendingExplicitSubmitIntent == intent
+                    else {
+                        return
+                    }
+                    self.pendingExplicitSubmitIntent = nil
+                    self.pendingExplicitSubmitTask = nil
+                    return
+                }
+            } else {
+                await analysisTask.value
+            }
             guard !Task.isCancelled, let self else {
                 return
             }
@@ -4257,6 +4315,13 @@ final class CapturePanelModel: ObservableObject {
         guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
+        if intent.caretGotoOnly {
+            guard caretGoto != nil else {
+                return
+            }
+            acceptCaretGoto()
+            return
+        }
         submit(openAfterCapture: intent.openAfterCapture)
     }
 
@@ -4271,6 +4336,20 @@ final class CapturePanelModel: ObservableObject {
         cancelPastBoundaryRefresh()
         clearOpenHintReveal()
         guard !inlinePromptVisible, !isSubmitting, hasDraft else {
+            return
+        }
+        if caretGoto != nil {
+            acceptCaretGoto()
+            return
+        }
+        if !hasFreshAppliedParse, analysisTask != nil {
+            // Return during a parse is normally dropped. Wait briefly only so
+            // a just-typed caret address can resolve into its read-only path;
+            // every other parse result remains a dropped Return.
+            submitAfterCurrentAnalysis(
+                openAfterCapture: openAfterCapture,
+                caretGotoOnly: true
+            )
             return
         }
         if mergeInNeedsSource {
@@ -4359,6 +4438,170 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         continueSubmit(draft: draft, openAfterCapture: openAfterCapture, preview: preview)
+    }
+
+    private var hasFreshAppliedParse: Bool {
+        guard let processClient else { return false }
+        return lastAppliedParseDraft == plainDraft
+            && lastAppliedParseGeneration == analysisGeneration
+            && lastAppliedParseClientIdentity == processClient.identityToken
+    }
+
+    private func applyQuietCaretGoto() {
+        previewState = .idle
+        clearPreviewOutputs()
+        previewPullInSnapshot = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+        errorMessage = nil
+        errorCode = nil
+        statusText = "Go To"
+    }
+
+    /// Re-resolves the address at accept time. The displayed card is only a
+    /// preview; dispatch uses the fresh Bob response so stale line numbers
+    /// never escape into Obsidian.
+    func acceptCaretGoto() {
+        guard !taskGotoDispatchInFlight,
+              let current = caretGoto,
+              current.status == .found,
+              let processClient,
+              !inlinePromptVisible,
+              !isSubmitting,
+              hasDraft
+        else {
+            return
+        }
+        let draft = plainDraft
+        let generation = analysisGeneration
+        let processClientIdentity = processClient.identityToken
+        taskGotoDispatchInFlight = true
+        statusText = "Checking destination…"
+        Task { [weak self, processClient] in
+            do {
+                let parse = try await processClient.captureParse(draft)
+                await MainActor.run {
+                    guard let self else { return }
+                    guard self.taskGotoDispatchInFlight,
+                          self.analysisGeneration == generation,
+                          self.plainDraft == draft,
+                          self.processClient === processClient,
+                          processClient.identityToken == processClientIdentity
+                    else {
+                        self.taskGotoDispatchInFlight = false
+                        return
+                    }
+                    guard parse.input == draft,
+                          self.analysisGeneration == generation
+                    else {
+                        self.taskGotoDispatchInFlight = false
+                        return
+                    }
+                    self.applyParse(
+                        parse,
+                        draft: draft,
+                        generation: generation,
+                        cursorUTF8: self.collapsedSelectionUTF8Offset()
+                    )
+                    guard parse.mode == "task_goto", let goto = parse.goto else {
+                        self.taskGotoDispatchInFlight = false
+                        self.statusText = "Ready"
+                        return
+                    }
+                    self.applyQuietCaretGoto()
+                    guard goto.status == .found,
+                          let landing = goto.landing
+                    else {
+                        self.taskGotoDispatchInFlight = false
+                        return
+                    }
+                    self.dispatchGoto(
+                        destination: CaptureTaskGotoDestination(
+                            target: landing.target,
+                            notePath: landing.notePath,
+                            line: landing.line,
+                            ref: landing.ref,
+                            blockID: landing.blockID
+                        )
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self else { return }
+                    self.taskGotoDispatchInFlight = false
+                    guard self.analysisGeneration == generation,
+                          self.plainDraft == draft,
+                          self.processClient === processClient
+                    else {
+                        return
+                    }
+                    self.announceStatus("Couldn't resolve Go To")
+                }
+            }
+        }
+    }
+
+    private func dispatchGoto(destination: CaptureTaskGotoDestination) {
+        guard let url = ObsidianOpenURL.taskGotoURL(
+            path: destination.target,
+            line: destination.line,
+            ref: destination.ref.isEmpty ? nil : destination.ref,
+            blockID: destination.blockID
+        ) else {
+            taskGotoDispatchInFlight = false
+            announceStatus("bob sent no location for this task — update bob")
+            return
+        }
+        taskGotoDispatchInFlight = true
+        announceStatus("Opening in Obsidian…")
+        taskGotoOpener(url) { [weak self] success in
+            guard let self else { return }
+            self.taskGotoDispatchInFlight = false
+            if success {
+                self.discardDraft()
+                self.panelDismisser()
+            } else {
+                self.announceStatus("Couldn't open Obsidian")
+            }
+        }
+    }
+
+    func applyCaretGotoSuggestion(_ row: CaptureGotoRow) {
+        guard let replacement = row.draft,
+              caretGoto?.status == .missingBlockID,
+              !taskGotoDispatchInFlight
+        else {
+            return
+        }
+        let cursor = replacement.utf8.count
+        guard stringRange(in: replacement, start: cursor, end: cursor) != nil else {
+            return
+        }
+        setPlainDraft(replacement, cursorUTF8Offset: cursor)
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: false,
+            trigger: .edit
+        )
+    }
+
+    func acceptCaretGotoHit(_ row: CaptureGotoRow) {
+        guard let current = caretGoto,
+              current.status == .duplicateBlockID,
+              current.hits.contains(row),
+              !taskGotoDispatchInFlight
+        else {
+            return
+        }
+        dispatchGoto(
+            destination: CaptureTaskGotoDestination(
+                target: row.target,
+                notePath: row.notePath,
+                line: row.line,
+                ref: row.ref,
+                blockID: row.blockID
+            )
+        )
     }
 
     private func continueSubmit(
@@ -7032,7 +7275,8 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private var draftIsReadOnlyGoto: Bool {
-        picker?.source == .taskGoto
+        caretGoto != nil
+            || picker?.source == .taskGoto
             || pickerChip?.source == .taskGoto
             || lastAnalysisNeedsTaskGoto
             || picker?.source == .noteGoto
@@ -9130,6 +9374,17 @@ final class CapturePanelModel: ObservableObject {
         }
         let source = Self.blockIDSource(for: completion)
         guard case .blockID(let context) = source else {
+            return
+        }
+        if caretGoto != nil {
+            pickerChip = CapturePickerChipState(
+                source: source,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
             return
         }
         if !context.isNewIDMode {
@@ -12216,31 +12471,12 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard let row = pickerPresentation?.row(id: id),
-              let destination = row.taskGotoDestination,
-              let url = ObsidianOpenURL.taskGotoURL(
-                  path: destination.target,
-                  line: destination.line,
-                  ref: destination.ref,
-                  blockID: destination.blockID
-              )
+              let destination = row.taskGotoDestination
         else {
             announceStatus("bob sent no location for this task — update bob")
             return
         }
-        taskGotoDispatchInFlight = true
-        announceStatus("Opening in Obsidian…")
-        taskGotoOpener(url) { [weak self] success in
-            guard let self else {
-                return
-            }
-            self.taskGotoDispatchInFlight = false
-            if success {
-                self.discardDraft()
-                self.panelDismisser()
-            } else {
-                self.announceStatus("Couldn't open Obsidian")
-            }
-        }
+        dispatchGoto(destination: destination)
     }
 
     /// Opens a Go To Notes row through Bob Navigation Hotkeys' established
@@ -20188,6 +20424,7 @@ final class CapturePanelModel: ObservableObject {
                 try Task.checkCancellation()
 
                 let pickerNeeded = Self.pickerNeed(in: parse)
+                let caretGotoIsPresent = parse.mode == "task_goto" && parse.goto != nil
                 // A dangling `,`/`!` is an editing state, not a mistake: the
                 // picker needs keep precedence, otherwise the live preview
                 // runs on the trimmed draft instead of the doomed real one.
@@ -20209,6 +20446,8 @@ final class CapturePanelModel: ObservableObject {
                         // doomed live dry run and stay calm instead of flashing
                         // red "incomplete Pomodoro link" errors while picking.
                         self?.applyQuietIncompletePicker(need, parse: parse)
+                    } else if caretGotoIsPresent {
+                        self?.applyQuietCaretGoto()
                     }
                 }
 
@@ -20217,7 +20456,9 @@ final class CapturePanelModel: ObservableObject {
                 }
 
                 var previewTask: Task<Void, Never>?
-                if pickerNeeded == nil || pickerNeeded == .mergeInSource {
+                if (pickerNeeded == nil || pickerNeeded == .mergeInSource)
+                    && !caretGotoIsPresent
+                {
                     // A live clipboard read needs this same draft's accepted
                     // parse: a `%c` directive span on a compatible grammar. A
                     // bare `%`, escaped or literal `%c`, an older draft's
@@ -21873,7 +22114,8 @@ final class CapturePanelModel: ObservableObject {
               lastAppliedParseClientIdentity == processClient.identityToken,
               let parse = latestParse,
               (Self.pickerNeed(in: parse) == nil
-                  || Self.pickerNeed(in: parse) == .mergeInSource)
+                  || Self.pickerNeed(in: parse) == .mergeInSource),
+              !(parse.mode == "task_goto" && parse.goto != nil)
         else {
             return false
         }
@@ -22492,7 +22734,8 @@ final class CapturePanelModel: ObservableObject {
 
     /// Visible rows in ⌘-number order for key routing and the strip.
     func similarVisibleRows() -> [SimilarTasksBandRow] {
-        SimilarTasksBandPolicy.visibleItems(
+        guard caretGoto == nil else { return [] }
+        return SimilarTasksBandPolicy.visibleItems(
             in: similarTasks,
             parseItems: similarTasksParseItems
         ).flatMap(\.rows).sorted { $0.rowNumber < $1.rowNumber }
@@ -22500,7 +22743,7 @@ final class CapturePanelModel: ObservableObject {
 
     var similarRowsVisibleForKeys: Bool { !similarVisibleRows().isEmpty }
 
-    var isSimilarRowFocused: Bool { similarTasks.focusedRowID != nil }
+    var isSimilarRowFocused: Bool { caretGoto == nil && similarTasks.focusedRowID != nil }
 
     func focusedSimilarRow() -> SimilarTasksBandRow? {
         guard let id = similarTasks.focusedRowID else { return nil }
@@ -22892,32 +23135,15 @@ final class CapturePanelModel: ObservableObject {
 
     private func openFocusedSimilarRow(_ row: SimilarTasksBandRow) {
         if taskGotoDispatchInFlight { return }
-        guard let url = ObsidianOpenURL.taskGotoURL(
-            path: row.match.target,
-            line: row.match.line,
-            ref: row.match.taskRef.isEmpty ? nil : row.match.taskRef,
-            blockID: row.match.blockID
-        ) else {
-            announceStatus("bob sent no location for this task — update bob")
-            return
-        }
-        taskGotoDispatchInFlight = true
-        announceStatus("Opening in Obsidian…")
-        taskGotoOpener(url) { [weak self] success in
-            guard let self else { return }
-            self.taskGotoDispatchInFlight = false
-            if success {
-                let announcement = SimilarTasksBandEdits.announcement(
-                    for: .open,
-                    title: row.match.title
-                )
-                self.unfocusSimilarRow(applyPending: false)
-                self.announceStatus(announcement)
-                self.panelDismisser()
-            } else {
-                self.announceStatus("Couldn't open Obsidian")
-            }
-        }
+        dispatchGoto(
+            destination: CaptureTaskGotoDestination(
+                target: row.match.target,
+                notePath: row.match.notePath,
+                line: row.match.line,
+                ref: row.match.taskRef,
+                blockID: row.match.blockID
+            )
+        )
     }
 
     private func invalidateAnalysis() {

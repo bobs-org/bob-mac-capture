@@ -272,6 +272,8 @@ public struct CaptureParseResponse: Codable, Equatable {
     /// Additive record creation metadata. Present on record drafts and
     /// absent otherwise; older Bob omits it entirely.
     public let record: CaptureRecord?
+    /// Additive whole-draft `@route^id` Go To resolution. Older Bob omits it.
+    public let goto: CaptureCaretGoto?
 
     public init(
         ok: Bool,
@@ -304,7 +306,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         dependencyTarget: DependencyOwner? = nil,
         template: CaptureParseTemplate? = nil,
         mergeIn: CaptureMergeIn? = nil,
-        record: CaptureRecord? = nil
+        record: CaptureRecord? = nil,
+        goto: CaptureCaretGoto? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -340,6 +343,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.template = template
         self.mergeIn = mergeIn
         self.record = record
+        self.goto = goto
     }
 
     public init(from decoder: Decoder) throws {
@@ -414,6 +418,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         template = (try? container.decodeIfPresent(CaptureParseTemplate.self, forKey: .template)) ?? nil
         mergeIn = (try? container.decodeIfPresent(CaptureMergeIn.self, forKey: .mergeIn)) ?? nil
         record = (try? container.decodeIfPresent(CaptureRecord.self, forKey: .record)) ?? nil
+        goto = (try? container.decodeIfPresent(CaptureCaretGoto.self, forKey: .goto)) ?? nil
     }
 
     private static func normalizedSubBulletDepths(
@@ -472,6 +477,179 @@ public struct CaptureParseResponse: Codable, Equatable {
         case template
         case mergeIn = "merge_in"
         case record
+        case goto
+    }
+}
+
+/// Bob's read-only resolution of one whole-draft `@route^block-id` address.
+/// The status decoder keeps newer Bob statuses forward-compatible.
+public struct CaptureCaretGoto: Codable, Equatable, Sendable {
+    public enum Status: String, Codable, Sendable {
+        case found
+        case missingNote = "missing_note"
+        case missingBlockID = "missing_block_id"
+        case duplicateBlockID = "duplicate_block_id"
+        case unknown
+
+        public init(from decoder: Decoder) throws {
+            let value = try decoder.singleValueContainer().decode(String.self)
+            self = Self(rawValue: value) ?? .unknown
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
+    }
+
+    public let status: Status
+    public let route: String
+    public let blockID: String
+    public let notePath: String?
+    public let target: String?
+    public let archived: Bool
+    public let landing: CaptureGotoRow?
+    public let hits: [CaptureGotoRow]
+    public let suggestions: [CaptureGotoRow]
+
+    public init(
+        status: Status,
+        route: String,
+        blockID: String,
+        notePath: String? = nil,
+        target: String? = nil,
+        archived: Bool = false,
+        landing: CaptureGotoRow? = nil,
+        hits: [CaptureGotoRow] = [],
+        suggestions: [CaptureGotoRow] = []
+    ) {
+        self.status = status
+        self.route = route
+        self.blockID = blockID
+        self.notePath = notePath
+        self.target = target
+        self.archived = archived
+        self.landing = landing
+        self.hits = hits
+        self.suggestions = suggestions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawStatus = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        status = Status(rawValue: rawStatus) ?? .unknown
+        route = try container.decodeIfPresent(String.self, forKey: .route) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath)
+        target = try container.decodeIfPresent(String.self, forKey: .target)
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        landing = try container.decodeIfPresent(CaptureGotoRow.self, forKey: .landing)
+        hits = try container.decodeIfPresent([CaptureGotoRow].self, forKey: .hits) ?? []
+        suggestions = try container.decodeIfPresent([CaptureGotoRow].self, forKey: .suggestions) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case route
+        case blockID = "block_id"
+        case notePath = "note_path"
+        case target
+        case archived
+        case landing
+        case hits
+        case suggestions
+    }
+}
+
+/// A destination row shared by a caret Go To card, disambiguation rows, and
+/// the block-ID completion picker. Suggestion-only `draft` / `reason` fields
+/// are absent from landing and duplicate-hit rows.
+public struct CaptureGotoRow: Codable, Equatable, Sendable {
+    public let blockID: String
+    public let notePath: String
+    public let target: String
+    public let line: Int
+    public let ref: String
+    public let targetKind: String
+    public let text: String
+    public let statusSymbol: String?
+    public let statusName: String?
+    public let statusType: String?
+    public let section: String?
+    public let closed: String?
+    public let archived: Bool
+    public let draft: String?
+    public let reason: String?
+
+    public init(
+        blockID: String,
+        notePath: String,
+        target: String,
+        line: Int,
+        ref: String,
+        targetKind: String,
+        text: String,
+        statusSymbol: String? = nil,
+        statusName: String? = nil,
+        statusType: String? = nil,
+        section: String? = nil,
+        closed: String? = nil,
+        archived: Bool = false,
+        draft: String? = nil,
+        reason: String? = nil
+    ) {
+        self.blockID = blockID
+        self.notePath = notePath
+        self.target = target
+        self.line = line
+        self.ref = ref
+        self.targetKind = targetKind
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.statusType = statusType
+        self.section = section
+        self.closed = closed
+        self.archived = archived
+        self.draft = draft
+        self.reason = reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        blockID = try container.decode(String.self, forKey: .blockID)
+        notePath = try container.decode(String.self, forKey: .notePath)
+        target = try container.decode(String.self, forKey: .target)
+        line = try container.decode(Int.self, forKey: .line)
+        ref = try container.decode(String.self, forKey: .ref)
+        targetKind = try container.decode(String.self, forKey: .targetKind)
+        text = try container.decode(String.self, forKey: .text)
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
+        statusType = try container.decodeIfPresent(String.self, forKey: .statusType)
+        section = try container.decodeIfPresent(String.self, forKey: .section)
+        closed = try container.decodeIfPresent(String.self, forKey: .closed)
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        draft = try container.decodeIfPresent(String.self, forKey: .draft)
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case blockID = "block_id"
+        case notePath = "note_path"
+        case target
+        case line
+        case ref
+        case targetKind = "target_kind"
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case statusType = "status_type"
+        case section
+        case closed
+        case archived
+        case draft
+        case reason
     }
 }
 

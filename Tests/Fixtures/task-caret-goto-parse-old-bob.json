@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"grammar":30,"input":"@bob^focus","body":"","mode":"task","route":"bob","section":null,"block_id":"focus","needs":[],"spans":[{"start":0,"end":4,"kind":"task_block_id_route"},{"start":5,"end":10,"kind":"task_block_id"}],"diagnostics":[]}
