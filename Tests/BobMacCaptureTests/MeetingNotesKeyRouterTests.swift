@@ -91,7 +91,7 @@ final class MeetingNotesKeyRouterTests: XCTestCase {
             router.command(
                 for: keyEvent(keyCode: 53, characters: ""),
                 context: CaptureKeyRoutingContext(
-                    meetingNotesModeVisible: true, editorHasMarkedText: true)),
+                    editorHasMarkedText: true, meetingNotesModeVisible: true)),
             .meetingNotesPassThrough
         )
     }

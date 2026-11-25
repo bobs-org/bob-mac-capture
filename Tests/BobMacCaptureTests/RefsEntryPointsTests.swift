@@ -996,13 +996,15 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(
             menu.items.map(\.title),
             [
-                "Capture", "Event Note…", "Bob Refs…", "Settings", "Recheck Bob", "",
+                "Capture", "Event Note…", "File Meeting Notes…", "Bob Refs…", "Settings", "Recheck Bob", "",
                 "Restart Bob Mac Capture", "Quit Bob Mac Capture",
             ]
         )
         let eventNote = menu.items[1]
         XCTAssertEqual(eventNote.action.map(NSStringFromSelector), "openEventNotePanel")
-        let refs = menu.items[2]
+        let meetingNotes = menu.items[2]
+        XCTAssertEqual(meetingNotes.action.map(NSStringFromSelector), "openMeetingNotesPanel")
+        let refs = menu.items[3]
         XCTAssertEqual(refs.action.map(NSStringFromSelector), "openRefsPanel")
         XCTAssertEqual(refs.keyEquivalent, "o")
         XCTAssertTrue(refs.keyEquivalentModifierMask.contains(.command))
