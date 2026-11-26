@@ -509,26 +509,29 @@ whether the drawer is new.
 
 ## Live Preview and Clipboard Semantics
 
-The live preview calls
-`bob capture --dry-run [--no-clip] --format json` on every debounced edit. `--no-clip`
-is omitted only when the same draft's accepted parse reported a `%c` directive span on
-a compatible grammar, so Bob reads the clipboard through the same path the capture
-will use; every other draft keeps `--no-clip`, and opening the `%` menu never reads
-the clipboard. Each `%c` item shows a Clip card with Bob's exact clipboard content
+The live preview calls `bob capture --dry-run [--no-clip] --format json` after
+debounced edits. It omits `--no-clip` only when that draft's accepted, compatible
+parse reports `%c`; opening the `%` menu never reads the clipboard.
+Each `%c` item shows Bob's exact clipboard content
 (see [Clip card](capture-previews.md#clip-card)). Bob treats `%l` as a
 companion-audio request on an eligible URL-only reference, so
-`https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type. Pressing the
-explicit **Preview** button or **Capture** resolves the clipboard and the
-clipboard-history provider Bob selects normally, exactly as the final capture would.
-While the panel is key and the current
-compatible parse reports a clip directive, the app observes only the pasteboard change
-counter at no more than 1 Hz and re-runs the debounced preview when it moves; the
-counter reads no content. A `$<N>` random
-schedule is rolled once per
-draft and reused by every subsequent live preview and by the final submission, so the
-displayed scheduled date always matches what gets written.
+`https://arxiv.org/pdf/2609.12039 %l` stays a reference while you type.
+**Preview** and **Capture** resolve Bob's clipboard provider.
+While the panel is key with a compatible clip directive, it watches the pasteboard
+change counter at most once per second and refreshes preview when it changes;
+the counter reads no content. A `$<N>` schedule is rolled once per draft and reused
+by previews and submission.
 
-Caret Go To skips preview and re-resolves before opening.
+### Caret Go To
+
+A whole-draft [`@route^id`](https://bobs-org.github.io/capture/#going-to-a-task-with-at-route-caret)
+shows the destination and kind/archive badges without a write preview.
+**Go To ↗**, Return, Command-Return, and Control-Return re-resolve before opening.
+Success clears the draft without history or stash; failure retains it.
+Missing targets show a calm card; click a suggestion or press Command-1–3 to
+replace the draft. Duplicates require clicking a hit; Return stays disabled.
+Control-C discards. See [Block ID browse](task-pickers.md#block-id-picker)
+for `@route^` / `@route.` rows: Return opens; Tab completes.
 
 ## Submit
 

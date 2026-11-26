@@ -342,7 +342,7 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   order exact, prefix, rest, so an exact match is
   preselected; duplicates are omitted and no match
   leaves one non-selectable mint-teaching row. Return, ⌘↩, ⌃↩, and click land
-  read-only via the Go To card's landing; Tab completes
+  [through the destination card](capture-panel.md#caret-go-to); Tab completes
   the ID and leaves the found card. Body text at either edge reverts to the New ID
   composer, whose taken row adds "— remove the text to go to it". Older Bob keeps
   today's composer; `/` matches `route^id` like `route:block-id`.

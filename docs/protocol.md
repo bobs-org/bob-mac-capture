@@ -3,10 +3,10 @@ title: "Mac Capture protocol"
 description: "Bob Mac Capture subprocess commands, JSON boundaries, capability requirements, and compatibility."
 ---
 
-The app presents and orchestrates; Bob owns grammar, completion, previews, and vault
-mutation ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Contracts land in `bob` first.
+Bob owns grammar, completion, previews, and writes ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)).
 
-Caret Go To uses `task_goto.goto`; older Bob omits it. Unknown responses render neutrally.
+Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
+`block_id.goto` for browse. Older Bob omits them; unknown responses render neutrally.
 
 ## Capability requirements
 
