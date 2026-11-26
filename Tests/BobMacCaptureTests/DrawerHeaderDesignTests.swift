@@ -51,7 +51,8 @@ final class DrawerHeaderDesignTests: XCTestCase {
             "capture-transfer-drawer-merge.json")
         let destination = try XCTUnwrap(
             CaptureTransferPresentation(capture: transfer)?.destination)
-        XCTAssertEqual(destination.containerLabel, "› Perf Budget")
+        // The merge target's drawer is FUTURE WORK (merges[0].target.drawer).
+        XCTAssertEqual(destination.containerLabel, "› FUTURE WORK")
     }
 
     @MainActor

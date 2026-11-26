@@ -23864,7 +23864,7 @@ final class CapturePanelModel: ObservableObject {
             case .delimiter:
                 text[lower..<upper].foregroundColor =
                     drawerSpan.caretTouches(cursorUTF8)
-                    ? .primary
+                    ? Color(nsColor: .labelColor)
                     : Color(nsColor: .tertiaryLabelColor)
             }
         }
