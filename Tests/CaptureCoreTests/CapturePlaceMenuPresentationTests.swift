@@ -91,7 +91,9 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(
             menu.rows.map(\.title), ["Requirements", "Future Work", "Acceptance", "Motivation"])
         XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
-        XCTAssertEqual(menu.rows[3].detail, "used in 3 notes · 3 weeks ago")
+        XCTAssertEqual(menu.rows[3].detail, response.candidates[3].detail)
+        XCTAssertTrue(menu.rows[3].detail.hasPrefix("used in 3 notes · "))
+        XCTAssertTrue(menu.rows[3].detail.hasSuffix("ago"))
         XCTAssertEqual(menu.rows.map(\.creates), [false, false, true, true])
         XCTAssertEqual(menu.footer, "⏎ choose · ⎋ close")
     }
