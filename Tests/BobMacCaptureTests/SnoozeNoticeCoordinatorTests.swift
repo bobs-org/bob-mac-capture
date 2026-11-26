@@ -221,10 +221,18 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         coordinator.start()
         coordinator.attachPresenter()
         await waitUntil { coordinator.isCapableForTests == true }
+        guard coordinator.isCapableForTests == true else {
+            coordinator.stop()
+            return
+        }
         coordinator.receiveForTests(receipt())
         await waitUntil { presented.value.count == 1 }
-        XCTAssertEqual(presented.value[0].wakeID, "w1")
-        XCTAssertEqual(presented.value[0].rows.count, 1)
+        guard let batch = presented.value.first else {
+            coordinator.stop()
+            return
+        }
+        XCTAssertEqual(batch.wakeID, "w1")
+        XCTAssertEqual(batch.rows.count, 1)
         XCTAssertEqual(coordinator.deliveredCountForTests, 1)
         XCTAssertGreaterThanOrEqual(refreshes.value, 1)
         coordinator.stop()

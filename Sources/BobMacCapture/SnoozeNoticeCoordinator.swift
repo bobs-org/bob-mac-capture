@@ -150,7 +150,13 @@ final class SnoozeNoticeCoordinator {
         }
         isStarted = true
         generation &+= 1
-        lastEvaluatedDay = todayProvider()
+        let today = todayProvider()
+        lastEvaluatedDay = today
+        // Establish the initial identity before starting the capability read.
+        // The presenter is normally attached immediately afterward, and its
+        // first evaluation must not invalidate that in-flight probe.
+        lastConfigIdentity = SnoozeWakeNoticePolicy.configIdentity(
+            today: today, vaultRoot: configuredVaultRoot, settings: settingsProvider())
         observer.onReceipt = { [weak self] receipt in
             self?.handleReceipt(receipt)
         }
