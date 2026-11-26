@@ -644,7 +644,7 @@ public struct CaptureTransferPresentation: Equatable, Sendable {
     }
 
     private static func containerLabel(for target: CaptureTransferTaskDescriptor) -> String? {
-        if let drawer = target.drawer, !drawer.isEmpty { return "› \(drawer.uppercased())" }
+        if let drawer = target.drawer, !drawer.isEmpty { return "› \(drawer)" }
         if let section = target.section, !section.isEmpty { return "§ \(section)" }
         return nil
     }

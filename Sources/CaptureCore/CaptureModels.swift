@@ -2637,6 +2637,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
     /// it entirely.
     public let origin: String?
     public let req: CaptureRequirementAnnotation?
+    public let drawer: CaptureDrawerAnnotation?
 
     public init(
         text: String,
@@ -2645,7 +2646,8 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         before: String? = nil,
         reason: String? = nil,
         origin: String? = nil,
-        req: CaptureRequirementAnnotation? = nil
+        req: CaptureRequirementAnnotation? = nil,
+        drawer: CaptureDrawerAnnotation? = nil
     ) {
         self.text = text
         self.depth = depth
@@ -2654,6 +2656,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         self.reason = reason
         self.origin = origin
         self.req = req
+        self.drawer = drawer
     }
 
     public init(from decoder: Decoder) throws {
@@ -2669,6 +2672,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? nil
         origin = (try? container.decodeIfPresent(String.self, forKey: .origin)) ?? nil
         req = try? container.decodeIfPresent(CaptureRequirementAnnotation.self, forKey: .req)
+        drawer = try? container.decodeIfPresent(CaptureDrawerAnnotation.self, forKey: .drawer)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2679,6 +2683,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         case reason
         case origin
         case req
+        case drawer
     }
 }
 
@@ -9834,11 +9839,13 @@ public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
     public let title: String
     public let key: String
     public let created: Bool
+    public let marker: CaptureDrawerMarker?
 
-    public init(title: String, key: String = "", created: Bool = false) {
+    public init(title: String, key: String = "", created: Bool = false, marker: CaptureDrawerMarker? = nil) {
         self.title = title
         self.key = key.isEmpty ? title : key
         self.created = created
+        self.marker = marker
     }
 
     public init(from decoder: Decoder) throws {
@@ -9846,12 +9853,18 @@ public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
         title = try container.decode(String.self, forKey: .title)
         key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? title
         created = (try? container.decodeIfPresent(Bool.self, forKey: .created)) ?? false
+        if let raw = try? container.decodeIfPresent(String.self, forKey: .marker) {
+            marker = raw.map(CaptureDrawerMarker.init(wireValue:))
+        } else {
+            marker = nil
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
         case title
         case key
         case created
+        case marker
     }
 }
 

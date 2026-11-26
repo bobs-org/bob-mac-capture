@@ -156,7 +156,7 @@ bob() {
 version_line="$("$bob_bin" --version | head -n 1)"
 probe="$scratch_root/probe.json"
 bob capture-parse --format json -- 'probe' > "$probe"
-python3 - "$probe" <<'PY'
+grammar_revision="$(python3 - "$probe" <<'PY'
 import json
 import pathlib
 import sys
@@ -166,7 +166,7 @@ if not isinstance(grammar, int) or grammar < 30:
     sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 30")
 print(grammar)
 PY
-)
+)"
 
 manifest="$scratch_root/manifest.md"
 {
@@ -312,13 +312,13 @@ assert [row["group"] for row in load("drawer-complete-typed-recent.json")["candi
 assert any(row.get("refused") for row in load("drawer-complete-typed-reserved.json")["candidates"])
 
 existing = load("drawer-capture-existing.json")["drawer"]
-assert existing == {"title": "Requirements", "key": "REQUIREMENTS", "created": False}
+assert existing == {"title": "Requirements", "key": "REQUIREMENTS", "marker": "bold", "created": False}
 legacy = load("drawer-capture-legacy-existing.json")["drawer"]
-assert legacy == {"title": "FUTURE WORK", "key": "FUTURE WORK", "created": False}
+assert legacy == {"title": "FUTURE WORK", "key": "FUTURE WORK", "marker": "legacy_caps", "created": False}
 created = load("drawer-capture-new.json")["drawer"]
-assert created == {"title": "Perf Budget", "key": "PERF BUDGET", "created": True}
+assert created == {"title": "Perf Budget", "key": "PERF BUDGET", "marker": "bold", "created": True}
 quoted = load("drawer-capture-quoted-true-case.json")["drawer"]
-assert quoted == {"title": "Release Checklist", "key": "RELEASE CHECKLIST", "created": True}
+assert quoted == {"title": "Release Checklist", "key": "RELEASE CHECKLIST", "marker": "bold", "created": True}
 assert load("drawer-capture-new-retype.json")["drawer"]["created"] is True
 assert load("drawer-capture-new-retype.json")["task_theme"]["theme"]["name"] == "FIX"
 assert load("drawer-capture-plain-child.json").get("drawer") is None

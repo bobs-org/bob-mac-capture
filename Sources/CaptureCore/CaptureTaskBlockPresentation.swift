@@ -230,7 +230,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                     rows: keepMovingRows
                 ),
                 origin: line.origin,
-                req: line.req
+                req: line.req,
+                drawer: line.drawer
             )
         }
 
@@ -587,7 +588,8 @@ public struct CaptureSectionBlockPresentation: Equatable, Sendable {
                 tokens: line.req == nil
                     ? CapturePomodoroLineTokens.tokenize(content, isHeadline: false)
                     : CapturePomodoroLineTokens.tokenizeTaskRow(content, isHeadline: false),
-                req: line.req
+                req: line.req,
+                drawer: line.drawer
             )
         }
         var summary = "Section \(block.heading), \(block.relativeTarget) line \(block.line)"

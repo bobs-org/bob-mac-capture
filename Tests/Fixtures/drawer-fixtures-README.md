@@ -7,12 +7,12 @@ BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-drawer-fixtures.sh
 ```
 
-Generated with `bob 0.5.0` built from bob-cli revision `1f4c94571454ed9307094a677f69b31cddc30600`
-(grammar revision 26, `schema_version` 1). The script requires commit `971d864f`
+Generated with `bob 0.6.0` built from bob-cli revision `05dd83cf9f93c07825a30dfe508e530bc36f9d81`
+(grammar revision 31, `schema_version` 1). The script requires commit `971d864f`
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-drawer-fixture`.
 
-Inputs use an isolated vault with task `^bar`, task `^plain`, a project-note
+Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task `^bar`, task `^plain`, a project-note
 `^prj` with H2 drawers, catalog notes, configured types, a daily FIX Pomodoro, and
 `BOB_NOW=2026-10-30 09:15:00`. Every capture is a dry run with `--no-clip`.
 
@@ -25,6 +25,10 @@ Inputs use an isolated vault with task `^bar`, task `^plain`, a project-note
 | `drawer-parse-existing.json` | `capture-parse` | `Postgres 17 minimum @foo+bar#requirements` |
 | `drawer-parse-new.json` | `capture-parse` | `Postgres 17 minimum @foo+bar#perf-budget` |
 | `drawer-parse-literal.json` | `capture-parse` | `Postgres 17 minimum @foo+bar#"Q&A"` |
+| `drawer-parse-new-task.json` | `capture-parse` | `Prepare release\n- **API Design**\n  - Review endpoint` |
+| `drawer-parse-existing-bullet.json` | `capture-parse` | `@foo+bar\n- **Café**\n  - Review notes` |
+| `drawer-parse-project-bullet.json` | `capture-parse` | `Draft plan @project^draft@\n- **C++ Notes**\n  - Record the design` |
+| `drawer-parse-notebook-seed.json` | `capture-parse` | `Create notes @parent^seed@ %n\n- **Data Model**\n  - Review the schema` |
 | `drawer-complete-empty.json` | `capture-complete --cursor 29` | `Postgres 17 minimum @foo+bar#` |
 | `drawer-complete-typed-match.json` | `capture-complete --cursor 32` | `Postgres 17 minimum @foo+bar#req` |
 | `drawer-complete-typed-none.json` | `capture-complete --cursor 33` | `Postgres 17 minimum @foo+bar#perf` |
@@ -33,10 +37,12 @@ Inputs use an isolated vault with task `^bar`, task `^plain`, a project-note
 | `drawer-complete-plain-task.json` | `capture-complete --cursor 31` | `Postgres 17 minimum @foo+plain#` |
 | `drawer-complete-missing-target.json` | `capture-complete --cursor 30` | `Postgres 17 minimum @foo+nope#` |
 | `drawer-capture-existing.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#requirements` |
+| `drawer-capture-legacy-existing.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#future-work` |
 | `drawer-capture-new.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#perf-budget` |
+| `drawer-capture-quoted-true-case.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#"Release Checklist"` |
 | `drawer-capture-plain-child.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar` |
 | `drawer-capture-new-retype.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#perf-budget #fix` |
-| `drawer-capture-multi-note.json` | `capture --dry-run --no-clip` | `@foo+bar\n- Ping Alice about the cutover\n- REQUIREMENTS\n  - Postgres 17 minimum\n- RISKS\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms` |
+| `drawer-capture-multi-note.json` | `capture --dry-run --no-clip` | `@foo+bar\n- Ping Alice about the cutover\n- **Requirements**\n  - Postgres 17 minimum\n- **Risks**\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms` |
 | `drawer-bullet-complete-existing-empty.json` | `capture-complete --cursor 12` | `@foo+bar\n- #` |
 | `drawer-bullet-complete-new-task-empty.json` | `capture-complete --cursor 12` | `New task\n- #` |
 | `drawer-bullet-complete-existing-typed.json` | `capture-complete --cursor 15` | `@foo+bar\n- #req` |

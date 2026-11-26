@@ -81,7 +81,8 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
                     in: line,
                     rows: keepMovingRows
                 ),
-                req: line.req
+                req: line.req,
+                drawer: line.drawer
             )
         }
 

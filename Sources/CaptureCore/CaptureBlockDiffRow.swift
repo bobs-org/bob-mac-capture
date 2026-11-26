@@ -31,6 +31,7 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
     /// descriptor is also available.
     public let origin: String?
     public let req: CaptureRequirementAnnotation?
+    public let drawer: CaptureDrawerAnnotation?
 
     /// Only an annotated row may replace its checkbox with a requirement mark.
     /// The original tokens remain untouched for copy, diffs, and compatibility.
@@ -54,7 +55,8 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         isRelationSuccessor: Bool = false,
         keepMovingProjectName: String? = nil,
         origin: String? = nil,
-        req: CaptureRequirementAnnotation? = nil
+        req: CaptureRequirementAnnotation? = nil,
+        drawer: CaptureDrawerAnnotation? = nil
     ) {
         self.content = content
         self.depth = depth
@@ -68,5 +70,6 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         self.keepMovingProjectName = keepMovingProjectName
         self.origin = origin
         self.req = req
+        self.drawer = drawer
     }
 }

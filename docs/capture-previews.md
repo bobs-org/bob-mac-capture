@@ -151,12 +151,12 @@ route change end the group.
 
 ## Drawer captures
 
-A sub-bullet filed in a task drawer (`Text @foo+bar#notes`) shows the
-header `Sub-bullet under ^bar › NOTES` above the task card. When Bob's
-per-item `drawer` object reports `created`, the header adds a dashed
-**new drawer** capsule. A separate `#type` on the same item retypes the task
-in the same transaction, so Bob's `Type` row renders beneath the header
-beside the capsule.
+A sub-bullet filed in a task drawer (`Text @foo+bar#notes`) shows
+`Sub-bullet under ^bar › Requirements` above the task card, keeping Bob's
+case. `created` adds a dashed **new drawer** capsule. A `#type` on the same
+item retypes the task, so Bob's `Type` row renders beneath the header.
+Annotated headers show outline `tray` plus the verbatim title; empty mutes.
+Legacy ALL-CAPS keeps its spelling everywhere.
 
 ## Batch drafts and authored children
 
