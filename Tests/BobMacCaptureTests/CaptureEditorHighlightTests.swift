@@ -30,6 +30,61 @@ final class CaptureEditorHighlightTests: XCTestCase {
         )
     }
 
+    func testDrawerTitlesAreSemiboldAndDelimitersDimAwayFromCaret() throws {
+        let draft = "- **API Design**"
+        let spans = [
+            CaptureSpan(start: 2, end: 4, kind: "drawer_marker"),
+            CaptureSpan(start: 4, end: 14, kind: "drawer_bullet"),
+            CaptureSpan(start: 14, end: 16, kind: "drawer_marker"),
+        ]
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+        var text = AttributedString(draft)
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text, parse: parse, draft: draft, ranges: ranges, cursorUTF8: 0
+            ))
+
+        let titleRange = try XCTUnwrap(stringRange(in: draft, start: 4, end: 14))
+        let titleLower = try XCTUnwrap(AttributedString.Index(titleRange.lowerBound, within: text))
+        let expectedFont = Font.system(.body, design: .monospaced).weight(.semibold)
+        let titleRun = try XCTUnwrap(text.runs.first(where: { $0.range.contains(titleLower) }))
+        XCTAssertEqual(titleRun.font, expectedFont)
+        XCTAssertEqual(
+            try Self.foregroundColor(in: text, start: 4, end: 14),
+            NSColor(CaptureEditorPalette.color(for: .section))
+        )
+        XCTAssertEqual(
+            try Self.foregroundColor(in: text, start: 2, end: 4),
+            NSColor.tertiaryLabelColor
+        )
+        XCTAssertEqual(
+            try Self.foregroundColor(in: text, start: 14, end: 16),
+            NSColor.tertiaryLabelColor
+        )
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text, parse: parse, draft: draft, ranges: ranges, cursorUTF8: 3
+            ))
+        XCTAssertEqual(try Self.foregroundColor(in: text, start: 2, end: 4), .labelColor)
+        XCTAssertEqual(
+            try Self.foregroundColor(in: text, start: 14, end: 16),
+            NSColor.tertiaryLabelColor
+        )
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text, parse: parse, draft: draft, ranges: ranges, cursorUTF8: 14
+            ))
+        XCTAssertEqual(
+            try Self.foregroundColor(in: text, start: 2, end: 4),
+            NSColor.tertiaryLabelColor
+        )
+        XCTAssertEqual(try Self.foregroundColor(in: text, start: 14, end: 16), .labelColor)
+    }
+
     func testThemeTintDoesNotLeakPastNameDuringRepaint() throws {
         let draft = "Add bar @bob:theme-day-strip-bar#vibe=\n\nFix theme highlighting! @bob"
         let theme = CapturePomodoroThemeRef(
@@ -1436,6 +1491,18 @@ final class CaptureEditorHighlightTests: XCTestCase {
             }
             return String(text[run.range].characters)
         }
+    }
+
+    private static func foregroundColor(
+        in text: AttributedString,
+        start: Int,
+        end: Int
+    ) throws -> NSColor {
+        let range = try XCTUnwrap(stringRange(in: String(text.characters), start: start, end: end))
+        let lower = try XCTUnwrap(AttributedString.Index(range.lowerBound, within: text))
+        let run = try XCTUnwrap(text.runs.first(where: { $0.range.contains(lower) }))
+        let color = try XCTUnwrap(run.foregroundColor)
+        return NSColor(color)
     }
 
     private static func isClearForeground(_ run: AttributeContainer) -> Bool {

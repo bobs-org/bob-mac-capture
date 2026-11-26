@@ -10,6 +10,53 @@ public struct ValidatedCaptureSpan: Equatable {
     }
 }
 
+/// A Bob-reported drawer title or its literal `**` delimiter, mapped from the
+/// validated UTF-8 span into the draft's String indices. Kept in CaptureCore so
+/// editor styling and drawer keystrokes share the same span interpretation.
+public struct CaptureDrawerTextSpan: Equatable {
+    public enum Role: Equatable {
+        case title
+        case delimiter
+    }
+
+    public let span: CaptureSpan
+    public let range: Range<String.Index>
+    public let role: Role
+
+    public init(span: CaptureSpan, range: Range<String.Index>, role: Role) {
+        self.span = span
+        self.range = range
+        self.role = role
+    }
+
+    /// A caret on or beside either delimiter byte restores it to full ink.
+    public func caretTouches(_ utf8Offset: Int?) -> Bool {
+        guard let utf8Offset else {
+            return false
+        }
+        return span.start <= utf8Offset && utf8Offset <= span.end
+    }
+}
+
+/// Select Bob's drawer spans from a validated parse while preserving their
+/// UTF-8-backed String ranges for presentation and typing behavior.
+public func captureDrawerTextSpans(
+    from validatedSpans: [ValidatedCaptureSpan]
+) -> [CaptureDrawerTextSpan] {
+    validatedSpans.compactMap { item in
+        let role: CaptureDrawerTextSpan.Role
+        switch item.span.kind {
+        case "drawer_bullet":
+            role = .title
+        case "drawer_marker":
+            role = .delimiter
+        default:
+            return nil
+        }
+        return CaptureDrawerTextSpan(span: item.span, range: item.range, role: role)
+    }
+}
+
 public func stringRange(
     in text: String,
     start: Int,

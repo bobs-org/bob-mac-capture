@@ -23697,6 +23697,7 @@ final class CapturePanelModel: ObservableObject {
     static func clearEditorHighlightAttributes(_ text: inout AttributedString) {
         text.foregroundColor = nil
         text.backgroundColor = nil
+        text.font = nil
         // An empty style clears the run where assigning nil leaves the prior
         // paint in place (same AttributedString quirk as unconfigured themes).
         text.underlineStyle = NSUnderlineStyle([])
@@ -23849,6 +23850,22 @@ final class CapturePanelModel: ObservableObject {
                             CaptureEditorPalette.color(for: .neutral)
                     }
                 }
+            }
+        }
+        for drawerSpan in captureDrawerTextSpans(from: ranges) {
+            guard let lower = AttributedString.Index(drawerSpan.range.lowerBound, within: text),
+                let upper = AttributedString.Index(drawerSpan.range.upperBound, within: text)
+            else {
+                return true
+            }
+            switch drawerSpan.role {
+            case .title:
+                text[lower..<upper].font = .system(.body, design: .monospaced).weight(.semibold)
+            case .delimiter:
+                text[lower..<upper].foregroundColor =
+                    drawerSpan.caretTouches(cursorUTF8)
+                    ? .primary
+                    : Color(nsColor: .tertiaryLabelColor)
             }
         }
         paintRequirementMarkerChips(&text, draft: draft, ranges: ranges)
