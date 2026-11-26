@@ -252,7 +252,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
     }
 
     func testShiftStarExpandsLikeABareStar() async throws {
-        let (_, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
+        let (model, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
         defer { panel.orderOut(nil) }
 
         XCTAssertNotNil(typeKey(
@@ -291,7 +291,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
     }
 
     func testQueuedStarIsAbsorbedOnce() async throws {
-        let (_, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
+        let (model, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
         defer { panel.orderOut(nil) }
 
         XCTAssertNotNil(
@@ -313,7 +313,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
     }
 
     func testBackspaceDeletesSkeletonViaExpansionArm() async throws {
-        let (_, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
+        let (model, controller, textView, panel, _) = try openDrawerDraft("Prepare release\n- ")
         defer { panel.orderOut(nil) }
 
         XCTAssertNotNil(
@@ -648,7 +648,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
     }
 
     func testRequirementExpansionStillApplies() async throws {
-        let (_, controller, textView, panel, _) = try openDrawerDraft(
+        let (model, controller, textView, panel, _) = try openDrawerDraft(
             "Ship 🧭\n- [",
             extra: ["FAKE_BOB_PARSE_FIXTURE": "capture-parse-requirement-marker.json"]
         )

@@ -153,6 +153,9 @@ states, and announcements.
   moving the caret never hides or reveals bytes. Typing `- [` plus Space still expands
   the marker, typing `*` at a Bob-admitted bullet start still expands `- *` into
   `- **|**`, and Backspace removes either whole marker.
+- Bob-reported drawer titles paint semibold in the section color; their `**`
+  delimiters use tertiary ink, returning to full ink at the caret. Bytes and offsets
+  never change; stale spans leave ordinary text.
 
 The agenda UI behind the store above is described in [Idle agenda](idle-agenda.md).
 
@@ -463,10 +466,10 @@ dotted purple underline; existing sections do not.
 
 ### Task drawers
 
-A glued `#` after a resolved `@route+block-id`, once the item has body text, names a
-**drawer**: a direct child bullet of the task whose whole title is bold
-(`- **Release Notes**`), with its notes nested beneath. Typing `Text @foo+bar#`
-opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare-`#` menus:
+A glued `#` after a resolved `@route+block-id` with body text names a
+**drawer**: a direct child bullet whose whole title is bold
+(`- **Release Notes**`), with notes nested beneath. `Text @foo+bar#`
+opens Bob's `drawer` completion with **nothing selected**, as with `%` and bare `#`:
 
 ```text
 ╭─ DRAWER · ^bar Upgrade Postgres (foo) ─────────────────────╮
@@ -481,21 +484,19 @@ opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare
 ╰─────────────────────────────────────────────────────────────╯
 ```
 
-- **Groups.** *On this task* lists the task's own drawers in document order. *Recent*
-  lists drawers used in other notes; choosing one creates it on this task. The headers
-  reuse the Pomodoro-name menu's style.
-- **New drawer.** Typing a name that matches no drawer adds one create row,
-  `＋ New drawer PERF BUDGET`, with a dashed outline. A row Bob refuses (a reserved name, a
-  near-duplicate of a drawer used elsewhere) is dimmed with Bob's reason, and **Return** on
-  it does nothing.
-- **Footer.** The footer shows Bob's one-line consequence for the selected row, such as
-  `Adds after "2 GB RAM" in NOTES`, or the key hint when nothing is selected.
+- **Groups.** *On this task* lists the task's drawers in document order; *Recent*
+  lists drawers used in other notes, creating the chosen one on this task. Headers
+  reuse the Pomodoro-name menu style.
+- **New drawer.** A name matching no drawer adds one dashed
+  `＋ New drawer PERF BUDGET` row. A refused row (reserved name, near-duplicate)
+  is dimmed with Bob's reason, and **Return** on it does nothing.
+- **Footer.** The footer shows Bob's one-line consequence for the selected row
+  (`Adds after "2 GB RAM" in NOTES`) or the key hint.
 - **Counts and ages** (`3 notes`, `used in 12 notes · 3 days ago`) are Bob's `detail`
   text. The app counts nothing itself.
-- **Keys.** The same as the other unselected menus: **Return** submits the draft
-  unchanged (Bob refuses an incomplete marker in the preview), **Tab**, **↓**, and
-  **Ctrl-N** select the first row, typing preselects the best row, and **Escape** closes the
-  menu. Accepting a row splices Bob's `replacement` and `cursor_after`.
+- **Keys.** **Return** submits the draft unchanged (Bob refuses an incomplete marker
+  in the preview); **Tab**, **↓**, and **Ctrl-N** select the first row; typing preselects
+  the best row; **Escape** closes. Accepting splices Bob's `replacement` and `cursor_after`.
 - **Highlighting.** The `#NAME` drawer span uses the section color family.
 - **Typing.** At the end of a nonempty title Bob reports as a drawer, Shift-Return,
   Option-Return, or Ctrl-J inserts a nested `- ` note after the closing `**`. A typed `*`
