@@ -56,10 +56,10 @@ final class DrawerHeaderDesignTests: XCTestCase {
 
     @MainActor
     func testRenderDrawerHeaders() throws {
+        let edge = try edgeRows()
         let edgeCard = VStack(alignment: .leading, spacing: 12) {
             Text("Drawer headers in the preview").font(.headline)
-            BlockDiffCard(
-                railTint: .purple, rows: try edgeRows(), headlineEmphasis: true)
+            BlockDiffCard(railTint: .purple, rows: edge, headlineEmphasis: true)
         }
         .padding(16)
 
