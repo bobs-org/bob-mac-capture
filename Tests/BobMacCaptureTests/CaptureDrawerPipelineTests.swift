@@ -224,6 +224,10 @@ final class CaptureDrawerPipelineTests: XCTestCase {
             XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
         }
         XCTAssertEqual(textView.string, "Prepare release\n- **\(title)**")
+        // Close the title-typing undo group so the nested newline assist is
+        // one undoable edit. Real typing has runloop gaps that naturally break
+        // coalescing; the synchronous test loop does not.
+        textView.breakUndoCoalescing()
         return (model, controller, textView, panel, recordURL)
     }
 

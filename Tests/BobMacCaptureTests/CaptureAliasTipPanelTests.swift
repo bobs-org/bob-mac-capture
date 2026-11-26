@@ -410,12 +410,19 @@ final class CaptureAliasTipPanelTests: XCTestCase {
             extra: ["FAKE_BOB_ALIAS_TIP": "old"]
         )
         typeSigil("@", into: textView, model: model, modifiers: .shift)
+        // Wait for the rewrite to start (record appears) and then finish, so
+        // the old-Bob incapable flag is set before asserting. Waiting only for
+        // !inFlight is racy: it is true both before the lane starts and after
+        // it settles.
+        await waitUntil { captureRewriteCount(in: recordURL, draft: "Buy milk @") == 1 }
         await waitUntil { !model.aliasTipInFlightForTesting }
         XCTAssertNil(model.presentedAliasTip)
-        let first = captureRewriteCount(in: recordURL, draft: "Buy milk @")
-        XCTAssertEqual(first, 1)
+        XCTAssertEqual(captureRewriteCount(in: recordURL, draft: "Buy milk @"), 1)
         restorePrefix("Buy milk ", into: textView, model: model)
         typeSigil("@", into: textView, model: model, modifiers: .shift)
+        // The disabled lane must not start a second rewrite. Give it a beat to
+        // prove nothing starts, then assert stillness.
+        try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertFalse(model.aliasTipInFlightForTesting)
         XCTAssertEqual(captureRewriteCount(in: recordURL, draft: "Buy milk @"), 1)
     }

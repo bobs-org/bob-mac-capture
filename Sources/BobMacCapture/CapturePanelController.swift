@@ -1045,6 +1045,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             textView.breakUndoCoalescing()
             textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            textView.breakUndoCoalescing()
             textView.setSelectedRange(
                 NSRange(
                     location: edit.replacementRange.location
@@ -1052,7 +1053,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     length: 0
                 )
             )
-            textView.breakUndoCoalescing()
+            textView.scrollRangeToVisible(textView.selectedRange())
             model.cancelDrawerTitleExpansionSession()
             return true
         }
@@ -1092,6 +1093,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             textView.breakUndoCoalescing()
             textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            textView.breakUndoCoalescing()
             textView.setSelectedRange(
                 NSRange(
                     location: edit.replacementRange.location
@@ -1099,7 +1101,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     length: 0
                 )
             )
-            textView.breakUndoCoalescing()
+            textView.scrollRangeToVisible(textView.selectedRange())
             model.cancelDrawerTitleExpansionSession()
             return true
         }
