@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@foo+bar\n  - *","text":"@foo+bar\n  - *","changed":false,"cursor":14,"edits":[],"sigil_alias_tip":null}

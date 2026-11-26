@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Went back @eat/nagi\n- *","text":"Went back @eat/nagi\n- ****","changed":true,"cursor":24,"rule":"expand_drawer_marker","edits":[{"range":{"start":23,"end":23},"replacement":"***"}],"summary":"Expanded drawer marker"}

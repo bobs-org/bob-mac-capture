@@ -27,4 +27,59 @@ final class CaptureDrawerTextSpanTests: XCTestCase {
         XCTAssertTrue(drawerSpans[2].caretTouches(markerEnd))
         XCTAssertFalse(drawerSpans[2].caretTouches(nil))
     }
+
+    func testEmptySkeletonNeedsTwoMarkersAndAPlaceholderAroundTheCaret() {
+        let draft = "Prepare release\n- ****"
+        let caret = 20
+        let spans = [
+            CaptureSpan(start: 18, end: 20, kind: "drawer_marker"),
+            CaptureSpan(start: 20, end: 20, kind: "interactive_placeholder"),
+            CaptureSpan(start: 20, end: 22, kind: "drawer_marker"),
+        ]
+        let skeleton = CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: caret)
+        XCTAssertEqual(skeleton?.deletionStart, 18)
+        XCTAssertEqual(skeleton?.deletionEnd, 22)
+        XCTAssertEqual(String(draft[stringRange(in: draft, start: 18, end: 22)!]), "****")
+    }
+
+    func testEmptySkeletonRejectsMissingPlaceholder() {
+        let spans = [
+            CaptureSpan(start: 18, end: 20, kind: "drawer_marker"),
+            CaptureSpan(start: 20, end: 22, kind: "drawer_marker"),
+        ]
+        XCTAssertNil(CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 20))
+    }
+
+    func testEmptySkeletonRejectsNonemptyTitle() {
+        let spans = [
+            CaptureSpan(start: 18, end: 20, kind: "drawer_marker"),
+            CaptureSpan(start: 20, end: 30, kind: "drawer_bullet"),
+            CaptureSpan(start: 30, end: 32, kind: "drawer_marker"),
+        ]
+        XCTAssertNil(CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 20))
+        XCTAssertNil(CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 32))
+    }
+
+    func testEmptySkeletonRejectsMisplacedCaret() {
+        let spans = [
+            CaptureSpan(start: 18, end: 20, kind: "drawer_marker"),
+            CaptureSpan(start: 20, end: 20, kind: "interactive_placeholder"),
+            CaptureSpan(start: 20, end: 22, kind: "drawer_marker"),
+        ]
+        XCTAssertNil(CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 19))
+        XCTAssertNil(CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 21))
+    }
+
+    func testEmptySkeletonIgnoresUnrelatedSpans() {
+        let spans = [
+            CaptureSpan(start: 0, end: 4, kind: "sub_bullet_route"),
+            CaptureSpan(start: 18, end: 20, kind: "drawer_marker"),
+            CaptureSpan(start: 20, end: 20, kind: "interactive_placeholder"),
+            CaptureSpan(start: 20, end: 22, kind: "drawer_marker"),
+            CaptureSpan(start: 0, end: 4, kind: "route"),
+        ]
+        let skeleton = CaptureDrawerEmptySkeleton(spans: spans, caretUTF8: 20)
+        XCTAssertEqual(skeleton?.deletionStart, 18)
+        XCTAssertEqual(skeleton?.deletionEnd, 22)
+    }
 }

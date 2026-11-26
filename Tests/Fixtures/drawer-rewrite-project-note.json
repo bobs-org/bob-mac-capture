@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Draft plan @project^draft@\n- *","text":"Draft plan @project^draft@\n- ****","changed":true,"cursor":31,"rule":"expand_drawer_marker","edits":[{"range":{"start":30,"end":30},"replacement":"***"}],"summary":"Expanded drawer marker"}

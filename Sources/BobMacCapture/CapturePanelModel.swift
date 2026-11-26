@@ -77,6 +77,23 @@ private struct RequirementMarkerOvertypeArm: Equatable {
     var nextKey: RequirementMarkerOvertypeKey
 }
 
+/// A physical `*` at an authored bullet start. Bob's rewrite resolver remains
+/// the sole authority on whether the position admits a drawer; this intent
+/// only avoids asking on paste or on unrelated edits.
+private struct DrawerMarkerExpansionIntent: Equatable {
+    let expectedDraft: String
+    let expectedCaretUTF8: Int
+}
+
+/// One-shot absorption after Bob expands a lone `- *` into `- **|**`. The
+/// caret stays between Bob's pairs while one already-queued `*` in the user's
+/// typing stream is swallowed.
+private struct DrawerMarkerOvertypeArm: Equatable {
+    let draft: String
+    let starRange: CaptureRange
+    let caretUTF8: Int
+}
+
 private enum AliasTipSurface: Equatable {
     case completionList
     case picker
@@ -1227,6 +1244,8 @@ final class CapturePanelModel: ObservableObject {
     private var pendingSeparatorToggleIntent: SeparatorToggleIntent?
     private var pendingRequirementMarkerExpansionIntent: RequirementMarkerExpansionIntent?
     private var requirementMarkerOvertypeArm: RequirementMarkerOvertypeArm?
+    private var pendingDrawerMarkerExpansionIntent: DrawerMarkerExpansionIntent?
+    private var drawerMarkerOvertypeArm: DrawerMarkerOvertypeArm?
     /// A `\` sent to the rewrite lane whose reply has not landed: the
     /// expected post-key draft and caret from key-down time. Lets a second
     /// `\` before Bob's reply re-ask Bob about the first `\`.
@@ -3504,6 +3523,187 @@ final class CapturePanelModel: ObservableObject {
         return nil
     }
 
+    /// Records only a physical `*` at an authored bullet start. Bob's rewrite
+    /// resolver remains the sole authority on whether the position admits a
+    /// drawer; the byte pre-filter below only avoids asking on unrelated
+    /// keystrokes such as a mid-line star or a `*` bullet marker.
+    func noteDrawerMarkerExpansionIntent(
+        typed: String,
+        text: String,
+        selectedRange: NSRange,
+        hasMarkedText: Bool
+    ) {
+        pendingDrawerMarkerExpansionIntent = nil
+        guard typed == "*", !hasMarkedText, selectedRange.length == 0,
+              let caretUTF8 = utf8Offset(in: text, utf16Offset: selectedRange.location),
+              Self.isDrawerStarPrefilterMatch(text: text, caretUTF8: caretUTF8)
+        else {
+            return
+        }
+        let nsText = text as NSString
+        guard selectedRange.location <= nsText.length else {
+            return
+        }
+        let expectedDraft = nsText.replacingCharacters(in: selectedRange, with: typed)
+        guard let expectedCaretUTF8 = utf8Offset(
+            in: expectedDraft,
+            utf16Offset: selectedRange.location + 1
+        ) else {
+            return
+        }
+        pendingDrawerMarkerExpansionIntent = DrawerMarkerExpansionIntent(
+            expectedDraft: expectedDraft,
+            expectedCaretUTF8: expectedCaretUTF8
+        )
+    }
+
+    /// Cheap byte pre-filter mirroring Bob's lone-star site: the caret sits
+    /// after indent, one bullet marker, and blanks at a line start. It never
+    /// decides eligibility; a `*` bullet marker or an empty line stays out,
+    /// while the rest is left to Bob's rewrite reply.
+    private static func isDrawerStarPrefilterMatch(text: String, caretUTF8: Int) -> Bool {
+        let bytes = Array(text.utf8)
+        guard caretUTF8 >= 0, caretUTF8 <= bytes.count else {
+            return false
+        }
+        var lineStart = caretUTF8
+        while lineStart > 0, bytes[lineStart - 1] != 0x0A, bytes[lineStart - 1] != 0x0D {
+            lineStart -= 1
+        }
+        var index = lineStart
+        while index < caretUTF8, bytes[index] == 0x20 || bytes[index] == 0x09 {
+            index += 1
+        }
+        guard index < caretUTF8,
+              bytes[index] == 0x2D || bytes[index] == 0x2A || bytes[index] == 0x2B
+        else {
+            return false
+        }
+        index += 1
+        while index < caretUTF8 {
+            guard bytes[index] == 0x20 || bytes[index] == 0x09 else {
+                return false
+            }
+            index += 1
+        }
+        return true
+    }
+
+    /// Consumes the matching key-down intent after AppKit has inserted the
+    /// star. A pasted or programmatically inserted `- *` never reaches Bob's
+    /// rewrite endpoint.
+    private func consumeDrawerMarkerExpansionIntent(
+        draft: String,
+        cursorUTF8Offset: Int?
+    ) -> DrawerMarkerExpansionIntent? {
+        guard let intent = pendingDrawerMarkerExpansionIntent else {
+            return nil
+        }
+        pendingDrawerMarkerExpansionIntent = nil
+        guard draft == intent.expectedDraft else {
+            return nil
+        }
+        if let cursorUTF8Offset,
+           cursorUTF8Offset != intent.expectedCaretUTF8,
+           cursorUTF8Offset + 1 != intent.expectedCaretUTF8
+        {
+            return nil
+        }
+        return intent
+    }
+
+    /// Absorbs the one `*` that may already be queued when Bob's `- **|**`
+    /// reply lands. The caret stays between Bob's pairs.
+    func absorbDrawerMarkerOvertype(
+        typed: String?,
+        text: String,
+        caretUTF8: Int?,
+        canAbsorb: Bool
+    ) -> Bool {
+        guard let arm = drawerMarkerOvertypeArm else {
+            return false
+        }
+        guard canAbsorb, text == arm.draft, caretUTF8 == arm.caretUTF8 else {
+            drawerMarkerOvertypeArm = nil
+            return false
+        }
+        guard typed == "*" else {
+            drawerMarkerOvertypeArm = nil
+            return false
+        }
+        drawerMarkerOvertypeArm = nil
+        return true
+    }
+
+    func cancelDrawerMarkerOvertype() {
+        drawerMarkerOvertypeArm = nil
+    }
+
+    /// Bob's drawer-marker spans authorize atomic Backspace. The just-expanded
+    /// skeleton is also retained briefly so Backspace works before the
+    /// following asynchronous parse has arrived.
+    func consumeDrawerMarkerBackspace(caretLocation: Int, text: String) -> NSRange? {
+        let arm = drawerMarkerOvertypeArm
+        drawerMarkerOvertypeArm = nil
+        guard let caretUTF8 = utf8Offset(in: text, utf16Offset: caretLocation) else {
+            return nil
+        }
+        if let arm, arm.draft == text, arm.caretUTF8 == caretUTF8,
+           let range = utf16Range(
+               in: text,
+               byteRange: CaptureRange(start: arm.starRange.start, end: arm.starRange.end)
+           ),
+           range.length == 4,
+           range.location + 2 == caretLocation,
+           String((text as NSString).substring(with: range)) == "****"
+        {
+            return range
+        }
+        guard let parse = latestParse,
+              parse.input == text,
+              lastAppliedParseDraft == text,
+              lastAppliedParseGeneration == analysisGeneration,
+              lastAppliedParseClientIdentity == processClient?.identityToken
+        else {
+            return nil
+        }
+        guard let skeleton = CaptureDrawerEmptySkeleton(
+            spans: parse.spans,
+            caretUTF8: caretUTF8
+        ),
+              let range = utf16Range(
+                  in: text,
+                  start: skeleton.deletionStart,
+                  end: skeleton.deletionEnd
+              ),
+              range.length == 4,
+              range.location + 2 == caretLocation,
+              String((text as NSString).substring(with: range)) == "****"
+        else {
+            return nil
+        }
+        return range
+    }
+
+    /// The four `*` bytes around a caret parked between Bob's expanded pairs,
+    /// or nil when the caret is not at `**|**`.
+    private static func drawerExpansionStarRange(
+        in text: String,
+        caretUTF8: Int
+    ) -> CaptureRange? {
+        guard caretUTF8 >= 2 else {
+            return nil
+        }
+        let bytes = Array(text.utf8)
+        guard caretUTF8 + 2 <= bytes.count,
+              Array(bytes[(caretUTF8 - 2)..<caretUTF8]) == [0x2A, 0x2A],
+              Array(bytes[caretUTF8..<(caretUTF8 + 2)]) == [0x2A, 0x2A]
+        else {
+            return nil
+        }
+        return CaptureRange(start: caretUTF8 - 2, end: caretUTF8 + 2)
+    }
+
     /// Records the expected post-key draft and caret for a rewrite-lane
     /// separator gesture or sigil alias (`:`, `^`, `+`, `|`, `,`, `.`, `;`,
     /// `\\`, `/`, the Pomodoro-segment `-` alias, relation `=` / `~` aliases,
@@ -3735,6 +3935,9 @@ final class CapturePanelModel: ObservableObject {
         if requirementMarkerOvertypeArm?.draft != draft {
             requirementMarkerOvertypeArm = nil
         }
+        if drawerMarkerOvertypeArm?.draft != draft {
+            drawerMarkerOvertypeArm = nil
+        }
         if recordCardDismissedDraft != draft {
             recordCardDismissedDraft = nil
         }
@@ -3833,6 +4036,7 @@ final class CapturePanelModel: ObservableObject {
             pendingSeparatorToggleIntent = nil
             pendingTypedSigilIntent = nil
             pendingRequirementMarkerExpansionIntent = nil
+            pendingDrawerMarkerExpansionIntent = nil
             return
         }
 
@@ -3851,6 +4055,10 @@ final class CapturePanelModel: ObservableObject {
             draft: draft,
             cursorUTF8Offset: insertionOffset
         )
+        let drawerExpansionIntent = consumeDrawerMarkerExpansionIntent(
+            draft: draft,
+            cursorUTF8Offset: insertionOffset
+        )
         var analysisCursor = insertionOffset
         let requestCompletion = insertionOffset != nil
         var completionGate: Task<Void, Never>?
@@ -3859,6 +4067,14 @@ final class CapturePanelModel: ObservableObject {
                 draft: draft,
                 cursorUTF8Offset: intent.expectedCaretUTF8,
                 triggeredCharacter: " ",
+                holdInputUntilRewrite: true
+            )
+            analysisCursor = intent.expectedCaretUTF8
+        } else if let intent = drawerExpansionIntent {
+            completionGate = startCaptureRewrite(
+                draft: draft,
+                cursorUTF8Offset: intent.expectedCaretUTF8,
+                triggeredCharacter: "*",
                 holdInputUntilRewrite: true
             )
             analysisCursor = intent.expectedCaretUTF8
@@ -3986,6 +4202,11 @@ final class CapturePanelModel: ObservableObject {
            (arm.draft != plainDraft || insertionOffset != arm.caretUTF8)
         {
             requirementMarkerOvertypeArm = nil
+        }
+        if let arm = drawerMarkerOvertypeArm,
+           (arm.draft != plainDraft || insertionOffset != arm.caretUTF8)
+        {
+            drawerMarkerOvertypeArm = nil
         }
         if let intent = pendingRewriteSubmitIntent,
            intent.inputDraft == plainDraft,
@@ -21306,6 +21527,7 @@ final class CapturePanelModel: ObservableObject {
             }
 
             if response.rule == "expand_req_marker"
+                || response.rule == "expand_drawer_marker"
                 || response.rule == "switch_block_id_separator"
                 || response.rule == "attach_relation_label"
                 || response.rule == "expand_sigil_alias"
@@ -21426,6 +21648,20 @@ final class CapturePanelModel: ObservableObject {
             )
         } else {
             requirementMarkerOvertypeArm = nil
+        }
+        if response.rule == "expand_drawer_marker",
+           let starRange = Self.drawerExpansionStarRange(
+               in: response.text,
+               caretUTF8: cursorUTF8Offset
+           )
+        {
+            drawerMarkerOvertypeArm = DrawerMarkerOvertypeArm(
+                draft: response.text,
+                starRange: starRange,
+                caretUTF8: cursorUTF8Offset
+            )
+        } else {
+            drawerMarkerOvertypeArm = nil
         }
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
@@ -23292,6 +23528,8 @@ final class CapturePanelModel: ObservableObject {
         pendingSeparatorToggleIntent = nil
         pendingRequirementMarkerExpansionIntent = nil
         requirementMarkerOvertypeArm = nil
+        pendingDrawerMarkerExpansionIntent = nil
+        drawerMarkerOvertypeArm = nil
         pendingHashAlias = nil
         hashAliasProbe = nil
         equalsGestureArm = nil

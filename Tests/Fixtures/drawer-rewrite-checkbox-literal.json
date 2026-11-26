@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Postgres 17 minimum @foo+bar\n- [ ] Buy *","text":"Postgres 17 minimum @foo+bar\n- [ ] Buy *","changed":false,"cursor":40,"edits":[],"sigil_alias_tip":{"id":"blocked_task","sigil":"*","keys":[";"],"range":{"start":39,"end":40},"where":"after a word"}}

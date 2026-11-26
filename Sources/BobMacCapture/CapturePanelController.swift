@@ -2111,6 +2111,34 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Backspace: delete an empty `****` drawer skeleton in one native edit,
+    /// preserving the bullet prefix and one-step undo.
+    static func deleteDrawerMarkerInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0,
+              let deletionRange = model.consumeDrawerMarkerBackspace(
+                  caretLocation: selection.location,
+                  text: textView.string
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.breakUndoCoalescing()
+        textView.insertText("", replacementRange: deletionRange)
+        textView.breakUndoCoalescing()
+        return true
+    }
+
     /// Backspace: delete Bob's four-byte `[ ] ` requirement marker in one
     /// native edit, preserving the bullet prefix and one-step undo.
     static func deleteRequirementMarkerInEditableTextView(
@@ -2235,6 +2263,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return Self.moveByWord(direction, unit, firstResponder: panel?.firstResponder)
         case .deleteBackward:
             if Self.deleteRequirementMarkerInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            ) {
+                return true
+            }
+            if Self.deleteDrawerMarkerInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model
             ) {
@@ -3210,6 +3244,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if absorbRequirementMarkerOvertypeIfNeeded(event) {
             return nil
         }
+        if absorbDrawerMarkerOvertypeIfNeeded(event) {
+            return nil
+        }
         if event.keyCode == 14 || event.keyCode == 46 {
             let editor = panel?.firstResponder as? NSTextView
             let command = keyRouter.command(
@@ -3516,6 +3553,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model.disarmPullInDiscardForNativeKey()
             }
             noteRequirementMarkerExpansionIntentFromEvent(event)
+            noteDrawerMarkerExpansionIntentFromEvent(event)
             noteSeparatorToggleIntentFromEvent(event)
             noteTypedSigilIntentFromEvent(event)
             return event
@@ -4014,6 +4052,66 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             text: textView.string,
             selectedRange: textView.selectedRange(),
             hasMarkedText: textView.hasMarkedText()
+        )
+    }
+
+    /// Records a physical `*` for the drawer-star rewrite lane. Shift is
+    /// allowed (a US keyboard needs it for `*`); Command, Control, and Option
+    /// stay native, as do repeats, marked text, and selections.
+    private func noteDrawerMarkerExpansionIntentFromEvent(_ event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let eligibleKey = event.characters == "*"
+            && !event.isARepeat
+            && modifiers.intersection([.command, .control, .option]).isEmpty
+        guard let textView = Self.editableTextView(panel?.firstResponder),
+              isDraftEditorResponder(textView),
+              !textView.hasMarkedText()
+        else {
+            model.noteDrawerMarkerExpansionIntent(
+                typed: "",
+                text: "",
+                selectedRange: NSRange(location: 0, length: 0),
+                hasMarkedText: true
+            )
+            return
+        }
+        model.noteDrawerMarkerExpansionIntent(
+            typed: eligibleKey ? "*" : "",
+            text: textView.string,
+            selectedRange: textView.selectedRange(),
+            hasMarkedText: textView.hasMarkedText()
+        )
+    }
+
+    /// Absorbs the one `*` that may already be queued when Bob's drawer
+    /// expansion reply lands. Grammar and eligibility stay in Bob; the Mac
+    /// only keeps the caret between Bob's returned pairs.
+    private func absorbDrawerMarkerOvertypeIfNeeded(_ event: NSEvent) -> Bool {
+        // Backspace has its own marker-aware path below, which can use the
+        // just-expanded skeleton even before capture-parse returns.
+        guard event.keyCode != 51 else {
+            return false
+        }
+        guard let textView = Self.editableTextView(panel?.firstResponder),
+              isDraftEditorResponder(textView)
+        else {
+            model.cancelDrawerMarkerOvertype()
+            return false
+        }
+        let selection = textView.selectedRange()
+        let caretUTF8 = selection.length == 0
+            ? utf8Offset(in: textView.string, utf16Offset: selection.location)
+            : nil
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let canAbsorb = !event.isARepeat
+            && !textView.hasMarkedText()
+            && selection.length == 0
+            && modifiers.intersection([.command, .control, .option]).isEmpty
+        return model.absorbDrawerMarkerOvertype(
+            typed: canAbsorb ? event.characters : nil,
+            text: textView.string,
+            caretUTF8: caretUTF8,
+            canAbsorb: canAbsorb
         )
     }
 

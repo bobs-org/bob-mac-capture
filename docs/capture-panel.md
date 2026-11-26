@@ -90,8 +90,7 @@ states, and announcements.
   render orange and green, sharing the badge colors of the rows they select; the
   whole-item completion spans `task_complete_sigil` (green, the same complete-green
   as `x!`), `task_complete_note` (route), and `task_complete_block_id` (block ID)
-  reuse those existing colors, so the editor and the completion card never disagree
-  about what a completion is;
+  reuse those existing colors, so the editor and completion card always agree;
   `pomodoro_close_drop` renders muted gray. The Work Log index span
   `pomodoro_close_log_index` renders cyan, sharing the tint of the typed entry
   line it lands on in the close card; it is not a completion span kind.
@@ -145,14 +144,15 @@ states, and announcements.
   and the `:` and `@` go green, the Pull-In card's "will be linked" color, to say a
   choice card follows. The wash is about 16% brown and rises to about 26% under Increase
   Contrast. An older bob sends no modifier, so no chip appears and the seal paints
-  brown with no wash; a modifier value this app does not know still gets the wash but
+  brown with no wash; an unknown modifier value still gets the wash but
   recolors nothing. Typing the `@` seal right after `@route^id` or `@route:id` opens no
   picker or completion and is never sent to `capture-rewrite`.
 - A depth-bearing requirement marker shows the real `[ ]` bytes as a teal chip, with a
   16% teal wash (28% with Increase Contrast). The leading `- ` and trailing space stay
   unstyled. The chip stays visible while typing, selecting, wrapping, and scrolling;
-  moving the caret never hides or reveals bytes. Typing `- [` followed by Space still
-  expands the marker, and Backspace still removes the whole `[ ] ` marker.
+  moving the caret never hides or reveals bytes. Typing `- [` plus Space still expands
+  the marker, typing `*` at a Bob-admitted bullet start still expands `- *` into
+  `- **|**`, and Backspace removes either whole marker.
 
 The agenda UI behind the store above is described in [Idle agenda](idle-agenda.md).
 

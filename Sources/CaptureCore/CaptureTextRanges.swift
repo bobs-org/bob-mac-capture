@@ -38,6 +38,52 @@ public struct CaptureDrawerTextSpan: Equatable {
     }
 }
 
+/// The empty `****` drawer skeleton Bob reports around a caret: two literal
+/// `**` markers with a zero-width `interactive_placeholder` between them.
+/// Checks span kinds and byte order only; the caller confirms the draft bytes
+/// are `****` inside a Bob-authorized range before deleting them.
+public struct CaptureDrawerEmptySkeleton: Equatable {
+    public let openingMarker: CaptureSpan
+    public let closingMarker: CaptureSpan
+
+    public init?(spans: [CaptureSpan], caretUTF8: Int) {
+        var opening: CaptureSpan?
+        var closing: CaptureSpan?
+        var placeholder = false
+        for span in spans {
+            switch span.kind {
+            case "drawer_marker"
+                where span.end == caretUTF8 && span.end - span.start == 2
+                && opening == nil:
+                opening = span
+            case "drawer_marker"
+                where span.start == caretUTF8 && span.end - span.start == 2
+                && closing == nil:
+                closing = span
+            case "interactive_placeholder"
+                where span.start == caretUTF8 && span.end == caretUTF8:
+                placeholder = true
+            default:
+                continue
+            }
+        }
+        guard placeholder, let opening, let closing else {
+            return nil
+        }
+        self.openingMarker = opening
+        self.closingMarker = closing
+    }
+
+    /// The four `*` bytes to delete as one undoable edit.
+    public var deletionStart: Int {
+        openingMarker.start
+    }
+
+    public var deletionEnd: Int {
+        closingMarker.end
+    }
+}
+
 /// Select Bob's drawer spans from a validated parse while preserving their
 /// UTF-8-backed String ranges for presentation and typing behavior.
 public func captureDrawerTextSpans(

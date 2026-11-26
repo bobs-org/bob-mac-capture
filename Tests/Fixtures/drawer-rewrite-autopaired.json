@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Prepare release\n- **","text":"Prepare release\n- ****","changed":true,"cursor":21,"rule":"expand_drawer_marker","edits":[{"range":{"start":19,"end":19},"replacement":"**"}],"summary":"Expanded drawer marker"}

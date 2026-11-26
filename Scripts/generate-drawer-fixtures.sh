@@ -132,6 +132,67 @@ type: "[[area]]"
 		- done when
 EOF
 done
+# dev.md holds an area and dev_tools.md a notebook, so the route-only notebook
+# list (`@dev_tools\n- *`) parses as opaque note detail and the drawer star
+# rewrite stays literal there.
+cat > "$vault/dev.md" <<'EOF'
+---
+type: "[[area]]"
+---
+# Dev
+EOF
+cat > "$vault/dev_tools.md" <<'EOF'
+---
+parent: "[[dev]]"
+type: "[[notebook]]"
+summary: Tools.
+---
+
+# Developer tools
+
+## Git
+
+- Use worktrees for investigations [created::2026-10-26]
+EOF
+# body.md holds an area and eat.md a record album, so the record-group drawer
+# star (`Went back @eat/nagi\n- *`) admits expansion on the existing record.
+cat > "$vault/body.md" <<'EOF'
+---
+type: "[[area]]"
+---
+# Body
+
+## Tasks
+EOF
+mkdir -p "$vault/eat"
+cat > "$vault/eat.md" <<'EOF'
+---
+parent: "[[body]]"
+type: "[[album]]"
+summary: Restaurants.
+record:
+  noun: restaurant
+  label: Restaurant
+  fields:
+    status:
+      values:
+        to_try: "To try"
+        liked: "Liked"
+---
+# Restaurants
+EOF
+cat > "$vault/eat/nagi.md" <<'EOF'
+---
+parent: "[[eat]]"
+type: "[[restaurant]]"
+title: "Nagi"
+status: liked
+---
+
+# Nagi
+
+## Notes
+EOF
 printf '## Pomodoros\n- [ ] (0900-0930) — FIX\n' > "$day_file"
 # Pin note mtimes so the catalog's `last_seen` is the same on every run.
 find "$vault" -name '*.md' -exec touch -d '2026-10-29 12:00:00 UTC' {} +
@@ -224,6 +285,13 @@ list_drawers() {
   record "$out" "capture-drawers -r $route -i $block_id" "$block_id"
 }
 
+rewrite() {
+  bob capture-rewrite --cursor "$2" --format json -- "$3" \
+    > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$1"
+  record "$1" "capture-rewrite --cursor $2" "$3"
+}
+
 # --- capture-parse: the glued `#` after `+id` ---
 parse drawer-parse-empty.json 'Postgres 17 minimum @foo+bar#'
 parse drawer-parse-typed.json 'Postgres 17 minimum @foo+bar#req'
@@ -273,6 +341,26 @@ capture drawer-capture-project-new.json 'Add owner @project+prj#new-area'
 list_drawers drawer-list.json foo bar
 list_drawers drawer-list-empty.json foo plain
 list_drawers drawer-list-project.json project prj
+
+# --- capture-parse: the empty `****` skeleton, caret between the pairs ---
+parse drawer-parse-empty-skeleton.json $'Prepare release\n- ****'
+parse drawer-parse-empty-skeleton-sub-bullet.json $'@foo+plain\n- ****'
+
+# --- capture-rewrite --cursor: the drawer star expansion ---
+rewrite drawer-rewrite-new-task.json 19 $'Prepare release\n- *'
+rewrite drawer-rewrite-noteless-existing.json 14 $'@foo+plain\n- *'
+rewrite drawer-rewrite-project-note.json 30 $'Draft plan @project^draft@\n- *'
+rewrite drawer-rewrite-notebook-seed.json 33 $'Create notes @parent^seed@ %n\n- *'
+rewrite drawer-rewrite-record-group.json 23 $'Went back @eat/nagi\n- *'
+rewrite drawer-rewrite-autopaired.json 19 $'Prepare release\n- **'
+rewrite drawer-rewrite-astral.json 24 $'Prepare 🚀 release\n- *'
+
+# --- capture-rewrite --cursor: stars that stay literal ---
+rewrite drawer-rewrite-nested-literal.json 14 $'@foo+bar\n  - *'
+rewrite drawer-rewrite-notebook-list-literal.json 14 $'@dev_tools\n- *'
+rewrite drawer-rewrite-midline-literal.json 7 $'Buy 2 * 3'
+rewrite drawer-rewrite-checkbox-literal.json 40 $'Postgres 17 minimum @foo+bar\n- [ ] Buy *'
+rewrite drawer-rewrite-trailing-dep-literal.json 7 $'Fix it *'
 
 # Self-checks: every fixture parses, and raw Bob replies carry the contract the Mac decodes.
 python3 - "$fixtures" <<'PY'
@@ -348,6 +436,56 @@ assert bullet_new["target"]["block_id"] is None
 assert bullet_new["target"]["text"] == "New task"
 typed_bullet = load("drawer-bullet-complete-existing-typed.json")
 assert typed_bullet["context"] == "drawer" and typed_bullet["query"] == "req"
+
+skeleton = load("drawer-parse-empty-skeleton.json")
+assert skeleton["needs"] == ["drawer"]
+assert [span["kind"] for span in skeleton["spans"]] == [
+    "drawer_marker", "interactive_placeholder", "drawer_marker"]
+assert skeleton["spans"][0] == {"start": 18, "end": 20, "kind": "drawer_marker"}
+assert skeleton["spans"][1] == {
+    "start": 20, "end": 20, "kind": "interactive_placeholder"}
+assert skeleton["spans"][2] == {"start": 20, "end": 22, "kind": "drawer_marker"}
+sub_skeleton = load("drawer-parse-empty-skeleton-sub-bullet.json")
+assert [span["kind"] for span in sub_skeleton["spans"]] == [
+    "sub_bullet_route", "sub_bullet_block_id",
+    "drawer_marker", "interactive_placeholder", "drawer_marker"]
+
+expansions = {
+    "drawer-rewrite-new-task.json": ("Prepare release\n- *", "Prepare release\n- ****", 20),
+    "drawer-rewrite-noteless-existing.json": ("@foo+plain\n- *", "@foo+plain\n- ****", 15),
+    "drawer-rewrite-project-note.json": (
+        "Draft plan @project^draft@\n- *", "Draft plan @project^draft@\n- ****", 31),
+    "drawer-rewrite-notebook-seed.json": (
+        "Create notes @parent^seed@ %n\n- *",
+        "Create notes @parent^seed@ %n\n- ****", 34),
+    "drawer-rewrite-record-group.json": (
+        "Went back @eat/nagi\n- *", "Went back @eat/nagi\n- ****", 24),
+    "drawer-rewrite-autopaired.json": ("Prepare release\n- **", "Prepare release\n- ****", 21),
+    "drawer-rewrite-astral.json": (
+        "Prepare \U0001f680 release\n- *", "Prepare \U0001f680 release\n- ****", 25),
+}
+for name, (draft, text, cursor) in expansions.items():
+    reply = load(name)
+    assert reply["input"] == draft, name
+    assert reply["changed"] is True, name
+    assert reply["text"] == text, name
+    assert reply["cursor"] == cursor, name
+    assert reply["rule"] == "expand_drawer_marker", name
+    assert len(reply["edits"]) == 1 and set(reply["edits"][0]) == {"range", "replacement"}, name
+
+literals = {
+    "drawer-rewrite-nested-literal.json": "@foo+bar\n  - *",
+    "drawer-rewrite-notebook-list-literal.json": "@dev_tools\n- *",
+    "drawer-rewrite-midline-literal.json": "Buy 2 * 3",
+    "drawer-rewrite-checkbox-literal.json": "Postgres 17 minimum @foo+bar\n- [ ] Buy *",
+    "drawer-rewrite-trailing-dep-literal.json": "Fix it *",
+}
+for name, draft in literals.items():
+    reply = load(name)
+    assert reply["input"] == draft, name
+    assert reply["changed"] is False, name
+    assert reply["text"] == draft, name
+    assert reply["edits"] == [], name
 PY
 
 {
@@ -365,9 +503,16 @@ PY
   echo "and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only"
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo
-  echo "Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task \`^bar\`, task \`^plain\`, a project-note"
-  echo "\`^prj\` with H2 drawers, catalog notes, configured types, a daily FIX Pomodoro, and"
+  echo "Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task \`^bar\`,"
+  echo "task \`^plain\`, a project-note \`^prj\` with H2 drawers, a \`dev_tools\` notebook,"
+  echo "an \`eat\` record album with one record, catalog notes, configured types, a daily FIX Pomodoro, and"
   echo "\`BOB_NOW=2026-10-30 09:15:00\`. Every capture is a dry run with \`--no-clip\`."
+  echo
+  echo "The \`drawer-parse-empty-skeleton-*\` and \`drawer-rewrite-*\` fixtures were added"
+  echo "by the star-expansion phase with \`bob 0.6.0\` from bob-cli revision"
+  echo "\`01dee47a01b6b24aa35175370d50bbe7b5fd779c\` (grammar revision 33,"
+  echo "\`schema_version\` 1). Older fixtures predate them and keep their recorded"
+  echo "revision until a regeneration reconciles the bob-cli drawer drift."
   echo
   echo "## Raw fixtures"
   echo

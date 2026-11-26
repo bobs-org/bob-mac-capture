@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Create notes @parent^seed@ %n\n- *","text":"Create notes @parent^seed@ %n\n- ****","changed":true,"cursor":34,"rule":"expand_drawer_marker","edits":[{"range":{"start":33,"end":33},"replacement":"***"}],"summary":"Expanded drawer marker"}

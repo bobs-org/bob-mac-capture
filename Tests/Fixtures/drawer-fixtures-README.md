@@ -12,9 +12,16 @@ Generated with `bob 0.6.0` built from bob-cli revision `05dd83cf9f93c07825a30dfe
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-drawer-fixture`.
 
-Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task `^bar`, task `^plain`, a project-note
-`^prj` with H2 drawers, catalog notes, configured types, a daily FIX Pomodoro, and
+Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task `^bar`,
+task `^plain`, a project-note `^prj` with H2 drawers, a `dev_tools` notebook,
+an `eat` record album with one record, catalog notes, configured types, a daily FIX Pomodoro, and
 `BOB_NOW=2026-10-30 09:15:00`. Every capture is a dry run with `--no-clip`.
+
+The `drawer-parse-empty-skeleton-*` and `drawer-rewrite-*` fixtures were added
+by the star-expansion phase with `bob 0.6.0` from bob-cli revision
+`01dee47a01b6b24aa35175370d50bbe7b5fd779c` (grammar revision 33,
+`schema_version` 1). Older fixtures predate them and keep their recorded
+revision until a regeneration reconciles the bob-cli drawer drift.
 
 ## Raw fixtures
 
@@ -54,3 +61,17 @@ Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS 
 | `drawer-list.json` | `capture-drawers -r foo -i bar` | `bar` |
 | `drawer-list-empty.json` | `capture-drawers -r foo -i plain` | `plain` |
 | `drawer-list-project.json` | `capture-drawers -r project -i prj` | `prj` |
+| `drawer-parse-empty-skeleton.json` | `capture-parse` | `Prepare release\n- ****` |
+| `drawer-parse-empty-skeleton-sub-bullet.json` | `capture-parse` | `@foo+plain\n- ****` |
+| `drawer-rewrite-new-task.json` | `capture-rewrite --cursor 19` | `Prepare release\n- *` |
+| `drawer-rewrite-noteless-existing.json` | `capture-rewrite --cursor 14` | `@foo+plain\n- *` |
+| `drawer-rewrite-project-note.json` | `capture-rewrite --cursor 30` | `Draft plan @project^draft@\n- *` |
+| `drawer-rewrite-notebook-seed.json` | `capture-rewrite --cursor 33` | `Create notes @parent^seed@ %n\n- *` |
+| `drawer-rewrite-record-group.json` | `capture-rewrite --cursor 23` | `Went back @eat/nagi\n- *` |
+| `drawer-rewrite-autopaired.json` | `capture-rewrite --cursor 19` | `Prepare release\n- **` |
+| `drawer-rewrite-astral.json` | `capture-rewrite --cursor 24` | `Prepare 🚀 release\n- *` |
+| `drawer-rewrite-nested-literal.json` | `capture-rewrite --cursor 14` | `@foo+bar\n  - *` |
+| `drawer-rewrite-notebook-list-literal.json` | `capture-rewrite --cursor 14` | `@dev_tools\n- *` |
+| `drawer-rewrite-midline-literal.json` | `capture-rewrite --cursor 7` | `Buy 2 * 3` |
+| `drawer-rewrite-checkbox-literal.json` | `capture-rewrite --cursor 40` | `Postgres 17 minimum @foo+bar\n- [ ] Buy *` |
+| `drawer-rewrite-trailing-dep-literal.json` | `capture-rewrite --cursor 7` | `Fix it *` |

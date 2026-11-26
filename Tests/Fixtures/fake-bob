@@ -2290,6 +2290,37 @@ JSON
       cat "${fixtures_dir}/capture-rewrite-requirement-marker.json"
       exit 0
     fi
+    # Drawer star expansion: Bob's expand_drawer_marker replies for the
+    # drafts in Scripts/generate-drawer-fixtures.sh. Unmatched drawer drafts
+    # fall through to the unchanged default below, keeping native typing.
+    if [[ "${draft}" == $'Prepare release\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-new-task.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'@foo+plain\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-noteless-existing.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'Draft plan @project^draft@\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-project-note.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'Create notes @parent^seed@ %n\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-notebook-seed.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'Went back @eat/nagi\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-record-group.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'Prepare release\n- **' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-autopaired.json"
+      exit 0
+    fi
+    if [[ "${draft}" == $'Prepare 🚀 release\n- *' ]]; then
+      cat "${fixtures_dir}/drawer-rewrite-astral.json"
+      exit 0
+    fi
     if [[ "${FAKE_BOB_MODIFIER_ALIAS_UNCHANGED:-}" == "1" \
        && ("${draft}" == "@home ." || "${draft}" == "Buy milk ;") ]]; then
       printf '{"ok":true,"schema_version":1,"input":'

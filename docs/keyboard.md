@@ -89,11 +89,11 @@ immediately, as Command-Y L does.
 | Return | Capture/close; caret Go To re-resolves and opens | Accept the selected completion; with no selected row, capture the draft as typed | Add the ID and select the task | Name the Pomodoro and select it |
 | Control-Return | Capture/open notes; caret Go To re-resolves and opens | Accept, then capture and open if no picker or prompt follows; no row, capture and open as typed. Relation picker: open the card | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
 | Command-Return | Same as Control-Return | Same as Control-Return | Consume the key; do not capture | Consume the key; do not capture |
-| Shift-Return / Option-Return | Insert a newline; at the end of a lone `@file` or `@file#section` header that bob's parse reports as needing a `list_item`, insert `\n- ` to start the first bullet | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
-| Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
+| Shift-Return / Option-Return | Insert a newline; at the end of a lone `@file` or `@file#section` header needing a `list_item` per bob's parse, insert `\n- ` to start the first bullet | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
+| Ctrl-J | Insert a new indentation-aware `- ` row; before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft per bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
-| Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
-| Ctrl-G, U | Toggle the current physical line to uppercase, or to lowercase when it is already all uppercase. A multi-line selection uses one direction for every touched line. The caret or selection stays on the same characters, and Command-Z restores the line | Same toggle, closing completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-U | Delete to the current physical line's start; there, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-G, U | Toggle the current physical line to uppercase (lowercase when already all uppercase). A multi-line selection uses one direction for every touched line; the caret or selection stays put, and Command-Z restores the line | Same toggle, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to physical-line start; there, move to the previous line. Stop at the first | Same move; completion stays open and reanchors | Native text-field behavior | Native text-field behavior |
 | Ctrl-E | Move to physical-line end; there, move to the next line. Stop at the last | Same move; completion stays open and reanchors | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-J | Move down one line, keeping column where possible; clamp at short-line end. Stop at the last | Same move; completion stays open and reanchors | Native text-field behavior | Native text-field behavior |
@@ -104,13 +104,14 @@ immediately, as Command-Y L does.
 | Ctrl-Shift-H | Move by word (vim `b`): keyword, emoji, or punctuation run; from the first word, move to draft start | Same move; completion stays open | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert plain clipboard text; on an empty bullet row receiving a Markdown list, consume the first marker and align the list | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | @ | Insert `@`; Bob may return route completion when the draft declares a global `@@route` | Insert `@` and refresh Bob's completion for the edited draft | Native text-field behavior | Native text-field behavior |
-| Backspace | Remove an auto-inserted `,<digit>` pair together, else an unused `- ` row in one action (native Backspace otherwise, including modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
+| Backspace | Remove an auto-inserted `,<digit>` pair or empty `****` skeleton together, else an unused `- ` row in one action (native Backspace otherwise, including modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | 1–9 | Right after a task number in a close list (`x`, `x*`, `x!` and `*`/`!`/`~` groups, incl. `=x` closes and sized `Nx` closes like `2x1`), insert `,` before the digit (`x1`+`2`→`x1,2`) when the running Pomodoro has under 10 numbered Task Links; else it types normally. A digit right after the `x` in `12x` never inserts a comma (the size stays one number) | Native text-field behavior | Native text-field behavior | Native text-field behavior |
 | + | Insert `+` | While route completion is visible, right after the completed route: accept it, keep `+`, open task completion | Native text-field behavior | Native text-field behavior |
 | , | Insert `,`; where Parent Task completion applies, Bob maps it to `+` (or ` +` after a complete target run); glued to a complete `@route:id` / `@route^id`, switches it to `@route+id` | Empty `+` filter: use Bob's alias; selected row with `continuation`: accept and continue | Native text-field behavior | Native text-field behavior |
-| . | After `@route`, `.` → `^` opens Block ID; glued to a complete `@route:id` / `@route^id`, it toggles the separator; glued to `@route+id`, it switches to `@route^id`. Sealed `- .` opens Move. At an item start or after body text + space/tab, `.` → `@` for route completion, or `&` first once the item is routed (falls back to `@` only where `&` cannot open). Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
+| . | After `@route`, `.` → `^` opens Block ID; glued to a complete `@route:id` / `@route^id`, it toggles the separator; glued to `@route+id`, it switches to `@route^id`. Sealed `- .` opens Move. At an item start or after body text + space/tab, `.` → `@` for route completion, or `&` first once routed (falling back to `@` only where `&` cannot open). Undo restores `.` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
 | .. | Fast `..`/`;;` (350 ms) types one literal `.`/`;`. Space/Escape restores on an empty route list/picker; item-start `..` types `.bashrc` | The same escape and restore behavior | Native text-field behavior | Native text-field behavior |
 | ; | After `@route`, `;` → `:` opens Block ID; lone `;` opens Task Link; sealed `- ;` opens Move. After text/marker + space/tab, `;` → `*` where Bob opens Blocks unless `:` applies. Undo restores `;` | The same rewrite and picker behavior | Native text-field behavior | Native text-field behavior |
+| * | At a Bob-admitted bullet start, `*` expands `- *` into `- **|**` as one undoable edit (one queued `*` is absorbed); other stars stay literal. Undo restores `*` | The same rewrite behavior | Native text-field behavior | Native text-field behavior |
 | - | Literal after a space; Bob maps it to `~` in past segment `x=2-` | The same past-segment rewrite | Native text-field behavior | Native text-field behavior |
 | x / s | In close slots, `x`/`s` become `!`/`*` (sized too: `2xx`→`2x!`, `12xs`→`12x*`, `--1 2xx`→`--1 2x!`, `^r:id=2xs`→`^r:id=2x*`); `Plan 2xx`, `x made 2xx`, and `2Xx` stay literal prose. Time goes before `x`, numbers after it; see [Closing at a size](https://bobs-org.github.io/capture/#closing-at-a-size) | Same | Native text-field behavior | Native text-field behavior |
 | = | After space/tab, `=` → `~` opens Links To; after bare `~`/`~~` or a relation token, flips direction. Fast `==` (350 ms) types one `=` | In a relation picker, flips Links To ↔ Linked From; fast `==` undoes into the filter | Native text-field behavior | Native text-field behavior |
@@ -292,10 +293,10 @@ in the open draft. An older Bob shows `Update bob to rename relation labels`.
 
 ## Focus
 
-Every capture action is reachable from the keyboard alone: the hotkey, editor, completion
+Every capture action is keyboard-reachable: the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, Open chip, and stash picker never need a pointer.
-Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt focuses its field,
-and a keystroke with no focused holder re-claims it.
+Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt focuses its field;
+a keystroke with no focused holder re-claims it.
 
 ## Canceled-draft stash keys
 
@@ -311,7 +312,7 @@ and a keystroke with no focused holder re-claims it.
 | Control-T | Close the stash and open the saved-template shelf |
 | Command-\ | Consume the key; finish or cancel the stash first |
 
-The 36-entry bound exists so every retained row has a unique one-key
+The 36-entry bound gives every retained row a unique one-key
 accelerator while reserving `D` for Delete All.
 
 ## Saved-template shelf keys
@@ -367,23 +368,23 @@ finish or cancel that surface first.
 `Command-\` then `\` searches tasks from any macOS app. The first press opens
 or focuses Capture with the editor focused (release Command); with
 Settings › Hotkey › **Also open Capture with Command-\\** on, `\` typed into
-the blank draft turns into `/` and opens the Go To picker. This depends on the
-alias setting: with it off, `\` still opens Go To inside the panel but the
-global chord only works there.
+the blank draft turns into `/` and opens the Go To picker. Without the alias
+setting, `\` still opens Go To inside the panel but the global chord only
+works there.
 
 Unlike `Command-\` `Command-\` (today's Pomodoro), this needs no retained
 draft: stash (Control-C) or clear one first. Typing `\` `\` at once types one
-literal `\`, so a draft can still start with an escape like `\#fix`; after
+literal `\`, so a draft can start with an escape like `\#fix`; after
 `#` or `%`, double-tap leaves one literal.
 
 ## Editing the draft
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying the
 current authored row's even ASCII-space indent. From column zero
-through the first body character of a populated `- ` row, Ctrl-J replaces that row's
-leading whitespace and `- ` prefix with one line terminator while preserving the body;
-only a caret inside or after the body keeps the normal new-row insertion behavior. On a line holding only whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
-placeholder with one blank separator, caret at the next line's start, reusing an existing terminator.
+through the first body character of a populated `- ` row, Ctrl-J replaces the
+leading whitespace and `- ` prefix with one line terminator, preserving the body;
+only a caret inside or after the body keeps the normal new-row insertion. On a line holding only whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
+placeholder with one blank separator, caret at the next line's start, reusing the terminator.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
 remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks a local snippet: with a collapsed caret right after `--`, it
 replaces the hyphens with one em dash `—`, caret right after, anywhere in the editor including prose. To submit
@@ -393,14 +394,14 @@ two spaces deeper than the previous row. Shift-Tab steps two spaces back toward
 column zero. Tab/Shift-Tab move even-space continuation bullets in two-space steps,
 at most two spaces deeper than the previous row; odd spaces, tabs, and other lines
 stay untouched. Ctrl-G is a one-key editor leader: the next key is consumed — `u`
-toggles the physical line's case (uppercase unless already all uppercase,
-then lowercase); Escape, Ctrl-[, or a second Control-G cancels silently;
+toggles the physical line's case (uppercase unless already all uppercase);
+Escape, Ctrl-[, or a second Control-G cancels silently;
 any other key beeps and is swallowed. Holding Control-G
 stays armed. A click, hiding the panel, or losing key focus drops the leader;
 the footer reads `⌃G · U toggle line case · esc cancel` while it waits. The toggle
-does not know capture syntax (`x1` becomes `X1`); Bob's live parse re-reads the result.
-All five shortcuts act on the native text view, so undo, IME, and accessibility behave natively,
-and Bob's live parse/preview stays the sole authority on the resulting hierarchy.
+ignores capture syntax (`x1` becomes `X1`); Bob's live parse re-reads the result.
+All five shortcuts act on the native text view, so undo, IME, and accessibility stay native,
+and Bob's live parse/preview stays the sole authority on the result.
 
 Ctrl-Shift-J and Ctrl-Shift-K move the caret to the next and previous physical line,
 keeping its column: a shorter line clamps the caret to its end, and the next press in
@@ -408,14 +409,14 @@ the same direction restores the column on the first line long enough to hold it.
 that remembered column. Exact Ctrl-K stays AppKit's native
 delete-to-end-of-paragraph binding.
 
-Word motions stop on empty lines, not on whitespace-only ones. A
+Word motions stop on empty lines, never whitespace-only ones. A
 selection collapses first: forward motions start from its end, backward ones
-from its start. They only move the caret, never touching draft text, undo history, or an in-flight IME composition. In the
+from its start, moving only the caret — never draft text, undo history, or an in-flight IME composition. In the
 editor, Ctrl-H no longer acts as AppKit's delete-backward; Backspace and Ctrl-U
 still delete. Prompts and pickers keep their own Ctrl-H, including the relation
 card's Hidden-section toggle.
 
-Command-V reads only plain text: letting AppKit choose HTML/RTF forced a synchronous WebKit import
+Command-V reads only plain text: HTML/RTF would force a synchronous WebKit import
 costing seconds per browser paste. When the caret ends an otherwise empty `- `,
 `* `, or `+ ` row and the clipboard starts with a Markdown bullet with
 a body, Command-V treats that row as the first pasted bullet: its marker is kept,

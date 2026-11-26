@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@foo+plain\n- *","text":"@foo+plain\n- ****","changed":true,"cursor":15,"rule":"expand_drawer_marker","edits":[{"range":{"start":14,"end":14},"replacement":"***"}],"summary":"Expanded drawer marker"}
