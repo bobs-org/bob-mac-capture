@@ -105,8 +105,8 @@ final class CaptureCompletionMenuTests: XCTestCase {
 
     func testDrawerMenuHonorsNoneAndOtherwiseSelectsTheBestFirstRow() {
         let rows = [
-            CaptureCompletionCandidate(replacement: "#requirements", title: "REQUIREMENTS"),
-            CaptureCompletionCandidate(replacement: "#future-work", title: "FUTURE WORK"),
+            CaptureCompletionCandidate(replacement: "#requirements", title: "Requirements"),
+            CaptureCompletionCandidate(replacement: "#future-work", title: "Future Work"),
         ]
         let empty = CaptureCompletionResponse(
             ok: true,

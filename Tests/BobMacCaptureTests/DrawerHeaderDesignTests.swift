@@ -24,16 +24,19 @@ final class DrawerHeaderDesignTests: XCTestCase {
         let headers = presentation.rows.filter(\.showsDrawerHeader)
         XCTAssertEqual(
             headers.map(\.drawer?.title),
-            ["Requirements", "FUTURE WORK", "Perf Budget"]
+            ["Requirements", "Future Work", "Perf Budget"]
         )
         for row in headers {
             let title = try XCTUnwrap(row.drawer?.title)
             XCTAssertFalse(title.contains("**"), "header derives no raw stars: \(title)")
         }
-        // The legacy ALL-CAPS title keeps its spelling exactly as sent.
-        XCTAssertTrue(headers.contains {
-            $0.drawer?.title == "FUTURE WORK" && $0.drawer?.marker == .legacyCaps
-        })
+        // Older bob can still send legacy_caps; it stays covered inline.
+        let legacyLine = try JSONDecoder().decode(
+            CaptureBlockLine.self,
+            from: Data(#"{"text":"\t- FUTURE WORK","depth":1,"change":"unchanged","drawer":{"title":"FUTURE WORK","key":"FUTURE WORK","marker":"legacy_caps","empty":false}}"#.utf8)
+        )
+        XCTAssertEqual(legacyLine.drawer?.title, "FUTURE WORK")
+        XCTAssertEqual(legacyLine.drawer?.marker, .legacyCaps)
 
         let edge = try edgeRows()
         let indexed = Dictionary(uniqueKeysWithValues: edge.map { ($0.content, $0) })

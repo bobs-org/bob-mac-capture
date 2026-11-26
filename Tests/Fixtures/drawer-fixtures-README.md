@@ -7,21 +7,15 @@ BOB_BIN=/path/to/CARGO_TARGET_DIR/debug/bob BOB_CLI_DIR=/path/to/bob-cli \
   Scripts/generate-drawer-fixtures.sh
 ```
 
-Generated with `bob 0.6.0` built from bob-cli revision `05dd83cf9f93c07825a30dfe508e530bc36f9d81`
-(grammar revision 31, `schema_version` 1). The script requires commit `971d864f`
+Generated with `bob 0.6.0` built from bob-cli revision `db5a70cc185e1a607b6fe019422e3c7f7aa0d0b1`
+(grammar revision 33, `schema_version` 1). The script requires commit `971d864f`
 and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only
 the temporary vault path rewritten to `/tmp/bob-mac-capture-drawer-fixture`.
 
-Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task `^bar`,
+Inputs use an isolated vault with bold true-case drawers on task `^bar`,
 task `^plain`, a project-note `^prj` with H2 drawers, a `dev_tools` notebook,
 an `eat` record album with one record, catalog notes, configured types, a daily FIX Pomodoro, and
 `BOB_NOW=2026-10-30 09:15:00`. Every capture is a dry run with `--no-clip`.
-
-The `drawer-parse-empty-skeleton-*` and `drawer-rewrite-*` fixtures were added
-by the star-expansion phase with `bob 0.6.0` from bob-cli revision
-`01dee47a01b6b24aa35175370d50bbe7b5fd779c` (grammar revision 33,
-`schema_version` 1). Older fixtures predate them and keep their recorded
-revision until a regeneration reconciles the bob-cli drawer drift.
 
 ## Raw fixtures
 
@@ -44,7 +38,6 @@ revision until a regeneration reconciles the bob-cli drawer drift.
 | `drawer-complete-plain-task.json` | `capture-complete --cursor 31` | `Postgres 17 minimum @foo+plain#` |
 | `drawer-complete-missing-target.json` | `capture-complete --cursor 30` | `Postgres 17 minimum @foo+nope#` |
 | `drawer-capture-existing.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#requirements` |
-| `drawer-capture-legacy-existing.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#future-work` |
 | `drawer-capture-new.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#perf-budget` |
 | `drawer-capture-quoted-true-case.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar#"Release Checklist"` |
 | `drawer-capture-plain-child.json` | `capture --dry-run --no-clip` | `Postgres 17 minimum @foo+bar` |

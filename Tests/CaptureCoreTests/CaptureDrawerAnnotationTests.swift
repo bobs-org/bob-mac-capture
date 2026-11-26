@@ -164,14 +164,11 @@ final class CaptureDrawerAnnotationTests: XCTestCase {
             XCTAssertEqual(row.tokens.map(\.text).joined(), row.content)
         }
 
-        let legacy = try success(
-            Data(contentsOf: fixtures.appendingPathComponent("drawer-capture-new.json"))
+        let legacyLine = try line(
+            #"{"text":"\t- FUTURE WORK","depth":1,"change":"unchanged","drawer":{"title":"FUTURE WORK","key":"FUTURE WORK","marker":"legacy_caps","empty":false}}"#
         )
-        XCTAssertTrue(
-            legacy.taskBlocks.flatMap(\.lines).contains {
-                $0.drawer?.title == "FUTURE WORK" && $0.drawer?.marker == .legacyCaps
-            }
-        )
+        XCTAssertEqual(legacyLine.drawer?.title, "FUTURE WORK")
+        XCTAssertEqual(legacyLine.drawer?.marker, .legacyCaps)
     }
 
     func testTransferAndMergeInDrawerLabelsPreserveVerbatimCase() throws {

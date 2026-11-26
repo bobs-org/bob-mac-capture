@@ -80,7 +80,7 @@ types:
   FIX: blue
   WRITE: magenta
 EOF
-# foo.md holds the target (`^bar`, one bold true-case drawer and one legacy drawer) and
+# foo.md holds the target (`^bar`, two bold true-case drawers) and
 # a task without drawers (`^plain`).
 # other1-3.md each use Motivation and Acceptance so both clear the catalog's
 # "used in at least two notes" bar and appear as Recent.
@@ -96,7 +96,7 @@ type: "[[area]]"
 		- 2 GB RAM
 		- 4 CPUs
 		- fast disk
-	- FUTURE WORK
+	- **Future Work**
 		- sharding
 - [ ] #task Plain task [created::2026-10-01] ^plain
 EOF
@@ -314,7 +314,6 @@ complete drawer-complete-missing-target.json 'Postgres 17 minimum @foo+nope#'
 
 # --- capture --dry-run: where the bullet lands ---
 capture drawer-capture-existing.json 'Postgres 17 minimum @foo+bar#requirements'
-capture drawer-capture-legacy-existing.json 'Postgres 17 minimum @foo+bar#future-work'
 capture drawer-capture-new.json 'Postgres 17 minimum @foo+bar#perf-budget'
 capture drawer-capture-quoted-true-case.json 'Postgres 17 minimum @foo+bar#"Release Checklist"'
 capture drawer-capture-plain-child.json 'Postgres 17 minimum @foo+bar'
@@ -401,8 +400,13 @@ assert any(row.get("refused") for row in load("drawer-complete-typed-reserved.js
 
 existing = load("drawer-capture-existing.json")["drawer"]
 assert existing == {"title": "Requirements", "key": "REQUIREMENTS", "marker": "bold", "created": False}
-legacy = load("drawer-capture-legacy-existing.json")["drawer"]
-assert legacy == {"title": "FUTURE WORK", "key": "FUTURE WORK", "marker": "legacy_caps", "created": False}
+legacy_path = fixtures / "drawer-capture-legacy-existing.json"
+assert not legacy_path.exists(), "legacy drawer fixture was dropped for post-cutover bob"
+for path in sorted(fixtures.glob("drawer-*.json")):
+    text = path.read_text()
+    assert "legacy_caps" not in text, f"{path.name} still pins a legacy drawer"
+    assert '"title":"FUTURE WORK"' not in text, f"{path.name} still pins an ALL-CAPS title"
+    assert '"title": "FUTURE WORK"' not in text, f"{path.name} still pins an ALL-CAPS title"
 created = load("drawer-capture-new.json")["drawer"]
 assert created == {"title": "Perf Budget", "key": "PERF BUDGET", "marker": "bold", "created": True}
 quoted = load("drawer-capture-quoted-true-case.json")["drawer"]
@@ -503,16 +507,10 @@ PY
   echo "and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only"
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo
-  echo "Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task \`^bar\`,"
+  echo "Inputs use an isolated vault with bold true-case drawers on task \`^bar\`,"
   echo "task \`^plain\`, a project-note \`^prj\` with H2 drawers, a \`dev_tools\` notebook,"
   echo "an \`eat\` record album with one record, catalog notes, configured types, a daily FIX Pomodoro, and"
   echo "\`BOB_NOW=2026-10-30 09:15:00\`. Every capture is a dry run with \`--no-clip\`."
-  echo
-  echo "The \`drawer-parse-empty-skeleton-*\` and \`drawer-rewrite-*\` fixtures were added"
-  echo "by the star-expansion phase with \`bob 0.6.0\` from bob-cli revision"
-  echo "\`01dee47a01b6b24aa35175370d50bbe7b5fd779c\` (grammar revision 33,"
-  echo "\`schema_version\` 1). Older fixtures predate them and keep their recorded"
-  echo "revision until a regeneration reconciles the bob-cli drawer drift."
   echo
   echo "## Raw fixtures"
   echo

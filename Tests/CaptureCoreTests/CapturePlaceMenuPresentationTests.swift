@@ -17,7 +17,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.title), ["On this task", "Recent"])
         XCTAssertEqual(
             menu.rows.map(\.title),
-            ["Requirements", "FUTURE WORK", "Acceptance", "Motivation"])
+            ["Requirements", "Future Work", "Acceptance", "Motivation"])
         XCTAssertEqual(menu.rows.map(\.kind), [.task, .task, .recent, .recent])
         XCTAssertEqual(response.candidates.map(\.entryCount), [3, 1, 0, 0])
         XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
@@ -89,7 +89,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.title), ["On this task", "Recent"])
         XCTAssertEqual(menu.groups.map(\.kind), [.task, .recent])
         XCTAssertEqual(
-            menu.rows.map(\.title), ["Requirements", "FUTURE WORK", "Acceptance", "Motivation"])
+            menu.rows.map(\.title), ["Requirements", "Future Work", "Acceptance", "Motivation"])
         XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
         XCTAssertEqual(menu.rows[3].detail, "used in 3 notes · 3 weeks ago")
         XCTAssertEqual(menu.rows.map(\.creates), [false, false, true, true])

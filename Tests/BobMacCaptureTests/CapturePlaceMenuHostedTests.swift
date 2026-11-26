@@ -86,7 +86,7 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
         model.selectNextCompletion()
         XCTAssertEqual(model.selectedCompletionIndex, 1)
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#\"FUTURE WORK\"")
+        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#future-work")
         XCTAssertNil(model.completionResponse)
     }
 
@@ -151,14 +151,14 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
         )
         let candidates = try XCTUnwrap(model.completionResponse?.candidates)
         let candidateIndex = try XCTUnwrap(
-            candidates.firstIndex(where: { $0.replacement == "**FUTURE WORK**\n  - " })
+            candidates.firstIndex(where: { $0.replacement == "**Future Work**\n  - " })
         )
         let candidate = candidates[candidateIndex]
         model.selectedCompletionIndex = candidateIndex
 
         XCTAssertTrue(model.acceptSelectedCompletion())
 
-        let accepted = "@foo+bar\n- **FUTURE WORK**\n  - "
+        let accepted = "@foo+bar\n- **Future Work**\n  - "
         let cursorAfter = try XCTUnwrap(candidate.cursorAfter)
         XCTAssertEqual(model.plainDraft, accepted)
         XCTAssertEqual(cursorAfter, accepted.utf8.count)
