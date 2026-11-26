@@ -4541,7 +4541,10 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    private func dispatchGoto(destination: CaptureTaskGotoDestination) {
+    private func dispatchGoto(
+        destination: CaptureTaskGotoDestination,
+        onSuccess: (@MainActor () -> Void)? = nil
+    ) {
         guard let url = ObsidianOpenURL.taskGotoURL(
             path: destination.target,
             line: destination.line,
@@ -4558,8 +4561,12 @@ final class CapturePanelModel: ObservableObject {
             guard let self else { return }
             self.taskGotoDispatchInFlight = false
             if success {
-                self.discardDraft()
-                self.panelDismisser()
+                if let onSuccess {
+                    onSuccess()
+                } else {
+                    self.discardDraft()
+                    self.panelDismisser()
+                }
             } else {
                 self.announceStatus("Couldn't open Obsidian")
             }
@@ -23143,7 +23150,16 @@ final class CapturePanelModel: ObservableObject {
                 ref: row.match.taskRef,
                 blockID: row.match.blockID
             )
-        )
+        ) { [weak self] in
+            guard let self else { return }
+            let announcement = SimilarTasksBandEdits.announcement(
+                for: .open,
+                title: row.match.title
+            )
+            self.unfocusSimilarRow(applyPending: false)
+            self.announceStatus(announcement)
+            self.panelDismisser()
+        }
     }
 
     private func invalidateAnalysis() {
