@@ -234,6 +234,18 @@ caret_goto_parse_fixture() {
     "@bob^focuz") echo task-caret-goto-parse-missing-block.json ;;
     "@missing_note^x") echo task-caret-goto-parse-missing-note.json ;;
     "@bob^duplicate") echo task-caret-goto-parse-duplicate.json ;;
+    "@bob^foc") echo task-caret-goto-parse-partial.json ;;
+    *) return 1 ;;
+  esac
+}
+
+# Scoped Go To browse snapshots for the `.` toggle test: the link and browse
+# answers for the same partial ID, served by draft. Enabled only with
+# FAKE_BOB_CARET_GOTO_BROWSE_FIXTURES=1; every other draft falls through.
+caret_goto_browse_complete_fixture() {
+  case "$1" in
+    "@bob:foc") echo block-id-link-foc.json ;;
+    "@bob^foc") echo block-id-goto-partial.json ;;
     *) return 1 ;;
   esac
 }
@@ -2996,6 +3008,13 @@ PY
     if [[ -n "${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_CAPTURE_COMPLETE_FIXTURE}"
       exit 0
+    fi
+    if [[ "${FAKE_BOB_CARET_GOTO_BROWSE_FIXTURES:-}" == "1" ]]; then
+      browse_fixture="$(caret_goto_browse_complete_fixture "$draft" || true)"
+      if [[ -n "$browse_fixture" ]]; then
+        cat "${fixtures_dir}/${browse_fixture}"
+        exit 0
+      fi
     fi
     if [[ "${FAKE_BOB_NOTEBOOK_PLACE_MENU:-}" == "1" ]]; then
       notebook_fixture="$(notebook_complete_fixture "$draft" || true)"

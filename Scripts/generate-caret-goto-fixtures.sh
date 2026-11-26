@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Generate truthful @route^id Go To fixtures from the bob-cli implementation.
-# The only vault mutation is creation of this isolated synthetic vault.
+# Generate truthful @route^id Go To fixtures from the bob-cli implementation:
+# capture-parse destination fixtures plus capture-complete block-ID browse
+# fixtures for the scoped Go To browse. The only vault mutation is creation
+# of this isolated synthetic vault.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -99,12 +101,53 @@ parse() {
   persist "$scratch_root/raw.json" "$output"
 }
 
+complete() {
+  local draft="$1" cursor="$2" out="$3"
+  shift 3
+  "$bob_bin" capture-complete -b "$vault" "$@" --cursor "$cursor" --format json -- \
+    "$draft" > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+}
+
+complete_link() {
+  local draft="$1" cursor="$2" out="$3"
+  shift 3
+  "$bob_bin" capture-complete --all-tasks -b "$vault" "$@" --cursor "$cursor" \
+    --format json -- "$draft" > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+}
+
+dryrun() {
+  local draft="$1" out="$2"
+  "$bob_bin" capture --dry-run --format json -- "$draft" > "$scratch_root/raw.json"
+  persist "$scratch_root/raw.json" "$out"
+}
+
 parse '@bob^focus' task-caret-goto-parse-found.json
 parse '@bob^archived-focus' task-caret-goto-parse-archived.json
 parse '@taxes^refund-notes' task-caret-goto-parse-notebook.json
 parse '@bob^focuz' task-caret-goto-parse-missing-block.json
 parse '@missing_note^x' task-caret-goto-parse-missing-note.json
 parse '@bob^duplicate' task-caret-goto-parse-duplicate.json
+# Scoped-browse drafts: the missing-block parse behind the picker plus the
+# completion snapshot the picker browses. Cursors sit at each draft's end.
+parse '@bob^foc' task-caret-goto-parse-partial.json
+complete '@bob^' 5 block-id-goto-empty.json
+complete '@bob^foc' 8 block-id-goto-partial.json
+parse '@bob^archived' task-caret-goto-parse-archived-partial.json
+complete '@bob^archived' 13 block-id-goto-archived.json
+parse '@taxes^refund' task-caret-goto-parse-notebook-partial.json
+complete '@taxes^refund' 13 block-id-goto-notebook.json
+parse '@nope^' task-caret-goto-parse-missing-note-empty.json
+complete '@nope^' 6 block-id-goto-missing-note.json
+parse '@bob^' task-caret-goto-parse-empty.json
+# Link end-state for the `.` toggle test: the same partial ID as a link.
+parse '@bob:foc' task-caret-goto-parse-link.json
+complete_link '@bob:foc' 8 block-id-link-foc.json
+# Mint end-state: body text at the front reverts to today's composer.
+parse 'Fix it @bob^new-id' task-caret-goto-parse-mint.json
+complete 'Fix it @bob^new-id' 18 block-id-goto-mint.json
+dryrun 'Fix it @bob^new-id' capture-dry-run-mint-new-id.json
 cp "$vault/bob.md" "$scratch_root/bob.md"
 sed '/^-[[:space:]]\[\*\][[:space:]]#task Review the focus area /d' \
   "$scratch_root/bob.md" > "$vault/bob.md"
@@ -158,4 +201,62 @@ assert refresh["input"] == "@bob^focus"
 assert refresh["goto"]["status"] == "missing_block_id"
 old_bob = json.loads((root / names[7]).read_text())
 assert old_bob["mode"] == "task" and "goto" not in old_bob
+
+browses = {
+    "task-caret-goto-parse-partial.json": ("@bob^foc", "missing_block_id"),
+    "task-caret-goto-parse-archived-partial.json": ("@bob^archived", "missing_block_id"),
+    "task-caret-goto-parse-notebook-partial.json": ("@taxes^refund", "missing_block_id"),
+    "task-caret-goto-parse-missing-note-empty.json": ("@nope^", None),
+    "task-caret-goto-parse-empty.json": ("@bob^", None),
+}
+mint_parse = json.loads((root / "task-caret-goto-parse-mint.json").read_text())
+assert mint_parse["input"] == "Fix it @bob^new-id", "mint"
+assert mint_parse["mode"] == "task" and "goto" not in mint_parse, "mint"
+link_parse = json.loads((root / "task-caret-goto-parse-link.json").read_text())
+assert link_parse["input"] == "@bob:foc", "link"
+assert link_parse["mode"] == "pomodoro_link", "link"
+link_complete = json.loads((root / "block-id-link-foc.json").read_text())
+assert link_complete["context"] == "pomodoro_block_id", "link"
+assert link_complete["block_id"]["intent"] == "link", "link"
+assert "goto" not in link_complete.get("block_id", {}), "link"
+mint_parse = json.loads((root / "task-caret-goto-parse-mint.json").read_text())
+dry = json.loads((root / "capture-dry-run-mint-new-id.json").read_text())
+assert dry["ok"] is True and dry["dry_run"] is True, "mint"
+for name, (draft, status) in browses.items():
+    payload = json.loads((root / name).read_text())
+    assert payload["input"] == draft, name
+    if status is None:
+        assert payload["mode"] == "incomplete" and "goto" not in payload, name
+    else:
+        assert payload["mode"] == "task_goto", name
+        assert payload["goto"]["status"] == status, name
+
+completes = [
+    "block-id-goto-empty.json",
+    "block-id-goto-partial.json",
+    "block-id-goto-archived.json",
+    "block-id-goto-notebook.json",
+    "block-id-goto-missing-note.json",
+]
+for name in completes:
+    payload = json.loads((root / name).read_text())
+    assert payload["context"] == "task_block_id", name
+    block = payload["block_id"]
+    assert block["marker"] == "^" and block["intent"] == "new", name
+    assert block["body"] == "", name
+    goto = block["goto"]
+    assert goto["eligible"] is True, name
+    assert isinstance(goto["rows"], list), name
+    if name == "block-id-goto-missing-note.json":
+        assert block["note_exists"] is False, name
+        assert goto["rows"] == [], name
+    else:
+        assert block["note_exists"] is True, name
+        assert goto["rows"], name
+        assert all("archived" not in row or row["archived"] is False
+                   for row in goto["rows"] if row["note_path"] == goto["note_path"]), name
+partial = json.loads((root / "block-id-goto-partial.json").read_text())
+assert [row["block_id"] for row in partial["block_id"]["goto"]["rows"]] == [
+    "focus", "archived-focus",
+], "partial rows stay living-then-archive in document order"
 PY

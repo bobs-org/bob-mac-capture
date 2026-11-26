@@ -435,7 +435,7 @@ final class BlockIDPickerIndexTests: XCTestCase {
         let status = try XCTUnwrap(presentation.row(id: "status:tool"))
         XCTAssertFalse(status.isSelectable)
         XCTAssertNil(status.insertion)
-        XCTAssertEqual(status.displayText, "^tool is already used — Add tool command to wrap calls · line 18")
+        XCTAssertEqual(status.displayText, "^tool is already used — Add tool command to wrap calls · line 18 — remove the text to go to it")
         XCTAssertEqual(
             status.accessibilityLabel,
             "tool is already used on line 18 by Add tool command to wrap calls."

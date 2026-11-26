@@ -2313,6 +2313,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .acceptPickerRowAndSubmitAndOpen:
             model.acceptSelectedPickerRowAndSubmitAndOpen()
             return true
+        case .completeBlockIDGotoRow:
+            model.completeSelectedBlockIDGotoRow()
+            return true
         case .toggleGotoClosedTasks:
             model.toggleGotoClosedTasks()
             return true
@@ -3474,6 +3477,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
                 pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
                 pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
+                pickerSourceIsBlockIDGoto: model.pickerSourceIsBlockIDGoto,
                 pickerSourceIsNoteGoto: model.pickerSourceIsNoteGoto,
                 pickerSourceIsParentTask: model.pickerSourceIsParentTask,
                 pickerParentContinuationAvailable: model.pickerParentContinuationAvailable,
