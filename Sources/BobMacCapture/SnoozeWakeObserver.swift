@@ -2,6 +2,7 @@ import CaptureCore
 import Darwin
 import Dispatch
 import Foundation
+import notify
 
 /// Observes Bob's Darwin `woken` ping, reads the receipt off-main, and
 /// serializes acceptance on MainActor. Overlapping reads coalesce into
@@ -18,7 +19,7 @@ final class SnoozeWakeObserver {
     var onReceipt: (SnoozeWakeReceipt) -> Void = { _ in }
     var onDiagnostic: (String) -> Void = { _ in }
 
-    private let readReceipt: @Sendable () throws -> SnoozeWakeReceipt?
+    private let readReceipt: @Sendable () async throws -> SnoozeWakeReceipt?
     private let register: (@escaping @Sendable () -> Void) -> Int32?
     private let cancel: (Int32) -> Void
     private var token: Int32?
@@ -28,9 +29,9 @@ final class SnoozeWakeObserver {
     private var generation: UInt64 = 0
 
     init(
-        readReceipt: (@escaping @Sendable () throws -> SnoozeWakeReceipt?)? = nil,
-        register: (@escaping (@escaping @Sendable () -> Void) -> Int32?)? = nil,
-        cancel: ((Int32) -> Void)? = nil
+        readReceipt: ((@Sendable () async throws -> SnoozeWakeReceipt?))? = nil,
+        register: (((@escaping @Sendable () -> Void) -> Int32?))? = nil,
+        cancel: (((Int32) -> Void))? = nil
     ) {
         if let readReceipt {
             self.readReceipt = readReceipt
@@ -103,7 +104,7 @@ final class SnoozeWakeObserver {
         Task.detached {
             let result: Result<SnoozeWakeReceipt?, Error>
             do {
-                result = .success(try readReceipt())
+                result = .success(try await readReceipt())
             } catch {
                 result = .failure(error)
             }

@@ -460,7 +460,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
 
     private func makeHarnessWithIdle(
         _ idle: MutableBox<TimeInterval>, processClient: BobProcessClient?
-    ) async throws -> (
+    ) throws -> (
         SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
         NotificationCenter, URL, SnoozeWakeHandledStore,
         MutableBox<SnoozeWakeNoticeSettings>, MutableBox<CaptureAgendaEvents?>,
@@ -484,7 +484,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
 
     private func makeHarnessWithEvents(
         _ events: MutableBox<CaptureAgendaEvents?>, processClient: BobProcessClient?
-    ) async throws -> (
+    ) throws -> (
         SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
         NotificationCenter, URL, SnoozeWakeHandledStore,
         MutableBox<SnoozeWakeNoticeSettings>, MutableBox<CaptureAgendaEvents?>,
@@ -507,7 +507,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
 
     private func makeHarnessWithSettings(
         _ settings: MutableBox<SnoozeWakeNoticeSettings>, processClient: BobProcessClient?
-    ) async throws -> (
+    ) throws -> (
         SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
         NotificationCenter, URL, SnoozeWakeHandledStore,
         MutableBox<SnoozeWakeNoticeSettings>, MutableBox<CaptureAgendaEvents?>,

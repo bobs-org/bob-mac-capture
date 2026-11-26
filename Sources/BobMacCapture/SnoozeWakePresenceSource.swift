@@ -38,7 +38,7 @@ final class SnoozeWakePresenceSource {
         workspaceCenter: NotificationCenter? = nil,
         defaultCenter: NotificationCenter = .default,
         distributedCenter: DistributedNotificationCenter? = nil,
-        idleSampler: (@escaping () -> TimeInterval)? = nil
+        idleSampler: (() -> TimeInterval)? = nil
     ) {
         self.workspaceCenter = workspaceCenter ?? NSWorkspace.shared.notificationCenter
         self.defaultCenter = defaultCenter
@@ -48,7 +48,7 @@ final class SnoozeWakePresenceSource {
         } else {
             self.idleSampler = {
                 CGEventSource.secondsSinceLastEventType(
-                    .combinedSessionState, .hidSystemState)
+                    .combinedSessionState, eventType: .null)
             }
         }
     }

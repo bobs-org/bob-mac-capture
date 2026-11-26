@@ -104,11 +104,11 @@ final class SnoozeNoticeCoordinator {
         handledStore: SnoozeWakeHandledStore = SnoozeWakeHandledStore(),
         processClient: BobProcessClient? = nil,
         configuredVaultRoot: String = "",
-        today: (@escaping () -> String)? = nil,
-        now: (@escaping () -> Date)? = nil,
-        settings: (@escaping () -> SnoozeWakeNoticeSettings)? = nil,
-        agendaEvents: (@escaping () -> CaptureAgendaEvents?)? = nil,
-        requestAgendaRefresh: (@escaping () -> Void)? = nil,
+        today: (() -> String)? = nil,
+        now: (() -> Date)? = nil,
+        settings: (() -> SnoozeWakeNoticeSettings)? = nil,
+        agendaEvents: (() -> CaptureAgendaEvents?)? = nil,
+        requestAgendaRefresh: (() -> Void)? = nil,
         settleDelaySeconds: TimeInterval = defaultSettleDelaySeconds,
         retryIntervalSeconds: TimeInterval = defaultRetryIntervalSeconds
     ) {
