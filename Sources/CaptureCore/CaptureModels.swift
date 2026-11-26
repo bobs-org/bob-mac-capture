@@ -9841,7 +9841,12 @@ public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
     public let created: Bool
     public let marker: CaptureDrawerMarker?
 
-    public init(title: String, key: String = "", created: Bool = false, marker: CaptureDrawerMarker? = nil) {
+    public init(
+        title: String,
+        key: String = "",
+        created: Bool = false,
+        marker: CaptureDrawerMarker? = nil
+    ) {
         self.title = title
         self.key = key.isEmpty ? title : key
         self.created = created
@@ -9853,11 +9858,8 @@ public struct CaptureDrawerSummary: Codable, Equatable, Sendable {
         title = try container.decode(String.self, forKey: .title)
         key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? title
         created = (try? container.decodeIfPresent(Bool.self, forKey: .created)) ?? false
-        if let raw = try? container.decodeIfPresent(String.self, forKey: .marker) {
-            marker = raw.map(CaptureDrawerMarker.init(wireValue:))
-        } else {
-            marker = nil
-        }
+        let raw = try? container.decode(String.self, forKey: .marker)
+        marker = raw.map { CaptureDrawerMarker(wireValue: $0) }
     }
 
     private enum CodingKeys: String, CodingKey {
