@@ -314,7 +314,7 @@ public struct CaptureAgendaSnoozedRow: Decodable, Equatable, Sendable {
 /// A snoozed row's wake state. Unknown strings degrade neutrally to
 /// `.other` instead of failing the snapshot, matching the existing
 /// unknown-enum convention.
-public enum CaptureAgendaSnoozedState: Equatable, Sendable, Decodable {
+public enum CaptureAgendaSnoozedState: Hashable, Equatable, Sendable, Decodable {
     case asleep
     case due
     case blocked

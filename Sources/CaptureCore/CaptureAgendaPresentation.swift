@@ -10,6 +10,8 @@ public enum CaptureAgendaUnitID: Hashable, Equatable, Sendable {
     case calendar
     /// The band's ended rows: expanding reveals them in the full fold.
     case calendarEarlier
+    /// The Later today band as a whole: expanding pins it at full.
+    case snoozed
 }
 
 /// The kind of one rendered agenda row. Part of the row key, so a kind
@@ -43,6 +45,9 @@ public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
     case calendarConflict
     case calendarMore
     case calendarClear
+    case snoozedHeader
+    case snoozedRow
+    case snoozedSummary
 }
 
 /// One walk attention mark for the title row's trailing edge: a single
@@ -99,6 +104,11 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     /// the height cache invalidates when marks change.
     public let walkMarks: [CaptureAgendaWalkMark]
     public let req: CaptureRequirementAnnotation?
+    /// Later today facts for a `.snoozedRow`: time, countdown, and
+    /// status wording all affect measurement.
+    public let snoozed: CaptureAgendaSnoozedRowData?
+    /// Fresh-wake accent for a task headline: expiry changes the row.
+    public let woke: CaptureAgendaWokeAccent?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -118,7 +128,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         sessionOffClock: Bool = false,
         hintDimmed: Bool = false,
         walkMarks: [CaptureAgendaWalkMark] = [],
-        req: CaptureRequirementAnnotation? = nil
+        req: CaptureRequirementAnnotation? = nil,
+        snoozed: CaptureAgendaSnoozedRowData? = nil,
+        woke: CaptureAgendaWokeAccent? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -138,6 +150,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.hintDimmed = hintDimmed
         self.walkMarks = walkMarks
         self.req = req
+        self.snoozed = snoozed
+        self.woke = woke
     }
 }
 
@@ -192,6 +206,11 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// every other row.
     public let walkMarks: [CaptureAgendaWalkMark]
     public let req: CaptureRequirementAnnotation?
+    /// Later today facts for a `.snoozedRow`. Nil for every other kind.
+    public let snoozed: CaptureAgendaSnoozedRowData?
+    /// Fresh-wake accent for a task headline. Nil without same-day
+    /// provenance inside sixty minutes.
+    public let woke: CaptureAgendaWokeAccent?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -216,7 +235,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         sessionOffClock: Bool = false,
         hintDimmed: Bool = false,
         walkMarks: [CaptureAgendaWalkMark] = [],
-        req: CaptureRequirementAnnotation? = nil
+        req: CaptureRequirementAnnotation? = nil,
+        snoozed: CaptureAgendaSnoozedRowData? = nil,
+        woke: CaptureAgendaWokeAccent? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -241,13 +262,16 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.hintDimmed = hintDimmed
         self.walkMarks = walkMarks
         self.req = req
+        self.snoozed = snoozed
+        self.woke = woke
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
             hasAccessory: numberBadge != nil || accessoryText != nil
-                || titleOffClockText != nil || sessionOffClock || !walkMarks.isEmpty,
+                || titleOffClockText != nil || sessionOffClock || !walkMarks.isEmpty
+                || snoozed != nil || woke != nil,
             notesChip: notesChip,
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
@@ -260,7 +284,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             sessionOffClock: sessionOffClock,
             hintDimmed: hintDimmed,
             walkMarks: walkMarks,
-            req: req
+            req: req,
+            snoozed: snoozed,
+            woke: woke
         )
     }
 
@@ -389,6 +415,22 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     public var calendarNeedsTick: Bool {
         calendar?.hasTickingEvent == true
     }
+    /// The Later today band: today's snoozed tasks from Bob's additive
+    /// `snoozed` block, placed after the Later strip (or after the other
+    /// content when there is no strip). Nil on an older Bob or when the
+    /// block carries no rows. Yesterday's payload stays hidden under the
+    /// existing date guard.
+    public let snoozed: CaptureAgendaSnoozedBand?
+    /// True while any task carries a fresh same-day wake accent: the
+    /// view ticks every minute so the sixty-minute expiry repaints even
+    /// with no running Pomodoro.
+    public let hasActiveWokeAccent: Bool
+    /// True while the Later today band shows a live countdown or any
+    /// wake accent is active: the view mounts its minute-granularity
+    /// repaint then, even with no running Pomodoro.
+    public var snoozedNeedsTick: Bool {
+        (snoozed?.hasTickingEvent == true) || hasActiveWokeAccent
+    }
     public let stateRow: CaptureAgendaRow?
     /// The title row's stale suffix, shared by the presentation and the
     /// view's stale-icon split. Never a ledger fact, only wording.
@@ -448,11 +490,15 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             planBudgetRow = nil
             groups = []
             calendar = nil
+            snoozed = nil
+            hasActiveWokeAccent = false
             stateRow = Self.makeStateRow(text: "Loading today…")
             return
         }
         headlineRow = snapshot.headline.map(Self.makeHeadlineRow)
-        planBudgetRow = snapshot.planBudget.map(Self.makePlanBudgetRow)
+        snoozed = Self.makeSnoozedBand(snoozed: snapshot.snoozed, now: now)
+        let snoozedCount = snoozed?.count
+        planBudgetRow = snapshot.planBudget.map { Self.makePlanBudgetRow($0, snoozedCount: snoozedCount) }
         calendar = Self.makeCalendar(
             events: snapshot.events,
             entries: snapshot.pomodoros,
@@ -462,6 +508,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         )
         guard !ordered.isEmpty else {
             groups = []
+            hasActiveWokeAccent = false
             if Self.hasMissingDailyNoteWarning(snapshot.warnings) {
                 state = .noDailyNote
                 stateRow = Self.makeStateRow(text: "No daily note for today yet")
@@ -473,7 +520,20 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         }
         state = .agenda
         stateRow = nil
-        groups = Self.makeGroups(entries: ordered, now: now)
+        let builtGroups = Self.makeGroups(
+            entries: ordered,
+            now: now,
+            snapshotDate: snapshot.date,
+            today: today
+        )
+        groups = builtGroups
+        hasActiveWokeAccent = builtGroups.contains { group in
+            group.tasks.contains { task in
+                task.fullRows.contains { $0.woke != nil }
+                    || task.noLogsRows.contains { $0.woke != nil }
+                    || task.oneLineRow.woke != nil
+            }
+        }
     }
 
     // MARK: - Entry ordering
@@ -558,6 +618,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         warningRow: CaptureAgendaRow?,
         groups: [CaptureAgendaGroup],
         calendar: CaptureAgendaCalendar? = nil,
+        snoozed: CaptureAgendaSnoozedBand? = nil,
+        hasActiveWokeAccent: Bool = false,
         stateRow: CaptureAgendaRow?,
         stripFullRow: CaptureAgendaRow,
         walkMarks: [CaptureAgendaWalkMark] = []
@@ -572,6 +634,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         self.warningRow = warningRow
         self.groups = groups
         self.calendar = calendar
+        self.snoozed = snoozed
+        self.hasActiveWokeAccent = hasActiveWokeAccent
         self.stateRow = stateRow
         self.stripFullRow = stripFullRow
         self.walkMarks = walkMarks
@@ -699,19 +763,34 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         )
     }
 
-    static func makePlanBudgetRow(_ budget: CapturePlanBudget) -> CaptureAgendaRow {
-        let presentation = CapturePlanBudgetPresentation(
+    static func makePlanBudgetRow(
+        _ budget: CapturePlanBudget,
+        snoozedCount: Int? = nil
+    ) -> CaptureAgendaRow {
+        var presentation = CapturePlanBudgetPresentation(
             budget: budget,
             destination: nil,
             includeProposalDetails: false
         )
-        let text = presentation.today.text
+        let count = max(0, snoozedCount ?? 0)
+        if count > 0 {
+            presentation.snoozedCount = count
+        }
+        let text: String
+        let label: String
+        if count > 0 {
+            text = "\(presentation.today.text) · alarm \(count)"
+            label = "Plan budget: \(presentation.today.spokenText), \(count) snoozed"
+        } else {
+            text = presentation.today.text
+            label = "Plan budget: \(presentation.today.spokenText)"
+        }
         return CaptureAgendaRow(
             kind: .planBudget,
             text: text,
             depth: 0,
             lineLimit: 1,
-            accessibilityLabel: "Plan budget: \(presentation.today.spokenText)",
+            accessibilityLabel: label,
             planBudget: presentation
         )
     }
@@ -772,17 +851,31 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
 
     // MARK: - Groups
 
-    static func makeGroups(entries: [CaptureAgendaPomodoro], now: Date?) -> [CaptureAgendaGroup] {
+    static func makeGroups(
+        entries: [CaptureAgendaPomodoro],
+        now: Date?,
+        snapshotDate: String? = nil,
+        today: String? = nil
+    ) -> [CaptureAgendaGroup] {
         var seen: Set<String> = []
         var firstNames: [String: String] = [:]
         return entries.map { entry in
-            makeGroup(entry: entry, now: now, seen: &seen, firstNames: &firstNames)
+            makeGroup(
+                entry: entry,
+                now: now,
+                snapshotDate: snapshotDate,
+                today: today,
+                seen: &seen,
+                firstNames: &firstNames
+            )
         }
     }
 
     static func makeGroup(
         entry: CaptureAgendaPomodoro,
         now: Date?,
+        snapshotDate: String? = nil,
+        today: String? = nil,
         seen: inout Set<String>,
         firstNames: inout [String: String]
     ) -> CaptureAgendaGroup {
@@ -823,7 +916,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 entry: entry,
                 groupName: name,
                 seen: &seen,
-                firstNames: &firstNames
+                firstNames: &firstNames,
+                snapshotDate: snapshotDate,
+                today: today,
+                now: now
             ))
         }
         let retired: CaptureAgendaRow? = entry.retiredLinkCount > 0
@@ -1047,7 +1143,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         entry: CaptureAgendaPomodoro,
         groupName: String,
         seen: inout Set<String>,
-        firstNames: inout [String: String]
+        firstNames: inout [String: String],
+        snapshotDate: String? = nil,
+        today: String? = nil,
+        now: Date? = nil
     ) -> CaptureAgendaTask {
         let id = CaptureAgendaUnitID.task(ledgerLine: item.ledgerLine)
         let title = item.text ?? item.blockLink
@@ -1129,7 +1228,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             item: item,
             title: title,
             entry: entry,
-            baseLabel: baseLabel
+            baseLabel: baseLabel,
+            snapshotDate: snapshotDate,
+            today: today,
+            now: now
         )
     }
 
@@ -1138,13 +1240,33 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         item: CaptureAgendaItem,
         title: String,
         entry: CaptureAgendaPomodoro,
-        baseLabel: String
+        baseLabel: String,
+        snapshotDate: String? = nil,
+        today: String? = nil,
+        now: Date? = nil
     ) -> CaptureAgendaTask {
         let caption = markerCaption(marker: item.marker, role: entry.role)
         // MEET items linked to an Event Task wear the event's time
         // chip instead of the bold span.
         let timeChip = eventTimeChip(item: item, entry: entry)
         let title = timeChip == nil ? title : stripLeadingBoldSpan(title)
+        let woke: CaptureAgendaWokeAccent? = {
+            guard let snapshotDate, let today else {
+                return nil
+            }
+            return Self.wokeAccent(
+                wokeAt: item.wokeAt,
+                snapshotDate: snapshotDate,
+                today: today,
+                now: now
+            )
+        }()
+        let headlineLabel: String = {
+            guard let woke else {
+                return baseLabel
+            }
+            return "\(baseLabel), \(woke.text)"
+        }()
         let headline = CaptureAgendaRow(
             kind: .taskHeadline,
             text: title,
@@ -1153,7 +1275,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             numberBadge: item.index,
             accessoryText: joinAccessories([timeChip, caption]),
             statusGlyph: item.statusSymbol,
-            accessibilityLabel: baseLabel
+            accessibilityLabel: headlineLabel,
+            woke: woke
         )
         let ledgerRows = item.ledgerNotes.map { note in
             CaptureAgendaRow(
@@ -1187,8 +1310,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             numberBadge: item.index,
             accessoryText: joinAccessories([timeChip, chipText, caption]),
             statusGlyph: item.statusSymbol,
-            accessibilityLabel: baseLabel,
-            accessoryAccessibilityLabel: chipLabel
+            accessibilityLabel: headlineLabel,
+            accessoryAccessibilityLabel: chipLabel,
+            woke: woke
         )
         let plainChildren = childRows.filter { $0.kind != .logHeader && $0.kind != .logEntry }
         let noLogs = [noLogsHeadline] + ledgerRows + plainChildren
@@ -1204,8 +1328,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             numberBadge: item.index,
             accessoryText: joinAccessories([timeChip, hiddenChip, caption]),
             statusGlyph: item.statusSymbol,
-            accessibilityLabel: baseLabel,
-            accessoryAccessibilityLabel: hiddenLabel
+            accessibilityLabel: headlineLabel,
+            accessoryAccessibilityLabel: hiddenLabel,
+            woke: woke
         )
         return CaptureAgendaTask(
             id: id,

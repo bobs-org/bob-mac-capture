@@ -71,9 +71,29 @@ on a stale-but-same-day snapshot, and never shows yesterday's headline
 
 Below the headline sits the single saved `TODAY N/C` badge; its cap comes from
 bob's plan config. An older `bob` that omits `plan_budget` simply omits this row.
+With snoozed rows waiting, the row adds a separate `alarm N` chip that counts
+all asleep, due, and blocked rows; the `TODAY N/C` wording, cap, coloring, and
+close-list index never change. A snoozed-only payload without a budget still
+shows its band below; no cap is invented.
 A typed capture preview still shows the proposed budget for that draft.
 Plan-config edits appear on the next ordinary agenda refresh, including the next
 panel show.
+
+- Later today band. After the Later strip (or after the other content when
+  there is no strip), the band shows today's snoozed tasks from Bob's additive
+  `snoozed` block; an older `bob` without it shows no band, and yesterday's
+  payload stays hidden under the existing date guard. The header is a dim
+  `Later today`; rows are compact, such as `alarm 19:00 Fix the sink · in 3h 28m`,
+  with tabular times. Asleep rows wear subdued indigo with a live countdown,
+  due rows wear amber `due · waking`, and blocked rows wear muted
+  `waits on prerequisites`. Nullable or invalid times and unknown states stay
+  neutral. Text and VoiceOver carry the state without relying on color. The band
+  shows even with no Pomodoros, no budget, and no Calendar band. Fresh wakes add
+  a trailing amber `alarm woke 15:32` to the matching agenda task headline when
+  its `woke_at` is same-day and under sixty minutes old; at sixty minutes the
+  accent leaves, and future, malformed, or prior-day provenance never gets one.
+  The accent survives the task's one-line fold and never invents task rows in a
+  group-only strip.
 
 - Freshness and caching. `bob` owns every fact via
   `bob capture-pomodoros --format json --tasks`; the app caches the last good
@@ -133,12 +153,15 @@ none, and a filed receipt refreshes the band so the row loses its Notes action.
   with bob's gap) when it has room; VoiceOver gets these
   facts from the event rows instead. MEET group items linked to an Event Task show a
   time chip (with the buffer label appended) instead of the bold span.
-- Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
-  then collapse to one line per task, one row per Pomodoro, and finally into a Later
-  name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`, `4 tasks`)
-  that expands
-  that unit in place; expansions reset on hide and on snapshot change, and pinned
-  units may overflow with a scroll and an `N more` cue.
+- Folding. Detail fades with distance: Later today folds `full → summary` first,
+  before every group and Calendar fold. Its summary is one row, such as
+  `alarm 2 later · next 19:00`, and never disappears while rows remain; with only
+  blocked rows it reports `alarm 2 later · blocked` without a fabricated next wake.
+  Its chip expands the band in place. Then the farthest Pomodoros lose their logs
+  first, collapse to one line per task, one row per Pomodoro, and finally into a
+  Later name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`,
+  `4 tasks`) that expands that unit in place; expansions reset on hide and on
+  snapshot change, and pinned units may overflow with a scroll and an `N more` cue.
 - Transitions. No animation on show — cached content is in the first frame. The first
   keystroke dims the agenda to 35% (100 ms, instant under Reduce Motion) and holds it
   until the preview settles, another owner takes the region, 250 ms elapse, or the
@@ -148,7 +171,10 @@ none, and a filed receipt refreshes the band so the row loses its Notes action.
   the background; an in-flight Preview, leftover preview card, error, or pending-list
   notice is retired with the draft so none of them can keep the agenda hidden. The Now
   countdown (`12m left`, `ending now`, `overdue 8m`) ticks at
-  minute granularity while the panel is visible.
+  minute granularity while the panel is visible. Snooze countdowns and fresh-wake
+  accents tick the same way even with no running Pomodoro, so a visible minute
+  repaint keeps `in 3h 28m` and `alarm woke 15:32` current without rereading vault
+  files.
 - Setting and diagnostics. Settings › Agenda toggles "Show today's Pomodoros when the
   draft is empty" (on by default); while off, the store keeps refreshing for the
   close-list bounds but nothing is measured, planned, or shown. The same section

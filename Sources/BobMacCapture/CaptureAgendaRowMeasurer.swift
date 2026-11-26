@@ -219,6 +219,15 @@ enum CaptureAgendaHeightResolver {
                 out.append((row, .later))
             }
         }
+        // The Later today band renders outside the Now card too, so
+        // every row measures at the full rows width with the neutral
+        // role. The summary row is the planner-built variant that the
+        // fixpoint pass also measures.
+        if let snoozed = presentation.snoozed {
+            for row in snoozed.allRows {
+                out.append((row, .later))
+            }
+        }
         for group in presentation.groups {
             out.append((group.headerRow, group.role))
             for row in group.sessionNoteRows {

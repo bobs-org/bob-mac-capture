@@ -1598,6 +1598,13 @@ final class CapturePanelModel: ObservableObject {
         agendaPresentation?.calendarNeedsTick == true
     }
 
+    /// True while the Later today band shows a live snooze countdown
+    /// or any fresh wake accent is active: the view ticks every minute
+    /// for those even with no running Pomodoro.
+    var agendaHasSnoozedTick: Bool {
+        agendaPresentation?.snoozedNeedsTick == true
+    }
+
     private var auxiliaryOwnedByOther: Bool {
         isStashPickerPresented || isTemplateShelfPresented || inlinePromptVisible || pickerVisible
             || pickerChipVisible || completionVisible

@@ -214,6 +214,68 @@ final class CaptureAgendaDesignTests: XCTestCase {
             base: "agenda-empty-budget",
             budget: 2_000
         )
+
+        let snoozedNow = Calendar.current.date(
+            from: DateComponents(
+                year: 2_026,
+                month: 8,
+                day: 28,
+                hour: 12,
+                minute: 0
+            )
+        )
+        let snoozedSnapshot = try agendaSnapshot("agenda-snoozed.json")
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: snoozedSnapshot,
+                today: snoozedSnapshot.date ?? "",
+                now: snoozedNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-snoozed",
+            budget: 2_000
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: snoozedSnapshot,
+                today: snoozedSnapshot.date ?? "",
+                now: snoozedNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-snoozed-folded",
+            budget: 180
+        )
+        let snoozedOnlySnapshot = try agendaSnapshot("agenda-snoozed-only.json")
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: snoozedOnlySnapshot,
+                today: snoozedOnlySnapshot.date ?? "",
+                now: snoozedNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-snoozed-only",
+            budget: 2_000
+        )
+        let historySnapshot = try agendaSnapshot("agenda-snoozed-history.json")
+        let wokenNow = Calendar.current.date(
+            from: DateComponents(
+                year: 2_026,
+                month: 8,
+                day: 28,
+                hour: 10,
+                minute: 45
+            )
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: historySnapshot,
+                today: historySnapshot.date ?? "",
+                now: wokenNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-snoozed-woken",
+            budget: 2_000
+        )
     }
 
     private func render(
@@ -318,7 +380,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
             ),
             events: snapshot.events,
             maxTaskLinkCount: snapshot.maxTaskLinkCount,
-            headline: snapshot.headline
+            headline: snapshot.headline,
+            snoozed: snapshot.snoozed
         )
     }
 }

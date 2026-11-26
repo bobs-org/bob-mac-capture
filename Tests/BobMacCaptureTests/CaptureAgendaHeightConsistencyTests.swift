@@ -81,6 +81,41 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 budget: 2_000,
                 expanded: []
             )
+            try assertConsistent(
+                fixture: "agenda-snoozed.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            try assertConsistent(
+                fixture: "agenda-snoozed-only.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            try assertConsistent(
+                fixture: "agenda-snoozed.json",
+                contentWidth: width,
+                budget: 120,
+                expanded: []
+            )
+            let snoozedOnly = try agendaSnapshot("agenda-snoozed-only.json")
+            let snoozedOnlyPresentation = CaptureAgendaPresentation(
+                snapshot: snoozedOnly,
+                today: snoozedOnly.date ?? "",
+                now: nil
+            )
+            var snoozedExpanded: Set<CaptureAgendaUnitID> = [.snoozed]
+            if let first = snoozedOnlyPresentation.groups.first?.tasks.first {
+                snoozedExpanded.insert(first.id)
+            }
+            try assertConsistent(
+                presentation: snoozedOnlyPresentation,
+                fixture: "agenda-snoozed-only-expanded",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: snoozedExpanded
+            )
             let lightbulb = try agendaSnapshot("agenda-lightbulb.json")
             let lightbulbPresentation = CaptureAgendaPresentation(
                 snapshot: lightbulb,
@@ -441,7 +476,8 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             ),
             events: snapshot.events,
             maxTaskLinkCount: snapshot.maxTaskLinkCount,
-            headline: snapshot.headline
+            headline: snapshot.headline,
+            snoozed: snapshot.snoozed
         )
     }
 

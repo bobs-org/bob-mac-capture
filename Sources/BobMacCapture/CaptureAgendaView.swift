@@ -200,6 +200,22 @@ struct CaptureAgendaRowsView: View {
                         onOpenMeetingNotes: onOpenMeetingNotes,
                         onMeetingNotesFocusChange: onMeetingNotesFocusChange
                     )
+                case .snoozed(let indices, let spacerBefore):
+                    if spacerBefore {
+                        Spacer(minLength: 0)
+                            .frame(
+                                height: CGFloat(
+                                    CaptureAgendaLayoutMetrics.groupSpacing
+                                )
+                            )
+                    }
+                    CaptureAgendaSnoozedView(
+                        rows: indices.map { plan.rows[$0] },
+                        targets: targets,
+                        baseIndex: indices.first ?? 0,
+                        accessibilityLabel: presentation.snoozed?.accessibilityLabel,
+                        onExpand: onExpand
+                    )
                 }
             }
         }
@@ -230,6 +246,7 @@ enum CaptureAgendaSectionBlock {
     case row(Int)
     case group(CaptureAgendaGroup, [Int], Bool)
     case calendar([Int], Bool)
+    case snoozed([Int], Bool)
 
     /// True for the Calendar band's own row kinds. Group ownership
     /// stops at these, and they box into a `.calendar` block.
@@ -241,7 +258,24 @@ enum CaptureAgendaSectionBlock {
         case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
              .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup,
-             .truncation, .groupOneRow, .strip:
+             .truncation, .groupOneRow, .strip, .snoozedHeader, .snoozedRow, .snoozedSummary:
+            return false
+        }
+    }
+
+    /// True for the Later today band's own row kinds. Group ownership
+    /// stops at these, and they box into a `.snoozed` block. Snoozed
+    /// rows are never swallowed by the last Pomodoro group.
+    static func isSnoozedKind(_ kind: CaptureAgendaRowKind) -> Bool {
+        switch kind {
+        case .snoozedHeader, .snoozedRow, .snoozedSummary:
+            return true
+        case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
+             .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
+             .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup,
+             .truncation, .groupOneRow, .strip, .calendarHeader, .calendarRail,
+             .calendarAllDay, .calendarRow, .calendarGap, .calendarConflict,
+             .calendarMore, .calendarClear:
             return false
         }
     }
@@ -275,6 +309,18 @@ enum CaptureAgendaSections {
                 blocks.append(.calendar(owned, groupSeen))
                 groupSeen = true
                 index = cursor
+            } else if CaptureAgendaSectionBlock.isSnoozedKind(row.kind) {
+                var owned: [Int] = [index]
+                var cursor = index + 1
+                while cursor < rows.count,
+                    CaptureAgendaSectionBlock.isSnoozedKind(rows[cursor].kind)
+                {
+                    owned.append(cursor)
+                    cursor += 1
+                }
+                blocks.append(.snoozed(owned, groupSeen))
+                groupSeen = true
+                index = cursor
             } else if row.kind == .groupHeader || row.kind == .groupOneRow {
                 var owned: [Int] = [index]
                 var cursor = index + 1
@@ -283,6 +329,7 @@ enum CaptureAgendaSections {
                     if next.kind == .groupHeader || next.kind == .groupOneRow
                         || next.kind == .strip
                         || CaptureAgendaSectionBlock.isCalendarKind(next.kind)
+                        || CaptureAgendaSectionBlock.isSnoozedKind(next.kind)
                     {
                         break
                     }
@@ -357,6 +404,10 @@ enum CaptureAgendaChipMap {
                     targets[index] = .calendar
                     continue
                 }
+            }
+            if let snoozed = presentation.snoozed, row == snoozed.summaryRow {
+                targets[index] = .snoozed
+                continue
             }
             guard let found = owner(of: row, in: presentation) else {
                 continue
@@ -537,6 +588,47 @@ struct CaptureAgendaCalendarView: View {
     }
 }
 
+/// The Later today band: a plain block (no card) after the Later strip
+/// (or after the other content when there is no strip). The container
+/// adds half the snoozed insets above and half below, so the block
+/// matches the planner's `snoozedInsets + rows` exactly: measured row
+/// heights already carry their bottom gaps.
+@available(macOS 26.0, *)
+struct CaptureAgendaSnoozedView: View {
+    let rows: [CaptureAgendaRow]
+    let targets: [Int: CaptureAgendaUnitID]
+    let baseIndex: Int
+    let accessibilityLabel: String?
+    var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { offset, row in
+                CaptureAgendaRowView(
+                    row: row,
+                    role: .later,
+                    expands: CaptureAgendaRowView.showsChip(for: row),
+                    chipUnit: targets[baseIndex + offset],
+                    onExpand: onExpand
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(.top, topInset)
+        .padding(.bottom, bottomInset)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel ?? "Later today")
+    }
+
+    private var topInset: CGFloat {
+        CGFloat(CaptureAgendaLayoutMetrics.snoozedVerticalInsets / 2)
+    }
+
+    private var bottomInset: CGFloat {
+        CGFloat(CaptureAgendaLayoutMetrics.snoozedVerticalInsets / 2)
+    }
+}
+
 @available(macOS 26.0, *)
 struct CaptureAgendaRowView: View {
     let row: CaptureAgendaRow
@@ -565,14 +657,14 @@ struct CaptureAgendaRowView: View {
             return true
         }
         switch row.kind {
-        case .strip, .truncation, .groupOneRow, .calendarMore:
+        case .strip, .truncation, .groupOneRow, .calendarMore, .snoozedSummary:
             return true
         case .title, .headline, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine,
              .logHeader, .logEntry, .warning, .duplicate, .struck,
              .retired, .emptyGroup, .calendarHeader, .calendarRail,
              .calendarAllDay, .calendarRow, .calendarGap, .calendarConflict,
-             .calendarClear:
+             .calendarClear, .snoozedHeader, .snoozedRow:
             return false
         }
     }
@@ -606,7 +698,7 @@ struct CaptureAgendaRowView: View {
 
     private var bottomPad: CGFloat {
         switch row.kind {
-        case .title, .headline, .groupHeader, .planBudget, .calendarHeader:
+        case .title, .headline, .groupHeader, .planBudget, .calendarHeader, .snoozedHeader:
             return CGFloat(CaptureAgendaLayoutMetrics.headerBottomSpacing)
         case .stateLine, .strip, .calendarRail:
             return 0
@@ -614,7 +706,7 @@ struct CaptureAgendaRowView: View {
              .childLine, .logHeader, .logEntry, .warning, .duplicate,
              .struck, .retired, .emptyGroup, .truncation, .groupOneRow,
              .calendarAllDay, .calendarRow, .calendarGap, .calendarConflict,
-             .calendarMore, .calendarClear:
+             .calendarMore, .calendarClear, .snoozedRow, .snoozedSummary:
             return CGFloat(CaptureAgendaLayoutMetrics.rowSpacing)
         }
     }
@@ -735,6 +827,12 @@ struct CaptureAgendaRowView: View {
             warningLineView
         case .calendarMore:
             chipButton(text: row.text, label: row.accessibilityLabel ?? row.text)
+        case .snoozedHeader:
+            snoozedHeaderView
+        case .snoozedRow:
+            snoozedRowView
+        case .snoozedSummary:
+            chipButton(text: "alarm \(row.text)", label: row.accessibilityLabel ?? row.text)
         }
     }
 
@@ -1127,6 +1225,18 @@ struct CaptureAgendaRowView: View {
                 .lineLimit(row.lineLimit)
             Spacer(minLength: 12)
             headlineAccessoryView
+            if let woke = row.woke {
+                HStack(spacing: 4) {
+                    Image(systemName: "alarm")
+                        .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
+                    Text("woke \(woke.timeText)")
+                        .font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
+                .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(row.accessibilityLabel ?? row.text)
@@ -1522,6 +1632,80 @@ struct CaptureAgendaRowView: View {
             return nil
         }
         return url
+    }
+
+    // MARK: - Later today band
+
+    private var snoozedHeaderView: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "alarm")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(row.text)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(row.lineLimit)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    private var snoozedRowView: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "alarm")
+                .foregroundStyle(snoozedIconColor)
+                .accessibilityHidden(true)
+            if let data = row.snoozed, !data.timeText.isEmpty {
+                Text(data.timeText)
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            CaptureAgendaRowInlineText.text(row.text, base: .callout, color: .primary)
+                .lineLimit(row.lineLimit)
+            Spacer(minLength: 12)
+            if let data = row.snoozed {
+                if let countdown = data.countdownText {
+                    Text(countdown)
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if let trailing = data.trailingText {
+                    Text(trailing)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(snoozedTrailingColor)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    private var snoozedIconColor: Color {
+        guard let data = row.snoozed else {
+            return .secondary
+        }
+        switch data.state {
+        case .asleep:
+            return .indigo.opacity(0.7)
+        case .due:
+            return .orange
+        case .blocked, .other:
+            return .secondary
+        }
+    }
+
+    private var snoozedTrailingColor: Color {
+        guard let data = row.snoozed else {
+            return .secondary
+        }
+        switch data.state {
+        case .due:
+            return .orange
+        case .blocked, .asleep, .other:
+            return .secondary
+        }
     }
 
     // MARK: - Shared pieces

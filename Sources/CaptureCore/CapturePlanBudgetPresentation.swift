@@ -30,6 +30,10 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// Link-cap warning messages in Bob's order, rendered as orange captions.
     public let warningTexts: [String]
     public let accessibilitySummary: String
+    /// Separate Later today count for the idle agenda's saved budget row:
+    /// `· alarm N`. Nil in previews and when no snoozed rows remain, so
+    /// the TODAY badge keeps its exact `N/C` wording, cap, and coloring.
+    public var snoozedCount: Int?
 
     public init?(capture: CaptureCommandSuccess) {
         guard let budget = capture.planBudget else {
@@ -61,6 +65,7 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         parts.append(today.spokenText)
         parts.append(contentsOf: warningTexts)
         accessibilitySummary = parts.joined(separator: ", ")
+        snoozedCount = nil
     }
 
     /// The destination row for one link endpoint, or nil when there is no

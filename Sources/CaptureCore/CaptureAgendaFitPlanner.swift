@@ -23,13 +23,17 @@ public enum CaptureAgendaGroupState: Equatable, Sendable {
 /// with no folding logic left for the view.
 public struct CaptureAgendaPlan: Equatable, Sendable {
     /// Render rows in order: title, saved budget, warning, Now group
-    /// rows, the Calendar band, Next/Later group rows, strip.
+    /// rows, the Calendar band, Next/Later group rows, strip, and the
+    /// Later today band.
     public let rows: [CaptureAgendaRow]
     public let groupStates: [CaptureAgendaUnitID: CaptureAgendaGroupState]
     public let taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState]
     /// The Calendar band's fold. Nil when the snapshot carries no
     /// events: the band stays hidden and never folds.
     public let calendarState: CaptureAgendaCalendarState?
+    /// The Later today band's fold. Nil when the snapshot carries no
+    /// snoozed rows: the band stays hidden and never folds.
+    public let snoozedState: CaptureAgendaSnoozedFold?
     public let stripGroupIDs: [CaptureAgendaUnitID]
     public let totalHeight: Double
     public let overflows: Bool
@@ -43,6 +47,7 @@ public struct CaptureAgendaPlan: Equatable, Sendable {
         groupStates: [CaptureAgendaUnitID: CaptureAgendaGroupState],
         taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState],
         calendarState: CaptureAgendaCalendarState? = nil,
+        snoozedState: CaptureAgendaSnoozedFold? = nil,
         stripGroupIDs: [CaptureAgendaUnitID],
         totalHeight: Double,
         overflows: Bool,
@@ -53,6 +58,7 @@ public struct CaptureAgendaPlan: Equatable, Sendable {
         self.groupStates = groupStates
         self.taskStates = taskStates
         self.calendarState = calendarState
+        self.snoozedState = snoozedState
         self.stripGroupIDs = stripGroupIDs
         self.totalHeight = totalHeight
         self.overflows = overflows
@@ -67,20 +73,23 @@ public struct CaptureAgendaPlan: Equatable, Sendable {
 /// nothing to fold are skipped.
 ///
 /// 1. Everything `full`.
-/// 2. `noLogs`: Later groups (last to first), then Next, then Now/Open.
-/// 3. `oneLineTasks`: Later groups (last to first).
-/// 4. `oneRow`: Later groups (last to first).
-/// 5. `inStrip`: Later groups (last to first), budgeted at the
+/// 2. Later today `full → summary`: the farthest band folds first.
+/// 3. `noLogs`: Later groups (last to first), then Next, then Now/Open.
+/// 4. `oneLineTasks`: Later groups (last to first).
+/// 5. `oneRow`: Later groups (last to first).
+/// 6. `inStrip`: Later groups (last to first), budgeted at the
 ///    rendered strip's measured height, with the full-strip upper
 ///    bound as the unmeasured fallback.
-/// 6. `oneLineTasks`: Next, then Now/Open (last to first).
-/// 7. Overflow: the most-folded plan is marked `overflows` and the view
+/// 7. `oneLineTasks`: Next, then Now/Open (last to first).
+/// 8. Overflow: the most-folded plan is marked `overflows` and the view
 ///    scrolls with a bottom fade and an `N more` cue.
 ///
 /// The Calendar band folds alongside the groups: `full → compact`
 /// after Later groups reach `oneRow` and before they go into the
 /// strip, then `compact → oneRow` after Next goes `oneLineTasks` and
-/// before Now does. It never folds away while rows remain.
+/// before Now does. It never folds away while rows remain. The Later
+/// today band folds before every group and Calendar step and never
+/// folds away while rows remain: its summary row persists.
 ///
 /// Same inputs always produce the same plan; planning is O(rows)
 /// arithmetic per step.
@@ -98,16 +107,20 @@ public enum CaptureAgendaFitPlanner {
         }
         var calendarState: CaptureAgendaCalendarState? =
             presentation.calendar == nil ? nil : .full
+        var snoozedState: CaptureAgendaSnoozedFold? =
+            presentation.snoozed == nil ? nil : .full
         let fullContentRows = contentRowCount(
             presentation: presentation,
             states: states,
             calendarState: calendarState,
+            snoozedState: snoozedState,
             expanded: expanded
         )
         var current = render(
             presentation: presentation,
             states: states,
             calendarState: calendarState,
+            snoozedState: snoozedState,
             heights: heights,
             expanded: expanded
         )
@@ -116,12 +129,17 @@ public enum CaptureAgendaFitPlanner {
                 render: current,
                 states: states,
                 calendarState: calendarState,
+                snoozedState: snoozedState,
                 budget: budget,
                 fullContentRows: fullContentRows,
                 overflows: false
             )
         }
-        for step in ladder(groups: groups, hasCalendar: presentation.calendar != nil) {
+        for step in ladder(
+            groups: groups,
+            hasCalendar: presentation.calendar != nil,
+            hasSnoozed: presentation.snoozed != nil
+        ) {
             switch step {
             case .group(let groupIndex, let target):
                 guard let next = applyGroup(
@@ -144,11 +162,22 @@ public enum CaptureAgendaFitPlanner {
                     continue
                 }
                 calendarState = next
+            case .snoozed(let target):
+                guard let next = applySnoozed(
+                    target: target,
+                    snoozed: presentation.snoozed,
+                    snoozedState: snoozedState,
+                    expanded: expanded
+                ) else {
+                    continue
+                }
+                snoozedState = next
             }
             current = render(
                 presentation: presentation,
                 states: states,
                 calendarState: calendarState,
+                snoozedState: snoozedState,
                 heights: heights,
                 expanded: expanded
             )
@@ -157,6 +186,7 @@ public enum CaptureAgendaFitPlanner {
                     render: current,
                     states: states,
                     calendarState: calendarState,
+                    snoozedState: snoozedState,
                     budget: budget,
                     fullContentRows: fullContentRows,
                     overflows: false
@@ -167,6 +197,7 @@ public enum CaptureAgendaFitPlanner {
             render: current,
             states: states,
             calendarState: calendarState,
+            snoozedState: snoozedState,
             budget: budget,
             fullContentRows: fullContentRows,
             overflows: current.totalHeight > budget
@@ -178,16 +209,24 @@ public enum CaptureAgendaFitPlanner {
     enum Step: Equatable {
         case group(groupIndex: Int, target: CaptureAgendaGroupState)
         case calendar(CaptureAgendaCalendarState)
+        case snoozed(CaptureAgendaSnoozedFold)
     }
 
-    /// The fold sequence after the all-full candidate. The Calendar
-    /// band folds `full → compact` after Later groups reach `oneRow`
-    /// and before they go into the strip, then `compact → oneRow`
-    /// after Next groups go `oneLineTasks` and before Now does. The
-    /// band never folds away while rows remain: there is no strip
-    /// state for it.
-    static func ladder(groups: [CaptureAgendaGroup], hasCalendar: Bool) -> [Step] {
+    /// The fold sequence after the all-full candidate. Later today folds
+    /// `full → summary` first, before every group and Calendar step.
+    /// The Calendar band then folds `full → compact` after Later groups
+    /// reach `oneRow` and before they go into the strip, then
+    /// `compact → oneRow` after Next groups go `oneLineTasks` and
+    /// before Now does. Neither band folds away while rows remain.
+    static func ladder(
+        groups: [CaptureAgendaGroup],
+        hasCalendar: Bool,
+        hasSnoozed: Bool = false
+    ) -> [Step] {
         var steps: [Step] = []
+        if hasSnoozed {
+            steps.append(.snoozed(.summary))
+        }
         let later = groups.indices.filter { groups[$0].role == .later }
         let next = groups.indices.filter { groups[$0].role == .next }
         let nowOpen = groups.indices.filter {
@@ -290,6 +329,55 @@ public enum CaptureAgendaFitPlanner {
         return target
     }
 
+    /// Applies the Later today `full → summary` ladder step, or nil
+    /// when the step is skipped: there is no band, `.snoozed` pins it
+    /// at full, or the rows would not change.
+    static func applySnoozed(
+        target: CaptureAgendaSnoozedFold,
+        snoozed: CaptureAgendaSnoozedBand?,
+        snoozedState: CaptureAgendaSnoozedFold?,
+        expanded: Set<CaptureAgendaUnitID>
+    ) -> CaptureAgendaSnoozedFold? {
+        guard let snoozed else {
+            return nil
+        }
+        guard snoozedState != target else {
+            return nil
+        }
+        guard !expanded.contains(.snoozed) else {
+            return nil
+        }
+        let before = snoozedRows(
+            snoozed: snoozed,
+            state: snoozedState ?? .full,
+            expanded: expanded
+        )
+        let after = snoozedRows(snoozed: snoozed, state: target, expanded: expanded)
+        guard before != after else {
+            return nil
+        }
+        return target
+    }
+
+    /// Visible rows for the Later today band at one fold level. An
+    /// expanded band pins at full; the summary row otherwise replaces
+    /// the whole band and never disappears while rows remain.
+    static func snoozedRows(
+        snoozed: CaptureAgendaSnoozedBand,
+        state: CaptureAgendaSnoozedFold,
+        expanded: Set<CaptureAgendaUnitID>
+    ) -> [CaptureAgendaRow] {
+        if expanded.contains(.snoozed) {
+            return snoozed.fullRows()
+        }
+        switch state {
+        case .full:
+            return snoozed.fullRows()
+        case .summary:
+            return [snoozed.summaryRow]
+        }
+    }
+
     /// Visible rows for the band at one fold level. Ended rows join
     /// the `full` fold only while `.calendarEarlier` is expanded.
     static func calendarRows(
@@ -319,6 +407,7 @@ public enum CaptureAgendaFitPlanner {
         let groupStates: [CaptureAgendaUnitID: CaptureAgendaGroupState]
         let taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState]
         let calendarState: CaptureAgendaCalendarState?
+        let snoozedState: CaptureAgendaSnoozedFold?
         let stripGroupIDs: [CaptureAgendaUnitID]
         let totalHeight: Double
     }
@@ -421,8 +510,16 @@ public enum CaptureAgendaFitPlanner {
             homeChip: base.homeChip,
             homeHue: base.homeHue,
             homeIsForecast: base.homeIsForecast,
+            titleOffClockText: base.titleOffClockText,
+            themeRefs: base.themeRefs,
+            calendar: base.calendar,
+            calendarRail: base.calendarRail,
+            sessionOffClock: base.sessionOffClock,
             hintDimmed: base.hintDimmed,
-            walkMarks: base.walkMarks
+            walkMarks: base.walkMarks,
+            req: base.req,
+            snoozed: base.snoozed,
+            woke: base.woke
         )
     }
 
@@ -446,6 +543,7 @@ public enum CaptureAgendaFitPlanner {
         presentation: CaptureAgendaPresentation,
         states: [CaptureAgendaUnitID: CaptureAgendaGroupState],
         calendarState: CaptureAgendaCalendarState?,
+        snoozedState: CaptureAgendaSnoozedFold? = nil,
         heights: [CaptureAgendaRowKey: Double],
         expanded: Set<CaptureAgendaUnitID>
     ) -> FullRender {
@@ -554,11 +652,25 @@ public enum CaptureAgendaFitPlanner {
                 ?? heights[presentation.stripFullRow.key]
                 ?? CaptureAgendaLayoutMetrics.defaultRowHeight
         }
+        if let snoozed = presentation.snoozed {
+            let rendered = snoozedRows(
+                snoozed: snoozed,
+                state: snoozedState ?? .full,
+                expanded: expanded
+            )
+            if !rendered.isEmpty {
+                appendBlock(
+                    rendered,
+                    insets: CaptureAgendaLayoutMetrics.snoozedVerticalInsets
+                )
+            }
+        }
         return FullRender(
             rows: rows,
             groupStates: groupStates,
             taskStates: taskStates,
             calendarState: calendarState,
+            snoozedState: snoozedState,
             stripGroupIDs: stripIDs,
             totalHeight: total
         )
@@ -568,6 +680,7 @@ public enum CaptureAgendaFitPlanner {
         presentation: CaptureAgendaPresentation,
         states: [CaptureAgendaUnitID: CaptureAgendaGroupState],
         calendarState: CaptureAgendaCalendarState?,
+        snoozedState: CaptureAgendaSnoozedFold? = nil,
         expanded: Set<CaptureAgendaUnitID>
     ) -> Int {
         var count = 0
@@ -582,6 +695,13 @@ public enum CaptureAgendaFitPlanner {
                 expanded: expanded
             ).count
         }
+        if let snoozed = presentation.snoozed {
+            count += snoozedRows(
+                snoozed: snoozed,
+                state: snoozedState ?? .full,
+                expanded: expanded
+            ).count
+        }
         return count
     }
 
@@ -589,6 +709,7 @@ public enum CaptureAgendaFitPlanner {
         render: FullRender,
         states: [CaptureAgendaUnitID: CaptureAgendaGroupState],
         calendarState: CaptureAgendaCalendarState?,
+        snoozedState: CaptureAgendaSnoozedFold? = nil,
         budget: Double,
         fullContentRows: Int,
         overflows: Bool
@@ -601,7 +722,8 @@ public enum CaptureAgendaFitPlanner {
             case .groupHeader, .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
                  .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup, .truncation,
                  .groupOneRow, .calendarHeader, .calendarRail, .calendarAllDay, .calendarRow,
-                 .calendarGap, .calendarConflict, .calendarMore, .calendarClear:
+                 .calendarGap, .calendarConflict, .calendarMore, .calendarClear,
+                 .snoozedHeader, .snoozedRow, .snoozedSummary:
                 shown += 1
             }
         }
@@ -610,6 +732,7 @@ public enum CaptureAgendaFitPlanner {
             groupStates: states,
             taskStates: render.taskStates,
             calendarState: calendarState,
+            snoozedState: snoozedState,
             stripGroupIDs: render.stripGroupIDs,
             totalHeight: render.totalHeight,
             overflows: overflows,

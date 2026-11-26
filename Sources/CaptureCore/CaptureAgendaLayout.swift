@@ -50,6 +50,10 @@ public enum CaptureAgendaLayoutMetrics {
     /// Vertical chrome the planner adds around the Calendar band's
     /// rows. The band is a plain block like a non-current group.
     public static let calendarVerticalInsets: Double = 8
+    /// Vertical chrome the planner adds around the Later today band's
+    /// rows. The band is a plain block like the Calendar band, counted
+    /// exactly once whether it renders full or as its summary row.
+    public static let snoozedVerticalInsets: Double = 8
     /// Longest `·`-joined title list kept in a Later one-row summary.
     public static let maxOneRowLength = 120
     /// Longest warning sentence kept in a warning row.
