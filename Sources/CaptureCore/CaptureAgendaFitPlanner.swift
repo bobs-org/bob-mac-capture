@@ -638,10 +638,6 @@ public enum CaptureAgendaFitPlanner {
                 insets: CaptureAgendaLayoutMetrics.groupVerticalInsets(role: group.role)
             )
         }
-        if visibleBlocks > 1 {
-            let gaps = Double(visibleBlocks - 1)
-            total += gaps * CaptureAgendaLayoutMetrics.groupSpacing
-        }
         if !stripIDs.isEmpty {
             let stripRow = CaptureAgendaPresentation.makeStripRow(names: stripNames)
             rows.append(stripRow)
@@ -664,6 +660,10 @@ public enum CaptureAgendaFitPlanner {
                     insets: CaptureAgendaLayoutMetrics.snoozedVerticalInsets
                 )
             }
+        }
+        if visibleBlocks > 1 {
+            let gaps = Double(visibleBlocks - 1)
+            total += gaps * CaptureAgendaLayoutMetrics.groupSpacing
         }
         return FullRender(
             rows: rows,

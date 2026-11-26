@@ -113,6 +113,13 @@ final class CaptureAgendaSnoozedTests: XCTestCase {
         return formatter.date(from: "2026-08-28 \(clock)") ?? Date()
     }
 
+    private func isoAt(_ iso: String) -> Date {
+        guard let date = CaptureAgendaPresentation.parseSnoozedWakeAt(iso) else {
+            preconditionFailure("invalid ISO test instant: \(iso)")
+        }
+        return date
+    }
+
     private func uniformHeights(
         _ presentation: CaptureAgendaPresentation,
         height: Double = 10
@@ -548,13 +555,13 @@ final class CaptureAgendaSnoozedTests: XCTestCase {
         let early = CaptureAgendaPresentation(
             snapshot: makeSnapshot(snoozed: makeSnoozed(rows: [row])),
             today: today,
-            now: dateAt("12:00")
+            now: isoAt("2026-08-28T12:00:00-04:00")
         )
         XCTAssertEqual(early.snoozed?.rows.first?.snoozed?.countdownText, "in 3h 30m")
         let late = CaptureAgendaPresentation(
             snapshot: makeSnapshot(snoozed: makeSnoozed(rows: [row])),
             today: today,
-            now: dateAt("15:29")
+            now: isoAt("2026-08-28T15:29:00-04:00")
         )
         XCTAssertEqual(late.snoozed?.rows.first?.snoozed?.countdownText, "now")
     }
