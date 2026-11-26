@@ -2588,6 +2588,45 @@ final class BobProcessClientTests: XCTestCase {
         )
     }
 
+    func testSnoozeWakeUnsupportedVerdictPinnedToLaunchingExecutable() async throws {
+        // A rejection from the old executable must not disable its
+        // replacement: the verdict pins to the identity captured at
+        // launch, so a mid-flight replacement still attempts its write.
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_SNOOZE_WAKE_UNSUPPORTED": "1",
+            ]
+        )
+        var reads = 0
+        client.identityTokenProvider = {
+            reads += 1
+            return reads == 1 ? "old-executable" : "new-executable"
+        }
+        do {
+            _ = try await client.snoozeWake()
+            XCTFail("Expected unsupported snooze wake")
+        } catch BobClientError.unsupportedCommand(let command) {
+            XCTAssertEqual(command, "snooze wake")
+        }
+
+        client.identityTokenProvider = { "new-executable" }
+        do {
+            _ = try await client.snoozeWake()
+            XCTFail("Expected unsupported snooze wake")
+        } catch BobClientError.unsupportedCommand {
+            // Expected: the replacement launches and records its own
+            // verdict instead of inheriting the old executable's.
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=snooze wake").count - 1, 2)
+    }
+
     func testSnoozeWakeRejectsSchemaMismatchAndMalformedOutput() async throws {
         let mismatch = BobProcessClient(
             executablePath: try fakeBobPath(),

@@ -74,6 +74,15 @@ public struct CaptureSnoozeWakePolicy: Sendable {
     private var target: Date?
     private var retryDeadline: Date?
     private var disabled = false
+    /// The last authoritative snoozed facts applied by `update`: Bob's
+    /// `snoozed` block (rows plus advertised target). Timer, lifecycle,
+    /// and failed-refresh callbacks re-apply the retained snapshot, so a
+    /// re-applied block that still equals these facts must not overwrite
+    /// a settled outcome or a reserved retry deadline. Only a changed
+    /// block — retimed, dropped, added, or re-advertised work — is new
+    /// authority. Changes outside `snoozed` (ledger rows, headline,
+    /// budget) never touch the retry state.
+    private var appliedSnoozed: CaptureAgendaSnoozed?
 
     public init() {}
 
@@ -85,8 +94,16 @@ public struct CaptureSnoozeWakePolicy: Sendable {
         target
     }
 
-    /// Replaces the Bob snapshot facts. Old-day, missing, null, or malformed
+    /// Applies Bob's snapshot facts. Old-day, missing, null, or malformed
     /// instants disarm scheduling; the app never infers a time from `target`.
+    /// A re-applied snapshot whose `snoozed` block still equals the last
+    /// applied facts (timer/lifecycle callbacks, unchanged or failed
+    /// refreshes) preserves the settled outcome and any reserved retry
+    /// deadline instead of re-arming a retired target. A changed block is
+    /// new authority: it retimes, drops, or adds work, including a new
+    /// task at an already-settled clock target. The per-target retry floor
+    /// survives same-target block changes, so unrelated agenda edits and
+    /// mid-retry row changes never buy an immediate second attempt.
     @discardableResult
     public mutating func update(
         snapshot: CaptureAgendaSnapshot?,
@@ -97,11 +114,23 @@ public struct CaptureSnoozeWakePolicy: Sendable {
             day = today
             target = nil
             retryDeadline = nil
+            appliedSnoozed = nil
         }
         guard !disabled,
             let snapshot,
-            snapshot.date == today,
-            let rawTarget = snapshot.snoozed?.nextWakeAt,
+            snapshot.date == today
+        else {
+            target = nil
+            retryDeadline = nil
+            appliedSnoozed = nil
+            return nil
+        }
+        let incoming = snapshot.snoozed
+        if incoming == appliedSnoozed {
+            return nextAttemptDate(now: now)
+        }
+        appliedSnoozed = incoming
+        guard let rawTarget = incoming?.nextWakeAt,
             let newTarget = CaptureRFC3339Date.date(from: rawTarget)
         else {
             target = nil
@@ -139,7 +168,10 @@ public struct CaptureSnoozeWakePolicy: Sendable {
 
     /// Uses Bob's settled response as authoritative next-wake evidence. A
     /// null/invalid value retires pending work until a changed agenda snapshot
-    /// advertises another target.
+    /// advertises another target. Call only for writing outcomes (`woke`,
+    /// `nothingDue`): `deferred`/`skipped`/unknown replies carry a
+    /// prospective postimage that proves no write, so the scheduler must
+    /// preserve the due target and its retry deadline instead of settling.
     @discardableResult
     public mutating func settle(nextWakeAt: String?, now: Date) -> Date? {
         guard !disabled,
@@ -170,5 +202,6 @@ public struct CaptureSnoozeWakePolicy: Sendable {
         target = nil
         retryDeadline = nil
         disabled = false
+        appliedSnoozed = nil
     }
 }

@@ -197,6 +197,197 @@ final class SnoozeWakeSchedulerTests: XCTestCase {
         scheduler.stop()
     }
 
+    func testDeferredNullReplyRetriesAtSixtySecondDeadline() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let fixtureURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let source = try fakeBobPath()
+            .replacingOccurrences(of: "fake-bob", with: "agenda-snoozed.json")
+        try FileManager.default.copyItem(
+            atPath: source,
+            toPath: fixtureURL.path
+        )
+        let workspaceCenter = NotificationCenter()
+        let defaultCenter = NotificationCenter()
+        let clock = FakeClock()
+        let client = try client(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": fixtureURL.path,
+                "FAKE_BOB_SNOOZE_WAKE_DELAY_SECONDS": "0.2",
+                "FAKE_BOB_SNOOZE_WAKE_JSON":
+                    #"{"schema_version":1,"status":"deferred","next_wake_at":null}"#,
+            ],
+            recordURL: recordURL
+        )
+        let store = makeStore(
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        let scheduler = makeScheduler(
+            store: store,
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        store.refresh(reason: .launch)
+        await waitUntil { scheduler.scheduledFireDateForTesting != nil }
+
+        // A deferred null postimage proves no write: the due target keeps
+        // retrying at the 60-second deadline instead of disarming.
+        clock.now = Date(timeIntervalSince1970: 1_787_922_005)
+        scheduler.fireDueWakeForTesting()
+        await waitUntil(timeout: 8) {
+            !scheduler.wakeInFlightForTesting
+                && self.lines(in: recordURL).filter {
+                    $0 == "argv=snooze wake -q -f json"
+                }.count == 1
+        }
+        XCTAssertEqual(
+            scheduler.scheduledFireDateForTesting,
+            Date(timeIntervalSince1970: 1_787_922_065)
+        )
+
+        // No immediate second attempt while the deadline is pending.
+        scheduler.fireDueWakeForTesting()
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertEqual(
+            self.lines(in: recordURL).filter {
+                $0 == "argv=snooze wake -q -f json"
+            }.count,
+            1
+        )
+
+        // A changed agenda without due work cancels the reserved retry:
+        // the next settled attempt refreshes into facts with no snoozed
+        // block and disarms.
+        let current = try fakeBobPath()
+            .replacingOccurrences(of: "fake-bob", with: "agenda-current.json")
+        try? FileManager.default.removeItem(at: fixtureURL)
+        try FileManager.default.copyItem(atPath: current, toPath: fixtureURL.path)
+        clock.now = Date(timeIntervalSince1970: 1_787_922_065)
+        scheduler.fireDueWakeForTesting()
+        await waitUntil(timeout: 8) {
+            !scheduler.wakeInFlightForTesting
+                && self.lines(in: recordURL).filter {
+                    $0 == "argv=snooze wake -q -f json"
+                }.count == 2
+                && scheduler.scheduledFireDateForTesting == nil
+        }
+        XCTAssertEqual(
+            self.lines(in: recordURL).filter {
+                $0 == "argv=snooze wake -q -f json"
+            }.count,
+            2
+        )
+        scheduler.stop()
+    }
+
+    func testSkippedFutureReplyPreservesDueRetry() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let workspaceCenter = NotificationCenter()
+        let defaultCenter = NotificationCenter()
+        let clock = FakeClock()
+        let client = try client(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-snoozed.json",
+                "FAKE_BOB_SNOOZE_WAKE_DELAY_SECONDS": "0.2",
+                "FAKE_BOB_SNOOZE_WAKE_JSON":
+                    #"{"schema_version":1,"status":"skipped","next_wake_at":"2026-08-28T19:00:00-04:00"}"#,
+            ],
+            recordURL: recordURL
+        )
+        let store = makeStore(
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        let scheduler = makeScheduler(
+            store: store,
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        store.refresh(reason: .launch)
+        await waitUntil { scheduler.scheduledFireDateForTesting != nil }
+
+        // A skipped future postimage is prospective, not a retime: the
+        // due target retries at its deadline, never at 19:00:05.
+        clock.now = Date(timeIntervalSince1970: 1_787_922_005)
+        scheduler.fireDueWakeForTesting()
+        await waitUntil(timeout: 8) {
+            !scheduler.wakeInFlightForTesting
+                && self.lines(in: recordURL).filter {
+                    $0 == "argv=snooze wake -q -f json"
+                }.count == 1
+        }
+        XCTAssertEqual(
+            scheduler.scheduledFireDateForTesting,
+            Date(timeIntervalSince1970: 1_787_922_065)
+        )
+        scheduler.stop()
+    }
+
+    func testMidnightDuringWriteDiscardsStaleOutcome() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let workspaceCenter = NotificationCenter()
+        let defaultCenter = NotificationCenter()
+        let clock = FakeClock()
+        let client = try client(
+            environment: [
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-snoozed.json",
+                "FAKE_BOB_SNOOZE_WAKE_DELAY_SECONDS": "0.4",
+                "FAKE_BOB_SNOOZE_WAKE_JSON":
+                    #"{"schema_version":1,"status":"woke","next_wake_at":"2026-08-28T19:00:00-04:00"}"#,
+            ],
+            recordURL: recordURL
+        )
+        let store = makeStore(
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        let scheduler = makeScheduler(
+            store: store,
+            client: client,
+            clock: clock,
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter
+        )
+        store.refresh(reason: .launch)
+        await waitUntil { scheduler.scheduledFireDateForTesting != nil }
+
+        // Day rolls over while the write is in flight. The stale outcome
+        // must not settle yesterday's 19:00 target or start another write.
+        clock.now = Date(timeIntervalSince1970: 1_787_922_005)
+        scheduler.fireDueWakeForTesting()
+        await waitUntil {
+            self.lines(in: recordURL).contains("argv=snooze wake -q -f json")
+        }
+        clock.today = "2026-08-29"
+        await waitUntil(timeout: 8) { !scheduler.wakeInFlightForTesting }
+        XCTAssertNil(scheduler.scheduledFireDateForTesting)
+
+        scheduler.fireDueWakeForTesting()
+        try await Task.sleep(nanoseconds: 800_000_000)
+        XCTAssertNil(scheduler.scheduledFireDateForTesting)
+        XCTAssertEqual(
+            self.lines(in: recordURL).filter {
+                $0.contains("argv=snooze wake")
+            }.count,
+            1
+        )
+        scheduler.stop()
+    }
+
     func testReconfigureDoesNotCancelOldWriteOrApplyItsReplyToNewClient() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

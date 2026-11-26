@@ -832,7 +832,7 @@ struct CaptureAgendaRowView: View {
         case .snoozedRow:
             snoozedRowView
         case .snoozedSummary:
-            chipButton(text: "alarm \(row.text)", label: row.accessibilityLabel ?? row.text)
+            snoozedSummaryChip
         }
     }
 
@@ -1739,6 +1739,25 @@ struct CaptureAgendaRowView: View {
             }
         )
     }
+
+    /// The collapsed Later today band: the alarm glyph beside the
+    /// summary text in the shared chip capsule. The button action,
+    /// accessibility label, and subdued styling match the other chips;
+    /// only this band renders the icon instead of the literal word.
+    /// The row measurer renders this same view, so the icon width and
+    /// the row height agree between measuring and layout.
+    private var snoozedSummaryChip: some View {
+        CaptureAgendaChipButton(
+            text: row.text,
+            accessibilityLabel: row.accessibilityLabel ?? row.text,
+            systemImage: "alarm",
+            action: { [chipUnit, onExpand] in
+                if let chipUnit {
+                    onExpand(chipUnit)
+                }
+            }
+        )
+    }
 }
 
 /// The title-row selector glyphs: a fixed monospaced letter with a small
@@ -1838,18 +1857,28 @@ struct CaptureAgendaChipButton: View {
     let text: String
     let accessibilityLabel: String
     var font: Font = .caption2.weight(.medium)
+    /// Optional leading SF Symbol (the collapsed snooze summary's
+    /// alarm glyph). Nil keeps the plain text chip; when set, the icon
+    /// renders beside the text in the same capsule and styling.
+    var systemImage: String? = nil
     var action: () -> Void = {}
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            Text(text)
-                .font(font)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(hovered ? .tertiary : .quaternary, in: Capsule())
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .accessibilityHidden(true)
+                }
+                Text(text)
+                    .lineLimit(1)
+            }
+            .font(font)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(hovered ? .tertiary : .quaternary, in: Capsule())
         }
         .buttonStyle(.plain)
         .focusable(false)

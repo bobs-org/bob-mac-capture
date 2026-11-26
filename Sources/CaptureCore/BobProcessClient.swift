@@ -815,8 +815,11 @@ public final class BobProcessClient: @unchecked Sendable {
                 exitStatus: result.exitStatus,
                 stderr: stderr
             ) {
+                // Pin the verdict to the executable identity captured at
+                // launch: re-reading `identityToken` here could poison a
+                // replacement executable installed mid-flight.
                 stateQueue.sync {
-                    unsupportedSnoozeWakeIdentity = identityToken
+                    unsupportedSnoozeWakeIdentity = identity
                 }
                 throw BobClientError.unsupportedCommand("snooze wake")
             }

@@ -195,6 +195,7 @@ final class SnoozeWakeScheduler {
 
         let attemptGeneration = generation
         let attemptRevision = snapshotRevision
+        let attemptDay = today()
         wakeInFlight = true
         wakeInFlightForTesting = true
         followUpPending = false
@@ -205,14 +206,16 @@ final class SnoozeWakeScheduler {
                     response: response,
                     error: nil,
                     generation: attemptGeneration,
-                    snapshotRevision: attemptRevision
+                    snapshotRevision: attemptRevision,
+                    day: attemptDay
                 )
             } catch {
                 self?.finishWakeAttempt(
                     response: nil,
                     error: error,
                     generation: attemptGeneration,
-                    snapshotRevision: attemptRevision
+                    snapshotRevision: attemptRevision,
+                    day: attemptDay
                 )
             }
         }
@@ -222,27 +225,33 @@ final class SnoozeWakeScheduler {
         response: CaptureSnoozeWakeResponse?,
         error: Error?,
         generation attemptGeneration: UInt64,
-        snapshotRevision attemptRevision: UInt64
+        snapshotRevision attemptRevision: UInt64,
+        day attemptDay: String
     ) {
         wakeTask = nil
         wakeInFlight = false
         wakeInFlightForTesting = false
 
-        if generation == attemptGeneration {
+        // Day rollover invalidates the old day's result authority: an old
+        // callback never settles (and so never re-arms) yesterday's timer.
+        // Reconfiguration already invalidates via the generation check, and
+        // a mid-write snapshot publication invalidates via the revision
+        // check, so only an outcome for this generation, this day, and the
+        // facts it attempted settles the policy.
+        if generation == attemptGeneration, today() == attemptDay {
             if let response, snapshotRevision == attemptRevision {
                 switch response.status {
                 case .woke, .nothingDue:
                     _ = policy.settle(nextWakeAt: response.nextWakeAt, now: now())
-                case .deferred:
-                    // Keep Bob's next target and the reserved 60-second
-                    // per-target retry deadline; Bob decides when it is safe.
-                    _ = policy.settle(nextWakeAt: response.nextWakeAt, now: now())
-                case .skipped:
-                    // A wrong-host skip is authoritative. Never bypass the
-                    // writer pin or turn it into an explicit-task request.
-                    _ = policy.settle(nextWakeAt: response.nextWakeAt, now: now())
-                case .other:
-                    _ = policy.settle(nextWakeAt: response.nextWakeAt, now: now())
+                case .deferred, .skipped, .other:
+                    // Non-writing outcomes prove no write happened: Bob's
+                    // `deferred`/`skipped` replies carry the prospective
+                    // postimage `next_wake_at`, and unknown statuses assert
+                    // no successful write. Preserve the previously due
+                    // target and its reserved retry deadline until fresh
+                    // agenda facts retire or retime it. Never bypass the
+                    // writer pin or turn a skip into an explicit request.
+                    break
                 }
             } else if let clientError = error as? BobClientError,
                 case .unsupportedCommand("snooze wake") = clientError
@@ -258,7 +267,13 @@ final class SnoozeWakeScheduler {
 
         let hadFollowUp = followUpPending
         followUpPending = false
-        if hadFollowUp {
+        if today() != attemptDay {
+            // Day rolled over mid-write: drop the old day's facts and any
+            // reserved deadline instead of scheduling from them. The update
+            // disarms against the new day; an old callback never re-arms
+            // yesterday's timer.
+            refreshScheduleFromSnapshot()
+        } else if hadFollowUp {
             refreshScheduleFromSnapshot()
         } else {
             scheduleNextAttempt()

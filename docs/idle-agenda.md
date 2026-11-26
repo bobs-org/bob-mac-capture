@@ -117,9 +117,16 @@ panel show.
 - Snooze wake. An app-owned scheduler runs `bob snooze wake -q -f json` five seconds
   after Bob's advertised instant even while the panel is hidden or Agenda is off. It
   uses a separate non-cancelling process lane, refreshes agenda facts after each settled
-  attempt, and lets Bob enforce writer-host pinning. If an older `bob` rejects the wake
-  command, the scheduler disables itself for that client session; the agenda still
-  works, and Recheck Bob or replacing the executable retries the capability.
+  attempt (including deferred, skipped, and failed ones), and lets Bob enforce
+  writer-host pinning. Only `woke` and `nothing_due` retire or retime the schedule:
+  `deferred`/`skipped` replies carry a prospective `next_wake_at` that proves no write,
+  so the due target keeps its reserved 60-second retry until fresh agenda facts retire
+  or retime it. Re-applied snapshots with an unchanged `snoozed` block (timer and
+  lifecycle callbacks, byte-identical refreshes) never overwrite a settled outcome. Day
+  rollover drops the old day's facts and invalidates in-flight result authority. If an
+  older `bob` rejects the wake command, the scheduler disables itself for that client
+  session; the agenda still works, and Recheck Bob or replacing the executable retries
+  the capability.
 - Calendar band. Between the Now groups and the Next/Later ones (right under the
   title rows when nothing runs), the band summarizes today's calendar from bob's
   additive `events` block; an older `bob` without it shows no band. The header names
@@ -163,9 +170,9 @@ none, and a filed receipt refreshes the band so the row loses its Notes action.
   facts from the event rows instead. MEET group items linked to an Event Task show a
   time chip (with the buffer label appended) instead of the bold span.
 - Folding. Detail fades with distance: Later today folds `full → summary` first,
-  before every group and Calendar fold. Its summary is one row, such as
-  `alarm 2 later · next 19:00`, and never disappears while rows remain; with only
-  blocked rows it reports `alarm 2 later · blocked` without a fabricated next wake.
+  before every group and Calendar fold. Its summary is one row — an alarm icon beside
+  text such as `2 later · next 19:00` — and never disappears while rows remain; with
+  only blocked rows it reports `2 later · blocked` without a fabricated next wake.
   Its chip expands the band in place. Then the farthest Pomodoros lose their logs
   first, collapse to one line per task, one row per Pomodoro, and finally into a
   Later name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`,
