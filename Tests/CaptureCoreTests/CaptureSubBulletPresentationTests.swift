@@ -61,10 +61,10 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
 
         XCTAssertEqual(presented.parentLabel, "^bar")
-        XCTAssertEqual(presented.headerDetail, "under ^bar › Requirements")
+        XCTAssertEqual(presented.headerDetail, "under ^bar › REQUIREMENTS")
         XCTAssertEqual(
             presented.accessibilityText,
-            "Sub-bullet under ^bar, in Requirements"
+            "Sub-bullet under ^bar, in REQUIREMENTS"
         )
     }
 

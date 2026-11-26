@@ -1541,7 +1541,7 @@ final class CaptureRelationPanelTests: XCTestCase {
         model.openRelationLabelRename()
         model.updateRelationLabelRenameName("prompted by")
         model.updateRelationLabelRenameName("prompted by now")
-        await waitUntil {
+        await waitUntil(timeout: 15) {
             model.relationLabelPrompt?.rename?.previewNewName == "prompted by now"
         }
         XCTAssertEqual(

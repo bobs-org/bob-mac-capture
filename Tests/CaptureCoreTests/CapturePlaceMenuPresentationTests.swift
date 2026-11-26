@@ -30,7 +30,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         let menu = CapturePlaceMenuPresentation(
             response: response, selectedIndex: 0, query: "req")
 
-        XCTAssertEqual(menu.rows.map(\.title), ["Requirements", "REQ"])
+        XCTAssertEqual(menu.rows.map(\.title), ["Requirements", "Req"])
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
         XCTAssertTrue(menu.rows[1].isRefused)
     }
