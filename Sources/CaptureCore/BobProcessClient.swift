@@ -79,6 +79,8 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedLogHistoryIdentity: String?
     private var unsupportedLinksOnlyIdentity: String?
     private var unsupportedSnoozeWakeIdentity: String?
+    private var unsupportedSnoozeListIdentity: String?
+    private var unsupportedSnoozeAddIdentity: String?
     private var unsupportedTaskLinksIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
@@ -862,6 +864,196 @@ public final class BobProcessClient: @unchecked Sendable {
                 reason: error.localizedDescription
             )
         }
+    }
+
+    /// Whether this executable has already rejected `snooze list`. Cached
+    /// per executable identity so replacing Bob permits a fresh probe.
+    public var snoozeListKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedSnoozeListIdentity else { return false }
+            let identity = identityToken
+            if unsupportedSnoozeListIdentity != identity {
+                self.unsupportedSnoozeListIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Whether this executable has already rejected `snooze add`. Cached
+    /// per executable identity so replacing Bob permits a fresh probe.
+    public var snoozeAddKnownUnsupported: Bool {
+        stateQueue.sync {
+            guard let unsupportedSnoozeAddIdentity else { return false }
+            let identity = identityToken
+            if unsupportedSnoozeAddIdentity != identity {
+                self.unsupportedSnoozeAddIdentity = nil
+                return false
+            }
+            return true
+        }
+    }
+
+    /// Reads bob's snooze list (`bob snooze -f json`) on its own
+    /// `snooze-list` lane so agenda reads and wake writes never cancel it
+    /// and it never cancels them. An older bob without the `snooze`
+    /// subcommand fails with clap's unrecognized-subcommand error, which
+    /// maps to `BobClientError.unsupportedCommand`.
+    public func snoozeList() async throws -> SnoozeWakeListResponse {
+        let identity = identityToken
+        let alreadyUnsupported = stateQueue.sync {
+            unsupportedSnoozeListIdentity == identity
+        }
+        guard !alreadyUnsupported else {
+            throw BobClientError.unsupportedCommand("snooze list")
+        }
+
+        let arguments = ["snooze", "-f", "json"]
+        let result = try await run(
+            arguments: arguments,
+            lane: "snooze-list",
+            timeout: Self.defaultTimeout
+        )
+        let stderr = boundedProcessText(result.stderr)
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedSnoozeFailure(
+                exitStatus: result.exitStatus, stderr: stderr)
+            {
+                stateQueue.sync {
+                    unsupportedSnoozeListIdentity = identity
+                }
+                throw BobClientError.unsupportedCommand("snooze list")
+            }
+            throw BobClientError.processFailed(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let response = try decoder.decode(
+                SnoozeWakeListResponse.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard response.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: 1,
+                    actual: response.schemaVersion
+                )
+            }
+            return response
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    /// Applies `+15m` to one snoozed task through
+    /// `bob snooze add <route:block-id> +15m -f json`. It shares a
+    /// separately serialized, non-cancelling `snooze-add` mutation lane:
+    /// UI dismissal and another read must not cancel a started mutation,
+    /// and a second write waits for the first instead of racing it.
+    /// Only bob's successful `added` outcome proves a write; confirm it
+    /// and use its returned target for the `Snoozed until HH:MM` label
+    /// instead of computing an exact 15-minute label independently.
+    public func snoozeAdd(route: String, blockID: String, offset: String = "+15m")
+        async throws -> SnoozeWakeAddResponse
+    {
+        let identity = identityToken
+        let alreadyUnsupported = stateQueue.sync {
+            unsupportedSnoozeAddIdentity == identity
+        }
+        guard !alreadyUnsupported else {
+            throw BobClientError.unsupportedCommand("snooze add")
+        }
+
+        let arguments = ["snooze", "add", "\(route):\(blockID)", offset, "-f", "json"]
+        let result = try await run(
+            arguments: arguments,
+            lane: "snooze-add",
+            cancelsPreviousInLane: false,
+            timeout: Self.defaultTimeout
+        )
+        let stderr = boundedProcessText(result.stderr)
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedSnoozeFailure(
+                exitStatus: result.exitStatus, stderr: stderr)
+            {
+                stateQueue.sync {
+                    unsupportedSnoozeAddIdentity = identity
+                }
+                throw BobClientError.unsupportedCommand("snooze add")
+            }
+            throw BobClientError.processFailed(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let response = try decoder.decode(
+                SnoozeWakeAddResponse.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard response.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: 1,
+                    actual: response.schemaVersion
+                )
+            }
+            return response
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    static func isUnsupportedSnoozeFailure(exitStatus: Int32, stderr: String) -> Bool {
+        guard exitStatus == 2 else { return false }
+        let normalized = stderr.lowercased()
+        guard normalized.contains("unrecognized subcommand") else {
+            return false
+        }
+        return normalized.contains("'snooze'")
+            || normalized.contains("\"snooze\"")
+            || normalized.contains("'list'")
+            || normalized.contains("\"list\"")
+            || normalized.contains("'add'")
+            || normalized.contains("\"add\"")
     }
 
     /// Walk attention from `bob walks --format json` on its own lane, so

@@ -2743,6 +2743,54 @@ JSON
     fi
     ;;
   snooze)
+    if [[ "${FAKE_BOB_SNOOZE_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'snooze'\n\nUsage: bob [COMMAND]\n" >&2
+      exit 2
+    fi
+    if [[ "${1:-}" == "add" ]]; then
+      if [[ "${FAKE_BOB_SNOOZE_ADD_UNSUPPORTED:-}" == "1" ]]; then
+        printf "error: unrecognized subcommand 'add'\n\nUsage: bob snooze [OPTIONS] <COMMAND>\n" >&2
+        exit 2
+      fi
+      if [[ -n "${FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS:-}" ]]; then
+        sleep "${FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS}" &
+        wait $!
+      fi
+      if [[ -n "${FAKE_BOB_SNOOZE_ADD_JSON:-}" ]]; then
+        printf '%s\n' "${FAKE_BOB_SNOOZE_ADD_JSON}"
+      elif [[ -n "${FAKE_BOB_SNOOZE_ADD_FIXTURE:-}" ]]; then
+        if [[ "${FAKE_BOB_SNOOZE_ADD_FIXTURE}" == */* ]]; then
+          cat "${FAKE_BOB_SNOOZE_ADD_FIXTURE}"
+        else
+          cat "${fixtures_dir}/${FAKE_BOB_SNOOZE_ADD_FIXTURE}"
+        fi
+      else
+        cat <<'JSON'
+{"schema_version":1,"date":"2026-08-28","now":"2026-08-28T09:00:00-04:00","status":"added","task":{"route":"tasks.md","block_id":"due","title":"Due task"},"target":{"time":"09:15","at":"2026-08-28T09:15:00-04:00"},"lane":"next","daily_file":"2026/20260828.md","plan":{"count":1,"cap":10,"over":false},"dry_run":false}
+JSON
+      fi
+      exit "${FAKE_BOB_SNOOZE_ADD_EXIT:-0}"
+    fi
+    if [[ "${1:-}" == "-f" || "${1:-}" == "--format" || -z "${1:-}" ]]; then
+      if [[ -n "${FAKE_BOB_SNOOZE_LIST_DELAY_SECONDS:-}" ]]; then
+        sleep "${FAKE_BOB_SNOOZE_LIST_DELAY_SECONDS}" &
+        wait $!
+      fi
+      if [[ -n "${FAKE_BOB_SNOOZE_LIST_JSON:-}" ]]; then
+        printf '%s\n' "${FAKE_BOB_SNOOZE_LIST_JSON}"
+      elif [[ -n "${FAKE_BOB_SNOOZE_LIST_FIXTURE:-}" ]]; then
+        if [[ "${FAKE_BOB_SNOOZE_LIST_FIXTURE}" == */* ]]; then
+          cat "${FAKE_BOB_SNOOZE_LIST_FIXTURE}"
+        else
+          cat "${fixtures_dir}/${FAKE_BOB_SNOOZE_LIST_FIXTURE}"
+        fi
+      else
+        cat <<'JSON'
+{"schema_version":1,"wake_notice_version":1,"vault_root":"/tmp/vault","date":"2026-08-28","now":"2026-08-28T09:00:00-04:00","rows":[],"next_wake_at":null,"plan":{"count":0,"cap":10,"over":false}}
+JSON
+      fi
+      exit "${FAKE_BOB_SNOOZE_LIST_EXIT:-0}"
+    fi
     if [[ "${1:-}" != "wake" ]]; then
       printf "error: unrecognized subcommand '%s'\n" "${1:-}" >&2
       exit 2
