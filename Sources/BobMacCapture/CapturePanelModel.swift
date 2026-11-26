@@ -94,6 +94,27 @@ private struct DrawerMarkerOvertypeArm: Equatable {
     let caretUTF8: Int
 }
 
+private struct DrawerTitleExpansionSession: Equatable {
+    let titleStartUTF8: Int
+    var draft: String
+    var caretUTF8: Int
+}
+
+private struct DrawerTitleTypingIntent: Equatable {
+    let expectedDraft: String
+    let expectedCaretUTF8: Int
+}
+
+struct DrawerTitleNewlineEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+}
+
+private struct DrawerTitleCaretAuthorization {
+    let titleStartUTF8: Int
+    let closingMarkerEndUTF8: Int
+}
+
 private enum AliasTipSurface: Equatable {
     case completionList
     case picker
@@ -1246,6 +1267,8 @@ final class CapturePanelModel: ObservableObject {
     private var requirementMarkerOvertypeArm: RequirementMarkerOvertypeArm?
     private var pendingDrawerMarkerExpansionIntent: DrawerMarkerExpansionIntent?
     private var drawerMarkerOvertypeArm: DrawerMarkerOvertypeArm?
+    private var drawerTitleExpansionSession: DrawerTitleExpansionSession?
+    private var pendingDrawerTitleTypingIntent: DrawerTitleTypingIntent?
     /// A `\` sent to the rewrite lane whose reply has not landed: the
     /// expected post-key draft and caret from key-down time. Lets a second
     /// `\` before Bob's reply re-ask Bob about the first `\`.
@@ -2556,6 +2579,213 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CaptureListHeaderNewline.insertion
+    }
+
+    /// A newline after a Bob-authorized drawer title is inserted after its
+    /// closing marker, with a nested note bullet at the drawer's indentation.
+    /// A fresh parse or the uninterrupted title-entry session opened by Bob's
+    /// `expand_drawer_marker` reply may authorize the caret.
+    func drawerTitleNewlineEdit(in text: String, caretUTF8: Int) -> DrawerTitleNewlineEdit? {
+        guard picker == nil, completionResponse == nil,
+            plainDraft == text,
+            let authorization = drawerTitleAuthorization(
+                in: text,
+                caretUTF8: caretUTF8
+            ),
+            let titleStart = stringRange(
+                in: text,
+                start: authorization.titleStartUTF8,
+                end: authorization.titleStartUTF8
+            )?.lowerBound,
+            let replacementRange = utf16Range(
+                in: text,
+                start: authorization.closingMarkerEndUTF8,
+                end: authorization.closingMarkerEndUTF8
+            )
+        else {
+            return nil
+        }
+
+        let lineStart =
+            text[..<titleStart].lastIndex(where: \.isNewline)
+            .map { text.index(after: $0) } ?? text.startIndex
+        let linePrefix = text[lineStart..<titleStart]
+        let indentation = String(linePrefix.prefix { $0 == " " || $0 == "\t" })
+        return DrawerTitleNewlineEdit(
+            replacementRange: replacementRange,
+            replacementText: "\n\(indentation)  - "
+        )
+    }
+
+    /// Returns the caret after Bob's closing `**` when a physical star
+    /// overtypes an authorized drawer title. The caller applies this as a
+    /// movement, so the key creates no text or undo entry.
+    func drawerTitleOvertypeCaretUTF8(in text: String, caretUTF8: Int) -> Int? {
+        guard plainDraft == text else {
+            return nil
+        }
+        guard
+            let authorization = drawerTitleAuthorization(
+                in: text,
+                caretUTF8: caretUTF8
+            )
+        else {
+            return nil
+        }
+        drawerTitleExpansionSession = nil
+        pendingDrawerTitleTypingIntent = nil
+        return authorization.closingMarkerEndUTF8
+    }
+
+    /// Records only ordinary physical text inserted at the current caret of
+    /// Bob's drawer expansion session. Paste, selection edits, and movement
+    /// cannot extend the session.
+    func noteDrawerTitleTypingIntent(
+        typed: String,
+        text: String,
+        selectedRange: NSRange,
+        hasMarkedText: Bool
+    ) {
+        pendingDrawerTitleTypingIntent = nil
+        guard !typed.isEmpty, !hasMarkedText,
+            selectedRange.length == 0,
+            let session = drawerTitleExpansionSession,
+            session.draft == text,
+            utf8Offset(in: text, utf16Offset: selectedRange.location) == session.caretUTF8
+        else {
+            return
+        }
+
+        let nsText = text as NSString
+        guard selectedRange.location <= nsText.length else {
+            return
+        }
+        let expectedDraft = nsText.replacingCharacters(in: selectedRange, with: typed)
+        guard
+            let expectedCaretUTF8 = utf8Offset(
+                in: expectedDraft,
+                utf16Offset: selectedRange.location + (typed as NSString).length
+            )
+        else {
+            return
+        }
+        pendingDrawerTitleTypingIntent = DrawerTitleTypingIntent(
+            expectedDraft: expectedDraft,
+            expectedCaretUTF8: expectedCaretUTF8
+        )
+    }
+
+    func cancelDrawerTitleExpansionSession() {
+        drawerTitleExpansionSession = nil
+        pendingDrawerTitleTypingIntent = nil
+    }
+
+    private func drawerTitleAuthorization(
+        in text: String,
+        caretUTF8: Int
+    ) -> DrawerTitleCaretAuthorization? {
+        if let authorization = freshDrawerTitleAuthorization(in: text, caretUTF8: caretUTF8) {
+            return authorization
+        }
+        guard let session = drawerTitleExpansionSession,
+            session.draft == text,
+            session.caretUTF8 == caretUTF8,
+            caretUTF8 > session.titleStartUTF8,
+            let closingEnd = Self.drawerClosingMarkerEnd(in: text, at: caretUTF8)
+        else {
+            return nil
+        }
+        return DrawerTitleCaretAuthorization(
+            titleStartUTF8: session.titleStartUTF8,
+            closingMarkerEndUTF8: closingEnd
+        )
+    }
+
+    private func freshDrawerTitleAuthorization(
+        in text: String,
+        caretUTF8: Int
+    ) -> DrawerTitleCaretAuthorization? {
+        guard let processClient,
+            let parse = latestParse,
+            parse.input == text,
+            lastAppliedParseDraft == text,
+            lastAppliedParseGeneration == analysisGeneration,
+            lastAppliedParseClientIdentity == processClient.identityToken,
+            let validated = validatedSpanRanges(in: text, spans: parse.spans)
+        else {
+            return nil
+        }
+
+        let drawerSpans = captureDrawerTextSpans(from: validated)
+        guard
+            let title = drawerSpans.first(where: {
+                $0.role == .title && $0.span.start < $0.span.end && $0.span.end == caretUTF8
+            }),
+            drawerSpans.contains(where: {
+                $0.role == .delimiter
+                    && $0.span.end == title.span.start
+                    && $0.span.end - $0.span.start == 2
+            }),
+            drawerSpans.contains(where: {
+                $0.role == .delimiter
+                    && $0.span.start == caretUTF8
+                    && $0.span.end - $0.span.start == 2
+            }),
+            let closingEnd = Self.drawerClosingMarkerEnd(in: text, at: caretUTF8)
+        else {
+            return nil
+        }
+        return DrawerTitleCaretAuthorization(
+            titleStartUTF8: title.span.start,
+            closingMarkerEndUTF8: closingEnd
+        )
+    }
+
+    private static func drawerClosingMarkerEnd(in text: String, at start: Int) -> Int? {
+        guard let range = stringRange(in: text, start: start, end: start + 2),
+            String(text[range]) == "**"
+        else {
+            return nil
+        }
+        return start + 2
+    }
+
+    private func reconcileDrawerTitleExpansionSession(
+        draft: String,
+        caretUTF8: Int?
+    ) {
+        guard let session = drawerTitleExpansionSession else {
+            pendingDrawerTitleTypingIntent = nil
+            return
+        }
+        guard draft != session.draft else {
+            return
+        }
+        guard let intent = pendingDrawerTitleTypingIntent,
+            intent.expectedDraft == draft,
+            intent.expectedCaretUTF8 == caretUTF8
+        else {
+            cancelDrawerTitleExpansionSession()
+            return
+        }
+        drawerTitleExpansionSession = DrawerTitleExpansionSession(
+            titleStartUTF8: session.titleStartUTF8,
+            draft: draft,
+            caretUTF8: intent.expectedCaretUTF8
+        )
+        pendingDrawerTitleTypingIntent = nil
+    }
+
+    private func reconcileDrawerTitleSelection(cursorUTF8: Int?) {
+        guard let session = drawerTitleExpansionSession else {
+            return
+        }
+        if cursorUTF8 == session.caretUTF8
+            || cursorUTF8 == pendingDrawerTitleTypingIntent?.expectedCaretUTF8
+        {
+            return
+        }
+        cancelDrawerTitleExpansionSession()
     }
 
     var destinationSummary: String? {
@@ -3932,6 +4162,10 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        reconcileDrawerTitleExpansionSession(
+            draft: draft,
+            caretUTF8: cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
+        )
         if requirementMarkerOvertypeArm?.draft != draft {
             requirementMarkerOvertypeArm = nil
         }
@@ -4188,6 +4422,7 @@ final class CapturePanelModel: ObservableObject {
             }
             programmaticSelectionOffsetToIgnore = nil
         }
+        reconcileDrawerTitleSelection(cursorUTF8: insertionOffset)
         let deferredRewriteSubmitIsPending = pendingRewriteSubmitIntent != nil
             || pendingExplicitSubmitIntent?.draft == plainDraft
             || isSubmitting
@@ -21660,8 +21895,14 @@ final class CapturePanelModel: ObservableObject {
                 starRange: starRange,
                 caretUTF8: cursorUTF8Offset
             )
+            drawerTitleExpansionSession = DrawerTitleExpansionSession(
+                titleStartUTF8: cursorUTF8Offset,
+                draft: response.text,
+                caretUTF8: cursorUTF8Offset
+            )
         } else {
             drawerMarkerOvertypeArm = nil
+            cancelDrawerTitleExpansionSession()
         }
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)

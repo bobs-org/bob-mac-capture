@@ -547,10 +547,14 @@ PY
       exit "$FAKE_BOB_PARSE_EXIT"
     fi
     if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
+      parse_fixture_path="${FAKE_BOB_PARSE_FIXTURE}"
+      if [[ "${parse_fixture_path}" != /* ]]; then
+        parse_fixture_path="${fixtures_dir}/${parse_fixture_path}"
+      fi
       if [[ "${FAKE_BOB_PARSE_FIXTURE}" == *old-bob* ]]; then
-        cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
+        cat "${parse_fixture_path}"
       else
-        cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}" | inject_parse_grammar
+        cat "${parse_fixture_path}" | inject_parse_grammar
       fi
       exit 0
     fi

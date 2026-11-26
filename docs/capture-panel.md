@@ -464,8 +464,8 @@ dotted purple underline; existing sections do not.
 ### Task drawers
 
 A glued `#` after a resolved `@route+block-id`, once the item has body text, names a
-**drawer**: a direct child bullet of the task whose whole text is an ALL-CAPS title
-(`NOTES`, `FUTURE WORK`), with its notes nested beneath. Typing `Text @foo+bar#`
+**drawer**: a direct child bullet of the task whose whole title is bold
+(`- **Release Notes**`), with its notes nested beneath. Typing `Text @foo+bar#`
 opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare-`#` menus:
 
 ```text
@@ -497,6 +497,9 @@ opens Bob's `drawer` completion with **nothing selected**, like the `%` and bare
   **Ctrl-N** select the first row, typing preselects the best row, and **Escape** closes the
   menu. Accepting a row splices Bob's `replacement` and `cursor_after`.
 - **Highlighting.** The `#NAME` drawer span uses the section color family.
+- **Typing.** At the end of a nonempty title Bob reports as a drawer, Shift-Return,
+  Option-Return, or Ctrl-J inserts a nested `- ` note after the closing `**`. A typed `*`
+  moves past the closing pair without changing the title. Return keeps its capture meaning.
 - **No target.** When the task cannot be resolved, Bob returns a warning and no rows, so
   no menu opens.
 
@@ -551,15 +554,12 @@ A successful aggregate capture hides the panel automatically only after Bob retu
 
 Canceled drafts persist across Quit, Restart, crash, and logout in
   `~/Library/Application Support/org.bobs.bob-mac-capture/canceled-draft-stash.json`
-  (`schemaVersion` 1, newest-first array order). The directory is mode 0700 and the file
-  is mode 0600. Settings persists only the capacity (in `UserDefaults`), defaults it to
-  10, and clamps it to 0...36. Zero turns the feature off and deletes the file. Capacity
-  reductions keep the newest entries and drop older overflow. Repeated cancellations are
-  retained as separate entries, even when their text is identical. A nonempty unsent
-  draft at a graceful quit is also a stash entry, with the same Task Go-To and
-  capacity-0 exceptions as Control-C. A force quit or crash still loses an unsent
-  draft. Settings also shows the retained count and a confirmed **Clear Stash...**
-  action, which deletes the file.
+  (`schemaVersion` 1, newest-first). The directory is mode 0700; the file, 0600. Settings
+  stores capacity in `UserDefaults` (default 10, range 0...36). Zero disables the feature
+  and deletes the file; reductions drop the oldest overflow. Repeated cancellations stay
+  separate. Graceful quit stashes nonempty drafts with Control-C's Task Go-To and capacity-0
+  exceptions; force quit or crash loses the draft. Settings shows the retained count and a
+  confirmed **Clear Stash...** action that deletes the file.
 
 ## Stash
 

@@ -38,6 +38,20 @@ final class CaptureDrawerPipelineTests: XCTestCase {
         keyEvent(keyCode: 28, characters: "*", modifiers: modifiers, isRepeat: isRepeat)
     }
 
+    private func drawerTitleNewlineEvent(_ key: String) -> NSEvent {
+        switch key {
+        case "Shift-Return":
+            return keyEvent(keyCode: 36, characters: "\r", modifiers: .shift)
+        case "Option-Return":
+            return keyEvent(keyCode: 36, characters: "\r", modifiers: .option)
+        case "Ctrl-J":
+            return keyEvent(keyCode: 38, characters: "j", modifiers: .control)
+        default:
+            XCTFail("Unknown drawer newline key: \(key)")
+            return keyEvent(keyCode: 0, characters: "")
+        }
+    }
+
     private func makeHostedEditor(
         text: String
     ) -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel) {
@@ -136,6 +150,80 @@ final class CaptureDrawerPipelineTests: XCTestCase {
         let recordURL = makeRecordURL()
         let (model, controller, textView, panel) = makeHostedEditor(text: text)
         model.processClient = try processClient(recordURL: recordURL, extra: extra)
+        return (model, controller, textView, panel, recordURL)
+    }
+
+    private func drawerParseFixtureURL(
+        draft: String,
+        title: String?
+    ) throws -> URL {
+        var spans: [CaptureSpan] = []
+        if let title, let range = draft.range(of: title) {
+            let start = draft[..<range.lowerBound].utf8.count
+            let end = start + title.utf8.count
+            spans = [
+                CaptureSpan(start: start - 2, end: start, kind: "drawer_marker"),
+                CaptureSpan(
+                    start: start,
+                    end: end,
+                    kind: "drawer_bullet",
+                    key: title.uppercased(),
+                    title: title
+                ),
+                CaptureSpan(start: end, end: end + 2, kind: "drawer_marker"),
+            ]
+        }
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            grammar: 33,
+            input: draft,
+            body: "",
+            mode: "task",
+            spans: spans
+        )
+        let fixtureURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("drawer-title-parse-\(UUID().uuidString).json")
+        try JSONEncoder().encode(parse).write(to: fixtureURL)
+        return fixtureURL
+    }
+
+    private func openParsedDrawerTitle(
+        _ draft: String,
+        title: String
+    ) async throws -> (
+        CapturePanelModel, CapturePanelController, NSTextView, NSPanel, URL, URL, Int
+    ) {
+        let fixtureURL = try drawerParseFixtureURL(draft: draft, title: title)
+        let (model, controller, textView, panel, recordURL) = try openDrawerDraft(
+            draft,
+            extra: ["FAKE_BOB_PARSE_FIXTURE": fixtureURL.path]
+        )
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.latestParse?.input == draft }
+        let titleRange = draft.range(of: title)!
+        let titleEnd = titleRange.upperBound
+        let caretUTF8 = draft[..<titleEnd].utf8.count
+        let caretUTF16 = NSMaxRange(NSRange(titleRange, in: draft))
+        textView.setSelectedRange(NSRange(location: caretUTF16, length: 0))
+        model.editorSelectionDidChange(cursorUTF8Offset: caretUTF8)
+        return (model, controller, textView, panel, recordURL, fixtureURL, caretUTF8)
+    }
+
+    private func openExpandedDrawerTitle(
+        _ title: String
+    ) async throws -> (CapturePanelModel, CapturePanelController, NSTextView, NSPanel, URL) {
+        let (model, controller, textView, panel, recordURL) = try openDrawerDraft(
+            "Prepare release\n- ",
+            extra: ["FAKE_BOB_PARSE_EXIT": "1"]
+        )
+        XCTAssertNotNil(typeKey(starEvent(), into: textView, model: model, controller: controller))
+        await waitUntil { textView.string == "Prepare release\n- ****" }
+        for character in title {
+            let event = keyEvent(keyCode: 0, characters: String(character))
+            XCTAssertNotNil(typeKey(event, into: textView, model: model, controller: controller))
+        }
+        XCTAssertEqual(textView.string, "Prepare release\n- **\(title)**")
         return (model, controller, textView, panel, recordURL)
     }
 
@@ -276,6 +364,212 @@ final class CaptureDrawerPipelineTests: XCTestCase {
             model: model
         ))
         XCTAssertEqual(textView.string, draft)
+    }
+
+    func testFreshDrawerSpansAuthorizeEachNestedNewlineKeyAndUndo() async throws {
+        let draft = "Prepare release\n  - **Release Notes**"
+        let expected = "Prepare release\n  - **Release Notes**\n    - "
+        for key in ["Shift-Return", "Option-Return", "Ctrl-J"] {
+            let (model, controller, textView, panel, _, fixtureURL, _) =
+                try await openParsedDrawerTitle(draft, title: "Release Notes")
+            defer { try? FileManager.default.removeItem(at: fixtureURL) }
+            defer { panel.orderOut(nil) }
+
+            XCTAssertNil(controller.routeKeyDown(drawerTitleNewlineEvent(key)), key)
+            XCTAssertEqual(textView.string, expected, key)
+            XCTAssertEqual(
+                textView.selectedRange(),
+                NSRange(location: (expected as NSString).length, length: 0),
+                key
+            )
+            textView.undoManager?.undo()
+            XCTAssertEqual(textView.string, draft, "\(key) is one undoable edit")
+            XCTAssertNil(model.completionResponse)
+        }
+    }
+
+    func testExpansionSessionAuthorizesEachNestedNewlineKey() async throws {
+        let expected = "Prepare release\n- **Release Notes**\n  - "
+        for key in ["Shift-Return", "Option-Return", "Ctrl-J"] {
+            let (model, controller, textView, panel, _) =
+                try await openExpandedDrawerTitle("Release Notes")
+            defer { panel.orderOut(nil) }
+
+            XCTAssertNil(controller.routeKeyDown(drawerTitleNewlineEvent(key)), key)
+            XCTAssertEqual(textView.string, expected, key)
+            XCTAssertEqual(
+                textView.selectedRange(),
+                NSRange(location: (expected as NSString).length, length: 0),
+                key
+            )
+            textView.undoManager?.undo()
+            XCTAssertEqual(textView.string, "Prepare release\n- **Release Notes**", key)
+            XCTAssertNil(model.latestParse)
+        }
+    }
+
+    func testFreshDrawerSpansAndExpansionSessionAuthorizeStarOvertype() async throws {
+        let draft = "Prepare release\n  - **Release Notes**"
+        let (model, controller, textView, panel, recordURL, fixtureURL, caretUTF8) =
+            try await openParsedDrawerTitle(draft, title: "Release Notes")
+        defer { panel.orderOut(nil) }
+        defer { try? FileManager.default.removeItem(at: fixtureURL) }
+
+        XCTAssertNil(controller.routeKeyDown(starEvent()))
+        XCTAssertEqual(textView.string, draft)
+        XCTAssertEqual(
+            textView.selectedRange(), NSRange(location: (draft as NSString).length, length: 0))
+        XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+        XCTAssertEqual(caretUTF8 + 2, draft.utf8.count)
+        XCTAssertNotNil(model.latestParse)
+
+        let (expandedModel, expandedController, expandedText, expandedPanel, _) =
+            try await openExpandedDrawerTitle("Release Notes")
+        defer { expandedPanel.orderOut(nil) }
+        let expandedDraft = "Prepare release\n- **Release Notes**"
+
+        XCTAssertNil(expandedController.routeKeyDown(starEvent()))
+        XCTAssertEqual(expandedText.string, expandedDraft)
+        XCTAssertEqual(
+            expandedText.selectedRange(),
+            NSRange(location: (expandedDraft as NSString).length, length: 0)
+        )
+        XCTAssertNil(expandedModel.latestParse)
+    }
+
+    func testDrawerNewlineMenuPrecedenceAndReturnCapture() async throws {
+        let draft = "Prepare release\n- **Release Notes**"
+        let (model, controller, textView, panel, recordURL, fixtureURL, _) =
+            try await openParsedDrawerTitle(draft, title: "Release Notes")
+        defer { panel.orderOut(nil) }
+        defer { try? FileManager.default.removeItem(at: fixtureURL) }
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: draft.utf8.count,
+            replacement: CaptureRange(start: draft.utf8.count, end: draft.utf8.count),
+            context: "drawer",
+            candidates: []
+        )
+
+        XCTAssertNil(controller.routeKeyDown(drawerTitleNewlineEvent("Shift-Return")))
+        XCTAssertNotEqual(textView.string, "\(draft)\n  - ")
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(controller.routeKeyDown(keyEvent(keyCode: 36, characters: "\r")))
+        await waitUntil { (try? String(contentsOf: recordURL))?.contains("argv=capture ") == true }
+        XCTAssertTrue((try String(contentsOf: recordURL)).contains(draft))
+    }
+
+    func testDrawerTitleAssistRequiresFreshBobSpansAndAnUnmovedCaret() async throws {
+        let draft = "Prepare release\n  - **Release Notes**"
+        let (model, controller, textView, panel, _, fixtureURL, caretUTF8) =
+            try await openParsedDrawerTitle(draft, title: "Release Notes")
+        defer { panel.orderOut(nil) }
+        defer { try? FileManager.default.removeItem(at: fixtureURL) }
+
+        let changedDraft = draft.replacingOccurrences(of: "Prepare", with: "Preparing")
+        textView.string = changedDraft
+        model.plainDraft = changedDraft
+        let titleRange = changedDraft.range(of: "Release Notes")!
+        let changedCaretUTF16 = NSMaxRange(NSRange(titleRange, in: changedDraft))
+        let changedCaretUTF8 = changedDraft[..<titleRange.upperBound].utf8.count
+        textView.setSelectedRange(NSRange(location: changedCaretUTF16, length: 0))
+        model.editorTextDidChange(cursorUTF8Offset: changedCaretUTF8)
+        XCTAssertNotNil(typeKey(starEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(
+            textView.string,
+            changedDraft.replacingOccurrences(of: "**Release Notes**", with: "**Release Notes***")
+        )
+
+        XCTAssertGreaterThan(caretUTF8, 0)
+    }
+
+    func testDrawerTitleAssistStaysNativeForSelectionOrdinaryAndUnannotatedBullets() async throws {
+        for (draft, caretText) in [
+            ("Prepare release\n  - Ordinary note", "Ordinary note"),
+            ("Prepare release\n  - **Just bold**", "Just bold"),
+        ] {
+            let fixtureURL = try drawerParseFixtureURL(draft: draft, title: nil)
+            let (model, controller, textView, panel, _) = try openDrawerDraft(
+                draft,
+                extra: ["FAKE_BOB_PARSE_FIXTURE": fixtureURL.path]
+            )
+            defer { panel.orderOut(nil) }
+            defer { try? FileManager.default.removeItem(at: fixtureURL) }
+            model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+            await waitUntil { model.latestParse?.input == draft }
+            let range = draft.range(of: caretText)!
+            let caretUTF16 = NSMaxRange(NSRange(range, in: draft))
+            let caretUTF8 = draft[..<range.upperBound].utf8.count
+            textView.setSelectedRange(NSRange(location: caretUTF16, length: 0))
+            model.editorSelectionDidChange(cursorUTF8Offset: caretUTF8)
+            let original = textView.string
+            XCTAssertNotNil(
+                typeKey(starEvent(), into: textView, model: model, controller: controller))
+            XCTAssertNotEqual(textView.string, original, draft)
+        }
+
+        let selectedDraft = "Prepare release\n  - **Release Notes**"
+        let (model, controller, textView, panel, _, fixtureURL, _) =
+            try await openParsedDrawerTitle(selectedDraft, title: "Release Notes")
+        defer { panel.orderOut(nil) }
+        defer { try? FileManager.default.removeItem(at: fixtureURL) }
+        let titleRange = (selectedDraft as NSString).range(of: "Release Notes")
+        let selected = NSRange(location: titleRange.location, length: 1)
+        textView.setSelectedRange(selected)
+        model.editorSelectionDidChange(cursorUTF8Offset: nil)
+        XCTAssertNotNil(typeKey(starEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual((textView.string as NSString).substring(with: selected), "*")
+
+        let midTitleDraft = "Prepare release\n  - **Release Notes**"
+        let (midModel, midController, midText, midPanel, _, midFixture, _) =
+            try await openParsedDrawerTitle(midTitleDraft, title: "Release Notes")
+        defer { midPanel.orderOut(nil) }
+        defer { try? FileManager.default.removeItem(at: midFixture) }
+        let midRange = (midTitleDraft as NSString).range(of: "Release Notes")
+        let middle = midRange.location + 4
+        midText.setSelectedRange(NSRange(location: middle, length: 0))
+        midModel.editorSelectionDidChange(
+            cursorUTF8Offset: utf8Offset(in: midTitleDraft, utf16Offset: middle)
+        )
+        XCTAssertNotNil(
+            typeKey(starEvent(), into: midText, model: midModel, controller: midController))
+        XCTAssertNotEqual(midText.string, midTitleDraft)
+    }
+
+    func testMovingAwayFromExpandedDrawerTitleEndsTheOvertypeSession() async throws {
+        let (model, controller, textView, panel, _) = try await openExpandedDrawerTitle(
+            "Release Notes"
+        )
+        defer { panel.orderOut(nil) }
+
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        model.editorSelectionDidChange(cursorUTF8Offset: 0)
+        let titleRange = (textView.string as NSString).range(of: "Release Notes")
+        let titleEnd = NSMaxRange(titleRange)
+        textView.setSelectedRange(NSRange(location: titleEnd, length: 0))
+        model.editorSelectionDidChange(
+            cursorUTF8Offset: utf8Offset(in: textView.string, utf16Offset: titleEnd)
+        )
+
+        XCTAssertNotNil(typeKey(starEvent(), into: textView, model: model, controller: controller))
+        XCTAssertEqual(textView.string, "Prepare release\n- **Release Notes***")
+    }
+
+    func testEmptyDrawerSkeletonHasNoTitleNewlineAssist() async throws {
+        let draft = "Prepare release\n- ****"
+        let (model, controller, textView, panel, recordURL) = try openDrawerDraft(
+            draft,
+            extra: ["FAKE_BOB_PARSE_FIXTURE": "drawer-parse-empty-skeleton.json"]
+        )
+        defer { panel.orderOut(nil) }
+        textView.setSelectedRange(NSRange(location: (draft as NSString).length - 2, length: 0))
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count - 2)
+        await waitUntil { model.latestParse?.input == draft }
+
+        XCTAssertNil(controller.routeKeyDown(drawerTitleNewlineEvent("Shift-Return")))
+        XCTAssertFalse(textView.string.contains("\n  - "))
+        XCTAssertFalse(
+            (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") ?? false)
     }
 
     func testLiteralStarsStayNative() async throws {

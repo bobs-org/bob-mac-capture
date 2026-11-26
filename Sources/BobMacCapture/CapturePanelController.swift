@@ -1024,6 +1024,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return false
         }
 
+        let menuWasVisible = model.completionResponse != nil || model.picker != nil
         model.dismissCompletion()
         // A caret that ends a lone `@file` header Bob says still needs its
         // first bullet starts that bullet instead of a bare newline.
@@ -1034,6 +1035,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
            let insertion = model.listHeaderNewlineInsertion(caretUTF8: caret)
         {
             textView.insertText(insertion, replacementRange: selection)
+            return true
+        }
+        if !menuWasVisible,
+            selection.length == 0,
+            !textView.hasMarkedText(),
+            let caret = utf8Offset(in: textView.string, utf16Offset: selection.location),
+            let edit = model.drawerTitleNewlineEdit(in: textView.string, caretUTF8: caret)
+        {
+            textView.breakUndoCoalescing()
+            textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            textView.breakUndoCoalescing()
+            model.cancelDrawerTitleExpansionSession()
             return true
         }
         textView.doCommand(by: #selector(NSResponder.insertNewline(_:)))
@@ -1064,10 +1077,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             textView.setSelectedRange(edit.selectedRange)
             return true
         }
+        let selection = textView.selectedRange()
+        if selection.length == 0,
+            !textView.hasMarkedText(),
+            let caret = utf8Offset(in: textView.string, utf16Offset: selection.location),
+            let edit = model.drawerTitleNewlineEdit(in: textView.string, caretUTF8: caret)
+        {
+            textView.breakUndoCoalescing()
+            textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            textView.breakUndoCoalescing()
+            model.cancelDrawerTitleExpansionSession()
+            return true
+        }
         guard let edit = CaptureBulletNewlineEditResolver.resolve(
             in: textView.string,
-            selectedRange: textView.selectedRange()
-        )
+                selectedRange: selection
+            )
         else {
             return false
         }
@@ -4073,10 +4098,23 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 selectedRange: NSRange(location: 0, length: 0),
                 hasMarkedText: true
             )
+            model.cancelDrawerTitleExpansionSession()
             return
         }
         model.noteDrawerMarkerExpansionIntent(
             typed: eligibleKey ? "*" : "",
+            text: textView.string,
+            selectedRange: textView.selectedRange(),
+            hasMarkedText: textView.hasMarkedText()
+        )
+        let typed = event.characters ?? ""
+        let canExtendTitle =
+            !event.isARepeat
+            && modifiers.intersection([.command, .control, .option]).isEmpty
+            && !typed.isEmpty
+            && typed.rangeOfCharacter(from: .controlCharacters) == nil
+        model.noteDrawerTitleTypingIntent(
+            typed: canExtendTitle ? typed : "",
             text: textView.string,
             selectedRange: textView.selectedRange(),
             hasMarkedText: textView.hasMarkedText()
@@ -4107,6 +4145,28 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             && !textView.hasMarkedText()
             && selection.length == 0
             && modifiers.intersection([.command, .control, .option]).isEmpty
+        if canAbsorb,
+            event.characters == "*",
+            let caretUTF8,
+            let targetUTF8 = model.drawerTitleOvertypeCaretUTF8(
+                in: textView.string,
+                caretUTF8: caretUTF8
+            ),
+            let targetUTF16 = utf16Range(
+                in: textView.string,
+                start: targetUTF8,
+                end: targetUTF8
+            )?.location
+        {
+            let collapsed = NSRange(location: targetUTF16, length: 0)
+            let undoManager = textView.undoManager
+            undoManager?.disableUndoRegistration()
+            textView.setSelectedRange(collapsed)
+            textView.scrollRangeToVisible(collapsed)
+            undoManager?.enableUndoRegistration()
+            model.cancelDrawerMarkerOvertype()
+            return true
+        }
         return model.absorbDrawerMarkerOvertype(
             typed: canAbsorb ? event.characters : nil,
             text: textView.string,
