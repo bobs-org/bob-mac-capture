@@ -133,6 +133,11 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .blockID
     case "schedule":
         return .schedule
+    case "snooze":
+        // Bob's `z:` snooze range rides the editor as a time marker, the
+        // same schedule-family tint as `[scheduled::]` dates. Display
+        // only: no regex or Swift-side time interpretation here.
+        return .schedule
     case "priority":
         return .priority
     case "directive":

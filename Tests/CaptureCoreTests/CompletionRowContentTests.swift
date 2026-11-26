@@ -1450,6 +1450,8 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "schedule"), .schedule)
+        // Bob's `z:` snooze range shares the schedule time-marker tint.
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "snooze"), .schedule)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "priority"), .priority)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "directive"), .directive)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_delimiter"), .wikilinkDelimiter)

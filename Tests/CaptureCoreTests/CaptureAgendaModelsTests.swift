@@ -471,4 +471,123 @@ final class CaptureAgendaModelsTests: XCTestCase {
             "Converge take-home submitted and the zettel album's first draft published for Friday review"
         )
     }
+
+    // MARK: - Snoozed agenda block (`bob-cli-q5.7`)
+
+    // Fixtures (`Tests/Fixtures/agenda-snoozed*.json`) are verbatim
+    // copies of bob-cli's `tests/fixtures/capture_pomodoros/`
+    // `agenda-snoozed*.json` contract fixtures, decoded here against
+    // the same Bob that `pomodoros_agenda.rs` goldens pin.
+    func testSnoozedFixturesDecodeRowsNotesAndWakeInstant() throws {
+        let snapshot = try decodeFixture("agenda-snoozed.json")
+
+        let snoozed = try XCTUnwrap(snapshot.snoozed)
+        XCTAssertEqual(snoozed.nextWakeAt, "2026-08-28T09:00:00-04:00")
+        XCTAssertEqual(snoozed.rows.map(\.state), [.due, .asleep, .blocked])
+        XCTAssertEqual(snoozed.rows.map(\.title), ["Due task", "Asleep task", "Blocked task"])
+        XCTAssertEqual(snoozed.rows.map(\.target), ["0900", "1530", "1900"])
+        XCTAssertEqual(
+            snoozed.rows.map(\.wakeAt),
+            ["2026-08-28T09:00:00-04:00", "2026-08-28T15:30:00-04:00",
+             "2026-08-28T19:00:00-04:00"]
+        )
+        XCTAssertTrue(snoozed.rows.allSatisfy({ $0.route == "tasks.md" }))
+        XCTAssertEqual(snoozed.rows.map(\.blockID), ["due", "asleep", "blocked"])
+
+        // Row notes reuse the existing agenda display-line shape.
+        let asleep = snoozed.rows[1]
+        XCTAssertEqual(asleep.notes.map(\.text), ["Remember the first step.", "Open the notebook."])
+        XCTAssertTrue(asleep.notes.allSatisfy({ $0.kind == .bullet }))
+
+        // Bob's row ordering and identity are preserved verbatim.
+        XCTAssertEqual(snapshot.pomodoros.count, 1)
+        XCTAssertTrue(snapshot.pomodoros[0].items.isEmpty)
+
+        // A snoozed-only payload still carries the band with no ledger.
+        let only = try decodeFixture("agenda-snoozed-only.json")
+        let onlySnoozed = try XCTUnwrap(only.snoozed)
+        XCTAssertEqual(onlySnoozed.nextWakeAt, "2026-08-28T15:30:00-04:00")
+        XCTAssertEqual(onlySnoozed.rows.count, 1)
+        XCTAssertEqual(onlySnoozed.rows[0].state, .asleep)
+        XCTAssertEqual(onlySnoozed.rows[0].title, "Later work")
+        XCTAssertTrue(only.pomodoros.isEmpty)
+        XCTAssertNil(only.planBudget)
+    }
+
+    func testSnoozedHistoryDecodesWakeProvenanceOnItems() throws {
+        let snapshot = try decodeFixture("agenda-snoozed-history.json")
+
+        let snoozed = try XCTUnwrap(snapshot.snoozed)
+        XCTAssertNil(snoozed.nextWakeAt)
+        XCTAssertTrue(snoozed.rows.isEmpty)
+
+        let items = snapshot.pomodoros[0].items
+        XCTAssertEqual(items[0].wokeAt, "10:15")
+        XCTAssertEqual(items[0].snoozedTarget, "1600")
+        XCTAssertNil(items[1].wokeAt)
+        XCTAssertNil(items[1].snoozedTarget)
+        XCTAssertNil(items[2].wokeAt)
+        XCTAssertNil(items[2].snoozedTarget)
+    }
+
+    func testSnoozedPastDayDecodesEmptyWithLedgerIntact() throws {
+        let snapshot = try decodeFixture("agenda-snoozed-past-day.json")
+
+        let snoozed = try XCTUnwrap(snapshot.snoozed)
+        XCTAssertNil(snoozed.nextWakeAt)
+        XCTAssertTrue(snoozed.rows.isEmpty)
+        XCTAssertEqual(snapshot.pomodoros.count, 1)
+        XCTAssertNil(snapshot.pomodoros[0].items[0].wokeAt)
+        XCTAssertNil(snapshot.pomodoros[0].items[0].snoozedTarget)
+    }
+
+    func testMissingAndNullSnoozedDecodeAsNoFeature() throws {
+        let absent = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28"}"#.utf8)
+        )
+        XCTAssertNil(absent.snoozed)
+
+        let null = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","snoozed":null}"#.utf8)
+        )
+        XCTAssertNil(null.snoozed)
+
+        // Every pre-snooze fixture stays feature-free.
+        for name in Self.agendaFixtures {
+            let snapshot = try decodeFixture(name)
+            XCTAssertNil(snapshot.snoozed, name)
+            XCTAssertTrue(
+                snapshot.pomodoros.flatMap(\.items).allSatisfy({ $0.wokeAt == nil }),
+                name
+            )
+            XCTAssertTrue(
+                snapshot.pomodoros.flatMap(\.items).allSatisfy({ $0.snoozedTarget == nil }),
+                name
+            )
+        }
+    }
+
+    func testSnoozedUnknownStateAndMissingTimesDecodeTolerantly() throws {
+        let raw =
+            "{\"ok\": true, \"date\": \"2026-08-28\", \"snoozed\": {\"next_wake_at\": null, \"rows\": ["
+            + "{\"title\": \"Mystery\", \"route\": \"tasks.md\", \"block_id\": \"myst\","
+            + " \"target\": \"0900\", \"state\": \"napping\", \"notes\": []},"
+            + "{\"title\": \"Gap\", \"route\": \"tasks.md\", \"block_id\": \"gap\","
+            + " \"target\": \"0230\", \"state\": \"asleep\", \"notes\": []}]}}"
+        let snapshot = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(raw.utf8)
+        )
+
+        let snoozed = try XCTUnwrap(snapshot.snoozed)
+        XCTAssertNil(snoozed.nextWakeAt)
+        XCTAssertEqual(snoozed.rows.count, 2)
+        XCTAssertEqual(snoozed.rows[0].state, .other("napping"))
+        XCTAssertNil(snoozed.rows[0].wakeAt)
+        // A hand-authored DST-gap row carries no wake instant.
+        XCTAssertNil(snoozed.rows[1].wakeAt)
+        XCTAssertEqual(snoozed.rows[1].state, .asleep)
+    }
 }

@@ -133,6 +133,10 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     /// (`capture-pomodoros --tasks` `headline`). Trimmed; blank becomes
     /// nil. Absent (older bob) and `null` both mean "no headline".
     public let headline: String?
+    /// The additive snoozed-tasks block for the Later today band
+    /// (`capture-pomodoros --tasks` `snoozed`). Nil on an older bob
+    /// and when the payload carries `null`, so the band stays hidden.
+    public let snoozed: CaptureAgendaSnoozed?
 
     public init(
         ok: Bool = false,
@@ -144,7 +148,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         planBudget: CapturePlanBudget? = nil,
         events: CaptureAgendaEvents? = nil,
         maxTaskLinkCount: Int? = nil,
-        headline: String? = nil
+        headline: String? = nil,
+        snoozed: CaptureAgendaSnoozed? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -157,6 +162,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         self.maxTaskLinkCount = maxTaskLinkCount
         let trimmed = headline?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.headline = (trimmed?.isEmpty == false) ? trimmed : nil
+        self.snoozed = snoozed
     }
 
     public init(from decoder: Decoder) throws {
@@ -182,6 +188,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         let rawHeadline = try container.decodeIfPresent(String.self, forKey: .headline)
         let trimmedHeadline = rawHeadline?.trimmingCharacters(in: .whitespacesAndNewlines)
         headline = (trimmedHeadline?.isEmpty == false) ? trimmedHeadline : nil
+        snoozed = try container.decodeIfPresent(CaptureAgendaSnoozed.self, forKey: .snoozed)
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -202,6 +209,129 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case events
         case maxTaskLinkCount = "max_task_link_count"
         case headline
+        case snoozed
+    }
+}
+
+/// The additive snoozed-tasks block on `capture-pomodoros --tasks`
+/// (`snoozed`): today's rows waiting for a later clock time plus the
+/// next wake instant. Bob owns row ordering and identity; the app only
+/// decodes, measures, and draws. Every field decodes with
+/// `decodeIfPresent` and a safe default: missing or `null` blocks mean
+/// no feature, empty rows stay empty, and a nullable `next_wake_at`
+/// stays nil (including for due work with a past instant elsewhere
+/// and hand-authored DST-gap rows with no instant at all).
+public struct CaptureAgendaSnoozed: Decodable, Equatable, Sendable {
+    /// Next wake instant in RFC 3339 with its UTC offset, excluding
+    /// blocked rows. Nil when absent, `null`, or when no row has an
+    /// instant; it can name a past instant for due work. Never
+    /// synthesized from `target` in Swift.
+    public let nextWakeAt: String?
+    public let rows: [CaptureAgendaSnoozedRow]
+
+    public init(
+        nextWakeAt: String? = nil,
+        rows: [CaptureAgendaSnoozedRow] = []
+    ) {
+        self.nextWakeAt = nextWakeAt
+        self.rows = rows
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        nextWakeAt = try container.decodeIfPresent(String.self, forKey: .nextWakeAt)
+        rows = try container.decodeIfPresent(
+            [CaptureAgendaSnoozedRow].self,
+            forKey: .rows
+        ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case nextWakeAt = "next_wake_at"
+        case rows
+    }
+}
+
+/// One row in the snoozed-tasks block: an open task waiting for its
+/// same-day target time. Notes reuse `CaptureAgendaLine`, the existing
+/// agenda display-line shape. Snoozed rows stay outside ledger groups,
+/// Today, close-list numbering, and the plan budget.
+public struct CaptureAgendaSnoozedRow: Decodable, Equatable, Sendable {
+    public let title: String
+    /// Bob's resolved vault-relative route. Empty when an older bob
+    /// omits it; identity stays `(route, block_id)`.
+    public let route: String
+    public let blockID: String
+    /// Four-digit `HHMM` target time.
+    public let target: String
+    /// Nullable RFC 3339 wake instant with its UTC offset. Nil for
+    /// hand-authored DST-gap rows and whenever bob reports none.
+    public let wakeAt: String?
+    public let state: CaptureAgendaSnoozedState
+    public let notes: [CaptureAgendaLine]
+
+    public init(
+        title: String = "",
+        route: String = "",
+        blockID: String = "",
+        target: String = "",
+        wakeAt: String? = nil,
+        state: CaptureAgendaSnoozedState = .asleep,
+        notes: [CaptureAgendaLine] = []
+    ) {
+        self.title = title
+        self.route = route
+        self.blockID = blockID
+        self.target = target
+        self.wakeAt = wakeAt
+        self.state = state
+        self.notes = notes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        route = try container.decodeIfPresent(String.self, forKey: .route) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        target = try container.decodeIfPresent(String.self, forKey: .target) ?? ""
+        wakeAt = try container.decodeIfPresent(String.self, forKey: .wakeAt)
+        state = try container.decodeIfPresent(CaptureAgendaSnoozedState.self, forKey: .state)
+            ?? .asleep
+        notes = try container.decodeIfPresent([CaptureAgendaLine].self, forKey: .notes) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case route
+        case blockID = "block_id"
+        case target
+        case wakeAt = "wake_at"
+        case state
+        case notes
+    }
+}
+
+/// A snoozed row's wake state. Unknown strings degrade neutrally to
+/// `.other` instead of failing the snapshot, matching the existing
+/// unknown-enum convention.
+public enum CaptureAgendaSnoozedState: Equatable, Sendable, Decodable {
+    case asleep
+    case due
+    case blocked
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "asleep":
+            self = .asleep
+        case "due":
+            self = .due
+        case "blocked":
+            self = .blocked
+        default:
+            self = .other(raw)
+        }
     }
 }
 
@@ -400,6 +530,14 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
     /// Event details when this Task Link targets today's Event Task.
     /// Nil for ordinary tasks and on an older bob.
     public let event: CaptureAgendaItemEvent?
+    /// Wall-clock `HH:MM` stamp of this task's same-day wake, from a
+    /// matching struck snooze row. Nil on an older bob and for tasks
+    /// with no same-day wake. Bob never expires the field; the agenda
+    /// date supplies its day.
+    public let wokeAt: String?
+    /// Four-digit `HHMM` snooze target matching `wokeAt`. Nil alongside
+    /// `wokeAt` on an older bob and for tasks with no same-day wake.
+    public let snoozedTarget: String?
 
     public init(
         index: Int? = nil,
@@ -419,7 +557,9 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         linesTruncated: Int = 0,
         ledgerNotes: [CaptureAgendaLine] = [],
         warning: String? = nil,
-        event: CaptureAgendaItemEvent? = nil
+        event: CaptureAgendaItemEvent? = nil,
+        wokeAt: String? = nil,
+        snoozedTarget: String? = nil
     ) {
         self.index = index
         self.ledgerLine = ledgerLine
@@ -439,6 +579,8 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         self.ledgerNotes = ledgerNotes
         self.warning = warning
         self.event = event
+        self.wokeAt = wokeAt
+        self.snoozedTarget = snoozedTarget
     }
 
     public init(from decoder: Decoder) throws {
@@ -470,6 +612,8 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
             CaptureAgendaItemEvent.self,
             forKey: .event
         )
+        wokeAt = try container.decodeIfPresent(String.self, forKey: .wokeAt)
+        snoozedTarget = try container.decodeIfPresent(String.self, forKey: .snoozedTarget)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -491,6 +635,8 @@ public struct CaptureAgendaItem: Decodable, Equatable, Sendable {
         case ledgerNotes = "ledger_notes"
         case warning
         case event
+        case wokeAt = "woke_at"
+        case snoozedTarget = "snoozed_target"
     }
 }
 

@@ -61,7 +61,7 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   Trailing ` :id`/` ^id` tokens use `project_task_block_id` completion intent
   `new`, `project_task_link_marker`/`project_task_block_id` spans, and
   `project_note.task_links`. Offer JSON adds `project_note.form: "offer"` and
-  `project_note.successors` with Pull-In keys. Picked rows also enter
+  `project_note.successors` with Pull-In keys. Picked rows enter
   `task_links`; count them once as Linked, never again as pulled-in successors.
   Either separator plus seal uses existing `project_note` completion intent;
   new intents would be misread as `link` by older Macs.
@@ -77,7 +77,7 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   groups, and picker descriptor) and `wikilink_replacement` on `capture-task-id`
   results.
   Go To and Command-\ today-Pomodoro landing and Bob Refs Control-Return
-  also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0**.
+  require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0**.
   Control-Return landing via `obsidian://bob-open-notes` needs
   **bob-navigation-hotkeys ≥ 2.44.1**.
   Missing `pomodoro_start`/`pomodoro_close` omits its card; missing summary arrays
@@ -111,7 +111,7 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   positional entries get none; `capture-parse` omits `log[].index` for
   entries `bob capture` resolves against the running session, and the
   app decodes a missing index as nil. Entry and detail text keeps wikilink
-  spans but is otherwise neutral prose, and a dangling bullet reports mode
+  spans but is neutral prose, and a dangling bullet reports mode
   `incomplete` with a `pomodoro_close_log_text` need and an
   `interactive_placeholder` span instead of an error.
   Inline entries require a bob that understands them; an older bob reports
@@ -120,19 +120,19 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   without them, so the card shows only the capped `work_log` previews. A
   parked (`*<P>`) close records normal In Progress work without carrying
   those links forward; parked rows keep readable, unstruck, undimmed text
-  with their actual transition, a `pause.circle` accent, and VoiceOver
+  with their transition, a `pause.circle` accent, and VoiceOver
   naming the hold. The summary groups `Continue`, `Parked`, `Complete`,
-  `Deferred`, and `Dropped` in that order; `Continue` means ordinary
+  `Deferred`, and `Dropped` in that order; `Continue` means
   worked links carried onward and never names a task status. A dropped
   (`~<K>`) close removes those links from today without carrying or
   starting them; the card strikes and dims dropped rows and adds a
   "stays <status>" caption naming the lane each task keeps. The
-  `x*`/`x!` all-task selection behavior requires the corresponding updated
-  Bob executable. With an older Bob, the app displays that Bob's actual
+  `x*`/`x!` all-task selection behavior requires an updated
+  Bob executable. With an older Bob, the app displays Bob's
   preview and submits the untouched draft through one Bob capture call; it
   never parses selection lists in Swift or simulates the new behavior. The
   app keeps schema-version rejection unchanged. A whole-item `=`/`=<X>`
-  start reports the same numbered lineup: per-row `index` in the capture
+  start reports the numbered lineup: per-row `index` in the capture
   summary, a `drop` list on the parse spec and capture summary, and removed
   rows in `dropped` with their `index`, pre-image `ledger_line`, and
   `nested_lines` count; a trailing `~<K>` adds a muted-gray
@@ -140,22 +140,22 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   `incomplete` with a `pomodoro_start_task` need and an
   `interactive_placeholder` span instead of an error. A start summary
   missing `drop`, `dropped`, `index`, or `nested_lines` still previews as
-  today's unnumbered card: no drop, no badges, and no drop hint or summary.
+  an unnumbered card: no drop, no badges, and no drop hint or summary.
   `toggle_direction` is `link` or `unlink` with `status_changed` on every
   result: linking shows the added link with `set Next`, `stays Next`, or
   `stays In Progress`, and unlinking shows the removed-link count with
   `stays <status>`. Older Bob builds that send `next`/`open` still decode to
   the same Set Next/Open footers. The app labels
-  actions and notifications from Bob's returned behavior metadata, so a response
+  actions and notifications from Bob's behavior metadata; a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
-  never Ensure Next. Captures that change today's `## Pomodoros` section also
+  never Ensure Next. Captures that change today's `## Pomodoros` section
   report a top-level `plan_budget` object with a before/after link meter and
   link-cap warnings that fire only while the batch grows the meter past its cap;
   the same destination carries a `role` of `current`, `next_up`, `named`, or
   `created`. The daily plan caps Task Links only, so the app shows no type
-  meter, type delta, or type-cap badge or hint; an older Bob's `themes` meter,
+  meter, delta, or type-cap badge or hint; an older Bob's `themes` meter,
   `added_themes`, `plan_themes_after`/`plan_themes_cap`, `plan_theme_cap_exceeded`
-  warnings, and refusals are decoded as absent or ignored. `plan_budget` also
+  warnings, and refusals are decoded as absent or ignored. `plan_budget`
   carries `added_theme_refs`, the hue refs for the added names: created
   destination, start, toggle, and project-note rows wear theme pills.
   `pomodoro_name` and `task_toggle_pomodoro_name` spans, agenda entries,
@@ -165,16 +165,16 @@ Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
   contract](https://bobs-org.github.io/pomodoro-themes/). An older Bob
   that omits `plan_budget`, `role`, `added_theme_refs`, span or entry
   `themes`, or `code` still previews and captures; the Mac app decodes each
-  as absent and renders the destination row as `→ NAME`, omitting only the
-  TODAY badge and the theme tints. A trailing `#now` tag is an ordinary trailing-tag error, and `#now`
+  as absent and renders the destination row as `→ NAME`, omitting the
+  TODAY badge and theme tints. A trailing `#now` tag is a trailing-tag error; `#now`
   before the route is plain body text. The `^` picker lists In Progress and
-  Next tasks only. An older Bob that still sends the `now` flag, `now_tag`
+  Next tasks only. An older Bob that sends the `now` flag, `now_tag`
   span or context, or `now` group still previews and captures; the app
   decodes unknown spans neutrally, unknown contexts as generic rows, and
   unknown groups as `note`. Saving links to the reading queue needs a Bob that
   emits the `ref` capture kind with the additive `ref` object, `ref` parse
   mode, and the `ref_url` span. An older Bob keeps capturing a bare link as
-  an ordinary inbox task. Filing a link needs a Bob that resolves the
+  an inbox task. Filing a link needs a Bob that resolves the
   canonical parent: the additive `ref.parent` object (`route`, `label`,
   `kind`, `source`, `alias`) on capture results, `ref_parent` (`token`,
   `source`) on `capture-parse` `ref` items, and `project_name_aliases` on
@@ -255,7 +255,7 @@ Required commands must exist; otherwise their feature hides or Bob refuses:
 - `capture-complete --all-tasks [--closed-tasks] [--next-missing-field] [--record-field KEY] --cursor BYTE --format json` (candidates; records add `record` and `continuation`)
 - `capture-rewrite --cursor BYTE --format json` (marker and separator rewrites, relation-label attachment, sigil aliases including item-start/spaced `.` → `@`/`&` and `;` → `:`/`*`, template start)
 - `capture --dry-run [--no-clip] --format json` (live preview; `--no-clip` omitted unless the accepted parse has a `%c` span) and `capture --format json` (submit)
-- `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` also reports the bound and supplies the running count for older-bob fallback
+- `capture-pomodoros --format json --tasks` (agenda, counts, landing, `max_task_link_count`); plain `capture-pomodoros` reports the bound and supplies the running count for older-bob fallback
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
 - `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row lacks an `added` date or git instant)
@@ -292,7 +292,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `block_id` object, `picker` descriptor, `parent_replacement`, Parent Task continuation metadata, `pomodoro_start_name` context
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
-- `headline` on `capture-pomodoros --tasks` (today's Daily Headline display text)
+- `headline`, `snoozed` (`rows`, `next_wake_at`), item `woke_at` / `snoozed_target` on `capture-pomodoros --tasks` (headline text; Later today band with wake provenance); `snooze` takes the schedule tint
 - `walks` `counts` (s=`walk`, legacy fallback=`commitments`; w=`excess`; b=`waiting`), `tier`/`label`/`reason`; unknown families ignored
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `mail_close` on success
@@ -365,7 +365,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `vault-sync -q` | Background Refs pull | Pull failure is logged only; list stays | Upgrade `bob` for pull |
 | `marker_id` | Copy-card `I` row | `I` asks for a newer `bob`; other copy rows still work | Upgrade `bob` for marker IDs |
 | `open_notes` | Control-Return lands on captured lines | Tabs open without landing | Upgrade `bob`; needs plugin 2.44.1+ |
-| `headline` on `capture-pomodoros --tasks` | Headline row under the Today title | No headline row; agenda otherwise unchanged | Upgrade `bob` for the headline |
+| `headline`, `snoozed`, `woke_at` / `snoozed_target`, `snooze` | Headline row; Later today band with woken accents; `z:` schedule tint | Neither row nor band; neutral `z:` | Upgrade `bob` |
 | `bob walks` | s/w/b title-row marks | No marks, nothing else changes | Upgrade `bob` |
 | `--tasks` on `capture-pomodoros` | Agenda, counts, `=name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
 | `pomodoro_start_name` | Start list for `=name` | No rows | Upgrade `bob` |
