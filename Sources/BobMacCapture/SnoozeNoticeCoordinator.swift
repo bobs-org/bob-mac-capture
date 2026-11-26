@@ -365,6 +365,10 @@ final class SnoozeNoticeCoordinator {
             diagnose("ignoring \(receipt.wakeID): channel \(channel)")
             return
         }
+        guard isCapable != false else {
+            diagnose("ignoring \(receipt.wakeID): Bob does not support wake notices")
+            return
+        }
         let today = todayProvider()
         if handledStore.contains(receipt.wakeID, day: today) {
             diagnose("ignoring duplicate \(receipt.wakeID)")
@@ -481,8 +485,13 @@ final class SnoozeNoticeCoordinator {
                 if let retryAfter = fetchRetryAfter, now < retryAfter {
                     earliestRecheck = min(earliestRecheck ?? retryAfter, retryAfter)
                 } else if verificationNeedsFetch {
-                    if let verifyAfter, now < verifyAfter {
-                        earliestRecheck = min(earliestRecheck ?? verifyAfter, verifyAfter)
+                    if let verifyAfter {
+                        if now < verifyAfter {
+                            earliestRecheck = min(earliestRecheck ?? verifyAfter, verifyAfter)
+                        } else {
+                            self.verifyAfter = nil
+                            fetchVerification()
+                        }
                     } else if recheckAt > now {
                         verifyAfter = recheckAt
                         earliestRecheck = min(earliestRecheck ?? recheckAt, recheckAt)

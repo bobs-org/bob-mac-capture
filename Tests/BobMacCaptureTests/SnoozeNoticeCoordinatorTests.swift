@@ -7,10 +7,17 @@ import XCTest
 @MainActor
 final class SnoozeNoticeCoordinatorTests: XCTestCase {
     private final class FakeClock: @unchecked Sendable {
-        var now: Date
+        private let baseNow: Date
+        private let baseUptime: TimeInterval
         var today: String
+
+        var now: Date {
+            baseNow.addingTimeInterval(ProcessInfo.processInfo.systemUptime - baseUptime)
+        }
+
         init(now: Date, today: String) {
-            self.now = now
+            baseNow = now
+            baseUptime = ProcessInfo.processInfo.systemUptime
             self.today = today
         }
     }
