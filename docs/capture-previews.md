@@ -155,8 +155,11 @@ A sub-bullet filed in a task drawer (`Text @foo+bar#notes`) shows
 `Sub-bullet under ^bar › Requirements` above the task card, keeping Bob's
 case. `created` adds a dashed **new drawer** capsule. A `#type` on the same
 item retypes the task, so Bob's `Type` row renders beneath the header.
-Annotated headers show outline `tray` plus the verbatim title; empty mutes.
-Legacy ALL-CAPS keeps its spelling everywhere.
+A header Bob annotates as a drawer shows the outline `tray` plus the
+verbatim title, semibold, with no `**`; `empty` mutes both and removed
+keeps the strike and dim. VoiceOver names drawer, title, change, and
+`empty`; copy keeps the title. Unknown markers render the same; badge
+rows keep theirs. Legacy ALL-CAPS keeps its spelling everywhere.
 
 ## Batch drafts and authored children
 

@@ -206,6 +206,55 @@ final class CaptureDrawerAnnotationTests: XCTestCase {
         XCTAssertEqual(mergeIn.destination.containerLabel, "› Perf Budget")
     }
 
+    func testDrawerHeaderBranchIsKeyedOnlyOnTheAnnotation() {
+        let drawer = CaptureDrawerAnnotation(
+            title: "Perf Budget", key: "PERF BUDGET", marker: .bold, empty: false)
+        func row(
+            drawer: CaptureDrawerAnnotation? = drawer,
+            req: CaptureRequirementAnnotation? = nil,
+            isRelationSuccessor: Bool = false,
+            isKeepMoving: Bool = false,
+            isUnblocked: Bool = false,
+            change: CapturePomodoroBlockChange = .added
+        ) -> CaptureBlockDiffRow {
+            CaptureBlockDiffRow(
+                content: "- **Perf Budget**",
+                depth: 1,
+                change: change,
+                isHeadline: false,
+                tokens: [],
+                isUnblocked: isUnblocked,
+                isKeepMoving: isKeepMoving,
+                isRelationSuccessor: isRelationSuccessor,
+                req: req,
+                drawer: drawer
+            )
+        }
+
+        XCTAssertTrue(row().showsDrawerHeader)
+        // An unannotated row, including a bold ordinary note, never takes it.
+        XCTAssertFalse(row(drawer: nil).showsDrawerHeader)
+        // Badge rows keep their current precedence even when annotated.
+        let req = CaptureRequirementAnnotation(depth: 1, state: .pending)
+        XCTAssertFalse(row(req: req).showsDrawerHeader)
+        XCTAssertFalse(row(isRelationSuccessor: true).showsDrawerHeader)
+        XCTAssertFalse(row(isKeepMoving: true).showsDrawerHeader)
+        XCTAssertFalse(row(isUnblocked: true).showsDrawerHeader)
+        // A removed annotated row still takes the branch: the card strikes it.
+        XCTAssertTrue(row(change: .removed).showsDrawerHeader)
+        // Empty and unknown markers take the same conservative branch.
+        XCTAssertTrue(
+            row(drawer: CaptureDrawerAnnotation(
+                title: "Drafts", key: "DRAFTS", marker: .bold, empty: true
+            )).showsDrawerHeader
+        )
+        XCTAssertTrue(
+            row(drawer: CaptureDrawerAnnotation(
+                title: "Someday", key: "SOMEDAY", marker: .unknown, empty: false
+            )).showsDrawerHeader
+        )
+    }
+
     private func replacingDrawer(in object: [String: Any], value: String) -> [String: Any] {
         var result = object
         guard var merges = result["merges"] as? [[String: Any]],

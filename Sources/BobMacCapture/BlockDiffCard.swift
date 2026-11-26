@@ -5,8 +5,9 @@ import SwiftUI
 /// Shared batch-level block diff card: a status rail, a diff gutter, indent
 /// guides, change washes, and verbatim tinted lines. Every line is exactly
 /// what Bob will write; annotated requirement checkboxes display as diamonds,
-/// and rows wrap instead of truncating. No animation; the pane updates on
-/// every keystroke.
+/// rows Bob annotates as drawers show an outline tray plus the verbatim
+/// title, and rows wrap instead of truncating. No animation; the pane updates
+/// on every keystroke.
 struct BlockDiffCard: View {
     /// Fixed gutter carrying the diff glyph.
     private static let gutterWidth: CGFloat = 12
@@ -252,6 +253,8 @@ struct BlockDiffCard: View {
             }
             .help("Unblocked successor")
             .textSelection(.enabled)
+        } else if row.showsDrawerHeader, let drawer = row.drawer {
+            drawerHeaderRow(row, annotation: drawer)
         } else if row.change == .removed {
             // A removed line reads uniformly: struck, secondary, dimmed.
             Text(row.content)
@@ -263,6 +266,62 @@ struct BlockDiffCard: View {
         } else {
             diffText(row)
         }
+    }
+
+    /// A Bob-annotated drawer header: the outline tray plus the verbatim
+    /// title, semibold in the section color and muted while Bob reports the
+    /// drawer empty. The raw `**` never renders and the title never derives
+    /// from row text. Indent guides, the diff gutter, and the change wash
+    /// come from the shared row stack; a removed header keeps the card's
+    /// strike-and-dim. Only the title `Text` is selectable, so copy keeps
+    /// the verbatim title and the glyph never enters copied text. An
+    /// `.unknown` marker renders the same conservative tray-plus-title.
+    private func drawerHeaderRow(
+        _ row: CaptureBlockDiffRow, annotation: CaptureDrawerAnnotation
+    ) -> some View {
+        let removed = row.change == .removed
+        let tint = CaptureEditorPalette.drawerHeaderColor(empty: annotation.empty)
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "tray")
+                .font(.caption2)
+                .foregroundStyle(removed ? .secondary : tint)
+                .accessibilityHidden(true)
+            Text(annotation.title)
+                .font(.system(.callout, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundStyle(removed ? .secondary : tint)
+                .strikethrough(removed)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .opacity(removed ? 0.55 : 1)
+        .textSelection(.enabled)
+        .help(drawerHelp(for: row, annotation: annotation))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(drawerAccessibilityLabel(for: row, annotation: annotation))
+    }
+
+    /// Tooltip naming the drawer. A changed header also names what Bob is
+    /// replacing, since this inner help shadows the row stack's "Was" help.
+    private func drawerHelp(
+        for row: CaptureBlockDiffRow, annotation: CaptureDrawerAnnotation
+    ) -> String {
+        let named = "Drawer \(annotation.title)"
+        if row.change == .changed, let before = row.beforeContent, !before.isEmpty {
+            return "\(named) — Was: \(before)"
+        }
+        return named
+    }
+
+    /// VoiceOver names the drawer, its change, and Bob's empty flag. Note
+    /// counts stay out: Bob does not send them.
+    private func drawerAccessibilityLabel(
+        for row: CaptureBlockDiffRow, annotation: CaptureDrawerAnnotation
+    ) -> String {
+        var parts = ["Drawer", annotation.title, row.change.rawValue]
+        if annotation.empty {
+            parts.append("empty")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func requirementRow(

@@ -43,6 +43,23 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         }
     }
 
+    /// Whether BlockDiffCard paints this row as a drawer header (outline
+    /// tray plus Bob's verbatim title) instead of the verbatim line. Keyed
+    /// only on Bob's `drawer` annotation: an unannotated row, including a
+    /// bold ordinary note, never takes this branch. Rows with a requirement,
+    /// relation-successor, keep-moving, or unblocked badge keep their current
+    /// precedence and render as today even when annotated, so those badges
+    /// never lose to the tray. A removed annotated row still takes this
+    /// branch; the card strikes and dims it like any other removed row.
+    /// `.unknown` markers take it too: the tray plus the verbatim title is
+    /// the conservative render, and the row's other context is unchanged.
+    public var showsDrawerHeader: Bool {
+        guard drawer != nil else { return false }
+        if req != nil { return false }
+        if isRelationSuccessor || isKeepMoving || isUnblocked { return false }
+        return true
+    }
+
     public init(
         content: String,
         depth: Int,

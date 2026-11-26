@@ -74,6 +74,14 @@ enum CaptureEditorPalette {
         Color.teal.opacity(increaseContrast ? 0.28 : 0.16)
     }
 
+    /// Drawer header ink in the preview pane: the section purple, muted to
+    /// secondary while Bob reports the drawer empty. Removed rows dim
+    /// through the card's own strike-and-dim instead. Never derives task
+    /// type or state from Markdown; the annotation alone picks this color.
+    static func drawerHeaderColor(empty: Bool) -> Color {
+        empty ? .secondary : color(for: .section)
+    }
+
     static func color(for category: CaptureSemanticCategory) -> Color {
         switch category {
         case .route:
