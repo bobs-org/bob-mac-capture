@@ -115,19 +115,24 @@ public struct SnoozeWakeNoticeBatch: Equatable, Sendable {
     public let date: String
     public let rows: [SnoozeWakeListRow]
     public let vaultRoot: String?
+    /// The original receipt facts stay attached so presentation can show
+    /// wake provenance without trusting stale row copy.
+    public let receiptTasks: [SnoozeWakeReceiptTask]
 
     public init(
         wakeID: String,
         wokenAt: Date,
         date: String,
         rows: [SnoozeWakeListRow],
-        vaultRoot: String?
+        vaultRoot: String?,
+        receiptTasks: [SnoozeWakeReceiptTask] = []
     ) {
         self.wakeID = wakeID
         self.wokenAt = wokenAt
         self.date = date
         self.rows = rows
         self.vaultRoot = vaultRoot
+        self.receiptTasks = receiptTasks
     }
 
     public var identityKeys: [String] {
@@ -290,12 +295,22 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         case .empty:
             return .drop(reason: .emptyVerification)
         case .verified(let eligible):
-            let matching = eligible.filter { row in
-                row.identityKey.flatMap { key in
-                    receipt.tasks.contains { $0.identityKey == key } ? key : nil
-                } != nil
+            let rowsByIdentity = Dictionary(
+                eligible.compactMap { row in row.identityKey.map { ($0, row) } },
+                uniquingKeysWith: { first, _ in first }
+            )
+            let usable = receipt.tasks.compactMap { task -> SnoozeWakeListRow? in
+                guard let key = task.identityKey,
+                    let row = rowsByIdentity[key],
+                    let target = task.target,
+                    let wokeAt = task.wokeAt,
+                    row.target == target,
+                    row.wokeAt == wokeAt
+                else {
+                    return nil
+                }
+                return row
             }
-            let usable = matching.isEmpty ? eligible : matching
             guard !usable.isEmpty else {
                 return .drop(reason: .noEligibleTasks)
             }
@@ -307,7 +322,8 @@ public struct SnoozeWakeNoticePolicy: Sendable {
                     wokenAt: wokenAt,
                     date: receipt.date,
                     rows: usable,
-                    vaultRoot: receipt.vaultRoot
+                    vaultRoot: receipt.vaultRoot,
+                    receiptTasks: receipt.tasks
                 ))
         }
     }

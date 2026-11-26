@@ -75,23 +75,18 @@ public final class RefsGlassToastController {
 
     /// Places a centered copy toast at the center of `host`.
     public static func frame(centeredOn host: NSRect, size: NSSize) -> NSRect {
-        NSRect(
-            x: host.midX - size.width / 2,
-            y: host.midY - size.height / 2,
-            width: size.width,
-            height: size.height
-        )
+        GlassPanelHost.frame(size: size, placement: .centered(on: host))
     }
 
     /// The toast's bottom edge sits 14 pt above the panel footer.
     public static func frame(aboveFooterOf host: NSRect, size: NSSize) -> NSRect {
-        let bottom = host.minY + RefsVisualTokens.outerPadding
-            + RefsVisualTokens.footerHeight + 14
-        return NSRect(
-            x: host.midX - size.width / 2,
-            y: bottom,
-            width: size.width,
-            height: size.height
+        GlassPanelHost.frame(
+            size: size,
+            placement: .aboveFooter(
+                of: host,
+                footerHeight: RefsVisualTokens.footerHeight,
+                outerPadding: RefsVisualTokens.outerPadding
+            )
         )
     }
 
@@ -108,21 +103,7 @@ public final class RefsGlassToastController {
             backing: .buffered,
             defer: false
         )
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.collectionBehavior = [
-            .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .transient,
-            .ignoresCycle,
-        ]
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.isMovableByWindowBackground = false
-        panel.ignoresMouseEvents = true
+        GlassPanelHost.configure(panel, interaction: .passThrough)
         return panel
     }
 
@@ -254,7 +235,8 @@ public final class RefsGlassToastController {
         installContent(hostingView, size: size, in: panel)
         let targetFrame = frame(size)
         let animateRise = rises && !reduceMotion()
-        let startFrame = animateRise
+        let startFrame =
+            animateRise
             ? targetFrame.offsetBy(dx: 0, dy: -6) : targetFrame
         panel.setFrame(startFrame, display: true)
         panel.alphaValue = 0
@@ -300,19 +282,14 @@ public final class RefsGlassToastController {
         size: NSSize,
         in panel: RefsGlassToastPanel
     ) {
-        hostingView.frame = NSRect(origin: .zero, size: size)
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
-            hostingView.wantsLayer = true
-            hostingView.layer?.cornerRadius = 24
-            hostingView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-            panel.contentView = hostingView
-            return
-        }
-        let glass = NSGlassEffectView()
-        glass.cornerRadius = size.height / 2
-        glass.contentView = hostingView
-        glass.frame = NSRect(origin: .zero, size: size)
-        panel.contentView = glass
+        GlassPanelHost.install(
+            content: hostingView,
+            size: size,
+            in: panel,
+            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+            opaqueCornerRadius: 24,
+            glassCornerRadius: size.height / 2
+        )
     }
 }
 

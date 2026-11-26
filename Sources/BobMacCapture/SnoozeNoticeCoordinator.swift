@@ -54,6 +54,7 @@ final class SnoozeNoticeCoordinator {
 
     var onPresent: (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation) -> Void = { _, _ in }
     var onDismiss: (String) -> Void = { _ in }
+    var onTransientDismiss: (String) -> Void = { _ in }
     var onQueueChanged: (Int, Int) -> Void = { _, _ in }
     var onDiagnostic: (String) -> Void = { _ in }
     var isPanelOpen: () -> Bool = { false }
@@ -78,6 +79,8 @@ final class SnoozeNoticeCoordinator {
     private var isCapable: Bool?
     private var pending: [PendingEntry] = []
     private var delivered: [DeliveredEntry] = []
+    private var suppressedDeliveredWakeIDs: Set<String> = []
+    private var deliveredSettleDeadline: Date?
     private var verification: SnoozeWakeVerification = .unverified
     private var verifyAfter: Date?
     private var fetchInFlight = false
@@ -176,8 +179,13 @@ final class SnoozeNoticeCoordinator {
         observer.stop()
         presenceSource.stop()
         claim.relinquish()
+        for entry in delivered {
+            onTransientDismiss(entry.batch.wakeID)
+        }
         pending = []
         delivered = []
+        suppressedDeliveredWakeIDs = []
+        deliveredSettleDeadline = nil
         verification = .unverified
         fetchInFlight = false
         wasHeld = false
@@ -246,6 +254,8 @@ final class SnoozeNoticeCoordinator {
             onDismiss(entry.batch.wakeID)
         }
         delivered = []
+        suppressedDeliveredWakeIDs = []
+        deliveredSettleDeadline = nil
         emitQueueChanged()
     }
 
@@ -256,9 +266,57 @@ final class SnoozeNoticeCoordinator {
             return
         }
         let entry = delivered.remove(at: index)
+        suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
         handledStore.acknowledge(entry.batch.wakeID, day: todayProvider())
         policy.markHandled(entry.batch.wakeID, day: todayProvider())
         onDismiss(entry.batch.wakeID)
+        onTransientDismiss(entry.batch.wakeID)
+        emitQueueChanged()
+    }
+
+    /// Removes tasks Bob confirmed as re-snoozed (or which no longer
+    /// match the verified wake). A partially remaining batch stays live.
+    func removeDeliveredTasks(wakeID: String, keys: [String]) {
+        guard let index = delivered.firstIndex(where: { $0.batch.wakeID == wakeID }),
+            !keys.isEmpty
+        else {
+            return
+        }
+        let removed = Set(keys)
+        let entry = delivered[index]
+        let rows = entry.batch.rows.filter { row in
+            guard let key = row.identityKey else { return false }
+            return !removed.contains(key)
+        }
+        if rows.isEmpty {
+            delivered.remove(at: index)
+            suppressedDeliveredWakeIDs.remove(wakeID)
+            handledStore.acknowledge(wakeID, day: todayProvider())
+            policy.markHandled(wakeID, day: todayProvider())
+            onDismiss(wakeID)
+        } else {
+            let batch = SnoozeWakeNoticeBatch(
+                wakeID: entry.batch.wakeID,
+                wokenAt: entry.batch.wokenAt,
+                date: entry.batch.date,
+                rows: rows,
+                vaultRoot: entry.batch.vaultRoot,
+                receiptTasks: entry.batch.receiptTasks
+            )
+            let presentation = SnoozeWakeNoticePresentation(
+                batch: batch,
+                listBudget: entry.presentation.listBudget,
+                announcement: entry.presentation.announcement
+            )
+            delivered[index] = DeliveredEntry(
+                batch: batch,
+                presentation: presentation,
+                deliveredAt: entry.deliveredAt
+            )
+            if !suppressedDeliveredWakeIDs.contains(wakeID) {
+                onPresent(batch, presentation)
+            }
+        }
         emitQueueChanged()
     }
 
@@ -346,6 +404,41 @@ final class SnoozeNoticeCoordinator {
         let events = agendaEventsProvider()
         presenceSource.setIdlePollingActive(!pending.isEmpty)
         var earliestRecheck: Date?
+        let deliveryHeld = currentDeliveryIsHeld(
+            presence: presence,
+            events: events,
+            settings: settings,
+            now: now,
+            bobNow: lastListNow
+        )
+        if deliveryHeld {
+            for entry in delivered
+            where suppressedDeliveredWakeIDs.insert(entry.batch.wakeID).inserted {
+                onTransientDismiss(entry.batch.wakeID)
+            }
+            deliveredSettleDeadline = nil
+        } else if !suppressedDeliveredWakeIDs.isEmpty {
+            if deliveredSettleDeadline == nil {
+                deliveredSettleDeadline = now.addingTimeInterval(settleDelaySeconds)
+                verification = .unverified
+                requestAgendaRefresh()
+            }
+            if let deadline = deliveredSettleDeadline, now < deadline {
+                earliestRecheck = min(earliestRecheck ?? deadline, deadline)
+            } else if let retryAfter = fetchRetryAfter, now < retryAfter {
+                earliestRecheck = min(earliestRecheck ?? retryAfter, retryAfter)
+            } else if verificationNeedsFetch {
+                fetchVerification()
+            } else if case .verified = verification {
+                restoreSuppressedDeliveries(
+                    presence: presence,
+                    events: events,
+                    settings: settings,
+                    now: now,
+                    bobNow: lastListNow
+                )
+            }
+        }
         var dropping: [PendingEntry] = []
         var isHeld = false
         for entry in Array(pending) {
@@ -436,6 +529,9 @@ final class SnoozeNoticeCoordinator {
         heldReasonText = nil
         lastVerificationText = "verified(\(batch.rows.count))"
         onPresent(batch, presentation)
+        if isPanelOpen() {
+            acknowledgePanelOpen()
+        }
         emitQueueChanged()
     }
 
@@ -468,9 +564,14 @@ final class SnoozeNoticeCoordinator {
         }
         for entry in expired {
             delivered.removeAll(where: { $0.batch.wakeID == entry.batch.wakeID })
+            suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
             onDismiss(entry.batch.wakeID)
+            onTransientDismiss(entry.batch.wakeID)
+        }
+        if suppressedDeliveredWakeIDs.isEmpty {
+            deliveredSettleDeadline = nil
         }
         if !expired.isEmpty {
             emitQueueChanged()
@@ -486,10 +587,13 @@ final class SnoozeNoticeCoordinator {
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
             onDismiss(entry.batch.wakeID)
+            onTransientDismiss(entry.batch.wakeID)
         }
         let hadWork = !pending.isEmpty || !delivered.isEmpty
         pending = []
         delivered = []
+        suppressedDeliveredWakeIDs = []
+        deliveredSettleDeadline = nil
         verification = .unverified
         verifyAfter = nil
         wasHeld = false
@@ -505,9 +609,12 @@ final class SnoozeNoticeCoordinator {
         policy.invalidate()
         for entry in delivered {
             onDismiss(entry.batch.wakeID)
+            onTransientDismiss(entry.batch.wakeID)
         }
         pending = []
         delivered = []
+        suppressedDeliveredWakeIDs = []
+        deliveredSettleDeadline = nil
         verification = .unverified
         verifyAfter = nil
         fetchRetryAfter = nil
@@ -586,6 +693,7 @@ final class SnoozeNoticeCoordinator {
                 verification = .failed(reason: "unsupported")
                 dropAllPendingUnsupported(today: today)
             }
+            revalidateSuppressedDeliveries(response: response, today: today)
         case .failure(let error):
             if let clientError = error as? BobClientError,
                 case .unsupportedCommand = clientError
@@ -658,6 +766,107 @@ final class SnoozeNoticeCoordinator {
 
     private func emitQueueChanged() {
         onQueueChanged(pending.count, delivered.count)
+    }
+
+    private func currentDeliveryIsHeld(
+        presence: SnoozeWakePresence,
+        events: CaptureAgendaEvents?,
+        settings: SnoozeWakeNoticeSettings,
+        now: Date,
+        bobNow: String?
+    ) -> Bool {
+        (settings.holdWhileAway && presence.isAway)
+            || (settings.holdDuringMeetings
+                && SnoozeWakeNoticePolicy.runningMeetingEnd(
+                    events: events,
+                    now: now,
+                    bobNow: bobNow
+                ) != nil)
+    }
+
+    private func revalidateSuppressedDeliveries(
+        response: SnoozeWakeListResponse, today: String
+    ) {
+        guard !suppressedDeliveredWakeIDs.isEmpty else { return }
+        let configuredRoot = URL(fileURLWithPath: configuredVaultRoot, isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath().path
+        guard response.supportsWakeNotice, response.date == today,
+            let responseRoot = response.vaultRoot,
+            URL(fileURLWithPath: responseRoot, isDirectory: true)
+                .standardizedFileURL.resolvingSymlinksInPath().path == configuredRoot
+        else {
+            let staleIDs = Array(suppressedDeliveredWakeIDs)
+            for wakeID in staleIDs {
+                acknowledgeDelivered(wakeID: wakeID)
+            }
+            return
+        }
+        let eligible = Dictionary(
+            response.eligibleRows.compactMap { row in row.identityKey.map { ($0, row) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for entry in delivered where suppressedDeliveredWakeIDs.contains(entry.batch.wakeID) {
+            let rows = entry.batch.rows.filter { old in
+                guard let key = old.identityKey, let fresh = eligible[key] else { return false }
+                return old.target == fresh.target && old.wokeAt == fresh.wokeAt
+                    && old.route == fresh.route && old.blockID == fresh.blockID
+            }
+            if rows.isEmpty {
+                acknowledgeDelivered(wakeID: entry.batch.wakeID)
+                continue
+            }
+            guard rows != entry.batch.rows,
+                let index = delivered.firstIndex(where: { $0.batch.wakeID == entry.batch.wakeID })
+            else {
+                continue
+            }
+            let batch = SnoozeWakeNoticeBatch(
+                wakeID: entry.batch.wakeID,
+                wokenAt: entry.batch.wokenAt,
+                date: entry.batch.date,
+                rows: rows,
+                vaultRoot: entry.batch.vaultRoot,
+                receiptTasks: entry.batch.receiptTasks
+            )
+            let presentation = SnoozeWakeNoticePresentation(
+                batch: batch,
+                listBudget: entry.presentation.listBudget,
+                announcement: entry.presentation.announcement
+            )
+            delivered[index] = DeliveredEntry(
+                batch: batch,
+                presentation: presentation,
+                deliveredAt: entry.deliveredAt
+            )
+        }
+    }
+
+    private func restoreSuppressedDeliveries(
+        presence: SnoozeWakePresence,
+        events: CaptureAgendaEvents?,
+        settings: SnoozeWakeNoticeSettings,
+        now: Date,
+        bobNow: String?
+    ) {
+        guard
+            !currentDeliveryIsHeld(
+                presence: presence,
+                events: events,
+                settings: settings,
+                now: now,
+                bobNow: bobNow
+            )
+        else {
+            return
+        }
+        let entries = delivered.filter { suppressedDeliveredWakeIDs.contains($0.batch.wakeID) }
+        for entry in entries {
+            onPresent(entry.batch, entry.presentation)
+            suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
+        }
+        if suppressedDeliveredWakeIDs.isEmpty {
+            deliveredSettleDeadline = nil
+        }
     }
 
     private func diagnose(_ message: String) {

@@ -40,6 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
     private var snoozeWakeScheduler: SnoozeWakeScheduler?
+    private var snoozeNoticeCoordinator: SnoozeNoticeCoordinator?
+    private var snoozeWakeHUD: SnoozeWakeHUDController?
     private var walkAttentionStore: WalkAttentionStore?
     private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
@@ -276,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureRefsStack(signingState: signingState)
         configureVaultWatcher()
         observeBobSettings()
+        configureSnoozeWakeNotice()
         refreshTargetsWhenPossible(reason: .launch)
         CaptureSignpost.event("launch-complete")
         if BobMacCaptureLaunchContext.requestsInstallRestartNotification(
@@ -299,6 +302,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refsLibrary?.stop()
         vaultWatcher?.invalidate()
         snoozeWakeScheduler?.stop()
+        snoozeNoticeCoordinator?.stop()
+        snoozeWakeHUD?.dismiss()
         processClient?.cancelActiveProcess()
     }
 
@@ -515,7 +520,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureProcessClient() {
         do {
-            let override = settings.bobExecutableOverride.isEmpty ? nil : settings.bobExecutableOverride
+            let override =
+                settings.bobExecutableOverride.isEmpty ? nil : settings.bobExecutableOverride
             let resolved = try BobExecutableResolver().resolve(configuredOverride: override)
             let bobDirectory = settings.bobDirectory.isEmpty ? nil : settings.bobDirectory
             let environment = BobEnvironmentBuilder(bobDirectory: bobDirectory).build()
@@ -536,6 +542,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         eventNotePanelModel?.setProcessClient(processClient)
         meetingNotesPanelModel?.setProcessClient(processClient)
         updateStatusItemAppearance()
+    }
+
+    private func configureSnoozeWakeNotice() {
+        let vaultRoot = Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
+        let hud = SnoozeWakeHUDController(
+            processClient: { [weak self] in self?.processClient },
+            vaultRoot: { [weak self] in
+                guard let self else { return "" }
+                return Self.vaultRootURL(bobDirectory: self.settings.bobDirectory).path
+            },
+            refreshAgenda: { [weak self] in
+                self?.agendaStore?.refresh(reason: .snoozeWake)
+            },
+            chimeEnabled: { [weak self] in self?.settings.snoozeWakeChime ?? true }
+        )
+        let coordinator = SnoozeNoticeCoordinator(
+            claim: SnoozeWakeNotifierClaim(
+                claimURL: SnoozeWakeNotifierClaim.defaultClaimURL()
+            ),
+            processClient: processClient,
+            configuredVaultRoot: vaultRoot,
+            settings: { [weak self] in
+                self?.settings.snoozeWakeNoticeSettings ?? SnoozeWakeNoticeSettings()
+            },
+            agendaEvents: { [weak self] in
+                guard let self,
+                    self.agendaStore?.status == .ready,
+                    self.agendaStore?.snapshot?.date == CaptureAgendaStore.localToday()
+                else {
+                    return nil
+                }
+                return self.agendaStore?.snapshot?.events
+            },
+            requestAgendaRefresh: { [weak self] in
+                self?.agendaStore?.refresh(reason: .snoozeWake)
+            }
+        )
+        hud.onAcknowledge = { [weak coordinator] wakeID in
+            coordinator?.acknowledgeDelivered(wakeID: wakeID)
+        }
+        hud.onTasksRemoved = { [weak coordinator] wakeID, keys in
+            coordinator?.removeDeliveredTasks(wakeID: wakeID, keys: keys)
+        }
+        coordinator.onPresent = { [weak hud] batch, presentation in
+            hud?.show(batch: batch, presentation: presentation)
+        }
+        coordinator.onTransientDismiss = { [weak hud] _ in
+            hud?.dismissTransient()
+        }
+        coordinator.isPanelOpen = { [weak self] in
+            self?.panelController?.isVisible == true
+        }
+        self.snoozeWakeHUD = hud
+        self.snoozeNoticeCoordinator = coordinator
+        coordinator.start()
+        coordinator.attachPresenter()
+
+        Publishers.CombineLatest4(
+            settings.$snoozeWakeAnnounce,
+            settings.$snoozeWakeChime,
+            settings.$snoozeWakeHoldWhileAway,
+            settings.$snoozeWakeHoldDuringMeetings
+        )
+        .dropFirst()
+        .sink { [weak self] _, _, _, _ in
+            DispatchQueue.main.async {
+                self?.snoozeNoticeCoordinator?.notifySettingsChanged()
+            }
+        }
+        .store(in: &agendaCancellables)
+
+        if let agendaStore {
+            agendaStore.$snapshot
+                .combineLatest(agendaStore.$status)
+                .dropFirst()
+                .sink { [weak coordinator] _, _ in
+                    coordinator?.notifyAgendaChanged()
+                }
+                .store(in: &agendaCancellables)
+        }
     }
 
     // The menu-bar glyph is the only always-visible surface for an `LSUIElement` app,
@@ -897,7 +983,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         highlightsTakeover = takeover
         takeover.start()
         panelController?.onVisibilityChange = { [weak self] in
-            self?.highlightsTakeover?.sync()
+            guard let self else { return }
+            self.highlightsTakeover?.sync()
+            if self.panelController?.isVisible == true {
+                self.snoozeWakeHUD?.dismiss()
+                self.snoozeNoticeCoordinator?.acknowledgePanelOpen()
+            }
         }
 
         let saveMonitor = HighlightsSaveKeyMonitor(
@@ -1082,6 +1173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             panelController?.show()
         }
+        snoozeWakeHUD?.dismiss()
+        snoozeNoticeCoordinator?.acknowledgePanelOpen()
         // One refresh updates both the shared cache and the panel snapshot. Starting
         // the model refresh as well would launch two `capture-targets` processes in
         // the same cancellation lane every time the panel opens.
@@ -1206,6 +1299,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         snoozeWakeScheduler?.reconfigure(processClient: processClient)
         agendaStore?.processClient = processClient
         agendaStore?.reset()
+        snoozeNoticeCoordinator?.reconfigure(
+            processClient: processClient,
+            vaultRoot: Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
+        )
         walkAttentionStore?.processClient = processClient
         walkAttentionStore?.reset()
         configureVaultWatcher()
