@@ -1332,6 +1332,11 @@ private struct CapturePickerDetailStrip: View {
             let line = row.taskGotoDestination?.actionLine ?? "Task location unavailable"
             return Text(line).foregroundColor(.secondary)
         }
+        // A block-ID Go To browse row lands read-only like a `/` row; Tab
+        // (not Return) is the path that inserts, so the strip names opening.
+        if case .blockID = source, let destination = row.taskGotoDestination {
+            return Text(destination.actionLine).foregroundColor(.secondary)
+        }
         if source == .noteGoto {
             let line = model.pickerActionLine(for: row) ?? "Note location unavailable"
             return Text(line).foregroundColor(.secondary)

@@ -700,6 +700,10 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .taskGoto, .noteGoto, .linksTo, .linkedFrom:
             return nil
+        case .blockID(let context) where context.field?.goto?.eligible == true:
+            // Control-Return lands exactly like Return in the Go To browse:
+            // nothing is captured, so there is no capture-and-open hint.
+            return nil
         case .taskComplete:
             return ("⌃↩", "Complete & Open")
         default:
@@ -800,6 +804,14 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("esc", "Clear / Cancel"),
             ]
         case .blockID(let context):
+            if context.field?.goto?.eligible == true {
+                return [
+                    ("↑↓", "Move"),
+                    ("↩", "Open"),
+                    ("⇥", "Complete"),
+                    ("esc", "Clear / Cancel"),
+                ]
+            }
             if context.isNewIDMode {
                 return [
                     ("↑↓", "Move"),
@@ -873,6 +885,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .wikilinkTask(_):
             return "Picker keys: up and down to move, Return to insert the link, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .blockID(let context):
+            if context.field?.goto?.eligible == true {
+                return "Picker keys: up and down to move, Return or Control Return to open in Obsidian without writing, Tab to complete the ID, Escape to clear or cancel."
+            }
             if context.isNewIDMode {
                 return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Space to insert and keep typing, Escape to clear or cancel."
             }

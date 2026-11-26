@@ -11784,6 +11784,10 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
     /// opened on a nested line still writes the ID where the task ends. Older
     /// Bob omits it and the accept falls back to the `replacement` range.
     public let splice: CaptureBlockIDSplice?
+    /// Additive scoped-browse Go rows for a whole-draft `@route^` /
+    /// `@route^partial` (mac-browse). Older Bob omits the key; missing or
+    /// malformed decodes as nil and the card keeps today's composer.
+    public let goto: CaptureBlockIDGoto?
 
     public init(
         route: String,
@@ -11799,7 +11803,8 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         suggestions: [String] = [],
         used: [CaptureUsedBlockID] = [],
         ownerLine: Int? = nil,
-        splice: CaptureBlockIDSplice? = nil
+        splice: CaptureBlockIDSplice? = nil,
+        goto: CaptureBlockIDGoto? = nil
     ) {
         self.route = route
         self.relativeTarget = relativeTarget
@@ -11815,6 +11820,7 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         self.used = used
         self.ownerLine = ownerLine
         self.splice = splice
+        self.goto = goto
     }
 
     public init(from decoder: Decoder) throws {
@@ -11837,6 +11843,8 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         // A malformed splice must never break the picker: it decodes as nil and
         // the accept falls back to the ID-only `replacement` range.
         splice = (try? container.decodeIfPresent(CaptureBlockIDSplice.self, forKey: .splice)) ?? nil
+        // An old bob sends no `goto`: the picker keeps today's composer.
+        goto = (try? container.decodeIfPresent(CaptureBlockIDGoto.self, forKey: .goto)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -11854,6 +11862,51 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         case used
         case ownerLine = "owner_line"
         case splice
+        case goto
+    }
+}
+
+/// Additive scoped-browse payload on a `block_id` completion field: every
+/// uniquely identified block in the living note in document order, then the
+/// paired archive's unique blocks flagged `archived`. IDs that occur more
+/// than once are omitted; the parse card explains them. The rows are
+/// unfiltered; the Mac filters as it does `used`.
+public struct CaptureBlockIDGoto: Codable, Equatable, Sendable {
+    public let eligible: Bool
+    public let notePath: String
+    public let target: String
+    public let archivePath: String?
+    public let rows: [CaptureGotoRow]
+
+    public init(
+        eligible: Bool,
+        notePath: String = "",
+        target: String = "",
+        archivePath: String? = nil,
+        rows: [CaptureGotoRow] = []
+    ) {
+        self.eligible = eligible
+        self.notePath = notePath
+        self.target = target
+        self.archivePath = archivePath
+        self.rows = rows
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eligible = try container.decodeIfPresent(Bool.self, forKey: .eligible) ?? false
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        target = try container.decodeIfPresent(String.self, forKey: .target) ?? ""
+        archivePath = try container.decodeIfPresent(String.self, forKey: .archivePath)
+        rows = try container.decodeIfPresent([CaptureGotoRow].self, forKey: .rows) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case eligible
+        case notePath = "note_path"
+        case target
+        case archivePath = "archive_path"
+        case rows
     }
 }
 

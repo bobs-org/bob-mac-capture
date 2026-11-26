@@ -320,50 +320,49 @@ optionally, preserving responses from older Bob versions.
 Typing `.` or `;` immediately after `@route` uses Mac Capture's rewrite lane to
 type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
-  and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task
-  picker (`project_task_block_id` context),
-  the same large, fuzzy, keyboard-first picker language as `^`, and never the inline
-  list. Bob decides the intent and the app presents it: a marker-only `@route:` item
-  gets a Link picker that browses the note's linkable tasks grouped by the note's own
-  headings; every new-ID position (`@route^`, `@route:` on an item with text, either
-  marker followed by the project-note `@` seal, or a project-task ` :` / ` ^` token) gets a New ID composer with Bob's
-  suggestions from the task text, live availability against every ID already in the
-  note, a one-key "next free" alternative when an ID is taken, and similar existing
-  IDs for naming consistency. Bob supplies one snapshot (intent, candidates, every
-  used ID with what uses it, suggestions, the marker token range, and the ID grammar
-  as a one-character regex plus a human description); the app only filters locally,
-  checks exact case-sensitive membership in Bob's used-ID list, applies Bob's
-  character rule, and derives the `-2…-99` next-free variant validated by that rule.
-  Live preview after insert remains the final authority. The picker auto-opens only
-  on an edit that writes the `:` / `^` separator byte immediately before Bob's ID
-  part. “Writes” means that byte was changed since the last settled analysis, so a
-  fast `:rea` burst or a paste still counts. Backspace, Delete, and typing inside an
-  existing ID do not open the picker; other non-opening edits show the reopen chip.
-  The existing Link exact-candidate and Escape-suppression rules still apply, as does
-  the New ID rule that the part must be empty or the caret at its end. Reshowing the
-  panel with the picker open and pressing Tab on the chip still open the picker. A `task_block_id`
+  and a trailing ` :` / ` ^` on a project-note bullet opens the Project task
+  picker (`project_task_block_id` context) — the same large, fuzzy, keyboard-first
+  picker, never the inline list. A marker-only `@route:` item gets a Link picker over
+  the note's linkable tasks; every new-ID position (`@route^`, `@route:` on an item
+  with text, either marker plus the `@` seal, or a project-task token) gets a New ID
+  composer with text-based suggestions, live availability, a "next free" alternative,
+  and similar IDs. Bob supplies one snapshot (intent, candidates, used IDs,
+  suggestions, ranges, grammar); the app only filters locally. The picker auto-opens only on an edit that writes the `:` / `^`
+  separator byte just before Bob's ID part — a changed byte, so bursts and pastes
+  count. Backspace, Delete, and typing inside an existing ID never open it; other
+  non-opening edits show the reopen chip. Link keeps its exact-candidate and Escape
+  rules; New ID still needs an empty part or the caret at its end. Tab on the chip
+  reopens after a reshow. A `task_block_id`
   response without a `block_id` object is treated as no completion. Link refetches the
   full snapshot at the range start when the caret is past it; New ID needs no refetch.
-  Accept inserts the row's ID into Bob's range with the stale-draft guard, announces
-  `Inserted @route:id`, and runs an `.edit` analysis without completion;
-  Command-accept also captures, and a missing selection announces why instead of
-  inserting. A Project task prompt also carries Bob's `block_id.splice` and
-  `owner_line`: accept writes `before + ID + after` over the splice's range and puts
-  the caret at the end of what it wrote, so a prompt on a nested line puts the ID on
-  the owning task's line ([Capture lists](capture-lists.md)). A same-line splice is
-  the ID-only range, a Bob that sends none falls back to that range, and a
-  type-through remainder lands after the text the splice wrote. Undo follows the
-  same path as every other picker accept. In the New ID composer the field only ever holds ID characters: typing a
-  character outside Bob's allowed set (space, `#`, `=`, `@`, `+`, `.`, …) at the end of the
-  field commits the typed ID and keeps typing that character in the editor. A single
-  `.`, `^`, `:`, `+`, `;`, or `,` then goes through Bob's rewrite lane exactly as in the
-  editor; for example, `@sase:sase-gallery.` becomes `@sase^sase-gallery`, and
-  `@sase:sase-gallery,` becomes `@sase+sase-gallery`. Other
-  type-through characters keep their existing behavior, so `#` after a commit opens
-  `task_type` completion naturally. The Link picker keeps
+  When the draft is exactly `@route^` or `@route^partial` with no body text, a new Bob
+  sends an eligible `goto` payload and the card becomes a scoped Go To browse: a
+  "Go To · note" section of rows (status glyph, text, `^id` in indigo, `line N`),
+  then — once the typed ID is non-empty — an "Archived · archive" section. Rows
+  order exact, prefix, rest, so an exact match is
+  preselected; duplicates are omitted and no match
+  leaves one non-selectable mint-teaching row. Return, ⌘↩, ⌃↩, and click land
+  read-only via the Go To card's landing; Tab completes
+  the ID and leaves the found card. Body text at either edge reverts to the New ID
+  composer, whose taken row adds "— remove the text to go to it". Older Bob keeps
+  today's composer; `/` matches `route^id` like `route:block-id`.
+  Accept inserts the ID with the stale-draft guard, announces `Inserted @route:id`,
+  and runs an `.edit` analysis without completion; Command-accept also captures, and
+  a missing selection announces why. A Project task prompt also carries
+  `block_id.splice` and `owner_line`: accept writes `before + ID + after` over the
+  splice's range and puts the caret where it wrote, so a nested-line prompt puts the
+  ID on the owning task ([Capture lists](capture-lists.md)). A same-line splice is
+  the ID-only range; otherwise accept falls back to that range, and a type-through
+  remainder lands after the spliced text. Undo matches other picker accepts. In
+  the New ID composer the field holds only ID characters: typing any other character
+  (space, `#`, `=`, `@`, `+`, `.`, …) at the end commits the typed ID and keeps
+  typing that character in the editor. A single `.`, `^`, `:`, `+`, `;`, or `,` then
+  goes through Bob's rewrite lane as in the editor (`@sase:sase-gallery.` becomes
+  `@sase^sase-gallery`); any other character keeps its behavior, so `#` after a
+  commit opens `task_type` completion. The Link picker keeps
   `^`'s semantics: spaces separate fuzzy tokens. Backspace on an empty field deletes
   the `:`/`^` separator and the part so route completion resumes. The chip reads
-  `Browse <note> tasks ⇥` (Link) or `Suggest an ID for <note> ⇥` (New ID); Tab, Down,
+  `Browse <note> tasks ⇥` or `Suggest an ID for <note> ⇥`; Tab, Down,
   and Ctrl-N open it and Escape hides it. When `capture-parse` reports `pomodoro_id`
   or `block_id` in `needs`, the app skips the doomed dry run with precedence
   `active_task`, then `pomodoro_id` ("Pick a task or type a new ID — press Tab to
@@ -371,8 +370,8 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   Older Bob binaries that send `pomodoro_block_id` without a `block_id` object get a
   Link picker without the New ID row and without type-through; older Bob never sends
   `task_block_id`, so `@route^` shows no picker there.
-  An unknown explicit `intent` uses a safe New ID composer instead of opening the
-  task-link list. `destination_kind: "notebook"` gives its New ID rows notebook-note
+  An unknown explicit `intent` falls back to the New ID composer.
+  `destination_kind: "notebook"` gives its New ID rows notebook-note
   copy and suppresses task teaching.
 
 ### Keys
@@ -381,7 +380,7 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
 
   | Key                                        | Link                | New ID                          |
   | ------------------------------------------ | ------------------- | ------------------------------- |
-  | Printables, Cmd-A/C/V/X/Z, Ctrl-A/E, ←/→  | Native filter edit  | Native edit; trailing illegal character commits the ID and keeps typing it in the editor (type-through) |
+  | Printables, Cmd-A/C/V/X/Z, Ctrl-A/E, ←/→  | Native filter edit  | Native edit; type-through on trailing illegal character |
   | Return / keypad Enter, Tab                 | Insert selected row | Insert selected row             |
   | Command-Return                             | Insert, then capture| Insert, then capture            |
   | Shift/Option-Return                        | Consumed (`:` picker uses Shift-Return for Link & Start) | Consumed (`:` picker uses Shift-Return for Link & Start) |
@@ -392,6 +391,10 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   | Backspace on an empty field                | Delete `:` and part; route completion resumes | Delete `:`/`^` and part |
   | Ctrl-S                                     | Consumed            | Consumed                        |
   | Ctrl-C                                     | Stash and close     | Stash and close                 |
+
+  Go To browse keys: Return, ⌘↩, and ⌃↩ open the row in Obsidian without
+  writing; Tab completes the ID; hints read ↑↓ Move · ↩ Open · ⇥ Complete ·
+  esc Clear/Cancel.
 
 ### Card
 

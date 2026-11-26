@@ -534,10 +534,10 @@ private enum TaskLinkGroup: Equatable, Sendable {
 }
 
 /// One deduped candidate with its display text and weighted search fields.
-/// Weights: display text 100%, `route:block-id` 90%, block ID 90%, route
-/// 80%, Pomodoro name 70%, section 40%. For ID-less rows the block-ID and
-/// combined fields use the first suggestion, so the locator stays
-/// searchable.
+/// Weights: display text 100%, `route:block-id` 90%, `route^block-id` 90%,
+/// block ID 90%, route 80%, Pomodoro name 70%, section 40%. For ID-less rows
+/// the block-ID and combined fields use the first suggestion, so the locator
+/// stays searchable.
 private struct TaskLinkPickerIndexEntry: Sendable {
     let candidate: CaptureCompletionCandidate
     let bobIndex: Int
@@ -553,6 +553,7 @@ private struct TaskLinkPickerIndexEntry: Sendable {
     let textField: FuzzyField
     let blockField: FuzzyField?
     let combinedField: FuzzyField?
+    let combinedCaretField: FuzzyField?
     let combinedRouteLength: Int
     let pomodoroField: FuzzyField?
     let routeField: FuzzyField?
@@ -588,9 +589,11 @@ private struct TaskLinkPickerIndexEntry: Sendable {
            let effectiveBlockID, !effectiveBlockID.isEmpty
         {
             self.combinedField = FuzzyField("\(route):\(effectiveBlockID)")
+            self.combinedCaretField = FuzzyField("\(route)^\(effectiveBlockID)")
             self.combinedRouteLength = route.count
         } else {
             self.combinedField = nil
+            self.combinedCaretField = nil
             self.combinedRouteLength = 0
         }
         if let name = candidate.pomodoro?.name, !name.isEmpty {
@@ -633,6 +636,7 @@ private struct TaskLinkPickerIndexEntry: Sendable {
         }
         consider(weight: 100, field: textField, target: .text)
         consider(weight: 90, field: combinedField, target: .combined)
+        consider(weight: 90, field: combinedCaretField, target: .combinedCaret)
         consider(weight: 90, field: blockField, target: .blockID)
         consider(weight: 80, field: routeField, target: .route)
         consider(weight: 70, field: pomodoroField, target: .pomodoroName)
@@ -644,6 +648,7 @@ private struct TaskLinkPickerIndexEntry: Sendable {
 private enum TaskLinkMatchTarget: Sendable {
     case text
     case combined
+    case combinedCaret
     case blockID
     case route
     case pomodoroName
@@ -668,7 +673,9 @@ private struct TaskLinkMatchHighlights: Sendable {
         switch match.target {
         case .text:
             textPositions += match.positions
-        case .combined:
+        case .combined, .combinedCaret:
+            // Both separators occupy one character at the route length, so
+            // `route:block-id` and `route^block-id` share the mapping.
             for position in match.positions {
                 if position < match.combinedRouteLength {
                     routePositions.append(position)

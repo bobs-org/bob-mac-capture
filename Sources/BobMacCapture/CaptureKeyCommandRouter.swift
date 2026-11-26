@@ -122,6 +122,9 @@ enum CaptureKeyCommand: Equatable {
     case acceptPickerRowAndContinue
     case acceptPickerRowAndSubmit
     case acceptPickerRowAndSubmitAndOpen
+    /// Tab on a block-ID Go To browse row: complete the row's ID into the
+    /// draft (leaving the found card) instead of landing on it.
+    case completeBlockIDGotoRow
     case toggleGotoClosedTasks
     case toggleGotoArchivedNotes
     case showNoteGotoUpgradeHint
@@ -236,6 +239,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
     var pickerSourceIsTaskGoto = false
+    var pickerSourceIsBlockIDGoto = false
     var pickerSourceIsNoteGoto = false
     var pickerSourceIsParentTask = false
     var pickerParentContinuationAvailable = false
@@ -1653,6 +1657,9 @@ struct CaptureKeyCommandRouter {
             return nil
         case KeyCode.tab:
             if modifiers.isEmpty {
+                if context.pickerSourceIsBlockIDGoto {
+                    return .completeBlockIDGotoRow
+                }
                 if context.pickerSourceIsNoteGoto, !context.pickerHasSelection {
                     return .consumeKey
                 }

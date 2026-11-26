@@ -2199,6 +2199,18 @@ final class CapturePanelModel: ObservableObject {
         picker?.source == .taskGoto
     }
 
+    /// True when the open picker is a block-ID card browsing Go To rows
+    /// (mac-browse): Return lands, Tab completes the ID. Older Bob never
+    /// sends the browse payload, so this stays false there.
+    var pickerSourceIsBlockIDGoto: Bool {
+        guard case .blockID = picker?.source,
+              case .blockID(let index)? = pickerIndex
+        else {
+            return false
+        }
+        return index.isGotoBrowse
+    }
+
     /// True when the open picker belongs to the read-only `//` source.
     var pickerSourceIsNoteGoto: Bool {
         picker?.source == .noteGoto
@@ -9383,7 +9395,11 @@ final class CapturePanelModel: ObservableObject {
         guard case .blockID(let context) = source else {
             return
         }
-        if caretGoto != nil {
+        // A goto-eligible completion reopens the picker in its Go-rows form
+        // even while the caret Go To card is up, so Return lands on the exact
+        // row after a paste. Any other caret Go To draft keeps the chip only,
+        // so the card owns Return.
+        if caretGoto != nil, completion.blockID?.goto?.eligible != true {
             pickerChip = CapturePickerChipState(
                 source: source,
                 draftSnapshot: draft,
@@ -11766,7 +11782,8 @@ final class CapturePanelModel: ObservableObject {
               let status = presentation.blockIDStatus,
               !status.isProjectNote,
               !state.filterText.isEmpty,
-              case .blockID(let blockIndex)? = pickerIndex
+              case .blockID(let blockIndex)? = pickerIndex,
+              !blockIndex.isGotoBrowse
         else {
             return
         }
@@ -12055,6 +12072,17 @@ final class CapturePanelModel: ObservableObject {
         }
         if picker?.source == .noteGoto {
             acceptNoteGotoRow(id: id)
+            return
+        }
+        // A block-ID Go To browse row lands through the shared Go To dispatch
+        // on Return, Control-Return, Command-Return, and click; the follow-up
+        // is ignored exactly like the `/` Go To picker. Tab completes through
+        // its own command and never reaches this branch.
+        if case .blockID = picker?.source,
+           let row = pickerPresentation?.row(id: id),
+           row.taskGotoDestination != nil
+        {
+            acceptBlockIDGotoRow(id: id)
             return
         }
         guard let picker = picker,
@@ -12524,6 +12552,94 @@ final class CapturePanelModel: ObservableObject {
                 self.announceStatus("Couldn't open Obsidian")
             }
         }
+    }
+
+    /// Lands a block-ID Go To browse row through the shared Go To dispatch.
+    /// Return, Command-Return, Control-Return, and click share this path, so
+    /// the follow-up is ignored exactly like the `/` Go To picker. A row
+    /// without a destination, or a draft that moved under the picker, never
+    /// lands. Tab completes through `completeSelectedBlockIDGotoRow` instead.
+    private func acceptBlockIDGotoRow(id: String) {
+        if taskGotoDispatchInFlight {
+            return
+        }
+        guard let picker = picker,
+              case .blockID = picker.source,
+              plainDraft == picker.draftSnapshot,
+              stringRange(in: plainDraft, byteRange: picker.replacementRange) != nil
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id),
+              let destination = row.taskGotoDestination
+        else {
+            announceStatus("bob sent no location for this task — update bob")
+            return
+        }
+        dispatchGoto(destination: destination)
+    }
+
+    /// Tabs a block-ID Go To browse row: inserts the row's ID over the typed
+    /// body and leaves the found card, so Return can land from a full address.
+    func completeSelectedBlockIDGotoRow() {
+        guard let selectedRowID = picker?.selectedRowID else {
+            return
+        }
+        completeBlockIDGotoRow(id: selectedRowID)
+    }
+
+    private func completeBlockIDGotoRow(id: String) {
+        guard let picker = picker,
+              case .blockID(let context) = picker.source,
+              plainDraft == picker.draftSnapshot,
+              stringRange(in: plainDraft, byteRange: picker.replacementRange) != nil
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id),
+              row.taskGotoDestination != nil,
+              let insertion = row.insertion
+        else {
+            // The no-match info row carries no destination: Tab stays a silent
+            // no-op there, the way `^` keeps its silent no-op.
+            return
+        }
+        let caret = picker.replacementRange.start + insertion.utf8.count
+        if let edit = Self.nativeEditForOrdinaryInsertion(
+            insertion: insertion,
+            draft: plainDraft,
+            range: picker.replacementRange
+        ),
+            applyBlockIDSpliceNatively(edit: edit, caretUTF8: caret)
+        {
+            // Ordinary insertion through the text view so Undo restores the
+            // pre-complete draft in one step; same path as every other accept.
+            closePickerForAccept()
+            scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+            announceStatus(
+                context.insertedAnnouncement(id: insertion, markerLine: picker.scopeLineNumber)
+            )
+            return
+        }
+        var text = plainDraft
+        guard let range = stringRange(in: plainDraft, byteRange: picker.replacementRange) else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        text.replaceSubrange(range, with: insertion)
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+        announceStatus(
+            context.insertedAnnouncement(id: insertion, markerLine: picker.scopeLineNumber)
+        )
     }
 
     /// Shift-Return on a `:` row: splice the link plus `=`, so the live preview

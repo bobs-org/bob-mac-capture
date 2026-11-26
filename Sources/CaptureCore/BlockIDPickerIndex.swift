@@ -121,6 +121,13 @@ public struct BlockIDPickerIndex: Sendable {
         field?.intent == .new || field?.intent == .projectNote || field?.intent == .unsupported
     }
 
+    /// True when Bob sent an eligible scoped-browse payload for a whole-draft
+    /// `@route^` / `@route^partial`: the card browses Go rows instead of the
+    /// New ID composer. Older Bob never sends `goto`.
+    public var isGotoBrowse: Bool {
+        field?.goto?.eligible == true
+    }
+
     /// Presents the snapshot for `filter`: grouped sections for an empty
     /// query, one ranked flat section otherwise (Link), or the composer rows
     /// (New ID).
@@ -395,6 +402,9 @@ public struct BlockIDPickerIndex: Sendable {
         guard let field else {
             return linkPresentation(filter: filter)
         }
+        if let goto = field.goto, goto.eligible {
+            return gotoPresentation(filter: filter, goto: goto)
+        }
         let target = noteTarget()
         var sections: [CapturePickerSection] = []
         var orderedIDs: [String] = []
@@ -500,6 +510,260 @@ public struct BlockIDPickerIndex: Sendable {
             emptyState: emptyState,
             visibleRowBudget: 6,
             blockIDStatus: blockStatus(filter: filter)
+        )
+    }
+
+    // MARK: - Scoped Go To browse
+
+    /// Presents a goto-eligible card as a scoped Go To browse: the living
+    /// note's Go rows under "Go To · <note>", then the paired archive's rows
+    /// under "Archived · <archive>" once the typed ID is non-empty. Rows are
+    /// filtered by the typed ID with the existing fuzzy matcher and ordered
+    /// exact → prefix → the rest, keeping Bob's order within each tier, so an
+    /// exact match is preselected. The New ID, taken, "Next free",
+    /// suggestion, and used-IDs sections stay hidden; the parse card explains
+    /// duplicates. A filter that matches nothing yields one non-selectable
+    /// info row teaching the mint form.
+    private func gotoPresentation(
+        filter: String,
+        goto: CaptureBlockIDGoto
+    ) -> CapturePickerPresentation {
+        let tokens = FuzzyQuery(filter).tokens
+        var exact: [(Int, CaptureGotoRow)] = []
+        var prefixed: [(Int, CaptureGotoRow)] = []
+        var rest: [(Int, CaptureGotoRow)] = []
+        for (bobIndex, row) in goto.rows.enumerated() {
+            let matchesAll = tokens.allSatisfy { token in
+                FuzzyMatcher.matchPreFolded(token: token, in: FuzzyField(row.blockID)) != nil
+            }
+            guard matchesAll else {
+                continue
+            }
+            if row.blockID == filter {
+                exact.append((bobIndex, row))
+            } else if !filter.isEmpty, row.blockID.hasPrefix(filter) {
+                prefixed.append((bobIndex, row))
+            } else {
+                rest.append((bobIndex, row))
+            }
+        }
+        let ordered = exact + prefixed + rest
+        guard !ordered.isEmpty else {
+            return gotoEmptyPresentation(filter: filter, goto: goto)
+        }
+        var sections: [CapturePickerSection] = []
+        var orderedIDs: [String] = []
+        var byID: [String: CapturePickerRow] = [:]
+        let living = ordered.filter { !$0.1.archived }
+        if !living.isEmpty {
+            let rows = living.map { gotoRow(for: $0.1, bobIndex: $0.0, filter: filter) }
+            sections.append(CapturePickerSection(
+                id: "goto-living",
+                kind: .noteGotoGroup,
+                title: "Go To · \(goto.notePath)",
+                countText: gotoCountText(living.count),
+                rows: rows
+            ))
+            for row in rows where row.isSelectable {
+                orderedIDs.append(row.id)
+            }
+            for row in rows {
+                byID[row.id] = row
+            }
+        }
+        // The archive section appears only once the typed ID is non-empty.
+        let archived = ordered.filter { $0.1.archived }
+        if !filter.isEmpty, !archived.isEmpty {
+            let rows = archived.map { gotoRow(for: $0.1, bobIndex: $0.0, filter: filter) }
+            sections.append(CapturePickerSection(
+                id: "goto-archived",
+                kind: .noteGotoGroup,
+                title: "Archived · \(goto.archivePath ?? "archive")",
+                countText: gotoCountText(archived.count),
+                rows: rows
+            ))
+            for row in rows where row.isSelectable {
+                orderedIDs.append(row.id)
+            }
+            for row in rows {
+                byID[row.id] = row
+            }
+        }
+        return CapturePickerPresentation(
+            mode: filter.isEmpty ? .grouped : .filtered,
+            sections: sections,
+            orderedRowIDs: orderedIDs,
+            rowsByID: byID,
+            totalCount: goto.rows.count,
+            matchCount: orderedIDs.count,
+            countText: gotoCountText(orderedIDs.count),
+            emptyState: nil,
+            visibleRowBudget: 6,
+            blockIDStatus: nil
+        )
+    }
+
+    /// The browse when nothing matches: a missing note or an empty note with
+    /// an empty filter keeps the matching New ID empty state; a typed ID with
+    /// no match yields one non-selectable info row teaching the mint form.
+    private func gotoEmptyPresentation(
+        filter: String,
+        goto: CaptureBlockIDGoto
+    ) -> CapturePickerPresentation {
+        if filter.isEmpty {
+            let emptyState: CapturePickerEmptyState
+            if field?.noteExists == false {
+                emptyState = .blockIDNoteMissing(target: goto.notePath)
+            } else {
+                emptyState = .blockIDNewIDEmpty(
+                    allowedDescription: field?.allowedDescription ?? "",
+                    usedCount: usedOrder.count,
+                    target: goto.notePath,
+                    needsBody: field?.body.isEmpty ?? true
+                )
+            }
+            return CapturePickerPresentation(
+                mode: .grouped,
+                sections: [],
+                orderedRowIDs: [],
+                rowsByID: [:],
+                totalCount: 0,
+                matchCount: 0,
+                countText: gotoCountText(0),
+                emptyState: emptyState,
+                visibleRowBudget: 6,
+                blockIDStatus: nil
+            )
+        }
+        let row = gotoNoMatchRow(filter: filter, notePath: goto.notePath)
+        return CapturePickerPresentation(
+            mode: .filtered,
+            sections: [CapturePickerSection(
+                id: "goto-empty",
+                kind: .matches,
+                title: "",
+                rows: [row]
+            )],
+            orderedRowIDs: [],
+            rowsByID: [row.id: row],
+            totalCount: goto.rows.count,
+            matchCount: 0,
+            countText: gotoCountText(0),
+            emptyState: nil,
+            visibleRowBudget: 6,
+            blockIDStatus: nil
+        )
+    }
+
+    private func gotoCountText(_ count: Int) -> String {
+        count == 1 ? "1 option" : "\(count) options"
+    }
+
+    /// One selectable Go row: the status glyph, the line text, `^id` in
+    /// indigo with `line N` quiet, and the read-only destination Return and
+    /// click land on. Tab completes through `insertion`, which the missing
+    /// info row deliberately omits.
+    private func gotoRow(
+        for row: CaptureGotoRow,
+        bobIndex: Int,
+        filter: String
+    ) -> CapturePickerRow {
+        let display = TaskDisplayText(parsing: row.text)
+        let isTask = row.targetKind == "task"
+        let glyph: CapturePickerGlyph = isTask
+            ? .task(CapturePickerTaskStatus(symbol: row.statusSymbol, name: row.statusName))
+            : .anchor
+        let statusName = (row.statusName ?? "").isEmpty ? nil : row.statusName
+        let detail = CapturePickerRowDetail(
+            statusText: statusName ?? gotoKindLabel(row.targetKind),
+            route: displayRoute,
+            section: row.section,
+            summary: "Line \(row.line) · \(row.notePath)",
+            insertionPrefix: rowInsertionPrefix
+        )
+        return CapturePickerRow(
+            id: "goto:\(row.notePath):\(row.blockID)",
+            bobIndex: bobIndex,
+            glyph: glyph,
+            displayText: display.text,
+            textSegments: display.segments,
+            textMatchRanges: [],
+            route: nil,
+            blockID: row.blockID,
+            routeMatchRanges: [],
+            blockIDMatchRanges: gotoIDMatchRanges(filter: filter, blockID: row.blockID),
+            locatorStyle: .blockOnly,
+            badgeText: "line \(row.line)",
+            depth: 0,
+            isSelectable: true,
+            insertion: row.blockID,
+            taskGotoDestination: CaptureTaskGotoDestination(
+                target: row.target,
+                notePath: row.notePath,
+                line: row.line,
+                ref: row.ref,
+                blockID: row.blockID
+            ),
+            detail: detail,
+            accessibilityLabel: "\(detail.statusText). \(truncated(display.text)). Block \(row.blockID). Line \(row.line)."
+        )
+    }
+
+    /// Highlights the typed filter inside the row's ID with the existing
+    /// fuzzy matcher; empty without a filter.
+    private func gotoIDMatchRanges(filter: String, blockID: String) -> [Range<Int>] {
+        guard !filter.isEmpty else {
+            return []
+        }
+        let tokens = FuzzyQuery(filter).tokens
+        var positions: [Int] = []
+        for token in tokens {
+            let field = FuzzyField(blockID)
+            guard let match = FuzzyMatcher.matchPreFolded(token: token, in: field) else {
+                return []
+            }
+            positions += match.positions
+        }
+        return ActiveTaskMatchHighlights.coalesced(positions)
+    }
+
+    private func gotoKindLabel(_ targetKind: String) -> String {
+        switch targetKind {
+        case "notebook_note":
+            return "Note"
+        case "heading":
+            return "Heading"
+        case "bullet":
+            return "Bullet"
+        case "paragraph":
+            return "Paragraph"
+        default:
+            return "Task"
+        }
+    }
+
+    /// The no-match info row: never selectable, never inserts, and teaches
+    /// the mint form that creates the typed ID.
+    private func gotoNoMatchRow(filter: String, notePath: String) -> CapturePickerRow {
+        let message = "No ^\(filter) in \(notePath) — add text after the ID to create a task"
+        return CapturePickerRow(
+            id: "goto-empty:\(filter)",
+            bobIndex: 0,
+            glyph: .newID(.available),
+            displayText: message,
+            route: nil,
+            blockID: filter,
+            locatorStyle: .blockOnly,
+            isSelectable: false,
+            insertion: nil,
+            detail: CapturePickerRowDetail(
+                statusText: message,
+                route: nil,
+                section: nil,
+                summary: "Type task text after @\(route)^\(filter) to mint ^\(filter) in \(notePath)",
+                insertionPrefix: rowInsertionPrefix
+            ),
+            accessibilityLabel: "\(message)."
         )
     }
 
@@ -712,7 +976,12 @@ public struct BlockIDPickerIndex: Sendable {
     }
 
     private func takenStatusRow(id: String, used: CaptureUsedBlockID) -> CapturePickerRow {
-        let message = "^\(id) is already used — \(truncated(used.text)) · line \(used.line)"
+        // In mint mode (body present) on a `^` marker, the taken row teaches
+        // the Go To form: removing the text goes to the ID instead.
+        var message = "^\(id) is already used — \(truncated(used.text)) · line \(used.line)"
+        if field?.marker == "^", !(field?.body.isEmpty ?? true) {
+            message += " — remove the text to go to it"
+        }
         return CapturePickerRow(
             id: "status:\(id)",
             bobIndex: entries.count + 2,

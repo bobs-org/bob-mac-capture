@@ -399,6 +399,14 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.orderedRowIDs, ["sase|11:bbbb2222"])
     }
 
+    func testFilteredRankingCaretSeparatorMatchesLikeColon() throws {
+        // `/bob^id` finds the task exactly like `/bob:id` (cli-browse).
+        let colon = try workedExamplePresentation(filter: "sase:deep-fix")
+        let caret = try workedExamplePresentation(filter: "sase^deep-fix")
+        XCTAssertEqual(caret.orderedRowIDs, ["sase|7:aaaa1111"])
+        XCTAssertEqual(caret.orderedRowIDs, colon.orderedRowIDs)
+    }
+
     func testFilteredHighlightsCoverTextRouteAndBlockID() throws {
         let presentation = try workedExamplePresentation(filter: "sase deep")
         let row = try XCTUnwrap(presentation.rowsByID["sase|7:aaaa1111"])
