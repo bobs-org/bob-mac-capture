@@ -487,7 +487,7 @@ type `^` or `:`. Typing the right-hand side of `@route:` or `@route^` anywhere t
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `task_type` completion for the task
   toggle retype, and once the item has body text it opens `drawer` completion for that
-  task's drawers (its ALL-CAPS child bullets), unselected, with Recent drawers and a New
+  task's drawers (its bold child bullets), unselected, with Recent drawers and a New
   drawer row (see [Drawer menu](capture-panel.md#drawer-menu)). A bare `#` at an item edge opens Bob's
   `task_type` completion, also unselected; `@route#` stays note-section completion. Typing `#` immediately after a
   resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion

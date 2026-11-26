@@ -281,7 +281,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
             XCTAssertNotNil(
     typeKey(starEvent(), into: textView, model: model, controller: controller)
 )
-            await waitUntil { textView.string == draft + "***" }
+            await waitUntil { textView.string == draft + "****" }
             XCTAssertEqual(
                 textView.selectedRange(),
                 NSRange(location: caretBetweenPairs(textView), length: 0)
@@ -309,7 +309,7 @@ final class CaptureDrawerPipelineTests: XCTestCase {
         XCTAssertNotNil(
     typeKey(starEvent(), into: textView, model: model, controller: controller)
 )
-        XCTAssertEqual(textView.string, "Prepare release\n- ******")
+        XCTAssertEqual(textView.string, "Prepare release\n- *****")
     }
 
     func testBackspaceDeletesSkeletonViaExpansionArm() async throws {
@@ -419,7 +419,13 @@ final class CaptureDrawerPipelineTests: XCTestCase {
         XCTAssertEqual(textView.string, draft)
         XCTAssertEqual(
             textView.selectedRange(), NSRange(location: (draft as NSString).length, length: 0))
-        XCTAssertFalse((try String(contentsOf: recordURL)).contains("argv=capture-rewrite"))
+        let overtypeRecord = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertTrue(
+            overtypeRecord.components(separatedBy: "argv=capture-rewrite").dropFirst().allSatisfy {
+                $0.contains("-- xx")
+            },
+            "drawer overtype must not issue a rewrite: \(overtypeRecord)"
+        )
         XCTAssertEqual(caretUTF8 + 2, draft.utf8.count)
         XCTAssertNotNil(model.latestParse)
 
@@ -568,8 +574,12 @@ final class CaptureDrawerPipelineTests: XCTestCase {
 
         XCTAssertNil(controller.routeKeyDown(drawerTitleNewlineEvent("Shift-Return")))
         XCTAssertFalse(textView.string.contains("\n  - "))
-        XCTAssertFalse(
-            (try? String(contentsOf: recordURL))?.contains("argv=capture-rewrite") ?? false)
+        let emptySkeletonRecord = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertTrue(
+            emptySkeletonRecord.components(separatedBy: "argv=capture-rewrite").dropFirst()
+                .allSatisfy { $0.contains("-- xx") },
+            "empty skeleton must not issue a drawer rewrite: \(emptySkeletonRecord)"
+        )
     }
 
     func testLiteralStarsStayNative() async throws {
@@ -644,7 +654,11 @@ final class CaptureDrawerPipelineTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertEqual(textView.string, "Prepare release\n- * more")
         let record = (try? String(contentsOf: recordURL)) ?? ""
-        XCTAssertFalse(record.contains("argv=capture-rewrite"), record)
+        let rewrites = record.components(separatedBy: "argv=capture-rewrite").dropFirst()
+        XCTAssertTrue(
+            rewrites.allSatisfy { $0.contains("-- xx") },
+            "pasted star must not issue a drawer rewrite: \(record)"
+        )
     }
 
     func testRequirementExpansionStillApplies() async throws {

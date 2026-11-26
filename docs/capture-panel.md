@@ -315,7 +315,7 @@ A marker (`@route`,
 `@route+block-id!` alone for the explicit two-way task-toggle item,
 `@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#drawer` to file under one of that task's
-drawers (its ALL-CAPS child bullets) once body text exists, creating the drawer when it is
+drawers (its bold child bullets) once body text exists, creating the drawer when it is
 missing, `@route^block-id` for an ordinary task with an authored block
 ID, `@route^block-id #type` to type the new task, `@route^block-id@#pomodoro` for a project note (with ` :id` / ` ^id` tokens
 on its task bullets), `@route:block-id@#pomodoro` for a project note whose
@@ -474,13 +474,13 @@ opens Bob's `drawer` completion with **nothing selected**, as with `%` and bare 
 ```text
 ╭─ DRAWER · ^bar Upgrade Postgres (foo) ─────────────────────╮
 │ ON THIS TASK                                                │
-│   NOTES                                           3 notes   │
-│   FUTURE WORK                                     1 note    │
+│   Notes                                           3 notes   │
+│   Future Work                                     1 note    │
 │ RECENT                                                      │
-│   MOTIVATION                  used in 12 notes · 3 days ago │
-│   ACCEPTANCE                  used in 4 notes · last week   │
+│   Motivation                  used in 12 notes · 3 days ago │
+│   Acceptance                  used in 4 notes · last week   │
 ├─────────────────────────────────────────────────────────────┤
-│ Adds after "2 GB RAM" in NOTES                              │
+│ Adds after "2 GB RAM" in Notes                              │
 ╰─────────────────────────────────────────────────────────────╯
 ```
 
@@ -488,16 +488,16 @@ opens Bob's `drawer` completion with **nothing selected**, as with `%` and bare 
   lists drawers used in other notes, creating the chosen one on this task. Headers
   reuse the Pomodoro-name menu style.
 - **New drawer.** A name matching no drawer adds one dashed
-  `＋ New drawer PERF BUDGET` row. A refused row (reserved name, near-duplicate)
+  `＋ New drawer Perf Budget` row. A refused row (reserved name, near-duplicate)
   is dimmed with Bob's reason, and **Return** on it does nothing.
 - **Footer.** The footer shows Bob's one-line consequence for the selected row
-  (`Adds after "2 GB RAM" in NOTES`) or the key hint.
+  (`Adds after "2 GB RAM" in Notes`) or the key hint.
 - **Counts and ages** (`3 notes`, `used in 12 notes · 3 days ago`) are Bob's `detail`
   text. The app counts nothing itself.
 - **Keys.** **Return** submits the draft unchanged (Bob refuses an incomplete marker
   in the preview); **Tab**, **↓**, and **Ctrl-N** select the first row; typing preselects
   the best row; **Escape** closes. Accepting splices Bob's `replacement` and `cursor_after`.
-- **Highlighting.** The `#NAME` drawer span uses the section color family.
+- **Highlighting.** The `#name` drawer span uses the section color family.
 - **Typing.** At the end of a nonempty title Bob reports as a drawer, Shift-Return,
   Option-Return, or Ctrl-J inserts a nested `- ` note after the closing `**`. A typed `*`
   moves past the closing pair without changing the title. Return keeps its capture meaning.

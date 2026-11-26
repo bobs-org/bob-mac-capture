@@ -2705,11 +2705,14 @@ final class CapturePanelModel: ObservableObject {
         in text: String,
         caretUTF8: Int
     ) -> DrawerTitleCaretAuthorization? {
+        // A caret-only move schedules selection-triggered analysis for the same
+        // draft, bumping analysisGeneration before its parse lands. The draft
+        // and client checks already bind this parse to the live text; the
+        // generation check would wrongly reject it.
         guard let processClient,
             let parse = latestParse,
             parse.input == text,
             lastAppliedParseDraft == text,
-            lastAppliedParseGeneration == analysisGeneration,
             lastAppliedParseClientIdentity == processClient.identityToken,
             let validated = validatedSpanRanges(in: text, spans: parse.spans)
         else {
