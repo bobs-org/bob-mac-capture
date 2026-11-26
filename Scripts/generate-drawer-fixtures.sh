@@ -7,7 +7,7 @@
 # BOB_BIN must be built from the bob-cli checkout named by BOB_CLI_DIR, and that
 # checkout must contain the grammar-4 capture drawer work (commit 971d864f) with a clean
 # tree, because the binary carries no git revision of its own. The script verifies it
-# reports `grammar >= 26`, including Bob-authored `place_menu` chrome, then persists,
+# reports `grammar >= 30`, including true-case drawer titles, then persists,
 # from one isolated vault, config, cache, state,
 # HOME, and pinned clock:
 #
@@ -80,8 +80,9 @@ types:
   FIX: blue
   WRITE: magenta
 EOF
-# foo.md holds the target (`^bar`, two drawers) and a task without drawers (`^plain`).
-# other1-3.md each use MOTIVATION and ACCEPTANCE so both clear the catalog's
+# foo.md holds the target (`^bar`, one bold true-case drawer and one legacy drawer) and
+# a task without drawers (`^plain`).
+# other1-3.md each use Motivation and Acceptance so both clear the catalog's
 # "used in at least two notes" bar and appear as Recent.
 cat > "$vault/foo.md" <<'EOF'
 ---
@@ -91,7 +92,7 @@ type: "[[area]]"
 
 ## Tasks
 - [ ] #task Upgrade Postgres [created::2026-10-01] ^bar
-	- REQUIREMENTS
+	- **Requirements**
 		- 2 GB RAM
 		- 4 CPUs
 		- fast disk
@@ -125,9 +126,9 @@ type: "[[area]]"
 
 ## Tasks
 - [ ] #task Thing [created::2026-10-01] ^t$n
-	- MOTIVATION
+	- **Motivation**
 		- why
-	- ACCEPTANCE
+	- **Acceptance**
 		- done when
 EOF
 done
@@ -161,9 +162,11 @@ import pathlib
 import sys
 
 grammar = json.loads(pathlib.Path(sys.argv[1]).read_text()).get("grammar")
-if not isinstance(grammar, int) or grammar < 26:
-    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 26")
+if not isinstance(grammar, int) or grammar < 30:
+    sys.exit(f"BOB_BIN reports grammar {grammar!r}; rebuild it from a bob-cli with grammar >= 30")
+print(grammar)
 PY
+)
 
 manifest="$scratch_root/manifest.md"
 {
@@ -227,6 +230,10 @@ parse drawer-parse-typed.json 'Postgres 17 minimum @foo+bar#req'
 parse drawer-parse-existing.json 'Postgres 17 minimum @foo+bar#requirements'
 parse drawer-parse-new.json 'Postgres 17 minimum @foo+bar#perf-budget'
 parse drawer-parse-literal.json 'Postgres 17 minimum @foo+bar#"Q&A"'
+parse drawer-parse-new-task.json $'Prepare release\n- **API Design**\n  - Review endpoint'
+parse drawer-parse-existing-bullet.json $'@foo+bar\n- **Café**\n  - Review notes'
+parse drawer-parse-project-bullet.json $'Draft plan @project^draft@\n- **C++ Notes**\n  - Record the design'
+parse drawer-parse-notebook-seed.json $'Create notes @parent^seed@ %n\n- **Data Model**\n  - Review the schema'
 
 # --- capture-complete: the `drawer` context ---
 complete drawer-complete-empty.json 'Postgres 17 minimum @foo+bar#'
@@ -239,14 +246,16 @@ complete drawer-complete-missing-target.json 'Postgres 17 minimum @foo+nope#'
 
 # --- capture --dry-run: where the bullet lands ---
 capture drawer-capture-existing.json 'Postgres 17 minimum @foo+bar#requirements'
+capture drawer-capture-legacy-existing.json 'Postgres 17 minimum @foo+bar#future-work'
 capture drawer-capture-new.json 'Postgres 17 minimum @foo+bar#perf-budget'
+capture drawer-capture-quoted-true-case.json 'Postgres 17 minimum @foo+bar#"Release Checklist"'
 capture drawer-capture-plain-child.json 'Postgres 17 minimum @foo+bar'
 
 # --- capture --dry-run: retype an existing task beside a new drawer ---
 capture drawer-capture-new-retype.json 'Postgres 17 minimum @foo+bar#perf-budget #fix'
 
 # --- Several notes on one existing task: new drawer and plain-note summaries ---
-capture drawer-capture-multi-note.json $'@foo+bar\n- Ping Alice about the cutover\n- REQUIREMENTS\n  - Postgres 17 minimum\n- RISKS\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms'
+capture drawer-capture-multi-note.json $'@foo+bar\n- Ping Alice about the cutover\n- **Requirements**\n  - Postgres 17 minimum\n- **Risks**\n  - Try logical replication\n- Benchmarks look fine\n  - p99 under 40 ms'
 
 # --- Bullet drawer menus: existing task, new task, and a typed query ---
 complete drawer-bullet-complete-existing-empty.json $'@foo+bar\n- #'
@@ -284,8 +293,8 @@ for path in sorted(fixtures.glob("drawer-*.json")):
 parsed = load("drawer-parse-empty.json")
 assert parsed["needs"] == ["drawer"]
 new_span = next(span for span in load("drawer-parse-new.json")["spans"] if span["kind"] == "drawer")
-assert new_span["title"] == "PERF BUDGET" and new_span["key"] == "PERF BUDGET"
-assert parsed["grammar"] >= 26
+assert new_span["title"] == "Perf Budget" and new_span["key"] == "PERF BUDGET"
+assert parsed["grammar"] >= 30
 
 empty = load("drawer-complete-empty.json")
 assert empty["context"] == "drawer" and empty["target"]["block_id"] == "bar"
@@ -303,9 +312,13 @@ assert [row["group"] for row in load("drawer-complete-typed-recent.json")["candi
 assert any(row.get("refused") for row in load("drawer-complete-typed-reserved.json")["candidates"])
 
 existing = load("drawer-capture-existing.json")["drawer"]
-assert existing == {"title": "REQUIREMENTS", "key": "REQUIREMENTS", "created": False}
+assert existing == {"title": "Requirements", "key": "REQUIREMENTS", "created": False}
+legacy = load("drawer-capture-legacy-existing.json")["drawer"]
+assert legacy == {"title": "FUTURE WORK", "key": "FUTURE WORK", "created": False}
 created = load("drawer-capture-new.json")["drawer"]
-assert created == {"title": "PERF BUDGET", "key": "PERF BUDGET", "created": True}
+assert created == {"title": "Perf Budget", "key": "PERF BUDGET", "created": True}
+quoted = load("drawer-capture-quoted-true-case.json")["drawer"]
+assert quoted == {"title": "Release Checklist", "key": "RELEASE CHECKLIST", "created": True}
 assert load("drawer-capture-new-retype.json")["drawer"]["created"] is True
 assert load("drawer-capture-new-retype.json")["task_theme"]["theme"]["name"] == "FIX"
 assert load("drawer-capture-plain-child.json").get("drawer") is None
@@ -321,7 +334,7 @@ assert load("drawer-list-project.json")["count"] == 2
 
 multi = load("drawer-capture-multi-note.json")
 assert len(multi["notes"]) == 4
-assert [drawer["title"] for drawer in multi["drawers"]] == ["REQUIREMENTS", "RISKS"]
+assert [drawer["title"] for drawer in multi["drawers"]] == ["Requirements", "Risks"]
 assert [drawer["created"] for drawer in multi["drawers"]] == [False, True]
 
 bullet_existing = load("drawer-bullet-complete-existing-empty.json")
@@ -348,11 +361,11 @@ PY
   echo '```'
   echo
   echo "Generated with \`${version_line}\` built from bob-cli revision \`${cli_revision}\`"
-  echo "(grammar revision 26, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
+  echo "(grammar revision ${grammar_revision}, \`schema_version\` 1). The script requires commit \`${prerequisite_commit}\`"
   echo "and a clean bob-cli checkout. All JSON fixtures below are raw Bob replies, with only"
   echo "the temporary vault path rewritten to \`${stable_root}\`."
   echo
-  echo "Inputs use an isolated vault with task \`^bar\`, task \`^plain\`, a project-note"
+  echo "Inputs use an isolated vault with a bold true-case drawer and a legacy ALL-CAPS drawer on task \`^bar\`, task \`^plain\`, a project-note"
   echo "\`^prj\` with H2 drawers, catalog notes, configured types, a daily FIX Pomodoro, and"
   echo "\`BOB_NOW=2026-10-30 09:15:00\`. Every capture is a dry run with \`--no-clip\`."
   echo
