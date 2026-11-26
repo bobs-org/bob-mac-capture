@@ -36,7 +36,7 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
 
         XCTAssertEqual(model.selectedCompletionIndex, 0)
         let menu = try XCTUnwrap(model.placeMenuPresentation())
-        XCTAssertEqual(menu.rows.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(menu.rows.first?.title, "Requirements")
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
     }
 
@@ -86,7 +86,7 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
         model.selectNextCompletion()
         XCTAssertEqual(model.selectedCompletionIndex, 1)
         XCTAssertTrue(model.acceptSelectedCompletion())
-        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#future-work")
+        XCTAssertEqual(model.plainDraft, "Postgres 17 minimum @foo+bar#\"FUTURE WORK\"")
         XCTAssertNil(model.completionResponse)
     }
 
@@ -99,11 +99,11 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
 
         model.selectedCompletionIndex = 0
         XCTAssertEqual(
-            model.placeMenuPresentation()?.footer, "Adds after \"fast disk\" in REQUIREMENTS")
+            model.placeMenuPresentation()?.footer, "Adds after \"fast disk\" in Requirements")
 
         model.selectedCompletionIndex = 2
         XCTAssertEqual(
-            model.placeMenuPresentation()?.footer, "Creates ACCEPTANCE under ^bar")
+            model.placeMenuPresentation()?.footer, "Creates Acceptance under ^bar")
     }
 
     func testReturnOnARefusedRowIsANoOpAndKeepsTheMenuOpen() throws {
@@ -151,14 +151,14 @@ final class CapturePlaceMenuHostedTests: XCTestCase {
         )
         let candidates = try XCTUnwrap(model.completionResponse?.candidates)
         let candidateIndex = try XCTUnwrap(
-            candidates.firstIndex(where: { $0.replacement == "FUTURE WORK\n  - " })
+            candidates.firstIndex(where: { $0.replacement == "**FUTURE WORK**\n  - " })
         )
         let candidate = candidates[candidateIndex]
         model.selectedCompletionIndex = candidateIndex
 
         XCTAssertTrue(model.acceptSelectedCompletion())
 
-        let accepted = "@foo+bar\n- FUTURE WORK\n  - "
+        let accepted = "@foo+bar\n- **FUTURE WORK**\n  - "
         let cursorAfter = try XCTUnwrap(candidate.cursorAfter)
         XCTAssertEqual(model.plainDraft, accepted)
         XCTAssertEqual(cursorAfter, accepted.utf8.count)

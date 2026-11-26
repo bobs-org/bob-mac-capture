@@ -61,10 +61,10 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
 
         XCTAssertEqual(presented.parentLabel, "^bar")
-        XCTAssertEqual(presented.headerDetail, "under ^bar › REQUIREMENTS")
+        XCTAssertEqual(presented.headerDetail, "under ^bar › Requirements")
         XCTAssertEqual(
             presented.accessibilityText,
-            "Sub-bullet under ^bar, in REQUIREMENTS"
+            "Sub-bullet under ^bar, in Requirements"
         )
     }
 
@@ -72,11 +72,11 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         let existing = try XCTUnwrap(
             CaptureSubBulletPresentation(
                 capture: try successFixture("drawer-capture-existing.json")))
-        XCTAssertEqual(existing.drawerTitle, "REQUIREMENTS")
+        XCTAssertEqual(existing.drawerTitle, "Requirements")
         XCTAssertFalse(existing.createsDrawer)
         XCTAssertNil(existing.noteCount)
         XCTAssertTrue(existing.drawerCapsules.isEmpty)
-        XCTAssertEqual(existing.headerDetail, "under ^bar › REQUIREMENTS")
+        XCTAssertEqual(existing.headerDetail, "under ^bar › Requirements")
         let legacyCapture = try successFixture("drawer-capture-existing.json")
         XCTAssertNil(legacyCapture.notes)
         XCTAssertNil(legacyCapture.drawers)
@@ -84,7 +84,7 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         let created = try XCTUnwrap(
             CaptureSubBulletPresentation(
                 capture: try successFixture("drawer-capture-new.json")))
-        XCTAssertEqual(created.drawerTitle, "PERF BUDGET")
+        XCTAssertEqual(created.drawerTitle, "Perf Budget")
         XCTAssertTrue(created.createsDrawer)
         XCTAssertFalse(created.isMultiNote)
         XCTAssertTrue(created.drawerCapsules.isEmpty)
@@ -106,20 +106,20 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         )
         XCTAssertEqual(success.notes?[2].drawer?.created, true)
         XCTAssertEqual(success.notes?[3].subBullets, ["\t- p99 under 40 ms"])
-        XCTAssertEqual(success.drawers?.map(\.title), ["REQUIREMENTS", "RISKS"])
+        XCTAssertEqual(success.drawers?.map(\.title), ["Requirements", "Risks"])
         XCTAssertEqual(presented.noteCount, 4)
         XCTAssertTrue(presented.isMultiNote)
         XCTAssertEqual(presented.headerDetail, "4 notes under ^bar")
         XCTAssertEqual(
             presented.drawerCapsules,
             [
-                .init(title: "REQUIREMENTS", creates: false),
-                .init(title: "RISKS", creates: true),
+                .init(title: "Requirements", creates: false),
+                .init(title: "Risks", creates: true),
             ]
         )
         XCTAssertEqual(
             presented.accessibilityText,
-            "4 notes under ^bar, in REQUIREMENTS and new drawer RISKS"
+            "4 notes under ^bar, in Requirements and new drawer Risks"
         )
     }
 
@@ -127,13 +127,13 @@ final class CaptureSubBulletPresentationTests: XCTestCase {
         let success = try successFixture("drawer-capture-new-retype.json")
         let presented = try XCTUnwrap(CaptureSubBulletPresentation(capture: success))
 
-        XCTAssertEqual(presented.drawerTitle, "PERF BUDGET")
+        XCTAssertEqual(presented.drawerTitle, "Perf Budget")
         XCTAssertTrue(presented.createsDrawer)
-        XCTAssertEqual(presented.headerDetail, "under ^bar › PERF BUDGET")
+        XCTAssertEqual(presented.headerDetail, "under ^bar › Perf Budget")
         XCTAssertEqual(CaptureSubBulletPresentation.newDrawerBadge, "new drawer")
         XCTAssertEqual(
             presented.accessibilityText,
-            "Sub-bullet under ^bar, in new drawer PERF BUDGET"
+            "Sub-bullet under ^bar, in new drawer Perf Budget"
         )
         // The same item carries the `Type` row the preview renders beneath the header.
         let change = try XCTUnwrap(success.taskTheme)

@@ -6784,7 +6784,7 @@ final class CapturePanelModelTests: XCTestCase {
         // The replacement covers the glued `#` and the name.
         XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 28, end: 29))
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "#requirements")
-        XCTAssertEqual(model.completionResponse?.candidates.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.title, "Requirements")
         XCTAssertEqual(model.completionResponse?.candidates.first?.text, "Upgrade Postgres")
         XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "bar")
         XCTAssertEqual(model.completionResponse?.candidates.first?.entryCount, 3)

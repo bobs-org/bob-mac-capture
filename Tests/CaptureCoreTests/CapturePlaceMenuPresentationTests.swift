@@ -17,7 +17,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.title), ["On this task", "Recent"])
         XCTAssertEqual(
             menu.rows.map(\.title),
-            ["REQUIREMENTS", "FUTURE WORK", "ACCEPTANCE", "MOTIVATION"])
+            ["Requirements", "FUTURE WORK", "Acceptance", "Motivation"])
         XCTAssertEqual(menu.rows.map(\.kind), [.task, .task, .recent, .recent])
         XCTAssertEqual(response.candidates.map(\.entryCount), [3, 1, 0, 0])
         XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
@@ -30,7 +30,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         let menu = CapturePlaceMenuPresentation(
             response: response, selectedIndex: 0, query: "req")
 
-        XCTAssertEqual(menu.rows.map(\.title), ["REQUIREMENTS", "REQ"])
+        XCTAssertEqual(menu.rows.map(\.title), ["Requirements", "REQ"])
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
         XCTAssertTrue(menu.rows[1].isRefused)
     }
@@ -50,7 +50,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         let menu = CapturePlaceMenuPresentation(response: response, selectedIndex: nil)
 
         XCTAssertEqual(menu.groups.map(\.title), ["Recent"])
-        XCTAssertEqual(menu.rows.map(\.title), ["ACCEPTANCE", "MOTIVATION", "REQUIREMENTS"])
+        XCTAssertEqual(menu.rows.map(\.title), ["Acceptance", "Motivation", "Requirements"])
         XCTAssertEqual(menu.rows.map(\.kind), [.recent, .recent, .recent])
         XCTAssertEqual(
             menu.listAccessibilityLabel, "Drawer, ^plain Plain task (foo.md), 3 drawers")
@@ -62,9 +62,9 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
             response: response, selectedIndex: 0, query: "req")
 
         XCTAssertEqual(menu.headerCaption, "^bar Upgrade Postgres (foo.md)")
-        XCTAssertEqual(menu.rows.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(menu.rows.first?.title, "Requirements")
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
-        XCTAssertEqual(response.candidates.first?.replacement, "REQUIREMENTS\n  - ")
+        XCTAssertEqual(response.candidates.first?.replacement, "**Requirements**\n  - ")
     }
 
     func testProjectTaskUsesH2DrawersAndBobConsequence() throws {
@@ -89,9 +89,9 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.title), ["On this task", "Recent"])
         XCTAssertEqual(menu.groups.map(\.kind), [.task, .recent])
         XCTAssertEqual(
-            menu.rows.map(\.title), ["REQUIREMENTS", "FUTURE WORK", "ACCEPTANCE", "MOTIVATION"])
+            menu.rows.map(\.title), ["Requirements", "FUTURE WORK", "Acceptance", "Motivation"])
         XCTAssertEqual(menu.rows.map(\.detail), response.candidates.map(\.detail))
-        XCTAssertEqual(menu.rows[3].detail, "used in 3 notes · last week")
+        XCTAssertEqual(menu.rows[3].detail, "used in 3 notes · 3 weeks ago")
         XCTAssertEqual(menu.rows.map(\.creates), [false, false, true, true])
         XCTAssertEqual(menu.footer, "⏎ choose · ⎋ close")
     }
@@ -100,10 +100,10 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         let response = try completion("drawer-complete-empty.json")
 
         let task = CapturePlaceMenuPresentation(response: response, selectedIndex: 0)
-        XCTAssertEqual(task.footer, "Adds after \"fast disk\" in REQUIREMENTS")
+        XCTAssertEqual(task.footer, "Adds after \"fast disk\" in Requirements")
 
         let recent = CapturePlaceMenuPresentation(response: response, selectedIndex: 3)
-        XCTAssertEqual(recent.footer, "Creates MOTIVATION under ^bar")
+        XCTAssertEqual(recent.footer, "Creates Motivation under ^bar")
     }
 
     func testTypedQueryWithNoMatchOffersOnlyTheNewRow() throws {
@@ -119,12 +119,12 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
         XCTAssertEqual(menu.groups.map(\.title), [nil])
         let row = try XCTUnwrap(menu.rows.first)
         XCTAssertTrue(row.isNew)
-        XCTAssertEqual(row.label, "\u{FF0B} New drawer PERF")
+        XCTAssertEqual(row.label, "\u{FF0B} New drawer Perf")
         XCTAssertNil(row.queryMatchRange, "the create row has no prefix emphasis")
-        XCTAssertEqual(menu.footer, "Creates PERF under ^bar")
+        XCTAssertEqual(menu.footer, "Creates Perf under ^bar")
         XCTAssertEqual(
             row.accessibilityLabel,
-            "^bar Upgrade Postgres (foo.md), PERF, New, Creates PERF under ^bar")
+            "^bar Upgrade Postgres (foo.md), Perf, New, Creates Perf under ^bar")
     }
 
     func testTypedQueryPlacesTheMatchingRecentRowBeforeTheNewRow() throws {
@@ -134,7 +134,7 @@ final class CapturePlaceMenuPresentationTests: XCTestCase {
 
         XCTAssertEqual(menu.groups.map(\.kind), [.recent, .new])
         XCTAssertEqual(menu.groups.map(\.title), ["Recent", nil])
-        XCTAssertEqual(menu.rows.map(\.title), ["MOTIVATION", "MOT"])
+        XCTAssertEqual(menu.rows.map(\.title), ["Motivation", "Mot"])
         XCTAssertEqual(menu.rows.first?.queryMatchRange, 0..<3)
     }
 

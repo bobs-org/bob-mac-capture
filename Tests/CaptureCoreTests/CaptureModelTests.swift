@@ -1947,7 +1947,8 @@ final class CaptureModelTests: XCTestCase {
         let created = try decodeBlockFixture("drawer-capture-new-retype.json")
         XCTAssertEqual(
             created.drawer,
-            CaptureDrawerSummary(title: "PERF BUDGET", key: "PERF BUDGET", created: true)
+            CaptureDrawerSummary(
+                title: "Perf Budget", key: "PERF BUDGET", created: true, marker: .bold)
         )
         XCTAssertEqual(created.taskTheme?.theme?.name, "FIX")
 
