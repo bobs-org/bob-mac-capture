@@ -78,6 +78,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private var unsupportedMeetingNotesIdentity: String?
     private var unsupportedLogHistoryIdentity: String?
     private var unsupportedLinksOnlyIdentity: String?
+    private var unsupportedSnoozeWakeIdentity: String?
     private var unsupportedTaskLinksIdentity: String?
     private var savedTemplatesIdentity: String?
     /// Per-executable memory that some decoded capture JSON carried
@@ -789,6 +790,77 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    /// Ask Bob's pinned writer host to wake due snoozed tasks. This command
+    /// has its own non-cancelling lane: agenda reads, previews, and repeated
+    /// timer notifications must not terminate a writer already in progress.
+    public func snoozeWake() async throws -> CaptureSnoozeWakeResponse {
+        let identity = identityToken
+        let alreadyUnsupported = stateQueue.sync {
+            unsupportedSnoozeWakeIdentity == identity
+        }
+        guard !alreadyUnsupported else {
+            throw BobClientError.unsupportedCommand("snooze wake")
+        }
+
+        let arguments = ["snooze", "wake", "-q", "-f", "json"]
+        let result = try await run(
+            arguments: arguments,
+            lane: "snooze-wake",
+            cancelsPreviousInLane: false,
+            timeout: Self.defaultTimeout
+        )
+        let stderr = boundedProcessText(result.stderr)
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedSnoozeWakeFailure(
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            ) {
+                stateQueue.sync {
+                    unsupportedSnoozeWakeIdentity = identityToken
+                }
+                throw BobClientError.unsupportedCommand("snooze wake")
+            }
+            throw BobClientError.processFailed(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let response = try decoder.decode(
+                CaptureSnoozeWakeResponse.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard response.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: 1,
+                    actual: response.schemaVersion
+                )
+            }
+            return response
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
     /// Walk attention from `bob walks --format json` on its own lane, so
     /// it never cancels or delays the agenda lane. Byte-identical stdout
     /// is a no-op: when `previous` matches the fresh output bytes, nothing
@@ -856,6 +928,23 @@ public final class BobProcessClient: @unchecked Sendable {
             return false
         }
         return stderr.contains("walks")
+    }
+
+    static func isUnsupportedSnoozeWakeFailure(
+        exitStatus: Int32,
+        stderr: String
+    ) -> Bool {
+        guard exitStatus == 2 else {
+            return false
+        }
+        let normalized = stderr.lowercased()
+        guard normalized.contains("unrecognized subcommand") else {
+            return false
+        }
+        return normalized.contains("'snooze'")
+            || normalized.contains("\"snooze\"")
+            || normalized.contains("'wake'")
+            || normalized.contains("\"wake\"")
     }
 
     /// Cancel phrase history from `bob logs list -l cancel -f json` on its

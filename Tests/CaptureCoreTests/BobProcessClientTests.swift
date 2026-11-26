@@ -2512,6 +2512,146 @@ final class BobProcessClientTests: XCTestCase {
         }
     }
 
+    func testSnoozeWakeUsesExactArgvAndDecodesOnlySchedulerFields() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_SNOOZE_WAKE_JSON": #"{"schema_version":1,"status":"woke","date":"2026-08-28","now":"09:00","woken":[{"title":"ignored"}],"pending":2,"next_wake_at":"2026-08-28T15:30:00-04:00","notification":{"future":true},"future_field":true}"#,
+            ]
+        )
+
+        let response = try await client.snoozeWake()
+
+        XCTAssertEqual(response.status, .woke)
+        XCTAssertEqual(response.nextWakeAt, "2026-08-28T15:30:00-04:00")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=snooze wake -q -f json"))
+    }
+
+    func testSnoozeWakeAcceptsDeferredAndSkippedSettlements() async throws {
+        for status in ["deferred", "skipped"] {
+            let client = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_SNOOZE_WAKE_JSON": #"{"schema_version":1,"status":"\#(status)","next_wake_at":null}"#,
+                ]
+            )
+
+            let response = try await client.snoozeWake()
+
+            XCTAssertEqual(response.status, status == "deferred" ? .deferred : .skipped)
+        }
+    }
+
+    func testSnoozeWakeOldBobRejectionIsPreciseAndCached() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_SNOOZE_WAKE_UNSUPPORTED": "1",
+            ]
+        )
+
+        for _ in 0..<2 {
+            do {
+                _ = try await client.snoozeWake()
+                XCTFail("Expected unsupported snooze wake")
+            } catch BobClientError.unsupportedCommand(let command) {
+                XCTAssertEqual(command, "snooze wake")
+            }
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=snooze wake").count - 1, 1)
+        XCTAssertFalse(
+            BobProcessClient.isUnsupportedSnoozeWakeFailure(
+                exitStatus: 1,
+                stderr: "error: unrecognized subcommand 'wake'"
+            )
+        )
+        XCTAssertFalse(
+            BobProcessClient.isUnsupportedSnoozeWakeFailure(
+                exitStatus: 2,
+                stderr: "snooze wake failed because the vault is read-only"
+            )
+        )
+    }
+
+    func testSnoozeWakeRejectsSchemaMismatchAndMalformedOutput() async throws {
+        let mismatch = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"schema_version":2,"status":"woke"}"#,
+            ]
+        )
+        do {
+            _ = try await mismatch.snoozeWake()
+            XCTFail("Expected schema mismatch")
+        } catch BobClientError.schemaMismatch(_, let expected, let actual) {
+            XCTAssertEqual(expected, 1)
+            XCTAssertEqual(actual, 2)
+        }
+
+        let malformed = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "{",
+            ]
+        )
+        do {
+            _ = try await malformed.snoozeWake()
+            XCTFail("Expected malformed JSON")
+        } catch BobClientError.malformedJSON {
+            // Expected.
+        }
+    }
+
+    func testSnoozeWakeLaneDoesNotCancelAgendaOrCaptureReads() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_DELAY_SECONDS": "0.2",
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-snoozed.json",
+            ]
+        )
+
+        async let wake = client.snoozeWake()
+        async let agenda = client.captureAgenda()
+        async let parse = client.captureParse("Call bank")
+        let (wakeResult, agendaResult, parseResult) = try await (wake, agenda, parse)
+
+        XCTAssertEqual(wakeResult.status, .woke)
+        guard case .changed = agendaResult else {
+            XCTFail("Expected agenda read to complete beside wake")
+            return
+        }
+        XCTAssertEqual(parseResult.body, "Call bank")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=snooze wake -q -f json"))
+        XCTAssertTrue(record.contains("argv=capture-pomodoros --format json --tasks"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Call bank"))
+    }
+
     func testCaptureAgendaSchemaMismatchThrows() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

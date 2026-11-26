@@ -59,4 +59,33 @@ final class CaptureAgendaBoundaryRefreshTests: XCTestCase {
             .immediate
         )
     }
+
+    func testEarliestUnfiredChoosesSnoozeThenCalendarBoundary() {
+        let snooze = Date(timeIntervalSince1970: 1_800_000_000)
+        let calendar = snooze.addingTimeInterval(600)
+
+        XCTAssertEqual(
+            CaptureAgendaBoundaryRefresh.earliestUnfired(
+                calendarBoundary: calendar,
+                snoozeBoundary: snooze,
+                firedBoundaries: []
+            ),
+            snooze
+        )
+        XCTAssertEqual(
+            CaptureAgendaBoundaryRefresh.earliestUnfired(
+                calendarBoundary: calendar,
+                snoozeBoundary: snooze,
+                firedBoundaries: [snooze]
+            ),
+            calendar
+        )
+        XCTAssertNil(
+            CaptureAgendaBoundaryRefresh.earliestUnfired(
+                calendarBoundary: calendar,
+                snoozeBoundary: snooze,
+                firedBoundaries: [snooze, calendar]
+            )
+        )
+    }
 }

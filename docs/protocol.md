@@ -5,8 +5,8 @@ description: "Bob Mac Capture subprocess commands, JSON boundaries, capability r
 
 Bob owns grammar, completion, previews, and writes ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)).
 
-Caret Go To uses parse mode `task_goto` with top-level `goto`, and completion's
-`block_id.goto` for browse. Older Bob omits them; unknown responses render neutrally.
+Caret Go To uses `task_goto`, `goto`, and `block_id.goto`; older or unknown
+responses render neutrally.
 
 ## Capability requirements
 
@@ -236,14 +236,13 @@ defines flags, refusals, and vectors.
 
 ## Timeouts and guards
 
-Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
+Every `bob` call times out in 20 seconds; quit cancels outstanding calls.
 
-If Bob rejects `--refuse-override` or `ref scan -a` / `--attended` (exit 2),
-  retry without it per executable and cache the answer.
-  `--require-pull-in-choice` needs `pull_in.supported` in that preview and never
-  retries. `--require-inbox-route-choice` needs `inbox_route.supported`.
-  Other failures never retry. Offer keys come only from
-  matching previews or write-free refusals.
+Known guard refusals retry once per executable: `--refuse-override` and
+`ref scan -a` / `--attended` retry without the rejected flag on exit 2.
+`--require-pull-in-choice` and `--require-inbox-route-choice` require support
+in the matching preview and never retry. Other failures never retry; offer keys
+come only from matching previews or write-free refusals.
 
 `--template-origin` requires that executable's successful template-list; see [Saved templates](saved-templates.md).
 
@@ -274,6 +273,8 @@ Optional commands stay hidden when absent:
 - `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
 - `gcal note` JSON: list/show/preview/save/clear; [Event notes](event-notes.md)
 - `walks --format json` (s/w/b title-row attention, schema 1)
+- `snooze wake -q -f json` (schema 1; `woke`, `nothing_due`, `deferred`, `skipped`;
+  absent support disables waking until Recheck Bob or executable replacement)
 
 ## Optional fields
 
@@ -292,7 +293,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `block_id` object, `picker` descriptor, `parent_replacement`, Parent Task continuation metadata, `pomodoro_start_name` context
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
-- `headline`, `snoozed` (`rows`, `next_wake_at`), item `woke_at` / `snoozed_target` on `capture-pomodoros --tasks` (headline text; Later today band with wake provenance); `snooze` takes the schedule tint
+- `headline`, snoozed agenda rows and wake provenance; `snooze` span tint
 - `walks` `counts` (s=`walk`, legacy fallback=`commitments`; w=`excess`; b=`waiting`), `tier`/`label`/`reason`; unknown families ignored
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `mail_close` on success

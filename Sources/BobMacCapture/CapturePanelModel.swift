@@ -1715,7 +1715,7 @@ final class CapturePanelModel: ObservableObject {
     private var agendaSourceSnapshot: CaptureAgendaSnapshot?
     private var agendaSourceStatus: CaptureAgendaStoreStatus = .idle
     private var walkAttentionSourceSnapshot: WalkAttentionSnapshot?
-    private var agendaLastFiredBoundary: Date?
+    private var agendaFiredBoundaries: Set<Date> = []
 
     /// Measures what is missing, plans, and publishes. Runs on store
     /// publish, width change, screen change (via the budget), and
@@ -1734,6 +1734,7 @@ final class CapturePanelModel: ObservableObject {
         }
         agendaPlanningDay = day
         guard agendaEnabled, agendaStore != nil else {
+            resetCalendarBoundaryRefresh()
             agendaPresentation = nil
             agendaPlan = nil
             return
@@ -1759,32 +1760,25 @@ final class CapturePanelModel: ObservableObject {
         scheduleCalendarBoundaryRefresh()
     }
 
-    /// Schedules one `.eventBoundary` refresh at the band's next event
-    /// boundary while the agenda is visible. A new plan cancels and
-    /// re-arms the sleep; each boundary fires at most once until the
-    /// panel hides or the day or snapshot changes.
+    /// Schedules one `.eventBoundary` refresh at the earliest visible
+    /// Calendar or snooze boundary. Calendar strings are local; Bob's
+    /// snooze instant is parsed with its explicit RFC 3339 offset. Each
+    /// boundary fires once until the panel hides or the day/snapshot changes.
     private func scheduleCalendarBoundaryRefresh() {
         agendaBoundaryTask?.cancel()
         agendaBoundaryTask = nil
-        guard agendaVisible,
-            let raw = agendaPresentation?.calendar?.refreshAt,
-            let fireAt = CaptureAgendaClock.date(fromNaiveLocal: raw)
-        else {
-            return
-        }
-        guard let agendaStore else {
+        guard agendaVisible, let fireAt = nextAgendaBoundary() else {
             return
         }
         switch CaptureAgendaBoundaryRefresh.decision(
             refreshAt: fireAt,
-            lastFiredBoundary: agendaLastFiredBoundary,
+            firedBoundaries: agendaFiredBoundaries,
             now: Date()
         ) {
         case .none:
             return
         case .immediate:
-            agendaLastFiredBoundary = fireAt
-            agendaStore.refresh(reason: .eventBoundary)
+            fireAgendaBoundary(fireAt)
         case .sleep(let delay):
             agendaBoundaryTask = Task { [weak self] in
                 do {
@@ -1794,25 +1788,58 @@ final class CapturePanelModel: ObservableObject {
                 }
                 await MainActor.run {
                     guard let self, self.agendaVisible,
+                        self.nextAgendaBoundary() == fireAt,
                         CaptureAgendaBoundaryRefresh.decision(
                             refreshAt: fireAt,
-                            lastFiredBoundary: self.agendaLastFiredBoundary,
+                            firedBoundaries: self.agendaFiredBoundaries,
                             now: Date()
                         ) == .immediate
                     else {
                         return
                     }
-                    self.agendaLastFiredBoundary = fireAt
-                    self.agendaStore?.refresh(reason: .eventBoundary)
+                    self.fireAgendaBoundary(fireAt)
                 }
             }
         }
     }
 
+    private func nextAgendaBoundary() -> Date? {
+        let calendarBoundary = agendaPresentation?.calendar?.refreshAt.flatMap {
+            CaptureAgendaClock.date(fromNaiveLocal: $0)
+        }
+        let snoozeBoundary = agendaSourceSnapshot?.snoozed?.nextWakeAt.flatMap {
+            CaptureRFC3339Date.date(from: $0)
+        }
+        return CaptureAgendaBoundaryRefresh.earliestUnfired(
+            calendarBoundary: calendarBoundary,
+            snoozeBoundary: snoozeBoundary,
+            firedBoundaries: agendaFiredBoundaries
+        )
+    }
+
+    private func fireAgendaBoundary(_ fireAt: Date) {
+        guard agendaVisible,
+            nextAgendaBoundary() == fireAt,
+            CaptureAgendaBoundaryRefresh.decision(
+                refreshAt: fireAt,
+                firedBoundaries: agendaFiredBoundaries,
+                now: Date()
+            ) == .immediate
+        else {
+            return
+        }
+        agendaFiredBoundaries.insert(fireAt)
+        agendaBoundaryTask = nil
+        // Repaint the snooze row at the advertised instant, then ask Bob
+        // for fresh facts. The independent writer is due five seconds later.
+        refreshAgendaPlan()
+        agendaStore?.refresh(reason: .eventBoundary)
+    }
+
     private func resetCalendarBoundaryRefresh() {
         agendaBoundaryTask?.cancel()
         agendaBoundaryTask = nil
-        agendaLastFiredBoundary = nil
+        agendaFiredBoundaries = []
     }
 
     /// Paints one quiet "Loading today…" line while the setting is on

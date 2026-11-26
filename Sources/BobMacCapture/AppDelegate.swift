@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var meetingNotesPanelModel: MeetingNotesPanelModel?
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
+    private var snoozeWakeScheduler: SnoozeWakeScheduler?
     private var walkAttentionStore: WalkAttentionStore?
     private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
@@ -117,6 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             vaultRootPath: Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
         )
         self.agendaStore = agendaStore
+        snoozeWakeScheduler = SnoozeWakeScheduler(
+            agendaStore: agendaStore,
+            processClient: processClient
+        )
         model.agendaStore = agendaStore
         let walkAttentionStore = WalkAttentionStore(
             processClient: processClient,
@@ -293,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scanReceiptObserver?.stop()
         refsLibrary?.stop()
         vaultWatcher?.invalidate()
+        snoozeWakeScheduler?.stop()
         processClient?.cancelActiveProcess()
     }
 
@@ -1197,6 +1203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func reconfigureBobClient() {
         configureProcessClient()
         panelModel?.processClient = processClient
+        snoozeWakeScheduler?.reconfigure(processClient: processClient)
         agendaStore?.processClient = processClient
         agendaStore?.reset()
         walkAttentionStore?.processClient = processClient

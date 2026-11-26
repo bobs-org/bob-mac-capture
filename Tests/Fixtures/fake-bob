@@ -2742,6 +2742,31 @@ JSON
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
     fi
     ;;
+  snooze)
+    if [[ "${1:-}" != "wake" ]]; then
+      printf "error: unrecognized subcommand '%s'\n" "${1:-}" >&2
+      exit 2
+    fi
+    if [[ "${FAKE_BOB_SNOOZE_WAKE_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'wake'\n\nUsage: bob snooze [OPTIONS] <COMMAND>\n" >&2
+      exit 2
+    fi
+    if [[ "${FAKE_BOB_SNOOZE_WAKE_FAIL:-}" == "1" ]]; then
+      printf 'fake snooze wake failed\n' >&2
+      exit 1
+    fi
+    if [[ -n "${FAKE_BOB_SNOOZE_WAKE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_SNOOZE_WAKE_DELAY_SECONDS}" &
+      wait $!
+    fi
+    if [[ -n "${FAKE_BOB_SNOOZE_WAKE_JSON:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_SNOOZE_WAKE_JSON}"
+    else
+      cat <<'JSON'
+{"schema_version":1,"status":"woke","date":"2026-08-28","now":"09:00","woken":[],"pending":0,"next_wake_at":null,"notification":null}
+JSON
+    fi
+    ;;
   capture-pomodoros)
     # `bob capture-pomodoros --format json` for the close-comma assist.
     # FAKE_BOB_POMODOROS_FIXTURE names a fixture in this directory (for

@@ -114,6 +114,12 @@ panel show.
   older `bob` without `--tasks` hides the agenda and serves the running count
   for `x`/link close lists, but leaves `x=` unassisted, until Recheck Bob or an
   executable change.
+- Snooze wake. An app-owned scheduler runs `bob snooze wake -q -f json` five seconds
+  after Bob's advertised instant even while the panel is hidden or Agenda is off. It
+  uses a separate non-cancelling process lane, refreshes agenda facts after each settled
+  attempt, and lets Bob enforce writer-host pinning. If an older `bob` rejects the wake
+  command, the scheduler disables itself for that client session; the agenda still
+  works, and Recheck Bob or replacing the executable retries the capability.
 - Calendar band. Between the Now groups and the Next/Later ones (right under the
   title rows when nothing runs), the band summarizes today's calendar from bob's
   additive `events` block; an older `bob` without it shows no band. The header names
@@ -141,8 +147,11 @@ none, and a filed receipt refreshes the band so the row loses its Notes action.
   until expanded. When no timed event is upcoming, any all-day row remains above the
   quiet "Calendar clear for the rest of the day" row. Command-J joins the focus event
   from an empty draft.
-  The band's countdowns tick every minute, and the store schedules one extra
-  refresh at the next event boundary while the agenda is visible. A decorative day
+  The band's countdowns tick every minute. While the agenda is visible, one extra
+  agenda refresh fires at the earliest Calendar boundary or Bob's advertised
+  `snoozed.next_wake_at`; the latter is parsed with its RFC 3339 offset and lets the
+  band paint `due · waking` before the independent wake at target plus five seconds.
+  A decorative day
   rail runs from the current hour through at least three hours and extends through the
   last remaining event or running session, extending through buffered ends. It
   shows hour ticks, filled event capsules, dashed off-clock capsules, dotted
