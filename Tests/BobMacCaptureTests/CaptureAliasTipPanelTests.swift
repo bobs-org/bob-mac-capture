@@ -414,7 +414,7 @@ final class CaptureAliasTipPanelTests: XCTestCase {
         // the old-Bob incapable flag is set before asserting. Waiting only for
         // !inFlight is racy: it is true both before the lane starts and after
         // it settles.
-        await waitUntil { captureRewriteCount(in: recordURL, draft: "Buy milk @") == 1 }
+        await waitUntil { self.captureRewriteCount(in: recordURL, draft: "Buy milk @") == 1 }
         await waitUntil { !model.aliasTipInFlightForTesting }
         XCTAssertNil(model.presentedAliasTip)
         XCTAssertEqual(captureRewriteCount(in: recordURL, draft: "Buy milk @"), 1)
