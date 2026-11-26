@@ -374,6 +374,28 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         })
     }
 
+    func testSubsumedRelationRendersTieRowAndCountsNoLink() throws {
+        let capture = try captureFixture("relation-preview-subsumed-dependency.json")
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: capture).rows.map(\.text),
+            ["🪢 Already tied by a dependency “Owner”   mac_inbox.md ^owner"]
+        )
+        XCTAssertNil(CaptureRelationshipPresentation(capture: capture).notification)
+    }
+
+    func testAbsorbedPlainLinksRenderUnderDependencyRow() throws {
+        let capture = try captureFixture("task-dependency-preview-absorbed-plain-link.json")
+        let rows = CaptureRelationshipPresentation(capture: capture).rows.map(\.text)
+        XCTAssertTrue(rows[0].hasPrefix("⛓ depends on"))
+        XCTAssertEqual(
+            Array(rows.dropFirst()),
+            [
+                "🪢 Replaced the link to “Plain peer”   tasks.md ^plain-peer",
+                "🪢 Replaced the link to “Owner”   mac_inbox.md ^owner",
+            ]
+        )
+    }
+
     private func captureFixture(_ name: String) throws -> CaptureCommandSuccess {
         try decodeSuccess(fixtureData(name))
     }

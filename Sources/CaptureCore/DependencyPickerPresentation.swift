@@ -424,8 +424,20 @@ public struct DependencyPickerIndex: Sendable {
         if direction.isRelation, entry.candidate.alreadyLinked {
             return alreadyLinkedBadge(for: entry.candidate)
         }
+        if direction == .prerequisite, entry.candidate.plainLink != nil {
+            return "Linked · & replaces the link"
+        }
+        if direction == .blocks, entry.candidate.plainLink != nil {
+            return "Linked · * replaces the link"
+        }
+        if direction.isRelation, entry.candidate.dependencyTie == "prerequisite" {
+            return "Prerequisite · ~ needs a label"
+        }
+        if direction.isRelation, entry.candidate.dependencyTie == "dependent" {
+            return "Waits on this · ~ needs a label"
+        }
         if direction.isRelation, entry.candidate.alsoPrerequisite {
-            return "Prerequisite too"
+            return "Prerequisite · ~ needs a label"
         }
         if entry.candidate.hidden {
             return "Hidden"
@@ -464,27 +476,77 @@ public struct DependencyPickerIndex: Sendable {
             return "Already a prerequisite — accepting changes nothing"
         }
         if direction.isRelation, entry.candidate.alreadyLinked {
+            let base: String
             if let label = entry.candidate.existingLabel, !label.isEmpty {
-                return "Already linked · \(label) — accepting changes nothing"
+                base = "Already linked · \(label) — accepting changes nothing"
+            } else {
+                base = "Already linked — accepting changes nothing"
             }
-            return "Already linked — accepting changes nothing"
+            if let tie = tieNoun(for: entry.candidate) {
+                return "\(base) · tied as a \(tie)"
+            }
+            return base
+        }
+        if direction.isRelation, tieNoun(for: entry.candidate) != nil {
+            return "Already tied by a dependency · a plain ~ adds nothing; "
+                + "add a |label to relate them"
         }
         switch entry.group {
         case .completed:
-            return direction.isRelation
-                ? "Completed history"
-                : "Completed history — selecting never blocks"
+            return prefixedWithPlainLinkReplacement(
+                direction.isRelation
+                    ? "Completed history"
+                    : "Completed history — selecting never blocks",
+                candidate: entry.candidate
+            )
         case .thisNote, .inProgress, .next, .open:
             switch direction {
             case .blocks:
-                return "Becomes Blocked until this is done"
+                return prefixedWithPlainLinkReplacement(
+                    "Becomes Blocked until this is done",
+                    candidate: entry.candidate
+                )
             case .prerequisite:
-                return "Open · will block the dependent until finished"
+                return prefixedWithPlainLinkReplacement(
+                    "Open · will block the dependent until finished",
+                    candidate: entry.candidate
+                )
             case .linksTo:
                 return "Adds a LINKS line from the owner to this task"
             case .linkedFrom:
                 return "Adds a LINKS line from this task to the owner"
             }
+        }
+    }
+
+    /// "prerequisite" when the owner waits on the candidate, "dependent"
+    /// when the candidate waits on the owner, nil when the pair is untied.
+    /// The deprecated `alsoPrerequisite` alias counts as a prerequisite tie
+    /// for older Bob payloads that predate `dependency_tie`.
+    private func tieNoun(for candidate: CaptureCompletionCandidate) -> String? {
+        if candidate.dependencyTie == "prerequisite" || candidate.alsoPrerequisite {
+            return "prerequisite"
+        }
+        if candidate.dependencyTie == "dependent" {
+            return "dependent"
+        }
+        return nil
+    }
+
+    /// Prefixes the base copy when accepting would absorb the pair's plain
+    /// link into the new dependency.
+    private func prefixedWithPlainLinkReplacement(
+        _ base: String,
+        candidate: CaptureCompletionCandidate
+    ) -> String {
+        guard candidate.plainLink != nil else {
+            return base
+        }
+        switch direction {
+        case .prerequisite, .blocks:
+            return "Replaces the plain link · \(base)"
+        case .linksTo, .linkedFrom:
+            return base
         }
     }
 

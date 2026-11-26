@@ -5562,6 +5562,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive per-item `~` / `~~` writes (Rule 12). Older Bob omits each key;
     /// missing decodes as empty so the rest of capture still shows.
     public let relationUpdates: [CaptureRelationUpdate]
+    /// Additive per-item plain links a dependency absorbed. Older Bob
+    /// omits the key; missing decodes as empty so the rest of capture
+    /// still shows.
+    public let absorbedPlainLinks: [CaptureAbsorbedPlainLink]
     /// Additive per-item cancel-label effects. Older Bob omits the key;
     /// missing decodes as empty so the rest of capture still shows.
     public let relationCancels: [CaptureRelationCancel]
@@ -5755,6 +5759,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         consumedLinks: [CaptureConsumedLink] = [],
         mintedBlockerBlockID: CaptureMintedBlockID? = nil,
         relationUpdates: [CaptureRelationUpdate] = [],
+        absorbedPlainLinks: [CaptureAbsorbedPlainLink] = [],
         relationCancels: [CaptureRelationCancel] = [],
         relationCompletes: [CaptureRelationComplete] = [],
         relationSuccessors: [TaskCompleteUnblocked] = [],
@@ -5858,6 +5863,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.consumedLinks = consumedLinks
         self.mintedBlockerBlockID = mintedBlockerBlockID
         self.relationUpdates = relationUpdates
+        self.absorbedPlainLinks = absorbedPlainLinks
         self.relationCancels = relationCancels
         self.relationCompletes = relationCompletes
         self.relationSuccessors = relationSuccessors
@@ -6020,6 +6026,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decodeIfPresent(
                 [CaptureRelationUpdate].self,
                 forKey: .relationUpdates
+            )) ?? []
+        absorbedPlainLinks =
+            (try? container.decodeIfPresent(
+                [CaptureAbsorbedPlainLink].self,
+                forKey: .absorbedPlainLinks
             )) ?? []
         relationCancels =
             (try? container.decodeIfPresent(
@@ -6242,6 +6253,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case consumedLinks = "consumed_links"
         case mintedBlockerBlockID = "minted_blocker_block_id"
         case relationUpdates = "relation_updates"
+        case absorbedPlainLinks = "absorbed_plain_links"
         case relationCancels = "relation_cancels"
         case relationCompletes = "relation_completes"
         case relationSuccessors = "relation_successors"
@@ -6749,6 +6761,10 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
     /// Additive complete-label effect on this edge: `completed` or
     /// `already_closed`. Older Bob and non-complete labels omit it.
     public let completeEffect: String?
+    /// Additive subsumption marker: `"dependency"` when a plain `~` / `~~`
+    /// added nothing because a dependency already ties the pair. Older
+    /// Bob omits it; missing decodes as nil.
+    public let subsumedBy: String?
 
     public init(
         direction: String = "to",
@@ -6758,7 +6774,8 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         previousLabel: String? = nil,
         action: String = "added",
         cancelEffect: String? = nil,
-        completeEffect: String? = nil
+        completeEffect: String? = nil,
+        subsumedBy: String? = nil
     ) {
         self.direction = direction
         self.source = source
@@ -6768,6 +6785,7 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         self.action = action
         self.cancelEffect = cancelEffect
         self.completeEffect = completeEffect
+        self.subsumedBy = subsumedBy
     }
 
     public init(from decoder: Decoder) throws {
@@ -6784,6 +6802,7 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? "added"
         cancelEffect = (try? container.decodeIfPresent(String.self, forKey: .cancelEffect)) ?? nil
         completeEffect = (try? container.decodeIfPresent(String.self, forKey: .completeEffect)) ?? nil
+        subsumedBy = (try? container.decodeIfPresent(String.self, forKey: .subsumedBy)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6795,6 +6814,89 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         case action
         case cancelEffect = "cancel_effect"
         case completeEffect = "complete_effect"
+        case subsumedBy = "subsumed_by"
+    }
+}
+
+/// One plain relation Bob removed because a dependency joins the pair,
+/// in `absorbed_plain_links[]` order. `dependency` is
+/// `"source_waits_on_target"` or `"target_waits_on_source"`.
+public struct CaptureAbsorbedPlainLink: Codable, Equatable, Sendable {
+    public let path: String
+    public let line: Int
+    public let source: CaptureAbsorbedPlainLinkEndpoint
+    public let target: CaptureAbsorbedPlainLinkEndpoint
+    public let dependency: String
+
+    public init(
+        path: String = "",
+        line: Int = 0,
+        source: CaptureAbsorbedPlainLinkEndpoint = CaptureAbsorbedPlainLinkEndpoint(),
+        target: CaptureAbsorbedPlainLinkEndpoint = CaptureAbsorbedPlainLinkEndpoint(),
+        dependency: String = "source_waits_on_target"
+    ) {
+        self.path = path
+        self.line = line
+        self.source = source
+        self.target = target
+        self.dependency = dependency
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        source =
+            (try? container.decodeIfPresent(
+                CaptureAbsorbedPlainLinkEndpoint.self,
+                forKey: .source
+            )) ?? CaptureAbsorbedPlainLinkEndpoint()
+        target =
+            (try? container.decodeIfPresent(
+                CaptureAbsorbedPlainLinkEndpoint.self,
+                forKey: .target
+            )) ?? CaptureAbsorbedPlainLinkEndpoint()
+        dependency = (try? container.decodeIfPresent(String.self, forKey: .dependency)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case line
+        case source
+        case target
+        case dependency
+    }
+}
+
+/// One endpoint of an absorbed plain link: the vault-relative note,
+/// line, block ID, and display text. Older Bob omits the array
+/// entirely; a partial object degrades to empty fields.
+public struct CaptureAbsorbedPlainLinkEndpoint: Codable, Equatable, Sendable {
+    public let path: String
+    public let line: Int
+    public let blockID: String
+    public let text: String
+
+    public init(path: String = "", line: Int = 0, blockID: String = "", text: String = "") {
+        self.path = path
+        self.line = line
+        self.blockID = blockID
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case line
+        case blockID = "block_id"
+        case text
     }
 }
 
@@ -11100,6 +11202,17 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
     public let existingLabel: String?
     /// True when the candidate is also a prerequisite of the owner.
     public let alsoPrerequisite: Bool
+    /// Additive tie direction for `relation_to` / `relation_from` rows:
+    /// `"prerequisite"` when the owner waits on the candidate,
+    /// `"dependent"` when the candidate waits on the owner. Older Bob
+    /// omits it; missing decodes as nil.
+    public let dependencyTie: String?
+    /// Additive plain-link tie for `task_dependency` (`&`) and
+    /// `blocked_task` (`*`) rows from vault LINKS only: `"to"` when the
+    /// owner's LINKS line holds a plain entry for the candidate,
+    /// `"from"` for the reverse, `"both"` when each holds one. Older
+    /// Bob omits it; missing decodes as nil.
+    public let plainLink: String?
     public let disabledReason: String?
     public let hidden: Bool
     // Additive `task_complete` fields from Bob's completable-task scanner:
@@ -11293,6 +11406,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         alreadyLinked: Bool = false,
         existingLabel: String? = nil,
         alsoPrerequisite: Bool = false,
+        dependencyTie: String? = nil,
+        plainLink: String? = nil,
         disabledReason: String? = nil,
         hidden: Bool = false,
         recurring: Bool = false,
@@ -11398,6 +11513,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         self.alreadyLinked = alreadyLinked
         self.existingLabel = existingLabel
         self.alsoPrerequisite = alsoPrerequisite
+        self.dependencyTie = dependencyTie
+        self.plainLink = plainLink
         self.disabledReason = disabledReason
         self.hidden = hidden
         self.recurring = recurring
@@ -11507,8 +11624,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         alreadyBlocked = (try? container.decodeIfPresent(Bool.self, forKey: .alreadyBlocked)) ?? false
         alreadyLinked = (try? container.decodeIfPresent(Bool.self, forKey: .alreadyLinked)) ?? false
         existingLabel = (try? container.decodeIfPresent(String.self, forKey: .existingLabel)) ?? nil
-        alsoPrerequisite =
-            (try? container.decodeIfPresent(Bool.self, forKey: .alsoPrerequisite)) ?? false
+        dependencyTie = (try? container.decodeIfPresent(String.self, forKey: .dependencyTie)) ?? nil
+        let decodedPrerequisite =
+            (try? container.decodeIfPresent(Bool.self, forKey: .alsoPrerequisite))
+        alsoPrerequisite = decodedPrerequisite ?? (dependencyTie == "prerequisite")
+        plainLink = (try? container.decodeIfPresent(String.self, forKey: .plainLink)) ?? nil
         disabledReason = try container.decodeIfPresent(String.self, forKey: .disabledReason)
         hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         recurring = try container.decodeIfPresent(Bool.self, forKey: .recurring) ?? false
@@ -11627,6 +11747,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         case alreadyLinked = "already_linked"
         case existingLabel = "existing_label"
         case alsoPrerequisite = "also_prerequisite"
+        case dependencyTie = "dependency_tie"
+        case plainLink = "plain_link"
         case disabledReason = "disabled_reason"
         case hidden
         case recurring

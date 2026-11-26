@@ -345,64 +345,61 @@ A whole-item `=`/`=<X>` start instead shows its own card
 (**title only** for zero). **Show all N** expands longer lists; warnings stay
 visible; Pull-In starts unselected.
 
-Pending names the new task above its prompt. VoiceOver announces the new
-task, then source transitions and note counts. Refusals offer **Use >**,
-**Move before <**, or **Add spaces**.
-Refusals block Return until rewrite or edit.
+Pending names the new task above its prompt; VoiceOver announces it, then
+source transitions and note counts. Refusals offer **Use >**,
+**Move before <**, or **Add spaces**, and block Return until rewrite or edit.
 
-Single-item **Capture & merge N tasks** (singular), bulk **Capture**. Both
+Single-item **Capture & merge N tasks** (singular), bulk **Capture**; both
 arrows fold notes under expandable titles. Below grammar 15:
 **Update bob to merge tasks with <**.
 
 ### Past card
 
 One `Record past work` card renders per past stack: total minutes, a timeline
-  (`09:00 ── BUILD 10m ── 09:10 ── FIX 15m ── 09:25`, midnight as `0000`),
-  per-member ranges with close task rows, and amber trim rows with `(calendar)`
-  for MEET rows.
+  (`09:00 ── BUILD 10m ── 09:10`, midnight as `0000`),
+  per-member ranges with close task rows, and amber `(calendar)`
+  trim rows for MEET rows.
 
 ### Pomodoro and task blocks
 
-Whenever Bob reports batch-level `pomodoro_blocks`, every Pomodoro the capture
-  touches, creates, or reports renders once below the item stack as a full block view:
+Every reported `pomodoro_blocks` entry renders once below the item stack as a full
+  block view:
   a status caption (`Running · line 27` with a `play.circle.fill` glyph, `Completed`
   with `checkmark.circle.fill`, `Queued` with `circle.dashed`) plus a pink **New**
   capsule on a dry run (**Created** once committed), then a card with a status rail,
   a diff gutter (`+` green for added lines, `•` accent for changed lines with the old
-  text on hover, `−` red for removed lines), indent guides per depth, and the verbatim
-  lines Bob will write — tinted like the editor (pink time range, wikilink colors,
-  checkbox colors) with no truncation. An added line Bob marks as a surviving
+  text on hover, `−` red for removed lines), indent guides per depth, and Bob's
+  verbatim lines — editor-tinted with no truncation. An added line Bob marks as a surviving
   successor link carries a trailing `lock.open.fill` badge (`Unblocked successor`
-  on hover and to VoiceOver). Standard items whose verbatim lines the blocks
-  already cover omit the duplicated stack, and the blocks dim to 0.6 together with the
+  on hover and to VoiceOver). Items the blocks already cover omit the duplicated
+  stack, and the blocks dim to 0.6 with the
   close card while a close-list selection dangles. An older Bob that omits
   `pomodoro_blocks` previews exactly as before.
-  Whenever Bob reports batch-level `task_blocks`, every parent task a sub-bullet
-  capture wrote under renders once below the item stack as a full task card, before the
+  Every reported `task_blocks` parent renders once below the item stack as a full
+  task card, before the
   Pomodoro blocks: a picker-status caption (`In Progress · sase.md · line 1` with the
   `@+` chooser glyph and color) plus a pink **New** capsule on a dry run (**Created**
-  once committed), then the shared diff card with task tinting (list markers,
-  checkboxes, secondary `#tags` and `[key:: value]` fields, indigo `^block-id`,
-  wikilinks, semibold task-line prose) and no truncation. Covered
+  once committed), then the shared diff card with task tinting and no truncation. Covered
   sub-bullet items switch to a compact `↳ Sub-bullet under ^id` header (with
   ` › SECTION` when Bob reports one) and drop the verbatim stack and trailing note
-  line; uncovered items render exactly as before. Blocks above 24 rows fold quiet runs
+  line; uncovered items render as before. Blocks above 24 rows fold quiet runs
   of 4 or more unchanged rows into `⋯ N unchanged lines` rows that expand on click
   (with a **Show all lines** action); smaller blocks never fold. A single sub-bullet
-  names its parent in the status and summary (`Preview → sase.md › ^id`), and an older
-  Bob without `task_blocks` previews exactly as before. Transfer roles add **Merge
+  names its parent in the status and summary (`Preview → sase.md › ^id`); without
+  `task_blocks`, an older
+  Bob previews as before. Transfer roles add **Merge
   target**, **Merged**, or **Moved** capsules; moved captions name the source. Tombstones
   fold removed runs, and `section_blocks` render a section target before tombstones.
 
-Bob-annotated requirements replace the checkbox with one teal diamond: hollow pending,
-filled met, faded moot/excluded, slashed dropped, or carried arrow. Indentation shows
-depth. Met text is muted; dropped text is also struck. Diff gutters, washes, removed-line
+Bob-annotated requirements replace the checkbox with one teal diamond (hollow pending,
+filled met, faded moot/excluded, slashed dropped, carried arrow). Indentation shows
+depth; met text is muted, dropped text struck. Diff gutters, washes, removed-line
 treatment, and source bytes stay intact. Without `req`, checkboxes render normally.
 
 ## Deterministic scheduling
 
-The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle
-  (reset only after a successful capture or discard), deriving item-specific
+The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` per draft lifecycle
+  (reset on capture or discard), deriving item-specific
   rolls for batch drafts.
 
 ## Completing tasks with `!`
@@ -527,15 +524,18 @@ its inbox.
 
 Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress` or
 `🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked` row per
-relationship, in Bob's `dependency_updates[]` order. Already-present rows say
+relationship, in `dependency_updates[]` order. Already-present rows say
 `already depends on` or `already blocks`; project-resident counts remain on the
-block row. Managed Depends-On/Blocks Markdown is omitted from task cards while
-these rows are present. A `task_dependency` item uses an owner header (text,
-note and block ID, resulting status) ahead of the related task cards, omitting
-its repeated task line when the card covers it. Success notifications name
+block row. Absorbed plain links render one
+`🪢 Replaced the link to "Plain peer"` row each under the ⛓ / 🧱
+row, in `absorbed_plain_links[]` order. Managed Depends-On/Blocks
+Markdown is omitted from task cards while these rows are present.
+A `task_dependency` item uses an owner header (text,
+note, block ID, status) ahead of the related task cards, omitting
+its repeated line when covered. Success notifications name
 the owner and relationship over the route label. Consumed links carry
 Bob's session name, time, state, action, and removal flag; deleted sessions
-and removed Pomodoro lines render red. A dependency-only action is never labeled
+and removed lines render red. A dependency-only action is never labeled
 "Create task". Bob supplies the `&` and `*` editor spans; Swift never
 scans either sigil. Older Bob payloads keep their legacy preview copy.
 
@@ -543,14 +543,16 @@ scans either sigil. Older Bob payloads keep their legacy preview copy.
 
 Preview shows one `🪢 links to "Design a retry policy" · see   sase.md ^retry-design`
 or `🪢 "Ship the sase blog" now links here · next step   sase_blog.md ^prj` row per
-edge, in Bob's `relation_updates[]` order. Relabeled rows say
+edge, in `relation_updates[]` order. Relabeled rows say
 `🪢 relabeled "Retry design" · next`; already-linked rows say
-`🪢 already linked "Retry design"`. An archived target appends the muted
-`· archived: LINKED FROM shows live only` suffix because the courtesy mirror is
-skipped. Managed `**LINKS:**` / `**LINKED FROM:**` Markdown is omitted from task
+`🪢 already linked "Retry design"`. A plain `~` / `~~` over a
+dependency-tied pair says `🪢 Already tied by a dependency "Owner"` instead
+and counts as no link. An archived
+target appends the muted `· archived: LINKED FROM shows live only` suffix;
+the courtesy mirror is skipped. Managed `**LINKS:**` / `**LINKED FROM:**` Markdown is omitted from task
 cards while relation rows are present. Relation rows never render red,
 consumption, or status arrows. A `||` dry run that would hide a visible label
-renders Bob's `hides_existing_relation_label` message as an amber row; the
+renders the `hides_existing_relation_label` message as an amber row; the
 commit appends `· hid "label" from relation suggestions` to the notification.
 Cancel-label drafts add one ⊘ row per `relation_cancels[]` under the 🪢
 row, using Bob's dry-run message. The matching `relation_cancelled_source`
@@ -568,11 +570,11 @@ the submit button reads `Capture & complete 1 task` (`Capture & close N
 tasks` for a mixed dry run). A complete-label commit with offers opens the
 in-panel successor choice like `!`. `offers_source` candidates and spans
 show a neutral `link` / **offers** cue with the source undimmed. The card
-renders Bob's message unchanged with released-source caveats amber and
+renders Bob's message with released-source caveats amber and
 inverse hints muted; Swift never derives the outcome.
 Success notifications count relations separately: a single `~` reads
 `🪢 owner now links to "target"`, a single `~~` reads
-`🪢 "source" now links here`, and larger or mixed batches read
+`🪢 "source" now links here`, and bigger batches read
 `owner · depends on D · links R`. New relation IDs render as
 `🪢 New relation ID · path ^id (source|target)` captions. Bob supplies
 the `~` editor spans; Swift never scans the sigil. With `~` but no

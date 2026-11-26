@@ -1717,6 +1717,88 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Already linked · follow-up of"])
     }
 
+    func testRelationTieRowsShowTieBadges() {
+        let prerequisite = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            text: "Target",
+            notePath: "tasks.md",
+            locator: "tasks",
+            dependencyTie: "prerequisite"
+        )
+        let prerequisiteContent = completionRowContent(
+            for: prerequisite,
+            context: "relation_to",
+            query: ""
+        )
+        XCTAssertEqual(prerequisiteContent.badges, ["Prerequisite · ~ needs a label"])
+
+        let dependent = CaptureCompletionCandidate(
+            replacement: "~tasks:follower",
+            taskRef: "2:bbbb2222",
+            blockID: "follower",
+            text: "Follower",
+            notePath: "tasks.md",
+            locator: "tasks",
+            dependencyTie: "dependent"
+        )
+        let dependentContent = completionRowContent(
+            for: dependent,
+            context: "relation_from",
+            query: ""
+        )
+        XCTAssertEqual(dependentContent.badges, ["Waits on this · ~ needs a label"])
+
+        let labelled = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            text: "Target",
+            notePath: "tasks.md",
+            locator: "tasks",
+            alreadyLinked: true,
+            existingLabel: "follow-up of",
+            dependencyTie: "prerequisite"
+        )
+        let labelledContent = completionRowContent(
+            for: labelled,
+            context: "relation_to",
+            query: ""
+        )
+        XCTAssertEqual(labelledContent.badges, ["Already linked · follow-up of"])
+    }
+
+    func testDependencyPlainLinkRowsShowReplacementBadges() {
+        let dependency = CaptureCompletionCandidate(
+            replacement: "&tasks:peer",
+            taskRef: "1:aaaa1111",
+            blockID: "peer",
+            text: "Peer",
+            notePath: "tasks.md",
+            locator: "tasks",
+            plainLink: "both"
+        )
+        let dependencyContent = completionRowContent(
+            for: dependency,
+            context: "task_dependency",
+            query: ""
+        )
+        XCTAssertEqual(dependencyContent.badges, ["Linked · & replaces the link"])
+
+        let blocked = CaptureCompletionCandidate(
+            replacement: "*tasks:peer",
+            taskRef: "2:bbbb2222",
+            blockID: "peer",
+            text: "Peer",
+            notePath: "tasks.md",
+            locator: "tasks",
+            plainLink: "from"
+        )
+        let blockedContent = completionRowContent(for: blocked, context: "blocked_task", query: "")
+        XCTAssertEqual(blockedContent.badges, ["Linked · * replaces the link"])
+    }
+
     func testRelationLabelRowUsesMatchCount() {
         let candidate = CaptureCompletionCandidate(
             replacement: "|\"follow-up of\"",

@@ -166,13 +166,12 @@ Caret Go To uses `task_goto.goto`; older Bob omits it. Unknown responses render 
   that omits `plan_budget`, `role`, `added_theme_refs`, span or entry
   `themes`, or `code` still previews and captures; the Mac app decodes each
   as absent and renders the destination row as `→ NAME`, omitting only the
-  TODAY badge and the theme tints. A trailing `#now` tag is the ordinary trailing-tag error like any
-  other `#tag`, and `#now` typed before the route is plain body text. The `^`
-  active-task picker lists In Progress and Next tasks only. An older Bob that
-  still sends the `now` flag, the `now_tag` span or completion context, or
-  the `now` picker group still previews and captures; the Mac app decodes an
-  unknown span as neutral, an unknown context as a generic row, and an
-  unknown group as `note`. Saving links to the reading queue needs a Bob that
+  TODAY badge and the theme tints. A trailing `#now` tag is an ordinary trailing-tag error, and `#now`
+  before the route is plain body text. The `^` picker lists In Progress and
+  Next tasks only. An older Bob that still sends the `now` flag, `now_tag`
+  span or context, or `now` group still previews and captures; the app
+  decodes unknown spans neutrally, unknown contexts as generic rows, and
+  unknown groups as `note`. Saving links to the reading queue needs a Bob that
   emits the `ref` capture kind with the additive `ref` object, `ref` parse
   mode, and the `ref_url` span. An older Bob keeps capturing a bare link as
   an ordinary inbox task. Filing a link needs a Bob that resolves the
@@ -203,8 +202,8 @@ Grammar 14 segment suffixes precede `!` / `=`: `~` tail, `~N` / `~N+`
 segment start/end, `~~` head. Bob returns spans, candidates, resolved segment/pin,
 and cuts. Segment-ending `-` rewrites to `~`; stale-window guards refresh previews.
 
-The app never invokes a login shell to find `bob`; a Settings override must be an
-absolute executable path (see [Install](install.md#requirements)).
+The app never uses a login shell to find `bob`; a Settings override must be an
+absolute path (see [Install](install.md#requirements)).
 
 ## Move-choice submission
 
@@ -239,14 +238,12 @@ defines flags, refusals, and vectors.
 
 Every `bob` call has a 20-second timeout; quit cancels outstanding calls.
 
-If Bob rejects `--refuse-override` (exit 2), retry without it per executable.
+If Bob rejects `--refuse-override` or `ref scan -a` / `--attended` (exit 2),
+  retry without it per executable and cache the answer.
   `--require-pull-in-choice` needs `pull_in.supported` in that preview and never
-  retries. `--require-inbox-route-choice` needs `inbox_route.supported`; older Bob
-  retries without it. Other failures never retry. Offer keys come only from
+  retries. `--require-inbox-route-choice` needs `inbox_route.supported`.
+  Other failures never retry. Offer keys come only from
   matching previews or write-free refusals.
-
-Rejection of `ref scan -a` / `--attended` (exit 2) similarly retries without the
-flag and caches the answer per executable.
 
 `--template-origin` requires that executable's successful template-list; see [Saved templates](saved-templates.md).
 
@@ -288,7 +285,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`, `task_type`), agenda entry `themes`, Refs Today row `themes`
 - `task_type` completion context, top-level `subject` (`new`/`existing`), candidate `current` / `inherited` / `effect` / `refused`
 - `task_theme.action` `kept`, `type_relocation` (`outcome`, `from`, `to`)
-- `configured` on theme refs and `themes list` rows; `configured_themes` on `themes list`; `hue_source` `config` / `unconfigured`; structured `theme_not_configured` warnings on capture and `capture-pomodoro-name`
+- `configured` on theme refs and `themes list` rows, `configured_themes`, `hue_source`, and `theme_not_configured` warnings on capture and `capture-pomodoro-name`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
@@ -302,10 +299,11 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `notebook` summary (`route`, `title`, `breadcrumb`, `section`, `section_action`, `block_id`, `parent_block_id`); target/completion notebook display metadata
 - `place_menu` chrome; notebook section candidates (`group`, `detail`, `refused`, `consequence`, `creates`, `cursor_after`); span `notebook` / `section_action` / `title`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
+- dependency/plain-link ties: `dependency_tie` (+ deprecated `also_prerequisite`), `plain_link`, `subsumed_by`, per-item `absorbed_plain_links[]`, `dependency_and_plain_link` refusal
 - relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings, `bob relations rename` preview/write with counts, `label_range` / `hidden` on `relations[]`
 - Past fields: segment/pin, windows/cut, candidate bounds/repair, stale refusal
 - Record: `record`, `continuation`, `type`/`emoji`/`count`
-- Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
+- Retired `now` inputs (flag, span, context, group) decode as neutral rows
 
 ## Compatibility
 
@@ -392,6 +390,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `relation_label_hides[]`, structured `hides_existing_relation_label` warning | Amber preview row, card warning, `· hid` notification suffix | No hide rows; structured warnings decode as text | Upgrade `bob` for one-off hides |
 | `relation_grammar` | `~` parses with relation spans; capability warning stays hidden | Calm `predates ~ links` warning; first ⌘↩ only shows it | Upgrade `bob` for `~` |
 | `relation_updates[]`, `linked_from_line_updates[]`, `minted_relation_block_ids[]`, `mirror_skipped[]` | 🪢 preview rows, managed-line suppression, separate notification counts | Legacy preview without relation rows; notifications omit relations | Upgrade `bob` for relation previews |
+| `dependency_tie` / `plain_link`, `subsumed_by`, `absorbed_plain_links[]` | Tie capsules, subsumed rows that count as no link, absorbed rows under ⛓ / 🧱 rows | Untied capsules, no tie or absorbed rows | Upgrade `bob` for ties |
 | `cancels_source`, `configured`, `relation_cancel`, span `cancels_source`, `relation_cancels[]`, `cancel_effect`, `relation_cancelled_source` | ⊘ cancels capsule, dimmed source, verdict slot, cancelled span tint, ⊘ preview rows, `Capture & cancel N task(s)` | No cue; ordinary relation labels and preview rows | Upgrade `bob` for cancel labels |
 | `completes_source`, `relation_complete`, span `completes_source`, `relation_completes[]`, `complete_effect`, `relation_completed_source` | ✓ completes capsule, dimmed source, verdict slot, complete span tint, ✓ preview rows, `Capture & complete N task(s)` / `Capture & close N tasks`, in-panel successor choice | No cue; ordinary labels and preview rows, no successor offers | Upgrade `bob` for complete labels |
 | Candidate/span `offers_source`, `relation_successor` in `capture-complete` | `link` / **offers** capsule and successor-label tint; Bob's `message` verbatim, released `already_parked` / `already_closed` in amber, muted `hint` | Missing flags are false; inverse hints may omit verdicts; the app never infers verdicts | Upgrade `bob` for successor-label authoring |

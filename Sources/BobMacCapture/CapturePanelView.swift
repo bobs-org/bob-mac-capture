@@ -4391,6 +4391,7 @@ struct PreviewPane: View {
         )
         let suppressRelationshipLines = captures.contains {
             !$0.dependencyUpdates.isEmpty || !$0.relationUpdates.isEmpty
+                || !$0.absorbedPlainLinks.isEmpty
         }
         if captures.count > 1 || success.template != nil {
             HStack(spacing: 6) {

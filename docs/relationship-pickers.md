@@ -13,9 +13,12 @@ Depends On. It consumes Bob's additive contract and never parses quoted note
 components itself: Bob sends the decoded `query`, the lexical `owner`
 (`new_task` / `existing_task`), the exact `note_path` (extension included, case
 and Unicode preserved), the display `locator`, the `group`, `hidden`,
-`already_dependency`, and `disabled_reason` per row, plus a Bob-authored
+`already_dependency`, `plain_link`, and `disabled_reason` per row, plus a Bob-authored
 `replacement` (`&note:id`, quoted when the locator needs it) that is empty for
-ID-less and guarded rows.
+ID-less and guarded rows. A row tied by a plain link of the pair shows
+**Linked · & replaces the link** and its summary reads **Replaces the plain
+link · …** ahead of the existing copy; accepting it absorbs the plain link in
+the same capture.
 
 The header names the owner and direction: **⛓ Exercise depends on…** with
 `body.md ^excercise · In Progress` beneath, or **⛓ “Buy Groceries!” depends
@@ -75,11 +78,13 @@ picker in the Blocks direction (`blocked_task` context): scope `*`, caption
 Blocks, and the header **🧱 Exercise blocks…** with the owner location line,
 **🧱 “Buy Groceries!” blocks…** for a new-task owner, or **Choose a task to
 block** when there is no owner yet. Bob supplies the query, owner, candidates,
-`already_blocked`, disabled reasons, and backend-formatted `*note:id`
+`already_blocked`, `plain_link`, disabled reasons, and backend-formatted `*note:id`
 replacements. The action line reads
 `↩ inserts *job:cleanup · space adds another *`; rows already on the owner's
-Depends-On line say **Already blocked**. Disabled explanations appear verbatim
-from Bob.
+Depends-On line say **Already blocked**. A row tied by a plain link of the
+pair shows **Linked · \* replaces the link** with the same **Replaces the
+plain link · …** summary prefix as the Dependency picker. Disabled
+explanations appear verbatim from Bob.
 
 After text/marker plus space/tab, `;` aliases `*` only where Bob opens Blocks
 and no earlier `:` alias applies (`Buy milk ;` → `Buy milk *`). Fast `;;`
@@ -134,13 +139,20 @@ the token in place without opening a picker. After `|label`, `~` flips and `=`
 stays label text. Bob's current parse spans gate which editor keys are sent for
 these rewrites.
 
-Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
-disabled reasons, and backend-formatted `~note:id` / `~~note:id`
-replacements. Already-linked rows show **Already linked · follow-up of** when Bob sends
-an existing label. Prerequisite-too rows show **Prerequisite too**. Archived rows (locator
-`done/` or `/archive`) show **Archived**. Done history rows show **Done**.
-Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
-`read-only note`, `archived tasks can't get an id`).
+Bob supplies `already_linked`, `existing_label`, `dependency_tie`
+(`prerequisite` when the owner waits on the row, `dependent` when the row
+waits on the owner), the deprecated `also_prerequisite` alias, disabled
+reasons, and backend-formatted `~note:id` / `~~note:id` replacements.
+Already-linked rows show **Already linked · follow-up of** when Bob sends
+an existing label; the label keeps precedence over a tie, which the summary
+then names (`· tied as a prerequisite` / `· tied as a dependent`). A row tied
+as a prerequisite shows **Prerequisite · ~ needs a label**, a row tied as a
+dependent shows **Waits on this · ~ needs a label**, and either summary reads
+**Already tied by a dependency · a plain ~ adds nothing; add a `|label` to
+relate them**. Archived rows (locator `done/` or `/archive`) show
+**Archived**. Done history rows show **Done**. Disabled explanations appear
+verbatim from Bob (`its LINKS line is malformed`, `read-only note`, `archived
+tasks can't get an id`).
 
 The action line reads `↩ link · ⌃↩ link with a relation · ~ or = flips direction`
 (while an `=` opener record is live, `↩ link · ⌃↩ link with a relation · == types = · ~ flips`).

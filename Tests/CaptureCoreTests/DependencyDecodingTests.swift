@@ -333,6 +333,131 @@ final class DependencyDecodingTests: XCTestCase {
         return success
     }
 
+    func testTieFieldsDecodeInBothDirections() throws {
+        let prerequisite = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-tie-prerequisite.json").utf8)
+        )
+        XCTAssertEqual(prerequisite.context, "relation_to")
+        let target = try XCTUnwrap(
+            prerequisite.candidates.first(where: { $0.blockID == "target" })
+        )
+        XCTAssertEqual(target.dependencyTie, "prerequisite")
+        XCTAssertTrue(target.alsoPrerequisite)
+        XCTAssertTrue(target.alreadyLinked)
+        XCTAssertEqual(target.existingLabel, "follow-up of")
+        let follower = try XCTUnwrap(
+            prerequisite.candidates.first(where: { $0.blockID == "follower" })
+        )
+        XCTAssertEqual(follower.dependencyTie, "dependent")
+        XCTAssertFalse(follower.alsoPrerequisite)
+        let plainPeer = try XCTUnwrap(
+            prerequisite.candidates.first(where: { $0.blockID == "plain-peer" })
+        )
+        XCTAssertTrue(plainPeer.alreadyLinked)
+        XCTAssertNil(plainPeer.dependencyTie)
+
+        let dependent = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-tie-dependent.json").utf8)
+        )
+        XCTAssertEqual(dependent.context, "relation_from")
+        let fromTarget = try XCTUnwrap(
+            dependent.candidates.first(where: { $0.blockID == "target" })
+        )
+        XCTAssertEqual(fromTarget.dependencyTie, "prerequisite")
+        XCTAssertTrue(fromTarget.alsoPrerequisite)
+        let fromFollower = try XCTUnwrap(
+            dependent.candidates.first(where: { $0.blockID == "follower" })
+        )
+        XCTAssertEqual(fromFollower.dependencyTie, "dependent")
+
+        let legacy = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-owner-to.json").utf8)
+        )
+        let legacyTarget = try XCTUnwrap(
+            legacy.candidates.first(where: { $0.blockID == "target" })
+        )
+        XCTAssertNil(legacyTarget.dependencyTie)
+        XCTAssertTrue(legacyTarget.alsoPrerequisite)
+    }
+
+    func testPlainLinkDecodesOnDependencyCandidates() throws {
+        let dependency = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("task-dependency-complete-plain-link.json").utf8)
+        )
+        XCTAssertEqual(dependency.context, "task_dependency")
+        let plainPeer = try XCTUnwrap(
+            dependency.candidates.first(where: { $0.blockID == "plain-peer" })
+        )
+        XCTAssertEqual(plainPeer.plainLink, "both")
+        let forwardPeer = try XCTUnwrap(
+            dependency.candidates.first(where: { $0.blockID == "forward-peer" })
+        )
+        XCTAssertEqual(forwardPeer.plainLink, "to")
+        let reversePeer = try XCTUnwrap(
+            dependency.candidates.first(where: { $0.blockID == "reverse-peer" })
+        )
+        XCTAssertEqual(reversePeer.plainLink, "from")
+        let untied = try XCTUnwrap(
+            dependency.candidates.first(where: { $0.blockID == "owner-neighbor" })
+        )
+        XCTAssertNil(untied.plainLink)
+
+        let blocked = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("blocked-task-complete-plain-link.json").utf8)
+        )
+        XCTAssertEqual(blocked.context, "blocked_task")
+        let owner = try XCTUnwrap(
+            blocked.candidates.first(where: { $0.blockID == "owner" })
+        )
+        XCTAssertEqual(owner.plainLink, "both")
+    }
+
+    func testSubsumedRelationAndAbsorbedLinksDecode() throws {
+        let subsumed = try decodeFixture("relation-preview-subsumed-dependency.json")
+        let update = try XCTUnwrap(subsumed.relationUpdates.first)
+        XCTAssertEqual(update.action, "unchanged")
+        XCTAssertEqual(update.subsumedBy, "dependency")
+        XCTAssertEqual(update.target.blockID, "owner")
+        guard case .structured(let warning) = subsumed.warnings.first else {
+            return XCTFail("expected structured warning")
+        }
+        XCTAssertEqual(warning.code, "plain_link_subsumed_by_dependency")
+        XCTAssertTrue(warning.message.contains("adds nothing"))
+        XCTAssertTrue(subsumed.absorbedPlainLinks.isEmpty)
+
+        let absorbed = try decodeFixture("task-dependency-preview-absorbed-plain-link.json")
+        XCTAssertEqual(absorbed.absorbedPlainLinks.count, 2)
+        let first = absorbed.absorbedPlainLinks[0]
+        XCTAssertEqual(first.source.blockID, "owner")
+        XCTAssertEqual(first.target.blockID, "plain-peer")
+        XCTAssertEqual(first.dependency, "source_waits_on_target")
+        let second = absorbed.absorbedPlainLinks[1]
+        XCTAssertEqual(second.source.blockID, "plain-peer")
+        XCTAssertEqual(second.target.blockID, "owner")
+        XCTAssertEqual(second.dependency, "target_waits_on_source")
+
+        let legacy = try decodeFixture("task-dependency-preview-existing-owner.json")
+        XCTAssertTrue(legacy.absorbedPlainLinks.isEmpty)
+        XCTAssertNil(legacy.relationUpdates.first?.subsumedBy)
+    }
+
+    func testDependencyAndPlainLinkErrorDecodesCode() throws {
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(fixtureText("capture-error-dependency-and-plain-link.json").utf8)
+        )
+        guard case .failure(let failure) = response else {
+            return XCTFail("expected failure")
+        }
+        XCTAssertEqual(failure.code, "dependency_and_plain_link")
+        XCTAssertTrue(failure.error.contains("~tasks:target"))
+    }
+
     private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
         let response = try JSONDecoder().decode(
             CaptureCommandResponse.self,

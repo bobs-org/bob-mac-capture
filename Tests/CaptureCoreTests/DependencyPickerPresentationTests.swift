@@ -567,4 +567,134 @@ final class DependencyPickerPresentationTests: XCTestCase {
             "Choose a task to block"
         )
     }
+
+    func testRelationTieCapsulesAndSummaries() throws {
+        let prerequisite = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            dependencyTie: "prerequisite",
+            plainLink: nil
+        )
+        let dependent = CaptureCompletionCandidate(
+            replacement: "~tasks:follower",
+            taskRef: "2:bbbb2222",
+            blockID: "follower",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Follower",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            dependencyTie: "dependent"
+        )
+        let index = DependencyPickerIndex(
+            candidates: [prerequisite, dependent],
+            direction: .linksTo
+        )
+        let filtered = index.presentation(filter: "tasks")
+        let prerequisiteRow = try XCTUnwrap(filtered.rowsByID["tasks.md|1:aaaa1111"])
+        XCTAssertEqual(prerequisiteRow.chipText, "Prerequisite · ~ needs a label")
+        XCTAssertEqual(
+            prerequisiteRow.detail.summary,
+            "Already tied by a dependency · a plain ~ adds nothing; add a |label to relate them"
+        )
+        let dependentRow = try XCTUnwrap(filtered.rowsByID["tasks.md|2:bbbb2222"])
+        XCTAssertEqual(dependentRow.chipText, "Waits on this · ~ needs a label")
+        XCTAssertEqual(
+            dependentRow.detail.summary,
+            "Already tied by a dependency · a plain ~ adds nothing; add a |label to relate them"
+        )
+        let grouped = index.presentation(filter: "")
+        let groupedRow = try XCTUnwrap(grouped.rowsByID["tasks.md|1:aaaa1111"])
+        XCTAssertEqual(
+            groupedRow.detail.summary,
+            "Already tied by a dependency · a plain ~ adds nothing; add a |label to relate them"
+        )
+    }
+
+    func testRelationTieKeepsAlreadyLinkedChipAndShowsTieInSummary() throws {
+        let labelled = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            alreadyLinked: true,
+            existingLabel: "follow-up of",
+            dependencyTie: "prerequisite"
+        )
+        let index = DependencyPickerIndex(candidates: [labelled], direction: .linksTo)
+        let filtered = index.presentation(filter: "target")
+        let row = try XCTUnwrap(filtered.rowsByID["tasks.md|1:aaaa1111"])
+        XCTAssertEqual(row.chipText, "Already linked · follow-up of")
+        XCTAssertEqual(
+            row.detail.summary,
+            "Already linked · follow-up of — accepting changes nothing · tied as a prerequisite"
+        )
+    }
+
+    func testDependencyPlainLinkCapsulesAndSummaries() throws {
+        let linked = CaptureCompletionCandidate(
+            replacement: "&tasks:peer",
+            taskRef: "1:aaaa1111",
+            blockID: "peer",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Peer",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            plainLink: "both"
+        )
+        let prerequisiteIndex = DependencyPickerIndex(
+            candidates: [linked],
+            direction: .prerequisite
+        )
+        let prerequisiteRow = try XCTUnwrap(
+            prerequisiteIndex.presentation(filter: "peer").rowsByID["tasks.md|1:aaaa1111"]
+        )
+        XCTAssertEqual(prerequisiteRow.chipText, "Linked · & replaces the link")
+        XCTAssertEqual(
+            prerequisiteRow.detail.summary,
+            "Replaces the plain link · Open · will block the dependent until finished"
+        )
+
+        let blocked = CaptureCompletionCandidate(
+            replacement: "*tasks:peer",
+            taskRef: "2:bbbb2222",
+            blockID: "peer",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Peer",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            plainLink: "from"
+        )
+        let blocksIndex = DependencyPickerIndex(candidates: [blocked], direction: .blocks)
+        let blockedRow = try XCTUnwrap(
+            blocksIndex.presentation(filter: "peer").rowsByID["tasks.md|2:bbbb2222"]
+        )
+        XCTAssertEqual(blockedRow.chipText, "Linked · * replaces the link")
+        XCTAssertEqual(
+            blockedRow.detail.summary,
+            "Replaces the plain link · Becomes Blocked until this is done"
+        )
+    }
 }

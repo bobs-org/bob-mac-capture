@@ -961,6 +961,8 @@ public func completionRowContent(
         }
         if candidate.alreadyDependency {
             badges = ["Already added"]
+        } else if candidate.plainLink != nil {
+            badges = ["Linked · & replaces the link"]
         } else if let reason = candidate.disabledReason, !reason.isEmpty {
             badges = [reason]
         } else if candidate.requiresBlockID {
@@ -985,6 +987,8 @@ public func completionRowContent(
         }
         if candidate.alreadyBlocked {
             badges = ["Already blocked"]
+        } else if candidate.plainLink != nil {
+            badges = ["Linked · * replaces the link"]
         } else if let reason = candidate.disabledReason, !reason.isEmpty {
             badges = [reason]
         } else if candidate.requiresBlockID {
@@ -1013,8 +1017,10 @@ public func completionRowContent(
             } else {
                 badges = ["Already linked"]
             }
-        } else if candidate.alsoPrerequisite {
-            badges = ["Prerequisite too"]
+        } else if candidate.dependencyTie == "prerequisite" || candidate.alsoPrerequisite {
+            badges = ["Prerequisite · ~ needs a label"]
+        } else if candidate.dependencyTie == "dependent" {
+            badges = ["Waits on this · ~ needs a label"]
         } else if let reason = candidate.disabledReason, !reason.isEmpty {
             badges = [reason]
         } else if candidate.requiresBlockID {

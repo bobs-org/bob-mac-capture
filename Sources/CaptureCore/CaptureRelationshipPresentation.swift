@@ -60,16 +60,17 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
 
     public init(capture: CaptureCommandSuccess) {
         let dependencyRows = capture.dependencyUpdates.flatMap { Self.rows(for: $0) }
+        let absorbedRows = capture.absorbedPlainLinks.map { Self.row(for: $0) }
         let relationRows = capture.relationUpdates.map { Self.row(for: $0, capture: capture) }
         let cancelRows = capture.relationCancels.compactMap { Self.row(for: $0) }
         let completeRows = capture.relationCompletes.flatMap {
             Self.rows(for: $0, dryRun: capture.dryRun, enclosingPullIn: capture.pullIn)
         }
-        rows = dependencyRows + relationRows + cancelRows + completeRows
+        rows = dependencyRows + absorbedRows + relationRows + cancelRows + completeRows
         if Self.isTaskDependency(capture) {
             ownerHeader = Self.ownerHeader(for: capture)
             notification = Self.notification(for: capture)
-        } else if !capture.relationUpdates.isEmpty {
+        } else if !Self.liveRelationUpdates(for: capture).isEmpty {
             ownerHeader = nil
             notification = Self.relationOnlyNotification(for: capture)
         } else {
@@ -176,7 +177,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
 
     /// One 🪢 preview row for a relation edge. Relations never render red,
     /// consumption, or status arrows: only the quoted text, the label, the
-    /// locator, and the archived live-only suffix.
+    /// locator, and the archived live-only suffix. A subsumed plain link
+    /// renders the dependency tie instead of an already-linked row.
     private static func row(
         for update: CaptureRelationUpdate,
         capture: CaptureCommandSuccess
@@ -190,6 +192,11 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         let locatorSuffix = locator.isEmpty ? "" : "   \(locator)"
         let archived = isArchived(update: update, capture: capture)
         let archivedSuffix = archived ? " · archived: LINKED FROM shows live only" : ""
+        if update.subsumedBy != nil {
+            return CaptureRelationshipRow(
+                text: "🪢 Already tied by a dependency \(quoted)\(locatorSuffix)\(archivedSuffix)"
+            )
+        }
         let text: String
         switch update.action {
         case "relabeled":
@@ -204,6 +211,18 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             }
         }
         return CaptureRelationshipRow(text: text)
+    }
+
+    /// One 🪢 preview row for a plain link a dependency absorbed, rendered
+    /// under its ⛓ / 🧱 row. Bob reports the removed pair's target side.
+    private static func row(for absorbed: CaptureAbsorbedPlainLink) -> CaptureRelationshipRow {
+        let quoted = "“\(absorbed.target.text)”"
+        let locator = locationText(
+            note: absorbed.target.path,
+            blockID: absorbed.target.blockID.isEmpty ? nil : absorbed.target.blockID
+        )
+        let locatorSuffix = locator.isEmpty ? "" : "   \(locator)"
+        return CaptureRelationshipRow(text: "🪢 Replaced the link to \(quoted)\(locatorSuffix)")
     }
 
     /// One ⊘ preview row per cancelled (or already-closed) source, using
@@ -320,12 +339,21 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         )
     }
 
+    /// Relation edges that wrote something: a subsumed plain `~` / `~~`
+    /// added nothing because a dependency already ties the pair, so it
+    /// renders a tie row but counts as no link in notifications.
+    private static func liveRelationUpdates(
+        for capture: CaptureCommandSuccess
+    ) -> [CaptureRelationUpdate] {
+        capture.relationUpdates.filter { $0.subsumedBy == nil }
+    }
+
     private static func notification(for capture: CaptureCommandSuccess) -> Notification? {
         let dependentUpdates = capture.dependencyUpdates.filter { $0.role != "blocked_task" }
         let blockedUpdates = capture.dependencyUpdates.filter { $0.role == "blocked_task" }
         let dependencyCount = dependentUpdates.reduce(0) { $0 + $1.prerequisites.count }
         let blockedCount = blockedUpdates.count
-        let relationCount = capture.relationUpdates.count
+        let relationCount = liveRelationUpdates(for: capture).count
         guard dependencyCount + blockedCount + relationCount > 0 else {
             return nil
         }
@@ -386,14 +414,15 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
     /// separately from dependencies and blocks; a mixed `&` + `~` new task
     /// names both counts.
     private static func relationOnlyNotification(for capture: CaptureCommandSuccess) -> Notification? {
-        guard !capture.relationUpdates.isEmpty else {
+        let liveUpdates = liveRelationUpdates(for: capture)
+        guard !liveUpdates.isEmpty else {
             return nil
         }
         let owner = nonempty(capture.text) ?? "Task"
         let dependencyCount = capture.dependencyUpdates.reduce(0) { $0 + $1.prerequisites.count }
         let title: String
         if dependencyCount > 0 {
-            title = "\(owner) · depends on \(dependencyCount) · links \(capture.relationUpdates.count)"
+            title = "\(owner) · depends on \(dependencyCount) · links \(liveUpdates.count)"
         } else {
             title = relationTitle(owner: owner, capture: capture)
         }
@@ -405,7 +434,7 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
     }
 
     private static func relationTitle(owner: String, capture: CaptureCommandSuccess) -> String {
-        let updates = capture.relationUpdates
+        let updates = liveRelationUpdates(for: capture)
         if updates.count == 1, let update = updates.first {
             let isFrom = update.direction == "from"
             let other = isFrom ? update.source.text : update.target.text
