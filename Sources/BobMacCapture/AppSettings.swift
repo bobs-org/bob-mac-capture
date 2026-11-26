@@ -1,3 +1,4 @@
+import CaptureCore
 import Combine
 import Foundation
 import RefsCore
@@ -82,6 +83,44 @@ final class AppSettings: ObservableObject {
 
     @Published var refsScanOnHighlightsSave: Bool {
         didSet { defaults.set(refsScanOnHighlightsSave, forKey: Keys.refsScanOnHighlightsSave) }
+    }
+
+    /// Announce snoozed-task wakes. Turning this off discards pending
+    /// notices and clears UI/records, but keeps a healthy claim while
+    /// compatible handling stays attached, so auto never falls back to
+    /// a desktop banner. The wake scheduler runs independently.
+    @Published var snoozeWakeAnnounce: Bool {
+        didSet { defaults.set(snoozeWakeAnnounce, forKey: Keys.snoozeWakeAnnounce) }
+    }
+
+    /// Play one soft chime exactly once on actual presentation when
+    /// enabled. Applies live.
+    @Published var snoozeWakeChime: Bool {
+        didSet { defaults.set(snoozeWakeChime, forKey: Keys.snoozeWakeChime) }
+    }
+
+    /// Hold notices while away (locked, displays asleep, session
+    /// inactive, or idle at least 180 seconds). Applies live.
+    @Published var snoozeWakeHoldWhileAway: Bool {
+        didSet { defaults.set(snoozeWakeHoldWhileAway, forKey: Keys.snoozeWakeHoldWhileAway) }
+    }
+
+    /// Hold notices during running meetings. Applies live.
+    @Published var snoozeWakeHoldDuringMeetings: Bool {
+        didSet {
+            defaults.set(
+                snoozeWakeHoldDuringMeetings, forKey: Keys.snoozeWakeHoldDuringMeetings)
+        }
+    }
+
+    /// The portable policy settings. Chime is presentation-only and
+    /// stays out of the policy struct.
+    var snoozeWakeNoticeSettings: SnoozeWakeNoticeSettings {
+        SnoozeWakeNoticeSettings(
+            announceWakes: snoozeWakeAnnounce,
+            holdWhileAway: snoozeWakeHoldWhileAway,
+            holdDuringMeetings: snoozeWakeHoldDuringMeetings
+        )
     }
 
     /// Live agenda diagnostic from the store ("Last refreshed 14:32",
@@ -225,6 +264,20 @@ final class AppSettings: ObservableObject {
             defaults.object(forKey: Keys.refsScanOnHighlightsSave) == nil
             ? true
             : defaults.bool(forKey: Keys.refsScanOnHighlightsSave)
+        snoozeWakeAnnounce = defaults.object(forKey: Keys.snoozeWakeAnnounce) == nil
+            ? true
+            : defaults.bool(forKey: Keys.snoozeWakeAnnounce)
+        snoozeWakeChime = defaults.object(forKey: Keys.snoozeWakeChime) == nil
+            ? true
+            : defaults.bool(forKey: Keys.snoozeWakeChime)
+        snoozeWakeHoldWhileAway =
+            defaults.object(forKey: Keys.snoozeWakeHoldWhileAway) == nil
+            ? true
+            : defaults.bool(forKey: Keys.snoozeWakeHoldWhileAway)
+        snoozeWakeHoldDuringMeetings =
+            defaults.object(forKey: Keys.snoozeWakeHoldDuringMeetings) == nil
+            ? true
+            : defaults.bool(forKey: Keys.snoozeWakeHoldDuringMeetings)
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
         refsInspectorNotesPageSize = Self.loadRefsInspectorNotesPageSize(from: defaults)
     }
@@ -299,4 +352,8 @@ private enum Keys {
     static let typingTipsEnabled = "typingTipsEnabled"
     static let refsNotifyOpenPDFUpdates = "refsNotifyOpenPDFUpdates"
     static let refsScanOnHighlightsSave = "refsScanOnHighlightsSave"
+    static let snoozeWakeAnnounce = "snoozeWakeAnnounce"
+    static let snoozeWakeChime = "snoozeWakeChime"
+    static let snoozeWakeHoldWhileAway = "snoozeWakeHoldWhileAway"
+    static let snoozeWakeHoldDuringMeetings = "snoozeWakeHoldDuringMeetings"
 }
