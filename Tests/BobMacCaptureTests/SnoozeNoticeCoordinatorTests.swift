@@ -343,7 +343,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         await waitUntil { coordinator.isCapableForTests == true }
         coordinator.receiveForTests(receipt())
 
-        await waitUntil { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        await waitUntil { ((try? self.listReadCount(recordURL)) ?? 0) >= 2 }
         await waitUntil { handledStore.contains("w1", day: "2026-11-26") }
         XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
         XCTAssertTrue(presented.value.isEmpty)
@@ -519,7 +519,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(try listReadCount(recordURL), 1)
 
-        await waitUntil(timeout: 2) { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        await waitUntil(timeout: 2) { ((try? self.listReadCount(recordURL)) ?? 0) >= 2 }
         XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
         coordinator.stop()
     }
@@ -539,7 +539,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         XCTAssertEqual(try listReadCount(recordURL), 1)
 
         defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
-        await waitUntil(timeout: 0.8) { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        await waitUntil(timeout: 0.8) { ((try? self.listReadCount(recordURL)) ?? 0) >= 2 }
         XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
         XCTAssertEqual(coordinator.pendingCountForTests, 1)
         coordinator.stop()
@@ -570,10 +570,10 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             processClient: oldClient)
         coordinator.attachPresenter()
         coordinator.start()
-        await waitUntil { ((try? listReadCount(oldRecordURL)) ?? 0) == 1 }
+        await waitUntil { ((try? self.listReadCount(oldRecordURL)) ?? 0) == 1 }
         coordinator.reconfigure(processClient: newClient, vaultRoot: "/tmp/vault")
         coordinator.receiveForTests(receipt())
-        await waitUntil { ((try? listReadCount(newRecordURL)) ?? 0) >= 1 }
+        await waitUntil { ((try? self.listReadCount(newRecordURL)) ?? 0) >= 1 }
         await waitUntil(timeout: 5) { presented.value.count == 1 }
 
         XCTAssertGreaterThanOrEqual(try listReadCount(newRecordURL), 2)
