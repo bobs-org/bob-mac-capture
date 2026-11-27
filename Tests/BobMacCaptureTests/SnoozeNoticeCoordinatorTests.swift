@@ -596,7 +596,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(coordinator.pendingCountForTests, 0)
         XCTAssertTrue(presented.value.isEmpty)
-        XCTAssertTrue(handledStore.handledIDs(for: "2026-11-27").isEmpty)
+        XCTAssertTrue(handledStore.contains("w1", day: "2026-11-27"))
         coordinator.stop()
     }
 
