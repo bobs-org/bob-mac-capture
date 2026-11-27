@@ -47,15 +47,22 @@ final class SnoozeWakePresenceSource {
         self.workspaceCenter = workspaceCenter ?? NSWorkspace.shared.notificationCenter
         self.defaultCenter = defaultCenter
         self.distributedCenter = distributedCenter ?? DistributedNotificationCenter.default()
-        if let idleSampler {
-            self.idleSampler = idleSampler
-        } else {
-            self.idleSampler = {
-                CGEventSource.secondsSinceLastEventType(
-                    .combinedSessionState, eventType: .null)
-            }
-        }
+        self.idleSampler = idleSampler ?? { Self.liveIdleSeconds() }
         self.initialStateSampler = initialStateSampler ?? Self.liveInitialState
+    }
+
+    /// `kCGAnyInputEventType` (`~0`), which Swift does not import as a
+    /// case. Asking for `.null` instead measures time since the last null
+    /// event, which never resets on input and reads as idle all day.
+    static let anyInputEventType = CGEventType(rawValue: ~0)!
+
+    /// Live idle sample: seconds since the last input event of any kind in
+    /// the combined session state.
+    static func liveIdleSeconds(
+        query: (CGEventSourceStateID, CGEventType) -> CFTimeInterval =
+            CGEventSource.secondsSinceLastEventType(_:eventType:)
+    ) -> TimeInterval {
+        query(.combinedSessionState, anyInputEventType)
     }
 
     /// Live launch sample: lock and on-console session state from

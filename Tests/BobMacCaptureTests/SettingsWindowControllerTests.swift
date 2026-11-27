@@ -52,13 +52,23 @@ final class SettingsWindowControllerTests: XCTestCase {
         let panel = controller.show()
         defer { panel.close() }
         panel.miniaturize(nil)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        // The minimize animation can outlast a fixed short spin on a busy runner.
+        spinRunLoop(until: { panel.isMiniaturized })
         XCTAssertTrue(panel.isMiniaturized)
 
         controller.show()
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        spinRunLoop(until: { !panel.isMiniaturized && panel.isVisible })
         XCTAssertFalse(panel.isMiniaturized)
         XCTAssertTrue(panel.isVisible)
+    }
+
+    /// Spins the main run loop until `condition` holds or `timeout` passes;
+    /// the caller's assertions report a timeout.
+    private func spinRunLoop(timeout: TimeInterval = 5, until condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
     }
 
     func testShowOrdersOutPanelBackIn() {

@@ -1,5 +1,6 @@
 import AppKit
 import CaptureCore
+import CoreGraphics
 import XCTest
 
 @testable import BobMacCapture
@@ -91,6 +92,20 @@ final class SnoozeWakePresenceSourceTests: XCTestCase {
                 source.currentPresence().isAway, expectAway, "idle=\(idle)")
             source.stop()
         }
+    }
+
+    func testLiveIdleSamplesAnyInputEventInCombinedSessionState() {
+        var queried: [(CGEventSourceStateID, UInt32)] = []
+        let idle = SnoozeWakePresenceSource.liveIdleSeconds { state, eventType in
+            queried.append((state, eventType.rawValue))
+            return 4.5
+        }
+        XCTAssertEqual(idle, 4.5)
+        XCTAssertEqual(queried.count, 1)
+        XCTAssertEqual(queried.first?.0, .combinedSessionState)
+        // kCGAnyInputEventType is ~0; .null (0) never resets on input.
+        XCTAssertEqual(queried.first?.1, UInt32.max)
+        XCTAssertNotEqual(queried.first?.1, CGEventType.null.rawValue)
     }
 
     func testScreenLockHoldsUntilUnlock() async throws {
