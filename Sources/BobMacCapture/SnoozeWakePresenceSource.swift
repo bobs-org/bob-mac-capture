@@ -92,7 +92,7 @@ final class SnoozeWakePresenceSource {
                 }
             }
         }
-        let asleep = CGDisplayIsAsleep(CGMainDisplayID())
+        let asleep = CGDisplayIsAsleep(CGMainDisplayID()) != 0
         return (screenLocked: locked, sessionInactive: inactive, displaysAsleep: asleep)
     }
 

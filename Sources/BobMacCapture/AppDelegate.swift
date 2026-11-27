@@ -571,9 +571,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Legacy path: usable same-day events only. The coordinator
                 // prefers agendaSnapshot below; this stays for safety.
                 guard let self,
-                    let status = self.agendaStore?.status,
-                    status == .ready || status == .stale
+                    let status = self.agendaStore?.status
                 else {
+                    return nil
+                }
+                switch status {
+                case .ready, .stale:
+                    break
+                default:
                     return nil
                 }
                 return self.agendaStore?.snapshot?.events

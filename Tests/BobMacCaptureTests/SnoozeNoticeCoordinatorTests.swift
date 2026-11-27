@@ -497,7 +497,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             )
         ])
         snapshotBox.value = SnoozeAgendaSnapshot(
-            date: "2026-11-26", status: .stale, events: meetingEvents)
+            date: "2026-11-26", status: .stale("refresh failed"), events: meetingEvents)
         let (coordinator, _, _, _, _, _, _, _, _, presented, _) = try makeHarnessWithSnapshot(
             snapshotBox, processClient: try goodClient())
         coordinator.start()
