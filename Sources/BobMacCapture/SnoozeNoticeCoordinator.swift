@@ -63,6 +63,7 @@ final class SnoozeNoticeCoordinator {
     private let presenceSource: SnoozeWakePresenceSource
     private let claim: SnoozeWakeNotifierClaim
     private let handledStore: SnoozeWakeHandledStore
+    private let beaconStore: SnoozeWakeBeaconStore
     private var processClient: BobProcessClient?
     private var configuredVaultRoot: String
     private let todayProvider: () -> String
@@ -99,12 +100,16 @@ final class SnoozeNoticeCoordinator {
     private var heldReasonText: String?
     private var lastVerificationText: String?
     private var lastFailure: String?
+    /// Beacon metadata restored at launch without re-announcing. Cleared
+    /// through the same acknowledgement path as live batches.
+    private var restoredBeacon: [SnoozeWakeBeaconStore.Entry] = []
 
     init(
         observer: SnoozeWakeObserver? = nil,
         presenceSource: SnoozeWakePresenceSource? = nil,
         claim: SnoozeWakeNotifierClaim,
         handledStore: SnoozeWakeHandledStore = SnoozeWakeHandledStore(),
+        beaconStore: SnoozeWakeBeaconStore = SnoozeWakeBeaconStore(),
         processClient: BobProcessClient? = nil,
         configuredVaultRoot: String = "",
         today: (() -> String)? = nil,
@@ -117,6 +122,7 @@ final class SnoozeNoticeCoordinator {
     ) {
         self.claim = claim
         self.handledStore = handledStore
+        self.beaconStore = beaconStore
         self.processClient = processClient
         self.configuredVaultRoot = configuredVaultRoot
         self.todayProvider = today ?? { CaptureAgendaStore.localToday() }
@@ -152,6 +158,11 @@ final class SnoozeNoticeCoordinator {
         generation &+= 1
         let today = todayProvider()
         lastEvaluatedDay = today
+        // Restore the unexpired beacon without re-announcing: the HUD stays
+        // hidden, but the menu-bar count and its clearing rules survive a
+        // restart even when notification permission denied the record.
+        restoredBeacon = beaconStore.activeEntries(
+            today: today, vaultRoot: configuredVaultRoot, now: nowProvider())
         // Establish the initial identity before starting the capability read.
         // The presenter is normally attached immediately afterward, and its
         // first evaluation must not invalidate that in-flight probe.
@@ -170,6 +181,9 @@ final class SnoozeNoticeCoordinator {
         observer.start()
         probeCapabilityIfNeeded()
         updateClaim()
+        if !restoredBeacon.isEmpty {
+            emitQueueChanged()
+        }
     }
 
     func stop() {
@@ -249,32 +263,57 @@ final class SnoozeNoticeCoordinator {
 
     /// The capture panel opened: delivered beacons/records count as
     /// acknowledged. Pending notices still follow the announcement path.
+    /// Restored beacons clear through the same shared path.
     func acknowledgePanelOpen() {
-        guard !delivered.isEmpty else {
+        guard !delivered.isEmpty || !restoredBeacon.isEmpty else {
             return
         }
+        CaptureSignpost.event(CaptureSignpost.snoozeAction)
         let today = todayProvider()
         for entry in delivered {
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
+            beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
         }
+        for restored in restoredBeacon {
+            handledStore.acknowledge(restored.wakeID, day: today)
+            policy.markHandled(restored.wakeID, day: today)
+            beaconStore.remove(wakeID: restored.wakeID)
+            onDismiss(restored.wakeID)
+        }
         delivered = []
+        restoredBeacon = []
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         emitQueueChanged()
     }
 
     /// One delivered batch was acted on (Open or +15m). Marks it handled
-    /// so it never replays, and withdraws its transient UI.
+    /// so it never replays, and withdraws its transient UI. Restored beacons
+    /// clear through the same path when the record action fires after a
+    /// restart.
     func acknowledgeDelivered(wakeID: String) {
+        if let index = restoredBeacon.firstIndex(where: { $0.wakeID == wakeID }) {
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            restoredBeacon.remove(at: index)
+            beaconStore.remove(wakeID: wakeID)
+            handledStore.acknowledge(wakeID, day: todayProvider())
+            policy.markHandled(wakeID, day: todayProvider())
+            onDismiss(wakeID)
+            onTransientDismiss(wakeID)
+            emitQueueChanged()
+            return
+        }
         guard let index = delivered.firstIndex(where: { $0.batch.wakeID == wakeID }) else {
             return
         }
+        CaptureSignpost.event(CaptureSignpost.snoozeAction)
         let entry = delivered.remove(at: index)
         suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
         handledStore.acknowledge(entry.batch.wakeID, day: todayProvider())
         policy.markHandled(entry.batch.wakeID, day: todayProvider())
+        beaconStore.remove(wakeID: entry.batch.wakeID)
         onDismiss(entry.batch.wakeID)
         onTransientDismiss(entry.batch.wakeID)
         emitQueueChanged()
@@ -282,10 +321,25 @@ final class SnoozeNoticeCoordinator {
 
     /// Removes tasks Bob confirmed as re-snoozed (or which no longer
     /// match the verified wake). A partially remaining batch stays live.
+    /// An empty remainder clears the beacon/record; a partial remainder
+    /// refreshes the persisted beacon metadata.
     func removeDeliveredTasks(wakeID: String, keys: [String]) {
-        guard let index = delivered.firstIndex(where: { $0.batch.wakeID == wakeID }),
-            !keys.isEmpty
-        else {
+        guard !keys.isEmpty else {
+            return
+        }
+        if restoredBeacon.contains(where: { $0.wakeID == wakeID }) {
+            // A restored beacon has no live rows to filter: a successful
+            // +15m clears it, since Bob confirmed the tasks moved.
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            restoredBeacon.removeAll(where: { $0.wakeID == wakeID })
+            beaconStore.remove(wakeID: wakeID)
+            handledStore.acknowledge(wakeID, day: todayProvider())
+            policy.markHandled(wakeID, day: todayProvider())
+            onDismiss(wakeID)
+            emitQueueChanged()
+            return
+        }
+        guard let index = delivered.firstIndex(where: { $0.batch.wakeID == wakeID }) else {
             return
         }
         let removed = Set(keys)
@@ -295,10 +349,12 @@ final class SnoozeNoticeCoordinator {
             return !removed.contains(key)
         }
         if rows.isEmpty {
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
             delivered.remove(at: index)
             suppressedDeliveredWakeIDs.remove(wakeID)
             handledStore.acknowledge(wakeID, day: todayProvider())
             policy.markHandled(wakeID, day: todayProvider())
+            beaconStore.remove(wakeID: wakeID)
             onDismiss(wakeID)
         } else {
             let batch = SnoozeWakeNoticeBatch(
@@ -319,7 +375,17 @@ final class SnoozeNoticeCoordinator {
                 presentation: presentation,
                 deliveredAt: entry.deliveredAt
             )
+            beaconStore.save(
+                wakeID: batch.wakeID,
+                taskKeys: batch.identityKeys,
+                taskCount: presentation.taskCount,
+                deliveredAt: entry.deliveredAt,
+                wokenAt: batch.wokenAt,
+                date: batch.date,
+                vaultRoot: batch.vaultRoot ?? configuredVaultRoot
+            )
             if !suppressedDeliveredWakeIDs.contains(wakeID) {
+                CaptureSignpost.event(CaptureSignpost.snoozePresent)
                 onPresent(batch, presentation)
             }
         }
@@ -337,6 +403,24 @@ final class SnoozeNoticeCoordinator {
     var isClaimedForTests: Bool { claim.isOwned }
     var isCapableForTests: Bool? { isCapable }
     var isStartedForTests: Bool { isStarted }
+
+    /// Total unacknowledged delivered tasks across live batches plus restored
+    /// beacon metadata. Drives the menu-bar beacon count.
+    func unacknowledgedTaskCount() -> Int {
+        let live = delivered.reduce(0) { $0 + $1.presentation.taskCount }
+        let restored = restoredBeacon.reduce(0) { $0 + $1.taskCount }
+        return live + restored
+    }
+
+    /// Wake IDs with an unexpired beacon or record, for launch reconciliation.
+    func activeWakeIDs() -> Set<String> {
+        Set(delivered.map(\.batch.wakeID)).union(restoredBeacon.map(\.wakeID))
+    }
+
+    /// Restored beacon metadata for diagnostics and launch restore.
+    func restoredBeaconEntries() -> [SnoozeWakeBeaconStore.Entry] {
+        restoredBeacon
+    }
 
     func diagnosticSnapshot() -> DiagnosticSnapshot {
         DiagnosticSnapshot(
@@ -358,6 +442,7 @@ final class SnoozeNoticeCoordinator {
         guard isStarted else {
             return
         }
+        CaptureSignpost.event(CaptureSignpost.snoozeReceiptRead)
         lastReceiptID = receipt.wakeID
         lastChannel = receipt.notificationChannel.rawValue
         guard receipt.notificationChannel.permitsMacNotice else {
@@ -378,6 +463,10 @@ final class SnoozeNoticeCoordinator {
             return
         }
         if delivered.contains(where: { $0.batch.wakeID == receipt.wakeID }) {
+            return
+        }
+        if restoredBeacon.contains(where: { $0.wakeID == receipt.wakeID }) {
+            diagnose("ignoring duplicate \(receipt.wakeID)")
             return
         }
         pending.append(PendingEntry(receipt: receipt, firstSeenAt: nowProvider()))
@@ -410,6 +499,11 @@ final class SnoozeNoticeCoordinator {
             return
         }
         expireDelivered(today: today, now: now)
+        // The 60-minute beacon and four-hour receipt expiries need a timer
+        // even when no hold or verification is pending.
+        if let nextExpiry = nextDeliveredExpiry(now: now) {
+            scheduleReevaluate(after: max(0.05, nextExpiry.timeIntervalSince(now)))
+        }
         let presence = presenceSource.currentPresence()
         let events = agendaEventsProvider()
         presenceSource.setIdlePollingActive(!pending.isEmpty)
@@ -469,6 +563,9 @@ final class SnoozeNoticeCoordinator {
             case .show(let batch):
                 present(batch: batch)
             case .hold(let holdReason, let nextCheck):
+                if !isHeld {
+                    CaptureSignpost.event(CaptureSignpost.snoozeHold)
+                }
                 isHeld = true
                 heldReasonText = holdDescription(holdReason)
                 verification = .unverified
@@ -519,6 +616,7 @@ final class SnoozeNoticeCoordinator {
         // A hold that just cleared gets a fresh agenda read before
         // delivery: meeting facts may have changed while held.
         if wasHeld, !isHeld, !pending.isEmpty {
+            CaptureSignpost.event(CaptureSignpost.snoozeReturn)
             requestAgendaRefresh()
         }
         wasHeld = isHeld
@@ -536,11 +634,24 @@ final class SnoozeNoticeCoordinator {
         guard !delivered.contains(where: { $0.batch.wakeID == batch.wakeID }) else {
             return
         }
+        CaptureSignpost.event(CaptureSignpost.snoozePresent)
         pending.removeAll(where: { $0.receipt.wakeID == batch.wakeID })
+        // A restored beacon for the same ID is superseded by the live batch.
+        restoredBeacon.removeAll(where: { $0.wakeID == batch.wakeID })
         let presentation = SnoozeWakeNoticePresentation(
             batch: batch, listBudget: lastListPlan, announcement: .hud)
+        let deliveredAt = nowProvider()
         delivered.append(
-            DeliveredEntry(batch: batch, presentation: presentation, deliveredAt: nowProvider()))
+            DeliveredEntry(batch: batch, presentation: presentation, deliveredAt: deliveredAt))
+        beaconStore.save(
+            wakeID: batch.wakeID,
+            taskKeys: batch.identityKeys,
+            taskCount: presentation.taskCount,
+            deliveredAt: deliveredAt,
+            wokenAt: batch.wokenAt,
+            date: batch.date,
+            vaultRoot: batch.vaultRoot ?? configuredVaultRoot
+        )
         heldReasonText = nil
         lastVerificationText = "verified(\(batch.rows.count))"
         onPresent(batch, presentation)
@@ -571,29 +682,77 @@ final class SnoozeNoticeCoordinator {
     private func expireDelivered(today: String, now: Date) {
         var expired: [DeliveredEntry] = []
         for entry in delivered {
-            let age = now.timeIntervalSince(entry.batch.wokenAt)
-            let expiredByAge = age > SnoozeWakeNoticePolicy.receiptMaxAgeSeconds
-            if entry.batch.date != today || expiredByAge {
+            let receiptAge = now.timeIntervalSince(entry.batch.wokenAt)
+            let expiredByReceiptAge = receiptAge > SnoozeWakeNoticePolicy.receiptMaxAgeSeconds
+            let beaconAge = now.timeIntervalSince(entry.deliveredAt)
+            let expiredByBeaconAge = beaconAge >= SnoozeWakeNoticePresentation.beaconLifetimeSeconds
+            if entry.batch.date != today || expiredByReceiptAge || expiredByBeaconAge {
                 expired.append(entry)
             }
+        }
+        // Restored beacons expire through the same 60-minute, four-hour, and
+        // day-boundary rules without a live batch.
+        let expiredRestored = restoredBeacon.filter { restored in
+            if restored.date != today {
+                return true
+            }
+            let beaconAge = now.timeIntervalSince(restored.deliveredAt)
+            let receiptAge = now.timeIntervalSince(restored.wokenAt)
+            return beaconAge >= SnoozeWakeNoticePresentation.beaconLifetimeSeconds
+                || receiptAge > SnoozeWakeNoticePolicy.receiptMaxAgeSeconds
+        }
+        if !expired.isEmpty || !expiredRestored.isEmpty {
+            CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
         }
         for entry in expired {
             delivered.removeAll(where: { $0.batch.wakeID == entry.batch.wakeID })
             suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
+            beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
             onTransientDismiss(entry.batch.wakeID)
+        }
+        for restored in expiredRestored {
+            restoredBeacon.removeAll(where: { $0.wakeID == restored.wakeID })
+            beaconStore.remove(wakeID: restored.wakeID)
+            handledStore.acknowledge(restored.wakeID, day: today)
+            policy.markHandled(restored.wakeID, day: today)
+            onDismiss(restored.wakeID)
+            onTransientDismiss(restored.wakeID)
         }
         if suppressedDeliveredWakeIDs.isEmpty {
             deliveredSettleDeadline = nil
         }
-        if !expired.isEmpty {
+        if !expired.isEmpty || !expiredRestored.isEmpty {
             emitQueueChanged()
         }
+        // A 60-minute expiry that just fired may leave no pending work but
+        // still needs its recheck timer cleared; the queue change above
+        // covers the beacon refresh.
+    }
+
+    /// Next beacon or receipt expiry across live and restored beacons, for the
+    /// 60-minute clearing timer. Nil when nothing is delivered.
+    private func nextDeliveredExpiry(now: Date) -> Date? {
+        var candidates: [Date] = []
+        for entry in delivered {
+            candidates.append(entry.deliveredAt.addingTimeInterval(
+                SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
+            candidates.append(entry.batch.wokenAt.addingTimeInterval(
+                SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
+        }
+        for restored in restoredBeacon {
+            candidates.append(restored.deliveredAt.addingTimeInterval(
+                SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
+            candidates.append(restored.wokenAt.addingTimeInterval(
+                SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
+        }
+        return candidates.filter { $0 > now }.min()
     }
 
     private func consumeWhileDisabled(today: String) {
+        let hadRestored = !restoredBeacon.isEmpty
         for entry in pending {
             handledStore.acknowledge(entry.receipt.wakeID, day: today)
             policy.markHandled(entry.receipt.wakeID, day: today)
@@ -601,12 +760,21 @@ final class SnoozeNoticeCoordinator {
         for entry in delivered {
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
+            beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
             onTransientDismiss(entry.batch.wakeID)
         }
-        let hadWork = !pending.isEmpty || !delivered.isEmpty
+        for restored in restoredBeacon {
+            handledStore.acknowledge(restored.wakeID, day: today)
+            policy.markHandled(restored.wakeID, day: today)
+            beaconStore.remove(wakeID: restored.wakeID)
+            onDismiss(restored.wakeID)
+            onTransientDismiss(restored.wakeID)
+        }
+        let hadWork = !pending.isEmpty || !delivered.isEmpty || hadRestored
         pending = []
         delivered = []
+        restoredBeacon = []
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
@@ -619,15 +787,23 @@ final class SnoozeNoticeCoordinator {
     }
 
     private func purgeDay(today: String) {
+        CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
         lastEvaluatedDay = today
         handledStore.purge(day: today)
         policy.invalidate()
         for entry in delivered {
+            beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
             onTransientDismiss(entry.batch.wakeID)
         }
+        for restored in restoredBeacon {
+            beaconStore.remove(wakeID: restored.wakeID)
+            onDismiss(restored.wakeID)
+            onTransientDismiss(restored.wakeID)
+        }
         pending = []
         delivered = []
+        restoredBeacon = []
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
@@ -651,6 +827,7 @@ final class SnoozeNoticeCoordinator {
     }
 
     private func fetchVerification() {
+        CaptureSignpost.event(CaptureSignpost.snoozeVerify)
         guard let client = processClient, !fetchInFlight else {
             return
         }

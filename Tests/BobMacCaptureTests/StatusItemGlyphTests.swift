@@ -131,6 +131,87 @@ final class StatusItemGlyphTests: XCTestCase {
         )
     }
 
+    func testBeaconPresentationStrings() {
+        let single = StatusItemPresentation(isBobResolved: true, snoozeCount: 1)
+        XCTAssertEqual(single.glyphState, .ready)
+        XCTAssertEqual(single.toolTip, "Bob Mac Capture — 1 snoozed task ready")
+        XCTAssertEqual(single.accessibilityLabel, "Bob Mac Capture, 1 snoozed task ready")
+        XCTAssertNil(single.issueMenuTitle)
+
+        let multi = StatusItemPresentation(isBobResolved: true, snoozeCount: 3)
+        XCTAssertEqual(multi.toolTip, "Bob Mac Capture — 3 snoozed tasks ready")
+        XCTAssertEqual(multi.accessibilityLabel, "Bob Mac Capture, 3 snoozed tasks ready")
+
+        let both = StatusItemPresentation(isBobResolved: false, snoozeCount: 2)
+        XCTAssertEqual(both.glyphState, .bobUnresolved)
+        XCTAssertTrue(both.toolTip.contains("bob is not resolved"))
+        XCTAssertTrue(both.toolTip.contains("2 snoozed tasks ready"))
+        XCTAssertTrue(both.accessibilityLabel.contains("bob not resolved"))
+        XCTAssertTrue(both.accessibilityLabel.contains("2 snoozed tasks ready"))
+        XCTAssertEqual(both.issueMenuTitle, "bob Not Resolved — Open Settings…")
+    }
+
+    @MainActor
+    func testBeaconImageIsNonTemplateWithAmber() {
+        let plain = StatusItemGlyph.image(for: .ready, snoozeCount: 0)
+        XCTAssertTrue(plain.isTemplate)
+
+        let beacon = StatusItemGlyph.image(for: .ready, snoozeCount: 2)
+        XCTAssertFalse(beacon.isTemplate)
+        XCTAssertEqual(beacon.size, NSSize(width: 18, height: 18))
+        XCTAssertTrue(
+            beacon.accessibilityDescription?.contains("2 snoozed tasks ready") ?? false)
+
+        let both = StatusItemGlyph.image(for: .bobUnresolved, snoozeCount: 1)
+        XCTAssertFalse(both.isTemplate)
+        XCTAssertTrue(
+            both.accessibilityDescription?.contains("bob not resolved") ?? false)
+    }
+
+    @MainActor
+    func testBeaconSurvivesPulseAndResolutionChange() async {
+        let box = FrameBox()
+        let controller = makeController(box: box)
+        controller.update(isBobResolved: true)
+        controller.setSnoozeCount(3)
+        XCTAssertEqual(box.frames.last?.snoozeCount, 3)
+
+        controller.playCaptureLandedPulse()
+        await controller.pulseTask?.value
+        XCTAssertEqual(box.frames.last?.snoozeCount, 3)
+        XCTAssertEqual(box.frames.last?.glyphState, .ready)
+
+        // A beacon cleared mid-pulse stays cleared.
+        controller.setSnoozeCount(2)
+        controller.playCaptureLandedPulse()
+        let inFlight = controller.pulseTask
+        controller.setSnoozeCount(0)
+        await inFlight?.value
+        XCTAssertEqual(box.frames.last?.snoozeCount, 0)
+
+        // Resolution changes preserve the beacon.
+        controller.setSnoozeCount(2)
+        controller.update(isBobResolved: false)
+        XCTAssertEqual(box.frames.last?.snoozeCount, 2)
+        XCTAssertEqual(box.frames.last?.glyphState, .bobUnresolved)
+        controller.update(isBobResolved: true)
+        XCTAssertEqual(box.frames.last?.snoozeCount, 2)
+    }
+
+    @MainActor
+    func testSetSnoozeCountIsIdempotent() {
+        let box = FrameBox()
+        let controller = makeController(box: box)
+        controller.update(isBobResolved: true)
+        let baseline = box.frames.count
+        controller.setSnoozeCount(0)
+        XCTAssertEqual(box.frames.count, baseline)
+        controller.setSnoozeCount(1)
+        XCTAssertEqual(box.frames.last?.snoozeCount, 1)
+        controller.setSnoozeCount(1)
+        XCTAssertEqual(box.frames.filter { $0.snoozeCount == 1 }.count, 1)
+    }
+
     @MainActor
     func testApplyIssueInsertsActionableRowAheadOfHealthyMenu() {
         let menu = AppDelegate.makeStatusMenu()

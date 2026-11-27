@@ -44,15 +44,28 @@ enum StatusItemGlyph {
         static let alertDotRadius: CGFloat = 0.8
         /// Inner radius of the stroked bowl.
         static let counterRadius: CGFloat = 4.0
-        /// Union of all ink in either state; centered in the canvas.
-        static let inkBounds = NSRect(x: 3.5, y: 2.5, width: 11, height: 13)
+        /// Wake-beacon accessory: a small amber badge in the top-right corner.
+        /// Drawn only when `snoozeCount > 0`. The badge radius keeps the count
+        /// legible at 1x while staying inside the 18pt canvas.
+        static let beaconCenter = CGPoint(x: 14.2, y: 4.2)
+        static let beaconRadius: CGFloat = 3.3
+        static let beaconFontSize: CGFloat = 6.5
+        /// Union of all ink in either state plus the wake beacon; the beacon
+        /// extends the resting bounds to the top-right corner.
+        static let inkBounds = NSRect(x: 3.5, y: 0.5, width: 14, height: 15)
     }
 
     /// Draws the glyph for `state`, tinted by AppKit as a template image.
     /// `bulletRadius` varies only during the capture-landed pulse.
+    /// `snoozeCount` adds the wake beacon: a small amber badge with the
+    /// unacknowledged delivered-task count. The base glyph stays monochrome;
+    /// the badge is rendered in color on purpose, so the image is marked
+    /// non-template when the beacon is present and AppKit tinting cannot
+    /// erase the amber.
     static func image(
         for state: State,
-        bulletRadius: CGFloat = Metrics.bulletRadius
+        bulletRadius: CGFloat = Metrics.bulletRadius,
+        snoozeCount: Int = 0
     ) -> NSImage {
         let length = Metrics.canvasLength
         let size = NSSize(width: length, height: length)
@@ -105,10 +118,46 @@ enum StatusItemGlyph {
                 )
                 NSBezierPath(ovalIn: dotRect).fill()
             }
+
+            if snoozeCount > 0 {
+                // Amber beacon: filled circle plus a centered count. Drawn in
+                // color on purpose; the caller marks the image non-template
+                // so menu-bar tinting cannot erase the amber.
+                NSColor.systemOrange.setFill()
+                let badgeSide = Metrics.beaconRadius * 2
+                let badgeRect = NSRect(
+                    x: Metrics.beaconCenter.x - Metrics.beaconRadius,
+                    y: Metrics.beaconCenter.y - Metrics.beaconRadius,
+                    width: badgeSide,
+                    height: badgeSide
+                )
+                NSBezierPath(ovalIn: badgeRect).fill()
+
+                let label = snoozeCount > 99 ? "99+" : "\(snoozeCount)"
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = .center
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.boldSystemFont(ofSize: Metrics.beaconFontSize),
+                    .foregroundColor: NSColor.white,
+                    .paragraphStyle: paragraph,
+                ]
+                let text = NSAttributedString(string: label, attributes: attributes)
+                // Center the count in the badge. The y-down flipped context
+                // draws text upright; nudge by half the cap height.
+                let textSize = text.size()
+                let textOrigin = NSPoint(
+                    x: Metrics.beaconCenter.x - textSize.width / 2,
+                    y: Metrics.beaconCenter.y - textSize.height / 2 + 0.5
+                )
+                text.draw(at: textOrigin)
+            }
             return true
         }
-        image.isTemplate = true
-        let label = StatusItemPresentation(isBobResolved: state == .ready)
+        // Template only while the beacon is absent; a colored badge must opt
+        // out of tinting or AppKit would recolor the amber to the menu tint.
+        image.isTemplate = snoozeCount == 0
+        let label = StatusItemPresentation(
+            isBobResolved: state == .ready, snoozeCount: snoozeCount)
         image.accessibilityDescription = label.accessibilityLabel
         return image
     }
@@ -143,26 +192,50 @@ enum StatusItemPulse {
     }
 }
 
-/// The strings and glyph state for one resolution of `bob`, testable without a
-/// real `NSStatusItem`.
+/// The strings and glyph state for one resolution of `bob` plus the wake
+/// beacon, testable without a real `NSStatusItem`.
 struct StatusItemPresentation: Equatable {
     let glyphState: StatusItemGlyph.State
     let toolTip: String
     let accessibilityLabel: String
     /// The conditional first menu row; nil while healthy.
     let issueMenuTitle: String?
+    /// Unacknowledged delivered wake tasks. Zero hides the beacon.
+    let snoozeCount: Int
 
-    init(isBobResolved: Bool) {
+    init(isBobResolved: Bool, snoozeCount: Int = 0) {
+        let count = max(0, snoozeCount)
+        self.snoozeCount = count
         if isBobResolved {
             glyphState = .ready
-            toolTip = "Bob Mac Capture"
-            accessibilityLabel = "Bob Mac Capture"
             issueMenuTitle = nil
         } else {
             glyphState = .bobUnresolved
-            toolTip = "Bob Mac Capture — bob is not resolved. Check Settings."
-            accessibilityLabel = "Bob Mac Capture, bob not resolved"
             issueMenuTitle = "bob Not Resolved — Open Settings…"
+        }
+        let beaconSuffix: String = {
+            guard count > 0 else { return "" }
+            return count == 1
+                ? " — 1 snoozed task ready"
+                : " — \(count) snoozed tasks ready"
+        }()
+        let beaconAccessibilitySuffix: String = {
+            guard count > 0 else { return "" }
+            return count == 1
+                ? ", 1 snoozed task ready"
+                : ", \(count) snoozed tasks ready"
+        }()
+        if isBobResolved {
+            toolTip = "Bob Mac Capture\(beaconSuffix)"
+            accessibilityLabel = "Bob Mac Capture\(beaconAccessibilitySuffix)"
+            if count == 0 {
+                accessibilityLabel = "Bob Mac Capture"
+            }
+        } else {
+            let baseTip = "Bob Mac Capture — bob is not resolved. Check Settings."
+            let baseLabel = "Bob Mac Capture, bob not resolved"
+            toolTip = "\(baseTip)\(beaconSuffix)"
+            accessibilityLabel = "\(baseLabel)\(beaconAccessibilitySuffix)"
         }
     }
 }
@@ -174,4 +247,6 @@ struct StatusItemFrame: Equatable {
     let bulletRadius: CGFloat
     let toolTip: String
     let accessibilityLabel: String
+    /// Unacknowledged delivered wake tasks rendered with the frame.
+    let snoozeCount: Int
 }

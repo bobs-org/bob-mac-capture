@@ -39,16 +39,53 @@ final class StatusItemController {
             glyphState: presentation.glyphState,
             bulletRadius: StatusItemGlyph.Metrics.bulletRadius,
             toolTip: presentation.toolTip,
-            accessibilityLabel: presentation.accessibilityLabel
+            accessibilityLabel: presentation.accessibilityLabel,
+            snoozeCount: presentation.snoozeCount
         )
+    }
+
+    private var isBobResolved: Bool {
+        presentation.glyphState == .ready
     }
 
     /// Reflects a (possibly changed) `bob` resolution: cancels any pulse,
     /// renders the resting frame, and applies the conditional menu rows.
+    /// Preserves the wake-beacon count; use `setSnoozeCount` to change it.
     func update(isBobResolved: Bool) {
         pulseTask?.cancel()
         pulseTask = nil
-        presentation = StatusItemPresentation(isBobResolved: isBobResolved)
+        presentation = StatusItemPresentation(
+            isBobResolved: isBobResolved, snoozeCount: presentation.snoozeCount)
+        render(restingFrame)
+        Self.applyIssue(title: presentation.issueMenuTitle, to: menu)
+    }
+
+    /// Reflects the shared acknowledgement lifecycle's unacknowledged count.
+    /// Does not cancel an in-flight pulse: pulse frames read the live
+    /// presentation, so a beacon that clears mid-pulse stays cleared.
+    func setSnoozeCount(_ count: Int) {
+        let clamped = max(0, count)
+        guard clamped != presentation.snoozeCount else {
+            return
+        }
+        presentation = StatusItemPresentation(
+            isBobResolved: isBobResolved, snoozeCount: clamped)
+        // When a pulse is in flight its next frame re-renders with the new
+        // count; rendering the resting frame here keeps the non-pulse path
+        // immediate without resurrecting a stale count later.
+        if pulseTask == nil {
+            render(restingFrame)
+        } else {
+            render(restingFrame)
+        }
+    }
+
+    /// Combined update for resolution and beacon, used at launch restore.
+    func update(isBobResolved: Bool, snoozeCount: Int) {
+        pulseTask?.cancel()
+        pulseTask = nil
+        presentation = StatusItemPresentation(
+            isBobResolved: isBobResolved, snoozeCount: snoozeCount)
         render(restingFrame)
         Self.applyIssue(title: presentation.issueMenuTitle, to: menu)
     }
@@ -68,16 +105,20 @@ final class StatusItemController {
             let radii = StatusItemPulse.bulletRadii
             // The last pulse sample already equals the resting radius, so the
             // loop lands exactly on the resting frame of the current state.
+            // Each frame reads the live presentation so a beacon cleared
+            // mid-pulse is never restored by a stale frame.
             for index in radii.indices.dropFirst() {
                 await self.sleep(StatusItemPulse.frameInterval)
                 if Task.isCancelled {
                     return
                 }
+                let current = self.presentation
                 self.render(StatusItemFrame(
                     glyphState: .ready,
                     bulletRadius: radii[index],
-                    toolTip: self.presentation.toolTip,
-                    accessibilityLabel: self.presentation.accessibilityLabel
+                    toolTip: current.toolTip,
+                    accessibilityLabel: current.accessibilityLabel,
+                    snoozeCount: current.snoozeCount
                 ))
             }
         }

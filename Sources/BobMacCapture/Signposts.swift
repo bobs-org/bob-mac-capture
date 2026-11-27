@@ -58,4 +58,15 @@ enum CaptureSignpost {
     static let relatedFailed: StaticString = "capture-related-failed"
     static let relatedPublish: StaticString = "capture-related-publish"
     static let relatedEmpty: StaticString = "capture-related-empty"
+
+    // Snooze wake-notice lifecycle (metadata only: IDs, counts, reasons,
+    // never task text). Receipt read, hold/return, verification, presentation,
+    // action, and withdrawal each emit one bounded event.
+    static let snoozeReceiptRead: StaticString = "snooze-receipt-read"
+    static let snoozeHold: StaticString = "snooze-hold"
+    static let snoozeReturn: StaticString = "snooze-return"
+    static let snoozeVerify: StaticString = "snooze-verify"
+    static let snoozePresent: StaticString = "snooze-present"
+    static let snoozeAction: StaticString = "snooze-action"
+    static let snoozeWithdraw: StaticString = "snooze-withdraw"
 }

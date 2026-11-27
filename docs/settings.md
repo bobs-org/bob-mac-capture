@@ -1,9 +1,9 @@
 ---
 title: "Mac Capture settings"
-description: "Settings window controls for Bob, hotkeys, Refs, agenda, similar tasks, typing tips, stash, templates, launch, notifications, and diagnostics."
+description: "Settings window controls for Bob, hotkeys, Refs, agenda, snoozed tasks, similar tasks, typing tips, stash, templates, launch, notifications, and diagnostics."
 ---
 
-The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
+The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Snoozed Tasks, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
 
 Install identity and executable search are in [Install](install.md). Permission grants are in [Permissions](permissions.md). Panel keys are in [Keyboard](keyboard.md). Refs behavior is in [Bob Refs](refs.md).
 
@@ -57,6 +57,18 @@ Toggling these controls re-registers the Refs bindings immediately. Opening, Tab
 
 Agenda facts come from `bob capture-pomodoros --tasks`. Layout and folding are in [Idle agenda](idle-agenda.md).
 Walk marks come from the independent `bob walks` request; this section also shows its last refresh, failure, or Bob-upgrade status.
+
+## Snoozed Tasks
+
+| Control | Default | Notes |
+| --- | --- | --- |
+| Announce wakes | on | Off discards pending notices and clears the beacon and records, but keeps a healthy claim so auto never falls back to a desktop banner. The wake scheduler runs independently. Applies live; re-enabling never replays IDs consumed while disabled. |
+| Chime | on | One soft system chime exactly once on actual presentation. Applies live. |
+| Hold while away | on | Hold while the screen is locked, displays are asleep, the session is inactive, or idle for at least 180 seconds. Ordinary app deactivation is not away. Applies live. |
+| Hold during meetings | on | Hold during running meetings, including overlapping meetings, until no qualifying meeting is running. Applies live. |
+| Wake notice status | transient | Metadata-only: claim, capability, last receipt, channel, hold reason, last verification, queue counts, restored count, and failure. Never task text. |
+
+Defaults are Announce on, Chime on, Hold while away on, and Hold during meetings on. Away means locked, displays asleep, session inactive, or idle at least 180 seconds. When a hold clears, the app waits 1.5 seconds, re-reads `bob`, and checks presence again; a new hold invalidates that timer. A meeting hold ends only when no qualifying meeting is running, using the actual `startsAt <= now < endsAt` span, not travel buffers. Receipts must be schema 1, today, the configured vault, a valid timestamp, and at most four hours old; the beacon clears 60 minutes after delivery, on panel open, on Open/+15m, and on day rollover. If the capture panel is already visible at delivery, the beacon and record count as acknowledged while the notice still follows Announce wakes. Channel precedence is `mac_capture` only for app surfaces; `desktop` and `off` never produce the HUD. Old `bob` without `wake_notice_version: 1` stays on desktop fallback with no claim.
 
 ## Similar Tasks
 
@@ -130,6 +142,8 @@ The app posts success and failure `UNUserNotificationCenter` notifications. Succ
 
 Capture notifications register a foreground action named for the note count and store Bob's open-plan payload. Clicking the notification or pressing its open action sends one `bob-open-notes` URL. Older delivered notifications still route from their `targetPath` or `targetPaths` values. If Bob reports no usable destination, the notification remains informative and omits the open action. Control-Return posts the same capture-success notification as Return, then opens the notes in Obsidian. If the open fails, a second notification, "Captured, but Obsidian didn't open", carries the error.
 
+Snoozed-task wake records are silent: stable ID `snooze-woken-<wake_id>`, thread `snooze`, `.passive`, no sound, and category `org.bobs.bob-mac-capture.snooze-wake` with a foreground Open action. The title is the shared headline (`Ready now · TITLE` or `N snoozed tasks are ready`); the body names up to three titles, the remaining count, and `woke HH:mm · in DEST · TODAY M/D` provenance. Default click and Open share one task-navigation path through a validated vault-relative route, never a shell URL, and both acknowledge the batch through the shared lifecycle. Foreground presentation is list-only for these records; every other category keeps banner, sound, and list. Authorization is queried without prompting: denied or not-determined skips the record while the HUD still works. Withdrawal removes delivered and pending IDs on panel open, Open, +15m success, 60-minute expiry, day rollover, disable, and vault change; a late add cannot resurrect a withdrawn ID, and launch reconciles existing `snooze-woken-*` IDs without touching unrelated notifications.
+
 When `just install` restarts a copy that was already running, the replacement process posts one native completion notification after it finishes launching:
 
 - title: `Install complete`
@@ -145,6 +159,7 @@ Clicking the banner or choosing `Capture` opens the capture panel; dismissing it
 | --- | --- |
 | Status | Selectable current `diagnosticStatus` string (starts as `Starting`). |
 | Signing | Live `signingDiagnostic` (`Not checked` until inspected). |
+| Wake notices | Transient metadata-only status: claim, capability, last receipt, channel, hold reason, verification, queue counts, restored count, failure. |
 | Recent activity | Disclosure of the last 20 timestamped status strings (`HH:mm:ss`), metadata only. |
 
 Signposts, timeouts, Copy Diagnostic, menu-bar icon states, and `refs-rank` are in [Diagnostics](diagnostics.md).

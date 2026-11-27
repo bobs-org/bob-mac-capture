@@ -44,6 +44,17 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let refsScanCategoryIdentifier = "org.bobs.bob-mac-capture.refs-scan"
     nonisolated static let refsScanShowActionIdentifier = "org.bobs.bob-mac-capture.refs-scan.show"
     nonisolated static let refsPDFUpdatesThreadIdentifier = "org.bobs.bob-mac-capture.refs-pdf-updates"
+    /// Stable Notification Center record for one wake batch. The request
+    /// identifier is `snooze-woken-<wake_id>`; the thread is shared.
+    nonisolated static let snoozeWakeCategoryIdentifier = "org.bobs.bob-mac-capture.snooze-wake"
+    nonisolated static let snoozeWakeOpenActionIdentifier = "org.bobs.bob-mac-capture.snooze-wake.open"
+    nonisolated static let snoozeWakeIDKey = "snoozeWakeID"
+    nonisolated static let snoozeVaultRootKey = "snoozeVaultRoot"
+    nonisolated static let snoozeDateKey = "snoozeDate"
+    nonisolated static let snoozeTaskRouteKey = "snoozeTaskRoute"
+    nonisolated static let snoozeTaskLineKey = "snoozeTaskLine"
+    nonisolated static let snoozeTaskBlockIDKey = "snoozeTaskBlockID"
+    nonisolated static let snoozeRecordThreadIdentifier = "snooze"
     nonisolated static let targetPathKey = "targetPath"
     nonisolated static let notePathKey = "notePath"
     nonisolated static let targetPathsKey = "targetPaths"
@@ -53,6 +64,11 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
         .banner, .sound, .list,
     ]
+    /// Silent record presentation: list-only, never banners, sounds, or badges
+    /// while the app is frontmost. Other categories keep the banner path.
+    nonisolated static let snoozeForegroundPresentationOptions: UNNotificationPresentationOptions = [
+        .list
+    ]
 
     @Published private(set) var authorization = NotificationAuthorizationDisplay(status: .notDetermined)
 
@@ -60,6 +76,14 @@ final class NotificationService: NSObject, ObservableObject {
     private let opener: (URL) -> Void
     private let showCapture: () -> Void
     private let showRefs: (String?) -> Void
+    /// Acknowledgement hook for the shared wake lifecycle. Fired when the
+    /// Default click or Open action runs on a snooze record; the coordinator
+    /// owns the beacon/record clearing that follows task navigation.
+    var onSnoozeWakeOpened: (String) -> Void = { _ in }
+    /// Wake IDs withdrawn before a pending add completed. A late add that
+    /// finds its ID here skips the post so it cannot resurrect a cleared
+    /// record. Bounded by the acknowledgement store's cap.
+    private var snoozeWithdrawnIDs = Set<String>()
 
     init(
         center: UNUserNotificationCenter = .current(),
@@ -199,10 +223,93 @@ final class NotificationService: NSObject, ObservableObject {
         try await add(Self.testContent())
     }
 
+    /// Posts one silent wake record with the stable `snooze-woken-<wake_id>`
+    /// identifier. Queries authorization without prompting: denied or
+    /// not-determined skips the record and keeps the HUD functional. A wake
+    /// ID withdrawn before the add completes skips the post so a late add
+    /// cannot resurrect a cleared record.
+    func postSnoozeWakeRecord(batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation) {
+        CaptureSignpost.event(CaptureSignpost.snoozePresent)
+        let wakeID = batch.wakeID
+        Task {
+            let settings = await center.notificationSettings()
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                break
+            case .notDetermined, .denied:
+                return
+            @unknown default:
+                return
+            }
+            guard !snoozeWithdrawnIDs.contains(wakeID) else {
+                return
+            }
+            let content = Self.snoozeWakeContent(batch: batch, presentation: presentation)
+            do {
+                try await add(content, identifier: presentation.recordID)
+            } catch {
+                return
+            }
+            // A withdraw that landed while the add was in flight wins: remove
+            // the just-added record instead of leaving a resurrected one.
+            if snoozeWithdrawnIDs.contains(wakeID) {
+                center.removeDeliveredNotifications(withIdentifiers: [presentation.recordID])
+                center.removePendingNotificationRequests(withIdentifiers: [presentation.recordID])
+            }
+        }
+    }
+
+    /// Withdraws one wake record from delivered and pending stores and marks
+    /// the ID withdrawn so a late add cannot resurrect it.
+    func withdrawSnoozeWakeRecord(wakeID: String) {
+        CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
+        snoozeWithdrawnIDs.insert(wakeID)
+        while snoozeWithdrawnIDs.count > SnoozeWakeHandledStore.maxEntries {
+            if let oldest = snoozeWithdrawnIDs.first {
+                snoozeWithdrawnIDs.remove(oldest)
+            } else {
+                break
+            }
+        }
+        let recordID = SnoozeWakeNoticePresentation.recordID(wakeID: wakeID)
+        center.removeDeliveredNotifications(withIdentifiers: [recordID])
+        center.removePendingNotificationRequests(withIdentifiers: [recordID])
+    }
+
+    /// Reconciles existing snooze records at launch: withdraws every
+    /// `snooze-woken-*` delivered or pending ID not in `activeWakeIDs`.
+    /// Unrelated notifications are never touched.
+    func reconcileSnoozeRecords(activeWakeIDs: Set<String>) {
+        Task {
+            let delivered: [String] = await withCheckedContinuation { continuation in
+                center.getDeliveredNotifications { notifications in
+                    continuation.resume(returning: notifications.map(\.request.identifier))
+                }
+            }
+            let pending: [String] = await withCheckedContinuation { continuation in
+                center.getPendingNotificationRequests { requests in
+                    continuation.resume(returning: requests.map(\.identifier))
+                }
+            }
+            let prefix = "snooze-woken-"
+            let activeIDs = Set(activeWakeIDs.map { "\(prefix)\($0)" })
+            for identifier in delivered + pending where identifier.hasPrefix(prefix) {
+                if !activeIDs.contains(identifier) {
+                    center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
+                }
+            }
+        }
+    }
+
     private func add(_ content: UNMutableNotificationContent) async throws {
+        try await add(content, identifier: UUID().uuidString)
+    }
+
+    private func add(_ content: UNMutableNotificationContent, identifier: String) async throws {
         try await CaptureSignpost.measure("notification-schedule") {
             let request = UNNotificationRequest(
-                identifier: UUID().uuidString,
+                identifier: identifier,
                 content: content,
                 trigger: nil
             )
@@ -405,11 +512,121 @@ final class NotificationService: NSObject, ObservableObject {
             captureBatchCategory(),
             installRestartCategory(),
             refsScanCategory(),
+            snoozeWakeCategory(),
         ]
         for count in 1...8 {
             categories.insert(captureOpenPlanCategory(count: count))
         }
         return categories
+    }
+
+    /// Foreground Open action for one silent wake record. Default click and
+    /// Open share the same task navigation and acknowledgement path.
+    nonisolated static func snoozeWakeCategory() -> UNNotificationCategory {
+        let open = UNNotificationAction(
+            identifier: snoozeWakeOpenActionIdentifier,
+            title: "Open",
+            options: [.foreground]
+        )
+        return UNNotificationCategory(
+            identifier: snoozeWakeCategoryIdentifier,
+            actions: [open],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    /// Silent wake record content: stable ID, shared thread, passive, no
+    /// sound. Title is the shared headline; body names the visible titles,
+    /// remaining count, and wake-time provenance. Metadata only in logs.
+    nonisolated static func snoozeWakeContent(
+        batch: SnoozeWakeNoticeBatch,
+        presentation: SnoozeWakeNoticePresentation
+    ) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = presentation.headline
+        var lines = presentation.visibleTitles
+        if presentation.remainingCount > 0 {
+            lines.append("+ \(presentation.remainingCount) more")
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        let time = formatter.string(from: batch.wokenAt)
+        let dateParts = batch.date.split(separator: "-")
+        let todayText: String = {
+            guard dateParts.count == 3,
+                let month = Int(dateParts[1]),
+                let day = Int(dateParts[2])
+            else {
+                return "TODAY"
+            }
+            return "TODAY \(month)/\(day)"
+        }()
+        let provenance: String = {
+            if batch.rows.count == 1,
+                let row = batch.rows.first,
+                let receipt = batch.receiptTasks.first(where: { $0.identityKey == row.identityKey }),
+                let destination = receipt.destination, !destination.isEmpty
+            {
+                return "woke \(time) · in \(destination) · \(todayText)"
+            }
+            return "woke \(time) · \(todayText)"
+        }()
+        lines.append(provenance)
+        content.body = lines.joined(separator: "\n")
+        content.sound = nil
+        content.badge = nil
+        content.interruptionLevel = .passive
+        content.threadIdentifier = snoozeRecordThreadIdentifier
+        content.categoryIdentifier = snoozeWakeCategoryIdentifier
+        var userInfo: [AnyHashable: Any] = [
+            snoozeWakeIDKey: batch.wakeID,
+            snoozeVaultRootKey: batch.vaultRoot ?? "",
+            snoozeDateKey: batch.date,
+        ]
+        if let first = presentation.actionableRows.first {
+            if let route = first.route {
+                userInfo[snoozeTaskRouteKey] = route
+            }
+            if let line = first.line {
+                userInfo[snoozeTaskLineKey] = line
+            }
+            if let blockID = first.blockID {
+                userInfo[snoozeTaskBlockIDKey] = blockID
+            }
+        }
+        content.userInfo = userInfo
+        return content
+    }
+
+    /// Task URL for a snooze record's Default/Open action. Validates the
+    /// stored vault-relative route against the stored vault root, never a
+    /// shell-composed URL.
+    nonisolated static func snoozeWakeTaskURL(userInfo: [AnyHashable: Any]) -> URL? {
+        guard let wakeID = userInfo[snoozeWakeIDKey] as? String, !wakeID.isEmpty,
+            let vaultRoot = userInfo[snoozeVaultRootKey] as? String, !vaultRoot.isEmpty,
+            let route = userInfo[snoozeTaskRouteKey] as? String, !route.isEmpty,
+            let line = userInfo[snoozeTaskLineKey] as? Int, line > 0
+        else {
+            return nil
+        }
+        guard !route.hasPrefix("/"), !route.contains("\\"), !route.contains(":"),
+            !route.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+        else {
+            return nil
+        }
+        let root = URL(fileURLWithPath: vaultRoot, isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath()
+        let file = root.appendingPathComponent(route).standardizedFileURL
+            .resolvingSymlinksInPath()
+        let prefix = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        guard file.path.hasPrefix(prefix) else {
+            return nil
+        }
+        let blockID = userInfo[snoozeTaskBlockIDKey] as? String
+        return ObsidianOpenURL.taskGotoURL(
+            path: file.path, line: line, ref: nil, blockID: blockID)
     }
 
     /// The hidden-panel scan content from the §8 strings: nil when the
@@ -510,9 +727,11 @@ final class NotificationService: NSObject, ObservableObject {
     // Body click and Capture on the install-restart category show the capture panel.
     // The default click and the Show action on a refs-scan notification show Bob Refs.
     // Capture notifications keep their existing default-click / Open Note / Open Notes
-    // Obsidian routing. Dismissal and mismatched category/action combinations are no-ops.
-    // Takes plain values instead of a live UNNotificationResponse, which the SDK gives
-    // no public initializer for, so this routing decision stays unit-testable.
+    // Obsidian routing. A snooze record's Default click and Open share one task
+    // navigation path; dismissal and mismatched category/action combinations are
+    // no-ops. Takes plain values instead of a live UNNotificationResponse, which
+    // the SDK gives no public initializer for, so this routing decision stays
+    // unit-testable.
     nonisolated static func route(
         forActionIdentifier actionIdentifier: String,
         categoryIdentifier: String,
@@ -520,6 +739,28 @@ final class NotificationService: NSObject, ObservableObject {
     ) -> NotificationRoute {
         if actionIdentifier == UNNotificationDismissActionIdentifier {
             return .none
+        }
+        if categoryIdentifier == snoozeWakeCategoryIdentifier {
+            guard
+                actionIdentifier == UNNotificationDefaultActionIdentifier
+                    || actionIdentifier == snoozeWakeOpenActionIdentifier
+            else {
+                return .none
+            }
+            guard let wakeID = userInfo[snoozeWakeIDKey] as? String, !wakeID.isEmpty,
+                let url = snoozeWakeTaskURL(userInfo: userInfo)
+            else {
+                // No usable task target: still acknowledge the batch so the
+                // beacon/record lifecycle clears, but open nothing.
+                if let wakeID = userInfo[snoozeWakeIDKey] as? String, !wakeID.isEmpty {
+                    return .openSnoozeWake(wakeID: wakeID, urls: [])
+                }
+                return .none
+            }
+            guard let wakeID = userInfo[snoozeWakeIDKey] as? String, !wakeID.isEmpty else {
+                return .none
+            }
+            return .openSnoozeWake(wakeID: wakeID, urls: [url])
         }
         if categoryIdentifier == refsScanCategoryIdentifier {
             guard
@@ -553,7 +794,8 @@ final class NotificationService: NSObject, ObservableObject {
         _ route: NotificationRoute,
         opener: (URL) -> Void,
         showCapture: () -> Void,
-        showRefs: (String?) -> Void = { _ in }
+        showRefs: (String?) -> Void = { _ in },
+        onSnoozeWakeOpened: (String) -> Void = { _ in }
     ) {
         switch route {
         case .none:
@@ -568,6 +810,11 @@ final class NotificationService: NSObject, ObservableObject {
             for url in urls {
                 opener(url)
             }
+        case .openSnoozeWake(let wakeID, let urls):
+            for url in urls {
+                opener(url)
+            }
+            onSnoozeWakeOpened(wakeID)
         }
     }
 
@@ -1290,6 +1537,7 @@ enum NotificationRoute: Equatable {
     case showRefs
     case showRefsSelecting(notePath: String)
     case openURLs([URL])
+    case openSnoozeWake(wakeID: String, urls: [URL])
 }
 
 private struct CaptureNotificationPresentation: Equatable {
@@ -1305,7 +1553,15 @@ extension NotificationService: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler(Self.foregroundPresentationOptions)
+        // Snooze records stay silent in the foreground: list-only, never a
+        // banner, sound, or badge. Every other category keeps banner+sound.
+        if notification.request.content.categoryIdentifier
+            == Self.snoozeWakeCategoryIdentifier
+        {
+            completionHandler(Self.snoozeForegroundPresentationOptions)
+        } else {
+            completionHandler(Self.foregroundPresentationOptions)
+        }
     }
 
     nonisolated func userNotificationCenter(
@@ -1328,7 +1584,10 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                 ),
                 opener: self.opener,
                 showCapture: self.showCapture,
-                showRefs: self.showRefs
+                showRefs: self.showRefs,
+                onSnoozeWakeOpened: { [weak self] wakeID in
+                    self?.onSnoozeWakeOpened(wakeID)
+                }
             )
         }
         completionHandler()

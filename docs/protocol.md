@@ -273,9 +273,8 @@ Optional commands stay hidden when absent:
 - `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
 - `gcal note` JSON: list/show/preview/save/clear; [Event notes](event-notes.md)
 - `walks --format json` (s/w/b title-row attention, schema 1)
-- `snooze wake -q -f json` (schema 1; `woke`, `nothing_due`, `deferred`, `skipped`;
-  `deferred`/`skipped` postimages never settle; absent support disables waking
-  until Recheck Bob or executable replacement)
+- `snooze wake -q -f json` (schema 1; `woke`, `nothing_due`, `deferred`, `skipped`; `deferred`/`skipped` never settle)
+- `snooze -f json` (`wake_notice_version: 1`); version 1 gates the claim.
 
 ## Optional fields
 

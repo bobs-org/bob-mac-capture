@@ -132,6 +132,11 @@ final class AppSettings: ObservableObject {
     /// last refresh time or an error/upgrade hint. Transient, never persisted.
     @Published var walksDiagnostic = ""
 
+    /// Metadata-only wake-notice diagnostics (claim, capability, last receipt,
+    /// hold reason, verification, queue counts, channel, failure). Transient,
+    /// never persisted. AppDelegate refreshes it from the coordinator.
+    @Published var snoozeWakeDiagnostic = "Wake notices: not started"
+
     @Published var canceledDraftStashCapacity: Int {
         didSet {
             let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)

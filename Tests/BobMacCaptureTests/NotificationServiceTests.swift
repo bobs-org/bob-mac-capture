@@ -1125,8 +1125,181 @@ final class NotificationServiceTests: XCTestCase {
                 NotificationService.captureBatchCategoryIdentifier,
                 NotificationService.installRestartCategoryIdentifier,
                 NotificationService.refsScanCategoryIdentifier,
+                NotificationService.snoozeWakeCategoryIdentifier,
             ] + (1...8).map { NotificationService.captureOpenPlanCategoryIdentifier(count: $0) })
         )
+    }
+
+    func testSnoozeWakeCategoryRegistersForegroundOpen() {
+        let category = NotificationService.snoozeWakeCategory()
+        XCTAssertEqual(category.identifier, NotificationService.snoozeWakeCategoryIdentifier)
+        XCTAssertEqual(
+            category.actions.map(\.identifier),
+            [NotificationService.snoozeWakeOpenActionIdentifier])
+        XCTAssertEqual(category.actions.first?.title, "Open")
+        XCTAssertTrue(category.actions.first?.options.contains(.foreground) ?? false)
+    }
+
+    func testSnoozeForegroundOptionsAreListOnly() {
+        XCTAssertEqual(
+            NotificationService.snoozeForegroundPresentationOptions, [.list])
+        XCTAssertEqual(
+            NotificationService.foregroundPresentationOptions, [.banner, .sound, .list])
+    }
+
+    private func snoozeBatch(
+        wakeID: String = "abc",
+        count: Int = 1,
+        vaultRoot: String = "/vault/example"
+    ) -> (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation) {
+        let rows = (0..<count).map { index in
+            SnoozeWakeListRow(
+                line: 4 + index,
+                route: "tasks.md",
+                blockID: "^task-\(index)",
+                title: "Task \(index + 1)",
+                target: "1532",
+                state: "woken",
+                wokeAt: "15:32",
+                wakeNoticeEligible: true)
+        }
+        let woken = CaptureRFC3339Date.date(from: "2026-11-26T15:32:00-05:00")!
+        let batch = SnoozeWakeNoticeBatch(
+            wakeID: wakeID,
+            wokenAt: woken,
+            date: "2026-11-26",
+            rows: rows,
+            vaultRoot: vaultRoot,
+            receiptTasks: rows.map { row in
+                SnoozeWakeReceiptTask(
+                    title: row.title,
+                    route: row.route,
+                    blockID: row.blockID,
+                    target: row.target,
+                    wokeAt: row.wokeAt,
+                    destination: "WRITE",
+                    line: row.line)
+            })
+        let presentation = SnoozeWakeNoticePresentation(batch: batch)
+        return (batch, presentation)
+    }
+
+    func testSnoozeWakeContentIsSilentWithStableID() {
+        let (batch, presentation) = snoozeBatch(wakeID: "abc", count: 1)
+        let content = NotificationService.snoozeWakeContent(
+            batch: batch, presentation: presentation)
+        XCTAssertEqual(content.title, "Ready now · Task 1")
+        XCTAssertTrue(content.body.contains("woke 15:32"))
+        XCTAssertTrue(content.body.contains("TODAY 11/26"))
+        XCTAssertNil(content.sound)
+        XCTAssertNil(content.badge)
+        XCTAssertEqual(content.interruptionLevel, .passive)
+        XCTAssertEqual(content.threadIdentifier, "snooze")
+        XCTAssertEqual(
+            content.threadIdentifier, SnoozeWakeNoticePresentation.recordThread)
+        XCTAssertEqual(
+            content.categoryIdentifier,
+            NotificationService.snoozeWakeCategoryIdentifier)
+        XCTAssertEqual(presentation.recordID, "snooze-woken-abc")
+        XCTAssertEqual(
+            SnoozeWakeNoticePresentation.recordID(wakeID: "abc"), "snooze-woken-abc")
+        XCTAssertEqual(content.userInfo[NotificationService.snoozeWakeIDKey] as? String, "abc")
+    }
+
+    func testSnoozeWakeContentBatchNamesTitlesAndCount() {
+        let (batch, presentation) = snoozeBatch(wakeID: "w2", count: 5)
+        let content = NotificationService.snoozeWakeContent(
+            batch: batch, presentation: presentation)
+        XCTAssertEqual(content.title, "5 snoozed tasks are ready")
+        XCTAssertTrue(content.body.contains("Task 1"))
+        XCTAssertTrue(content.body.contains("+ 2 more"))
+        XCTAssertEqual(content.userInfo[NotificationService.snoozeWakeIDKey] as? String, "w2")
+    }
+
+    func testSnoozeWakeRoutesDefaultAndOpenToTask() {
+        let (batch, presentation) = snoozeBatch(wakeID: "w1", count: 1)
+        let content = NotificationService.snoozeWakeContent(
+            batch: batch, presentation: presentation)
+        for action in [
+            UNNotificationDefaultActionIdentifier,
+            NotificationService.snoozeWakeOpenActionIdentifier,
+        ] {
+            let route = NotificationService.route(
+                forActionIdentifier: action,
+                categoryIdentifier: NotificationService.snoozeWakeCategoryIdentifier,
+                userInfo: content.userInfo)
+            switch route {
+            case .openSnoozeWake(let wakeID, let urls):
+                XCTAssertEqual(wakeID, "w1")
+                XCTAssertEqual(urls.count, 1)
+                XCTAssertEqual(urls.first?.scheme, "obsidian")
+                XCTAssertEqual(urls.first?.host, "bob-goto-task")
+            default:
+                XCTFail("expected openSnoozeWake for \(action), got \(route)")
+            }
+        }
+    }
+
+    func testSnoozeWakeRoutesWithoutTargetStillAcknowledges() {
+        let userInfo: [AnyHashable: Any] = [
+            NotificationService.snoozeWakeIDKey: "w9",
+            NotificationService.snoozeVaultRootKey: "/vault/example",
+            NotificationService.snoozeDateKey: "2026-11-26",
+        ]
+        let route = NotificationService.route(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            categoryIdentifier: NotificationService.snoozeWakeCategoryIdentifier,
+            userInfo: userInfo)
+        switch route {
+        case .openSnoozeWake(let wakeID, let urls):
+            XCTAssertEqual(wakeID, "w9")
+            XCTAssertTrue(urls.isEmpty)
+        default:
+            XCTFail("expected acknowledgement route, got \(route)")
+        }
+    }
+
+    func testSnoozeWakeDismissalAndMismatchedActionsAreNoOps() {
+        let (batch, presentation) = snoozeBatch()
+        let content = NotificationService.snoozeWakeContent(
+            batch: batch, presentation: presentation)
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDismissActionIdentifier,
+                categoryIdentifier: NotificationService.snoozeWakeCategoryIdentifier,
+                userInfo: content.userInfo),
+            .none)
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: "unknown",
+                categoryIdentifier: NotificationService.snoozeWakeCategoryIdentifier,
+                userInfo: content.userInfo),
+            .none)
+    }
+
+    func testSnoozeWakeTaskURLRejectsTraversal() {
+        let evil: [AnyHashable: Any] = [
+            NotificationService.snoozeWakeIDKey: "w1",
+            NotificationService.snoozeVaultRootKey: "/vault/example",
+            NotificationService.snoozeDateKey: "2026-11-26",
+            NotificationService.snoozeTaskRouteKey: "../outside.md",
+            NotificationService.snoozeTaskLineKey: 4,
+        ]
+        XCTAssertNil(NotificationService.snoozeWakeTaskURL(userInfo: evil))
+    }
+
+    func testSnoozeWakeExecuteOpensAndAcknowledges() {
+        var opened: [URL] = []
+        var acknowledged: [String] = []
+        let url = URL(string: "obsidian://bob-goto-task?path=/vault/a.md&line=4")!
+        NotificationService.execute(
+            .openSnoozeWake(wakeID: "w1", urls: [url]),
+            opener: { opened.append($0) },
+            showCapture: {},
+            showRefs: { _ in },
+            onSnoozeWakeOpened: { acknowledged.append($0) })
+        XCTAssertEqual(opened, [url])
+        XCTAssertEqual(acknowledged, ["w1"])
     }
 
     func testOpenPlanNotificationActionUsesOneBobOpenNotesURL() {

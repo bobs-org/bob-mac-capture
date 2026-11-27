@@ -214,6 +214,54 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Snoozed Tasks") {
+                Toggle(
+                    "Announce wakes",
+                    isOn: $settings.snoozeWakeAnnounce
+                )
+                Text(
+                    "Off discards pending notices and clears the beacon and records, but keeps a healthy claim so auto never falls back to a desktop banner. The wake scheduler runs independently."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Toggle(
+                    "Chime",
+                    isOn: $settings.snoozeWakeChime
+                )
+                Text(
+                    "One soft system chime exactly once on actual presentation. Applies live."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Toggle(
+                    "Hold while away",
+                    isOn: $settings.snoozeWakeHoldWhileAway
+                )
+                Text(
+                    "Hold notices while the screen is locked, displays are asleep, the session is inactive, or idle for at least 180 seconds. Ordinary app deactivation is not away. Applies live."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                Toggle(
+                    "Hold during meetings",
+                    isOn: $settings.snoozeWakeHoldDuringMeetings
+                )
+                Text(
+                    "Hold notices during running meetings, including overlapping meetings, until no qualifying meeting is running. Applies live."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                if !settings.snoozeWakeDiagnostic.isEmpty {
+                    Text(settings.snoozeWakeDiagnostic)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel(
+                            "Wake notice status, \(settings.snoozeWakeDiagnostic)"
+                        )
+                }
+            }
+
             Section("Similar Tasks") {
                 Toggle(
                     "Show similar tasks while capturing",

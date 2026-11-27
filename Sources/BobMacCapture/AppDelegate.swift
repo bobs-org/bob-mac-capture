@@ -430,7 +430,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             render: { [weak item] frame in
                 item?.button?.image = StatusItemGlyph.image(
                     for: frame.glyphState,
-                    bulletRadius: frame.bulletRadius
+                    bulletRadius: frame.bulletRadius,
+                    snoozeCount: frame.snoozeCount
                 )
                 item?.button?.toolTip = frame.toolTip
                 item?.button?.setAccessibilityLabel(frame.accessibilityLabel)
@@ -580,24 +581,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         hud.onAcknowledge = { [weak coordinator] wakeID in
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
             coordinator?.acknowledgeDelivered(wakeID: wakeID)
         }
         hud.onTasksRemoved = { [weak coordinator] wakeID, keys in
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
             coordinator?.removeDeliveredTasks(wakeID: wakeID, keys: keys)
         }
-        coordinator.onPresent = { [weak hud] batch, presentation in
+        coordinator.onPresent = { [weak self, weak hud] batch, presentation in
             hud?.show(batch: batch, presentation: presentation)
+            self?.notificationService.postSnoozeWakeRecord(batch: batch, presentation: presentation)
+            self?.updateSnoozeBeacon()
+            self?.refreshSnoozeDiagnostics()
+        }
+        coordinator.onDismiss = { [weak self] wakeID in
+            self?.notificationService.withdrawSnoozeWakeRecord(wakeID: wakeID)
+            self?.updateSnoozeBeacon()
+            self?.refreshSnoozeDiagnostics()
         }
         coordinator.onTransientDismiss = { [weak hud] _ in
             hud?.dismissTransient()
+        }
+        coordinator.onQueueChanged = { [weak self] _, _ in
+            self?.updateSnoozeBeacon()
+            self?.refreshSnoozeDiagnostics()
+        }
+        coordinator.onDiagnostic = { [weak self] message in
+            // Metadata only: the coordinator never logs task text.
+            self?.settings.diagnosticStatus = message
         }
         coordinator.isPanelOpen = { [weak self] in
             self?.panelController?.isVisible == true
         }
         self.snoozeWakeHUD = hud
         self.snoozeNoticeCoordinator = coordinator
+        notificationService.onSnoozeWakeOpened = { [weak coordinator] wakeID in
+            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            coordinator?.acknowledgeDelivered(wakeID: wakeID)
+        }
         coordinator.start()
         coordinator.attachPresenter()
+        // Restore the beacon and reconcile Notification Center records so a
+        // restart neither re-announces nor leaves stale IDs behind.
+        updateSnoozeBeacon()
+        notificationService.reconcileSnoozeRecords(activeWakeIDs: coordinator.activeWakeIDs())
+        refreshSnoozeDiagnostics()
 
         Publishers.CombineLatest4(
             settings.$snoozeWakeAnnounce,
@@ -626,8 +654,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // The menu-bar glyph is the only always-visible surface for an `LSUIElement` app,
     // so it must reflect a broken bob resolution at a glance without opening Settings.
+    // The wake beacon rides the same frame and survives resolution changes.
     private func updateStatusItemAppearance() {
         statusItemController?.update(isBobResolved: processClient != nil)
+        updateSnoozeBeacon()
+    }
+
+    /// Reflects the shared acknowledgement lifecycle's unacknowledged task
+    /// count in the menu-bar beacon. No stale pulse restores a cleared count:
+    /// the controller's pulse frames read the live presentation.
+    private func updateSnoozeBeacon() {
+        let count = snoozeNoticeCoordinator?.unacknowledgedTaskCount() ?? 0
+        statusItemController?.setSnoozeCount(count)
+    }
+
+    /// Publishes metadata-only wake diagnostics for Settings. Task text never
+    /// reaches this string: IDs, counts, reasons, and capability flags only.
+    private func refreshSnoozeDiagnostics() {
+        guard let coordinator = snoozeNoticeCoordinator else {
+            settings.snoozeWakeDiagnostic = "Wake notices: not started"
+            return
+        }
+        let snapshot = coordinator.diagnosticSnapshot()
+        let restored = coordinator.restoredBeaconEntries().count
+        var parts: [String] = []
+        parts.append("Claimed: \(snapshot.isClaimed ? "yes" : "no")")
+        parts.append("Capable: \(snapshot.isCapable.map { $0 ? "yes" : "no" } ?? "unknown")")
+        parts.append("Last receipt: \(snapshot.lastReceiptID ?? "none")")
+        parts.append("Channel: \(snapshot.lastChannel ?? "none")")
+        parts.append("Held: \(snapshot.heldReason ?? "no")")
+        parts.append("Verified: \(snapshot.lastVerification ?? "unverified")")
+        parts.append("Queue: \(snapshot.pendingCount) pending, \(snapshot.deliveredCount) delivered")
+        if restored > 0 {
+            parts.append("Restored: \(restored)")
+        }
+        if let failure = snapshot.lastFailure, !failure.isEmpty {
+            parts.append("Notice: \(failure)")
+        }
+        settings.snoozeWakeDiagnostic = "Wake notices: " + parts.joined(separator: " · ")
     }
 
     private func registerHotKey() {

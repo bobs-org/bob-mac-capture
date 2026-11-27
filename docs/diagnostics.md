@@ -13,12 +13,13 @@ The only always-visible surface is a purpose-designed monochrome mark: a geometr
 - **bob unresolved**: the bullet becomes a "!". The tooltip reads
   `Bob Mac Capture — bob is not resolved. Check Settings.`, and the menu gains a
   `bob Not Resolved — Open Settings…` row above the healthy items.
+- **Wake beacon**: a small amber alarm badge with the unacknowledged delivered-task count in the top-right corner. The badge is rendered in color on purpose, so the image is non-template while the beacon is present and menu-bar tinting cannot erase the amber. The tooltip reads `Bob Mac Capture — N snoozed tasks ready` (or `1 snoozed task ready`), and the accessibility label names the count; the unresolved suffix is kept when both states coexist. Clearing follows the shared acknowledgement lifecycle: panel open, Open, +15m success, 60 minutes after delivery, day rollover, disable, and vault change. No stale capture-landed pulse restores a cleared count.
 - **Capture landed**: after every successful submit, the bullet briefly swells and
-  settles (420 ms). The pulse is skipped when Reduce Motion is on.
+  settles (420 ms). The pulse is skipped when Reduce Motion is on. Pulse frames read the live presentation, so a beacon cleared mid-pulse stays cleared, and the pulse coexists with the unresolved marker and the beacon.
 
 ## Settings diagnostics and Recent Activity
 
-Settings › Diagnostics shows the current status string (selectable; starts as `Starting`), the signing diagnostic (`Not checked` until inspected), and a Recent Activity disclosure of the last 20 timestamped entries (`HH:mm:ss  message`). Each status change appends one entry; the list is in-memory only and never contains captured text.
+Settings › Diagnostics shows the current status string (selectable; starts as `Starting`), the signing diagnostic (`Not checked` until inspected), a Wake notices row (claim, capability, last receipt, channel, hold reason, verification, queue counts, restored count, failure — metadata only, never task text), and a Recent Activity disclosure of the last 20 timestamped entries (`HH:mm:ss  message`). Each status change appends one entry; the list is in-memory only and never contains captured text.
 
 A hotkey registration failure reports `Hotkey conflict` with the Carbon status, `Refs hotkey conflict: …`, `Capture alias hotkey conflict: …`, or `Refs alias hotkey conflict: …`. Highlights takeover conflicts name the chord and action and show a toast once per launch. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/). Target/route completion problems report `Target cache stale` with the scan error; recovery is in [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/).
 
@@ -51,7 +52,10 @@ adds interval `templates-refresh`; the related lane adds interval
 `capture-related` and metadata-only events `capture-related-unsupported`,
 `capture-related-failed`, `capture-related-publish` (settled response changed
 the visible rows), and `capture-related-empty` (settled response had no
-matches). These, and the bounded
+matches); the snooze wake lifecycle adds metadata-only events
+`snooze-receipt-read`, `snooze-hold`, `snooze-return`, `snooze-verify`,
+`snooze-present`, `snooze-action`, and `snooze-withdraw` around receipt read,
+hold/return, verification, presentation, action, and withdrawal. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).
 
