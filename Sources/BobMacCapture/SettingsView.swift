@@ -25,430 +25,420 @@ struct SettingsView: View {
     @State private var isAdHocBuild = false
 
     var body: some View {
-        Form {
-            Section("Bob") {
-                TextField("Executable override", text: $settings.bobExecutableOverride)
-                TextField("Vault path", text: $settings.bobDirectory)
-                LabeledContent("Resolved path", value: settings.resolvedBobPath)
-            }
+        SettingsScrollContainer {
+            Form {
+                Section("Bob") {
+                    TextField("Executable override", text: $settings.bobExecutableOverride)
+                    TextField("Vault path", text: $settings.bobDirectory)
+                    LabeledContent("Resolved path", value: settings.resolvedBobPath)
+                }
 
-            Section("Hotkey") {
-                Toggle("Use production Control-Shift-Command-I", isOn: $settings.useProductionHotkey)
-                LabeledContent("Active binding", value: settings.hotKeyConfiguration.displayName)
-                Toggle(
-                    "Also open Capture with Command-\\",
-                    isOn: $settings.captureAliasHotkeyEnabled
-                )
-                Text(
-                    "Command-\\ is global: while this is on, other apps never receive Command-\\. "
-                        + "Press it again while Capture is open to jump to today's Pomodoro."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Section("References") {
-                Toggle(
-                    "Open Bob Refs with Control-Shift-Command-O",
-                    isOn: $settings.refsHotkeyEnabled
-                )
-                Toggle(
-                    "Also open Bob Refs with Command-]",
-                    isOn: $settings.refsAliasHotkeyEnabled
-                )
-                Text(
-                    "Command-] is global: while this is on, other apps never receive Command-]."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Stepper(
-                    value: Binding(
-                        get: { settings.refsInspectorNotesPageSize },
-                        set: { settings.refsInspectorNotesPageSize = $0 }
-                    ),
-                    in: 1...20
-                ) {
-                    LabeledContent(
-                        "Preview highlights per page",
-                        value: "\(settings.refsInspectorNotesPageSize)"
-                    )
-                }
-                Text(
-                    "The preview shows this many highlights at first; "
-                        + "Control-D at the bottom of the preview shows this many more."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Picker(
-                    "In Highlights, open Bob Refs with",
-                    selection: $settings.refsHighlightsOpenKey
-                ) {
-                    Text(RefsHighlightsOpenKey.off.displayName)
-                        .tag(RefsHighlightsOpenKey.off)
-                    Text(RefsHighlightsOpenKey.cmdO.displayName)
-                        .tag(RefsHighlightsOpenKey.cmdO)
-                    Text(RefsHighlightsOpenKey.ctrlO.displayName)
-                        .tag(RefsHighlightsOpenKey.ctrlO)
-                }
-                Picker(
-                    "In Highlights, show open tabs with",
-                    selection: $settings.refsHighlightsTabsKey
-                ) {
-                    Text(RefsHighlightsTabsKey.cmdT.displayName)
-                        .tag(RefsHighlightsTabsKey.cmdT)
-                    Text(RefsHighlightsTabsKey.shiftCmdO.displayName)
-                        .tag(RefsHighlightsTabsKey.shiftCmdO)
-                    Text(RefsHighlightsTabsKey.cmdE.displayName)
-                        .tag(RefsHighlightsTabsKey.cmdE)
-                    Text(RefsHighlightsTabsKey.off.displayName)
-                        .tag(RefsHighlightsTabsKey.off)
-                }
-                Picker(
-                    "Copy key in Highlights",
-                    selection: $settings.refsHighlightsCopyKey
-                ) {
-                    Text(RefsHighlightsCopyKey.cmdY.displayName)
-                        .tag(RefsHighlightsCopyKey.cmdY)
-                    Text(RefsHighlightsCopyKey.off.displayName)
-                        .tag(RefsHighlightsCopyKey.off)
-                }
-                Picker(
-                    "Copy code key in Highlights",
-                    selection: $settings.refsHighlightsCodeKey
-                ) {
-                    Text(RefsHighlightsCodeKey.cmdB.displayName)
-                        .tag(RefsHighlightsCodeKey.cmdB)
-                    Text(RefsHighlightsCodeKey.off.displayName)
-                        .tag(RefsHighlightsCodeKey.off)
-                }
-                Picker(
-                    "Copy link key in Highlights",
-                    selection: $settings.refsHighlightsLinkKey
-                ) {
-                    Text(RefsHighlightsLinkKey.cmdL.displayName)
-                        .tag(RefsHighlightsLinkKey.cmdL)
-                    Text(RefsHighlightsLinkKey.off.displayName)
-                        .tag(RefsHighlightsLinkKey.off)
-                }
-                Picker(
-                    "Reading task key in Highlights",
-                    selection: $settings.refsHighlightsTaskKey
-                ) {
-                    Text(RefsHighlightsTaskKey.ctrlReturn.displayName)
-                        .tag(RefsHighlightsTaskKey.ctrlReturn)
-                    Text(RefsHighlightsTaskKey.off.displayName)
-                        .tag(RefsHighlightsTaskKey.off)
-                }
-                LabeledContent("Highlights app", value: highlightsAppDescription)
-                HStack {
-                    Button("Choose…") {
-                        chooseHighlightsApp()
-                    }
-                    Button("Use Default") {
-                        settings.refsHighlightsAppPath = ""
-                    }
-                }
-                Toggle(
-                    "Tell me when Bob updates an open PDF",
-                    isOn: $settings.refsNotifyOpenPDFUpdates
-                )
-                HStack {
+                Section("Hotkey") {
                     Toggle(
-                        "Scan after ⌘S in Highlights",
-                        isOn: $settings.refsScanOnHighlightsSave
-                    )
-                    .fixedSize(horizontal: true, vertical: false)
-                    Spacer(minLength: 8)
-                    if settings.refsScanOnHighlightsSave && !highlightsTabsAllowed {
-                        Text("Needs Accessibility")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Text(
-                    "Runs `bob ref scan -a -w` once Highlights finishes saving. Uses the Accessibility grant shown under Highlights tabs."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Text(
-                    "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                LabeledContent(
-                    "Highlights tabs",
-                    value: AccessibilityTrust.statusText(isTrusted: highlightsTabsAllowed)
-                )
-                if let caption = AccessibilityTrust.adHocCaption(isAdHocBuild: isAdHocBuild) {
-                    Text(caption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Button("Reset Open History…", role: .destructive) {
-                    isConfirmingRefsReset = true
-                }
-                .disabled(onResetOpenHistory == nil)
-                .accessibilityHint("Clears recently-opened rows and frecency.")
-            }
-
-            Section("Agenda") {
-                Toggle(
-                    "Show today's Pomodoros when the draft is empty",
-                    isOn: $settings.agendaEnabled
-                )
-                if !settings.agendaDiagnostic.isEmpty {
-                    Text(settings.agendaDiagnostic)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(
-                            "Agenda status, \(settings.agendaDiagnostic)"
-                        )
-                }
-                if !settings.walksDiagnostic.isEmpty {
-                    Text(settings.walksDiagnostic)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(
-                            "Walk attention status, \(settings.walksDiagnostic)"
-                        )
-                }
-            }
-
-            Section("Snoozed Tasks") {
-                Toggle(
-                    "Announce wakes",
-                    isOn: $settings.snoozeWakeAnnounce
-                )
-                Text(
-                    "Off discards pending notices and clears the beacon and records, but keeps a healthy claim so auto never falls back to a desktop banner. The wake scheduler runs independently."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Toggle(
-                    "Chime",
-                    isOn: $settings.snoozeWakeChime
-                )
-                Text(
-                    "One soft system chime exactly once on actual presentation. Applies live."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Toggle(
-                    "Hold while away",
-                    isOn: $settings.snoozeWakeHoldWhileAway
-                )
-                Text(
-                    "Hold notices while the screen is locked, displays are asleep, the session is inactive, or idle for at least 180 seconds. Ordinary app deactivation is not away. Applies live."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Toggle(
-                    "Hold during meetings",
-                    isOn: $settings.snoozeWakeHoldDuringMeetings
-                )
-                Text(
-                    "Hold notices during running meetings, including overlapping meetings, until no qualifying meeting is running. Applies live."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                if !settings.snoozeWakeDiagnostic.isEmpty {
-                    Text(settings.snoozeWakeDiagnostic)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .accessibilityLabel(
-                            "Wake notice status, \(settings.snoozeWakeDiagnostic)"
-                        )
-                }
-            }
-
-            Section("Similar Tasks") {
-                Toggle(
-                    "Show similar tasks while capturing",
-                    isOn: $settings.similarTasksEnabled
-                )
-            }
-
-            Section("Typing Tips") {
-                Toggle("Show typing tips", isOn: $settings.typingTipsEnabled)
-                Text(
-                    "A one-line tip when a key without Shift would have typed the same sigil."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                Button("Reset typing tips") {
-                    onResetTypingTips?()
-                }
-                .disabled(onResetTypingTips == nil)
-            }
-
-            Section("Go To Notes") {
-                Button("Clear Go To Notes History…", role: .destructive) {
-                    isConfirmingNoteGotoClear = true
-                }
-                .disabled(onClearNoteGotoHistory == nil)
-                .accessibilityHint("Clears the Recent rows in Go To · Notes.")
-            }
-
-            Section("Canceled Draft Stash") {
-                Stepper(
-                    value: Binding(
-                        get: { settings.canceledDraftStashCapacity },
-                        set: { settings.canceledDraftStashCapacity = $0 }
-                    ),
-                    in: 0...CanceledDraftStash.maximumCapacity
-                ) {
-                    LabeledContent("Capacity", value: stashCapacityLabel)
-                }
-                .accessibilityHint("Set to zero to turn off canceled draft stashing.")
-
-                LabeledContent("Retained", value: retainedDraftCountLabel)
-
-                Text(
-                    "Canceled drafts are stored on disk and survive quitting or restarting. "
-                        + "Quitting or restarting with an unsent draft stashes it. "
-                        + "Setting capacity to 0 or using Clear Stash... deletes the file."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                Button("Clear Stash...", role: .destructive) {
-                    isConfirmingStashClear = true
-                }
-                .disabled(canceledDraftStash.isEmpty)
-                .accessibilityHint("Permanently removes retained canceled drafts.")
-            }
-
-            Section("Saved Templates") {
-                switch savedTemplateShelf.availability {
-                case .unknown:
-                    Text("Loading saved templates…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                case .failed(let message):
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                case .unsupported:
-                    Text("Update bob to use saved templates")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                case .available:
+                        "Use production Control-Shift-Command-I",
+                        isOn: $settings.useProductionHotkey)
                     LabeledContent(
-                        "Saved",
-                        value: "\(savedTemplateShelf.count) \(savedTemplateShelf.count == 1 ? "template" : "templates") · up to \(savedTemplateShelf.capacity)"
+                        "Active binding", value: settings.hotKeyConfiguration.displayName)
+                    Toggle(
+                        "Also open Capture with Command-\\",
+                        isOn: $settings.captureAliasHotkeyEnabled
                     )
-                    if !savedTemplateShelf.saving {
-                        Text("Saving is off (capture.max_saved_templates: 0)")
-                            .font(.caption)
+                    Text(
+                        "Command-\\ is global: while this is on, other apps never receive Command-\\. "
+                            + "Press it again while Capture is open to jump to today's Pomodoro."
+                    )
+                    .settingsCaption()
+                }
+
+                Section("References") {
+                    Toggle(
+                        "Open Bob Refs with Control-Shift-Command-O",
+                        isOn: $settings.refsHotkeyEnabled
+                    )
+                    Toggle(
+                        "Also open Bob Refs with Command-]",
+                        isOn: $settings.refsAliasHotkeyEnabled
+                    )
+                    Text(
+                        "Command-] is global: while this is on, other apps never receive Command-]."
+                    )
+                    .settingsCaption()
+                    Stepper(
+                        value: Binding(
+                            get: { settings.refsInspectorNotesPageSize },
+                            set: { settings.refsInspectorNotesPageSize = $0 }
+                        ),
+                        in: 1...20
+                    ) {
+                        LabeledContent(
+                            "Preview highlights per page",
+                            value: "\(settings.refsInspectorNotesPageSize)"
+                        )
+                    }
+                    Text(
+                        "The preview shows this many highlights at first; "
+                            + "Control-D at the bottom of the preview shows this many more."
+                    )
+                    .settingsCaption()
+                    Picker(
+                        "In Highlights, open Bob Refs with",
+                        selection: $settings.refsHighlightsOpenKey
+                    ) {
+                        Text(RefsHighlightsOpenKey.off.displayName)
+                            .tag(RefsHighlightsOpenKey.off)
+                        Text(RefsHighlightsOpenKey.cmdO.displayName)
+                            .tag(RefsHighlightsOpenKey.cmdO)
+                        Text(RefsHighlightsOpenKey.ctrlO.displayName)
+                            .tag(RefsHighlightsOpenKey.ctrlO)
+                    }
+                    Picker(
+                        "In Highlights, show open tabs with",
+                        selection: $settings.refsHighlightsTabsKey
+                    ) {
+                        Text(RefsHighlightsTabsKey.cmdT.displayName)
+                            .tag(RefsHighlightsTabsKey.cmdT)
+                        Text(RefsHighlightsTabsKey.shiftCmdO.displayName)
+                            .tag(RefsHighlightsTabsKey.shiftCmdO)
+                        Text(RefsHighlightsTabsKey.cmdE.displayName)
+                            .tag(RefsHighlightsTabsKey.cmdE)
+                        Text(RefsHighlightsTabsKey.off.displayName)
+                            .tag(RefsHighlightsTabsKey.off)
+                    }
+                    Picker(
+                        "Copy key in Highlights",
+                        selection: $settings.refsHighlightsCopyKey
+                    ) {
+                        Text(RefsHighlightsCopyKey.cmdY.displayName)
+                            .tag(RefsHighlightsCopyKey.cmdY)
+                        Text(RefsHighlightsCopyKey.off.displayName)
+                            .tag(RefsHighlightsCopyKey.off)
+                    }
+                    Picker(
+                        "Copy code key in Highlights",
+                        selection: $settings.refsHighlightsCodeKey
+                    ) {
+                        Text(RefsHighlightsCodeKey.cmdB.displayName)
+                            .tag(RefsHighlightsCodeKey.cmdB)
+                        Text(RefsHighlightsCodeKey.off.displayName)
+                            .tag(RefsHighlightsCodeKey.off)
+                    }
+                    Picker(
+                        "Copy link key in Highlights",
+                        selection: $settings.refsHighlightsLinkKey
+                    ) {
+                        Text(RefsHighlightsLinkKey.cmdL.displayName)
+                            .tag(RefsHighlightsLinkKey.cmdL)
+                        Text(RefsHighlightsLinkKey.off.displayName)
+                            .tag(RefsHighlightsLinkKey.off)
+                    }
+                    Picker(
+                        "Reading task key in Highlights",
+                        selection: $settings.refsHighlightsTaskKey
+                    ) {
+                        Text(RefsHighlightsTaskKey.ctrlReturn.displayName)
+                            .tag(RefsHighlightsTaskKey.ctrlReturn)
+                        Text(RefsHighlightsTaskKey.off.displayName)
+                            .tag(RefsHighlightsTaskKey.off)
+                    }
+                    LabeledContent("Highlights app", value: highlightsAppDescription)
+                    HStack {
+                        Button("Choose…") {
+                            chooseHighlightsApp()
+                        }
+                        Button("Use Default") {
+                            settings.refsHighlightsAppPath = ""
+                        }
+                    }
+                    Toggle(
+                        "Tell me when Bob updates an open PDF",
+                        isOn: $settings.refsNotifyOpenPDFUpdates
+                    )
+                    HStack {
+                        Toggle(
+                            "Scan after ⌘S in Highlights",
+                            isOn: $settings.refsScanOnHighlightsSave
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                        Spacer(minLength: 8)
+                        if settings.refsScanOnHighlightsSave && !highlightsTabsAllowed {
+                            Text("Needs Accessibility")
+                                .settingsCaption()
+                        }
+                    }
+                    Text(
+                        "Runs `bob ref scan -a -w` once Highlights finishes saving. Uses the Accessibility grant shown under Highlights tabs."
+                    )
+                    .settingsCaption()
+                    Text(
+                        "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place."
+                    )
+                    .settingsCaption()
+                    LabeledContent(
+                        "Highlights tabs",
+                        value: AccessibilityTrust.statusText(isTrusted: highlightsTabsAllowed)
+                    )
+                    if let caption = AccessibilityTrust.adHocCaption(isAdHocBuild: isAdHocBuild) {
+                        Text(caption)
+                            .settingsCaption()
+                    }
+                    Button("Reset Open History…", role: .destructive) {
+                        isConfirmingRefsReset = true
+                    }
+                    .disabled(onResetOpenHistory == nil)
+                    .accessibilityHint("Clears recently-opened rows and frecency.")
+                }
+
+                Section("Agenda") {
+                    Toggle(
+                        "Show today's Pomodoros when the draft is empty",
+                        isOn: $settings.agendaEnabled
+                    )
+                    if !settings.agendaDiagnostic.isEmpty {
+                        Text(settings.agendaDiagnostic)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(
+                                "Agenda status, \(settings.agendaDiagnostic)"
+                            )
+                    }
+                    if !settings.walksDiagnostic.isEmpty {
+                        Text(settings.walksDiagnostic)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(
+                                "Walk attention status, \(settings.walksDiagnostic)"
+                            )
+                    }
+                }
+
+                Section("Snoozed Tasks") {
+                    Toggle(
+                        "Announce wakes",
+                        isOn: $settings.snoozeWakeAnnounce
+                    )
+                    Text(
+                        "Off discards pending notices and clears the beacon and records, but keeps a healthy claim so auto never falls back to a desktop banner. The wake scheduler runs independently."
+                    )
+                    .settingsCaption()
+                    Toggle(
+                        "Chime",
+                        isOn: $settings.snoozeWakeChime
+                    )
+                    Text(
+                        "One soft system chime exactly once on actual presentation. Applies live."
+                    )
+                    .settingsCaption()
+                    Toggle(
+                        "Hold while away",
+                        isOn: $settings.snoozeWakeHoldWhileAway
+                    )
+                    Text(
+                        "Hold notices while the screen is locked, displays are asleep, the session is inactive, or idle for at least 180 seconds. Ordinary app deactivation is not away. Applies live."
+                    )
+                    .settingsCaption()
+                    Toggle(
+                        "Hold during meetings",
+                        isOn: $settings.snoozeWakeHoldDuringMeetings
+                    )
+                    Text(
+                        "Hold notices during running meetings, including overlapping meetings, until no qualifying meeting is running. Applies live."
+                    )
+                    .settingsCaption()
+                    if !settings.snoozeWakeDiagnostic.isEmpty {
+                        Text(settings.snoozeWakeDiagnostic)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .accessibilityLabel(
+                                "Wake notice status, \(settings.snoozeWakeDiagnostic)"
+                            )
+                    }
+                }
+
+                Section("Similar Tasks") {
+                    Toggle(
+                        "Show similar tasks while capturing",
+                        isOn: $settings.similarTasksEnabled
+                    )
+                }
+
+                Section("Typing Tips") {
+                    Toggle("Show typing tips", isOn: $settings.typingTipsEnabled)
+                    Text(
+                        "A one-line tip when a key without Shift would have typed the same sigil."
+                    )
+                    .settingsCaption()
+                    Button("Reset typing tips") {
+                        onResetTypingTips?()
+                    }
+                    .disabled(onResetTypingTips == nil)
+                }
+
+                Section("Go To Notes") {
+                    Button("Clear Go To Notes History…", role: .destructive) {
+                        isConfirmingNoteGotoClear = true
+                    }
+                    .disabled(onClearNoteGotoHistory == nil)
+                    .accessibilityHint("Clears the Recent rows in Go To · Notes.")
+                }
+
+                Section("Canceled Draft Stash") {
+                    Stepper(
+                        value: Binding(
+                            get: { settings.canceledDraftStashCapacity },
+                            set: { settings.canceledDraftStashCapacity = $0 }
+                        ),
+                        in: 0...CanceledDraftStash.maximumCapacity
+                    ) {
+                        LabeledContent("Capacity", value: stashCapacityLabel)
+                    }
+                    .accessibilityHint("Set to zero to turn off canceled draft stashing.")
+
+                    LabeledContent("Retained", value: retainedDraftCountLabel)
+
+                    Text(
+                        "Canceled drafts are stored on disk and survive quitting or restarting. "
+                            + "Quitting or restarting with an unsent draft stashes it. "
+                            + "Setting capacity to 0 or using Clear Stash... deletes the file."
+                    )
+                    .settingsCaption()
+
+                    Button("Clear Stash...", role: .destructive) {
+                        isConfirmingStashClear = true
+                    }
+                    .disabled(canceledDraftStash.isEmpty)
+                    .accessibilityHint("Permanently removes retained canceled drafts.")
+                }
+
+                Section("Saved Templates") {
+                    switch savedTemplateShelf.availability {
+                    case .unknown:
+                        Text("Loading saved templates…")
+                            .settingsCaption()
+                    case .failed(let message):
+                        Text(message)
+                            .settingsCaption()
+                    case .unsupported:
+                        Text("Update bob to use saved templates")
+                            .settingsCaption()
+                    case .available:
+                        LabeledContent(
+                            "Saved",
+                            value:
+                                "\(savedTemplateShelf.count) \(savedTemplateShelf.count == 1 ? "template" : "templates") · up to \(savedTemplateShelf.capacity)"
+                        )
+                        if !savedTemplateShelf.saving {
+                            Text("Saving is off (capture.max_saved_templates: 0)")
+                                .settingsCaption()
+                        }
+                        if !savedTemplateShelf.file.isEmpty {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("File")
+                                    .foregroundStyle(.secondary)
+                                Text(savedTemplateShelf.file)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                                Spacer(minLength: 8)
+                                Button("Reveal in Finder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([
+                                        URL(fileURLWithPath: savedTemplateShelf.file)
+                                    ])
+                                }
+                            }
+                        }
+                    }
+
+                    Text(
+                        "bob saves the template block after each successful %t capture. "
+                            + "Rows are never saved. Add %t to the first item to start a new template."
+                    )
+                    .settingsCaption()
+
+                    Button("Clear Templates…", role: .destructive) {
+                        isConfirmingTemplateClear = true
+                    }
+                    .disabled(
+                        savedTemplateShelf.count == 0
+                            || savedTemplateShelf.isUnsupported
+                            || isClearingTemplates
+                    )
+                    .accessibilityHint(
+                        "Permanently removes saved templates and their quarantine copy.")
+                    if !templateClearStatus.isEmpty {
+                        Text(templateClearStatus)
+                            .settingsCaption()
+                    }
+                }
+
+                Section("Launch") {
+                    Toggle(
+                        "Launch at login",
+                        isOn: Binding(
+                            get: { launchStatus.enabled },
+                            set: { enabled in
+                                do {
+                                    try LaunchAtLoginController().setEnabled(enabled)
+                                } catch {
+                                    settings.diagnosticStatus = String(describing: error)
+                                }
+                                launchStatus = LaunchAtLoginController().state()
+                            }
+                        )
+                    )
+                    LabeledContent("Status", value: launchStatus.displayName)
+                }
+
+                Section("Notifications") {
+                    LabeledContent(
+                        "Authorization", value: notificationService.authorization.displayName)
+                    if notificationService.authorization.canRequestAuthorization {
+                        Button("Enable Notifications") {
+                            notificationService.requestAuthorization()
+                        }
+                    }
+                    Button("Open System Notification Settings") {
+                        if let url = URL(
+                            string: "x-apple.systempreferences:com.apple.preference.notifications")
+                        {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    Button("Send Test Notification") {
+                        Task {
+                            do {
+                                try await notificationService.sendTestNotification()
+                                testNotificationStatus = "Test notification sent"
+                            } catch {
+                                testNotificationStatus = "Test notification failed: \(error)"
+                            }
+                        }
+                    }
+                    if !testNotificationStatus.isEmpty {
+                        Text(testNotificationStatus)
                             .foregroundStyle(.secondary)
                     }
-                    if !savedTemplateShelf.file.isEmpty {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text("File")
-                                .foregroundStyle(.secondary)
-                            Text(savedTemplateShelf.file)
-                                .font(.system(.caption, design: .monospaced))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .textSelection(.enabled)
-                            Spacer(minLength: 8)
-                            Button("Reveal in Finder") {
-                                NSWorkspace.shared.activateFileViewerSelecting([
-                                    URL(fileURLWithPath: savedTemplateShelf.file)
-                                ])
+                }
+
+                Section("Diagnostics") {
+                    Text(settings.diagnosticStatus)
+                        .textSelection(.enabled)
+                    LabeledContent("Signing", value: settings.signingDiagnostic)
+                    if !settings.diagnosticHistory.isEmpty {
+                        DisclosureGroup("Recent activity") {
+                            ForEach(Array(settings.diagnosticHistory.enumerated()), id: \.offset) {
+                                _, entry in
+                                Text(entry)
+                                    .settingsCaption()
+                                    .textSelection(.enabled)
                             }
                         }
                     }
                 }
-
-                Text(
-                    "bob saves the template block after each successful %t capture. "
-                        + "Rows are never saved. Add %t to the first item to start a new template."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                Button("Clear Templates…", role: .destructive) {
-                    isConfirmingTemplateClear = true
-                }
-                .disabled(
-                    savedTemplateShelf.count == 0
-                        || savedTemplateShelf.isUnsupported
-                        || isClearingTemplates
-                )
-                .accessibilityHint("Permanently removes saved templates and their quarantine copy.")
-                if !templateClearStatus.isEmpty {
-                    Text(templateClearStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
-
-            Section("Launch") {
-                Toggle(
-                    "Launch at login",
-                    isOn: Binding(
-                        get: { launchStatus.enabled },
-                        set: { enabled in
-                            do {
-                                try LaunchAtLoginController().setEnabled(enabled)
-                            } catch {
-                                settings.diagnosticStatus = String(describing: error)
-                            }
-                            launchStatus = LaunchAtLoginController().state()
-                        }
-                    )
-                )
-                LabeledContent("Status", value: launchStatus.displayName)
-            }
-
-            Section("Notifications") {
-                LabeledContent("Authorization", value: notificationService.authorization.displayName)
-                if notificationService.authorization.canRequestAuthorization {
-                    Button("Enable Notifications") {
-                        notificationService.requestAuthorization()
-                    }
-                }
-                Button("Open System Notification Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                Button("Send Test Notification") {
-                    Task {
-                        do {
-                            try await notificationService.sendTestNotification()
-                            testNotificationStatus = "Test notification sent"
-                        } catch {
-                            testNotificationStatus = "Test notification failed: \(error)"
-                        }
-                    }
-                }
-                if !testNotificationStatus.isEmpty {
-                    Text(testNotificationStatus)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Diagnostics") {
-                Text(settings.diagnosticStatus)
-                    .textSelection(.enabled)
-                LabeledContent("Signing", value: settings.signingDiagnostic)
-                if !settings.diagnosticHistory.isEmpty {
-                    DisclosureGroup("Recent activity") {
-                        ForEach(Array(settings.diagnosticHistory.enumerated()), id: \.offset) { _, entry in
-                            Text(entry)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-            }
+            .formStyle(.columns)
         }
-        .padding(20)
-        .frame(width: 560)
         .confirmationDialog(
             "Clear canceled draft stash?",
             isPresented: $isConfirmingStashClear
@@ -526,7 +516,8 @@ struct SettingsView: View {
                     templateClearStatus = "Bob is not resolved"
                     return
                 }
-                templateClearStatus = response.ok
+                templateClearStatus =
+                    response.ok
                     ? "Templates cleared"
                     : (response.error ?? "Templates could not be cleared")
             } catch let error as BobClientError {
@@ -552,11 +543,13 @@ struct SettingsView: View {
             return "Not found"
         }
         let bundle = Bundle(url: url)
-        let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+        let name =
+            (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
             ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
             ?? url.deletingPathExtension().lastPathComponent
         let versionKey = "CFBundleShortVersionString"
-        let version = (bundle?.object(forInfoDictionaryKey: versionKey) as? String)
+        let version =
+            (bundle?.object(forInfoDictionaryKey: versionKey) as? String)
             .map { " \($0)" } ?? ""
         return "\(name)\(version)\n\(url.path)"
     }
@@ -580,6 +573,16 @@ struct SettingsView: View {
     private var retainedDraftCountLabel: String {
         let count = canceledDraftStash.count
         return "\(count) \(count == 1 ? "draft" : "drafts")"
+    }
+}
+
+/// Shared caption style for Settings rows: a secondary caption that
+/// wraps instead of truncating, so long warnings read in full.
+extension View {
+    fileprivate func settingsCaption() -> some View {
+        font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

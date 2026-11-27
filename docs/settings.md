@@ -3,7 +3,9 @@ title: "Mac Capture settings"
 description: "Settings window controls for Bob, hotkeys, Refs, agenda, snoozed tasks, similar tasks, typing tips, stash, templates, launch, notifications, and diagnostics."
 ---
 
-The Settings window is a 560 pt form. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Snoozed Tasks, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
+The Settings window is a 620 pt form that scrolls. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Snoozed Tasks, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
+
+The window opens no taller than the screen and resizes vertically between 420 pt and unbounded; the trackpad, scroll wheel, and scroller all scroll. Control-D pages down and Control-U pages up by half the window's height, from any field. A slim pinned footer reads `⌃D Down  ⌃U Up`. Panel keys are in [Keyboard](keyboard.md).
 
 Install identity and executable search are in [Install](install.md). Permission grants are in [Permissions](permissions.md). Panel keys are in [Keyboard](keyboard.md). Refs behavior is in [Bob Refs](refs.md).
 

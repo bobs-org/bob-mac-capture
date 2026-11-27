@@ -3,13 +3,22 @@ title: "Mac Capture keyboard"
 description: "Every Bob Mac Capture key binding: editor, completion, prompts, stash, shelf, and today's Pomodoro."
 ---
 
-Successor cards: [Capture previews](capture-previews.md); stash: [Capture panel](capture-panel.md); templates: [Saved templates](saved-templates.md). For global chord conflicts, see [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+Successor cards: [Capture previews](capture-previews.md); stash: [Capture panel](capture-panel.md); templates: [Saved templates](saved-templates.md). For chord conflicts, see [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## Switching panels
 
 Ctrl-Tab and Ctrl-Shift-Tab switch panels.
 
 [Event note](event-notes.md). [Meeting notes](meeting-notes.md).
+
+## Settings window
+
+| Key | Action |
+| --- | --- |
+| Ctrl-D | Scroll Settings down by half its height |
+| Ctrl-U | Scroll Settings up by half its height |
+
+Works from any field; IME passes through; edges consume silently; Reduce Motion jumps; trackpad, wheel, and scroller also scroll.
 
 ## Bob Refs shortcuts
 
@@ -125,7 +134,7 @@ immediately, as Command-Y L does.
 | Ctrl-Tab / Ctrl-Shift-Tab | Switch to Bob Refs, retaining the draft and caret | Same switch, closing completion | Same switch; the prompt closes and the draft is retained | Same switch; the prompt closes and the draft is retained |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (see the landing rule below), hide the panel, and retain a nonempty draft. See [Going to a task from any app](#going-to-a-task-from-any-app) | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | \ | From a blank draft, replace it with `/` to open Go To; on a bare `/` draft right after, type a literal `\`; otherwise consume the key (reopening from the chip when visible) | Same as in the editor | Native text-field behavior | Native text-field behavior |
 | Command-J | Join the focus calendar event in the default browser when the draft is empty and the band shows a join link; with a nonempty draft the key is unconsumed | Unconsumed (completion stays open) | Native text-field behavior | Native text-field behavior |
 | Command-M | Open [Meeting notes](meeting-notes.md) | Unconsumed | Native text-field behavior | Native text-field behavior |
@@ -136,9 +145,9 @@ immediately, as Command-Y L does.
 ### Record cards
 
 Tab accepts a visible field or value, or requests the first missing field.
-At a create route the existing-record list stays visible; Tab still
-requests the first missing field, and Return or a click accepts the
-selected record. Shift-Tab requests the previous and stays at the first.
+At a create route the existing-record list stays visible; Tab works as above,
+and Return or a click accepts the selected record. Shift-Tab requests the
+previous and stays at the first.
 Clicking asks Bob for a field. Edit applies Bob's exact text as one
 undoable change. Return accepts a selected suggestion or waits for
 readiness; otherwise it focuses the first missing field and says
@@ -156,7 +165,7 @@ task. Shift-Tab and the existing-record list's Tab behavior stay the same.
 
 In a notebook `@route+` picker, rows select note bullets rather than tasks.
 Return, Tab, and click keep the usual picker behavior; an ID-less note opens
-Add block ID and preserves the existing Tab / Shift-Tab suggestion cycling.
+Add block ID, keeping Tab / Shift-Tab suggestion cycling.
 Notebook notes have no task status controls.
 
 A first-level notebook `#` opens Bob's section menu. Return accepts Bob's
@@ -221,12 +230,11 @@ Guarded closes keep the draft on the card.
 
 ## Successor choices
 
-Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves verdicts, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Control-J pins the jump successor; Return lands there after writes. Needs `pull_in.jump`. In Cancel reason, Control-N/P and Up/Down walk `USED BEFORE`; `[[` or `((` opens `LINK` (see [Capture previews](capture-previews.md)).
+Space marks, Tab marks and advances, Shift-Tab moves back. Command-A preserves verdicts, Control-X stages Done, Control-Shift-X focuses Cancel reason, Return confirms, Esc restores. Shift-Return keeps verdicts; two Esc presses discard them. Control-J pins the jump successor for navigation only; Return lands there after writes. Needs `pull_in.jump`. In Cancel reason, Control-N/P and Up/Down walk `USED BEFORE`; `[[` or `((` opens `LINK` (see [Capture previews](capture-previews.md)).
 
 Requirements: Control-X=Met; Control-Shift-X=Drop (optional reason);
 Control-Shift-T=Carry; Space=Carry-and-pull; Tab repeats/advances. Return
-defaults Met; Shift-Return keeps Carry without pulling; Control-J pins
-navigation only.
+defaults Met; Shift-Return keeps Carry without pulling.
 
 ## Inbox routing
 
@@ -295,8 +303,8 @@ in the open draft. An older Bob shows `Update bob to rename relation labels`.
 
 Every capture action is keyboard-reachable: the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, Open chip, and stash picker never need a pointer.
-Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt focuses its field;
-a keystroke with no focused holder re-claims it.
+Opening a prompt focuses its field;
+a keystroke with no focused holder reclaims it.
 
 ## Canceled-draft stash keys
 
@@ -336,7 +344,7 @@ transposes text.
 
 `Command-\` is both the global Capture alias and the in-panel key. From another app,
 the first press opens (or focuses) Capture, and a press while Capture is focused opens
-today's Pomodoro. So `Command-\` `Command-\` from anywhere lands there.
+today's Pomodoro.
 With Settings › Hotkey › **Also open Capture with Command-\\** off, `Command-\` works
 only inside the panel, and other apps receive it. Control plus backslash is no longer
 bound in Capture. Each press runs a fresh
@@ -373,9 +381,9 @@ setting, `\` still opens Go To inside the panel but the global chord only
 works there.
 
 Unlike `Command-\` `Command-\` (today's Pomodoro), this needs no retained
-draft: stash (Control-C) or clear one first. Typing `\` `\` at once types one
-literal `\`, so a draft can start with an escape like `\#fix`; after
-`#` or `%`, double-tap leaves one literal.
+draft: stash (Control-C) or clear one first. A quick `\` `\` types one
+literal `\`, so a draft can start with `\#fix`; after `#` or `%`,
+double-tap also leaves one literal.
 
 ## Editing the draft
 
@@ -387,7 +395,7 @@ only a caret inside or after the body keeps the normal new-row insertion. On a l
 placeholder with one blank separator, caret at the next line's start, reusing the terminator.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
 remain ASCII hyphens; smart quotes are unchanged. Plain Tab first checks a local snippet: with a collapsed caret right after `--`, it
-replaces the hyphens with one em dash `—`, caret right after, anywhere in the editor including prose. To submit
+replaces the hyphens with one em dash `—`, caret right after, anywhere including prose. To submit
 a one-unit earlier shift, type `--` and press Return without pressing Tab first.
 To nest a row, press Ctrl-J from an existing nested row, or Ctrl-J then Tab to indent
 two spaces deeper than the previous row. Shift-Tab steps two spaces back toward
@@ -411,7 +419,7 @@ delete-to-end-of-paragraph binding.
 
 Word motions stop on empty lines, never whitespace-only ones. A
 selection collapses first: forward motions start from its end, backward ones
-from its start, moving only the caret — never draft text, undo history, or an in-flight IME composition. In the
+from its start, moving only the caret — never draft text, undo history, or an IME composition. In the
 editor, Ctrl-H no longer acts as AppKit's delete-backward; Backspace and Ctrl-U
 still delete. Prompts and pickers keep their own Ctrl-H, including the relation
 card's Hidden-section toggle.
@@ -419,7 +427,7 @@ card's Hidden-section toggle.
 Command-V reads only plain text: HTML/RTF would force a synchronous WebKit import
 costing seconds per browser paste. When the caret ends an otherwise empty `- `,
 `* `, or `+ ` row and the clipboard starts with a Markdown bullet with
-a body, Command-V treats that row as the first pasted bullet: its marker is kept,
+a body, Command-V treats that row as the first bullet: its marker is kept,
 the clipboard's first marker is consumed, and later lines rebase to
 the row's even-space indent.
 

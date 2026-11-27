@@ -716,7 +716,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         parts.append("Channel: \(snapshot.lastChannel ?? "none")")
         parts.append("Held: \(snapshot.heldReason ?? "no")")
         parts.append("Verified: \(snapshot.lastVerification ?? "unverified")")
-        parts.append("Queue: \(snapshot.pendingCount) pending, \(snapshot.deliveredCount) delivered")
+        parts.append(
+            "Queue: \(snapshot.pendingCount) pending, \(snapshot.deliveredCount) delivered")
         if restored > 0 {
             parts.append("Restored: \(restored)")
         }
@@ -1475,5 +1476,6 @@ private struct BobSettingsScene: Scene {
                 onClearNoteGotoHistory: onClearNoteGotoHistory
             )
         }
+        .windowResizability(.contentSize)
     }
 }
