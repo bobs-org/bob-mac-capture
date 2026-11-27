@@ -64,7 +64,8 @@ docs-check:
 
 # Offline importer and preview-wrapper behavior tests.
 docs-test:
-    bash -n Scripts/docs-media.sh Scripts/docs-check.sh Scripts/generate-task-type-fixtures.sh \
+    bash -n Scripts/docs-media.sh Scripts/docs-check.sh Scripts/snooze-accept.sh \
+      Scripts/generate-task-type-fixtures.sh \
       Scripts/generate-directive-fixtures.sh Scripts/generate-drawer-fixtures.sh \
       Scripts/generate-list-fixtures.sh Scripts/generate-move-preview-fixtures.sh \
       Scripts/generate-transfer-preview-fixtures.sh Scripts/generate-merge-in-preview-fixtures.sh \
