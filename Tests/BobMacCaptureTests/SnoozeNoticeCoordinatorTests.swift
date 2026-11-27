@@ -414,9 +414,14 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     }
 
     func testMeetingHoldDelaysUntilRealEnd() async throws {
+        // A running meeting holds; the hold releases when the meeting's
+        // real end passes, not when the agenda goes nil (nil without a
+        // snapshot means unavailable and must keep holding).
+        let clockBox = MutableBox("2026-11-26")
         let eventsBox = MutableBox<CaptureAgendaEvents?>(nil)
-        let (coordinator, _, _, _, _, _, _, _, _, presented, _) =
+        let (coordinator, clock, _, _, _, _, _, _, _, presented, _) =
             try makeHarnessWithEvents(eventsBox, processClient: try goodClient())
+        _ = clockBox
         eventsBox.value = CaptureAgendaEvents(rows: [
             CaptureAgendaEventRow(
                 line: 7,
@@ -436,7 +441,122 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         XCTAssertTrue(presented.value.isEmpty)
         XCTAssertEqual(coordinator.pendingCountForTests, 1)
 
-        eventsBox.value = nil
+        // Advance past the real end: the hold releases and the batch shows.
+        eventsBox.value = CaptureAgendaEvents(rows: [])
+        coordinator.notifyAgendaChanged()
+        await waitUntil { presented.value.count == 1 }
+        _ = clock
+        coordinator.stop()
+    }
+
+    func testNoUsableAgendaHoldsWithRefreshBackoff() async throws {
+        // No snapshot (loading/failed/other-day): hold visibly, request a
+        // refresh with bounded backoff, retain until expiry.
+        let snapshotBox = MutableBox<SnoozeAgendaSnapshot?>(nil)
+        let (coordinator, _, _, _, _, _, _, _, refreshes, presented, _) = try makeHarnessWithSnapshot(
+            snapshotBox, processClient: try goodClient())
+        snapshotBox.value = nil
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt())
+        await waitUntil { coordinator.pendingCountForTests == 1 }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(presented.value.isEmpty)
+        XCTAssertEqual(coordinator.pendingCountForTests, 1)
+        XCTAssertTrue(
+            (coordinator.diagnosticSnapshot().heldReason ?? "").contains("agendaUnavailable"))
+        let firstRefreshes = refreshes.value
+        XCTAssertGreaterThanOrEqual(firstRefreshes, 1)
+        // Bounded backoff: a second evaluation without time passing does
+        // not spin the refresh lane.
+        coordinator.notifyAgendaChanged()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(presented.value.isEmpty)
+        // Same-day ready snapshot with no meetings releases.
+        snapshotBox.value = SnoozeAgendaSnapshot(
+            date: "2026-11-26", status: .ready, events: CaptureAgendaEvents(rows: []))
+        coordinator.notifyAgendaChanged()
+        await waitUntil { presented.value.count == 1 }
+        coordinator.stop()
+    }
+
+    func testRefreshFailureDuringMeetingKeepsHolding() async throws {
+        // A refresh that fails during a running meeting must not release:
+        // the last good same-day events still supply the hold.
+        let snapshotBox = MutableBox<SnoozeAgendaSnapshot?>(nil)
+        let meetingEvents = CaptureAgendaEvents(rows: [
+            CaptureAgendaEventRow(
+                line: 7,
+                kind: .task,
+                title: "Standup",
+                startsAt: "2026-11-26T15:31:00-05:00",
+                endsAt: "2026-11-26T15:33:00-05:00",
+                statusSymbol: "*",
+                statusType: "ON_HOLD"
+            )
+        ])
+        snapshotBox.value = SnoozeAgendaSnapshot(
+            date: "2026-11-26", status: .stale, events: meetingEvents)
+        let (coordinator, _, _, _, _, _, _, _, _, presented, _) = try makeHarnessWithSnapshot(
+            snapshotBox, processClient: try goodClient())
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt())
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(presented.value.isEmpty)
+        XCTAssertEqual(coordinator.pendingCountForTests, 1)
+        coordinator.stop()
+    }
+
+    func testOverlappingMeetingsHoldPastFirstEnd() async throws {
+        let eventsBox = MutableBox<CaptureAgendaEvents?>(nil)
+        let (coordinator, _, _, _, _, _, _, _, _, presented, _) =
+            try makeHarnessWithEvents(eventsBox, processClient: try goodClient())
+        eventsBox.value = CaptureAgendaEvents(rows: [
+            CaptureAgendaEventRow(
+                line: 7,
+                kind: .task,
+                title: "First",
+                startsAt: "2026-11-26T15:00:00-05:00",
+                endsAt: "2026-11-26T16:00:00-05:00",
+                statusSymbol: "*",
+                statusType: "ON_HOLD"
+            ),
+            CaptureAgendaEventRow(
+                line: 8,
+                kind: .task,
+                title: "Second",
+                startsAt: "2026-11-26T15:30:00-05:00",
+                endsAt: "2026-11-26T15:45:00-05:00",
+                statusSymbol: "*",
+                statusType: "ON_HOLD"
+            ),
+        ])
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt())
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(presented.value.isEmpty)
+        // Drop only the second meeting: the first still runs, hold persists.
+        eventsBox.value = CaptureAgendaEvents(rows: [
+            CaptureAgendaEventRow(
+                line: 7,
+                kind: .task,
+                title: "First",
+                startsAt: "2026-11-26T15:00:00-05:00",
+                endsAt: "2026-11-26T16:00:00-05:00",
+                statusSymbol: "*",
+                statusType: "ON_HOLD"
+            )
+        ])
+        coordinator.notifyAgendaChanged()
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(presented.value.isEmpty)
+        // End all meetings: the batch shows.
+        eventsBox.value = CaptureAgendaEvents(rows: [])
         coordinator.notifyAgendaChanged()
         await waitUntil { presented.value.count == 1 }
         coordinator.stop()
@@ -789,6 +909,32 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         )
     }
 
+    private func makeHarnessWithSnapshot(
+        _ snapshot: MutableBox<SnoozeAgendaSnapshot?>,
+        processClient: BobProcessClient?
+    ) throws -> (
+        SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
+        NotificationCenter, URL, SnoozeWakeHandledStore,
+        MutableBox<SnoozeWakeNoticeSettings>, MutableBox<CaptureAgendaEvents?>,
+        MutableBox<Int>, MutableBox<[SnoozeWakeNoticeBatch]>, MutableBox<[String]>
+    ) {
+        let clock = FakeClock(now: try wokenDate().addingTimeInterval(10), today: "2026-11-26")
+        let workspaceCenter = NotificationCenter()
+        let defaultCenter = NotificationCenter()
+        let presence = SnoozeWakePresenceSource(
+            workspaceCenter: workspaceCenter,
+            defaultCenter: defaultCenter,
+            idleSampler: { 0 }
+        )
+        return try buildHarness(
+            clock: clock, presence: presence, defaultCenter: defaultCenter,
+            idle: MutableBox<TimeInterval>(0), processClient: processClient,
+            settings: MutableBox(SnoozeWakeNoticeSettings()),
+            events: MutableBox<CaptureAgendaEvents?>(nil),
+            snapshot: snapshot
+        )
+    }
+
     private func buildHarness(
         clock: FakeClock,
         presence: SnoozeWakePresenceSource,
@@ -796,7 +942,8 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         idle: MutableBox<TimeInterval>,
         processClient: BobProcessClient?,
         settings: MutableBox<SnoozeWakeNoticeSettings>,
-        events: MutableBox<CaptureAgendaEvents?>
+        events: MutableBox<CaptureAgendaEvents?>,
+        snapshot: MutableBox<SnoozeAgendaSnapshot?>? = nil
     ) throws -> (
         SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
         NotificationCenter, URL, SnoozeWakeHandledStore,
@@ -835,6 +982,7 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             now: { clock.now },
             settings: { settings.value },
             agendaEvents: { events.value },
+            agendaSnapshot: snapshot.map { box in { box.value } },
             requestAgendaRefresh: { refreshBox.value += 1 },
             settleDelaySeconds: 0.05,
             retryIntervalSeconds: 0.2

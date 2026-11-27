@@ -82,6 +82,10 @@ public enum SnoozeWakeHoldReason: Equatable, Sendable {
     case away(signals: [SnoozeWakeAwaySignal])
     case meeting(until: Date)
     case settling(until: Date)
+    /// The agenda has no usable same-day snapshot for bob's day, so a
+    /// meeting may be running unseen. Holding is the safe default; the
+    /// coordinator requests a refresh with bounded backoff.
+    case agendaUnavailable(until: Date)
 }
 
 public enum SnoozeWakeDropReason: Equatable, Sendable {
@@ -147,6 +151,9 @@ public struct SnoozeWakeNoticeBatch: Equatable, Sendable {
 public struct SnoozeWakeNoticePolicy: Sendable {
     public static let awayThresholdSeconds: TimeInterval = 180
     public static let receiptMaxAgeSeconds: TimeInterval = 4 * 60 * 60
+    /// Bounded backoff for agenda-unavailable holds: the coordinator
+    /// requests a refresh and re-evaluates no sooner than this.
+    public static let agendaRetrySeconds: TimeInterval = 15
 
     private var handledWakeIDs: Set<String> = []
     private var handledDay: String?
@@ -166,13 +173,23 @@ public struct SnoozeWakeNoticePolicy: Sendable {
     /// The one decision for this instant. Callers re-invoke on every
     /// signal change (presence, agenda refresh, settings, clock) with the
     /// same receipt and fresh inputs.
+    ///
+    /// `today` and `bobNow` are bob's day authorities from the latest
+    /// `bob snooze -f json` read made for this batch, never the Mac clock
+    /// or `CaptureAgendaStore.localToday()`. `listVaultRoot` is that same
+    /// read's `vault_root`; bob canonicalizes both sides. A receipt is
+    /// checked against bob's date and vault only after a fresh read: when
+    /// `verification` is `.unverified` the day, vault, and duplicate
+    /// checks are deferred and the caller fetches first.
     public mutating func decide(
         receipt: SnoozeWakeReceipt?,
         today: String,
         bobNow: String?,
         configuredVaultRoot: String?,
+        listVaultRoot: String? = nil,
         presence: SnoozeWakePresence,
         events: CaptureAgendaEvents?,
+        agendaHasSameDayData: Bool = true,
         settings: SnoozeWakeNoticeSettings,
         verification: SnoozeWakeVerification,
         handledIDs: Set<String> = [],
@@ -200,20 +217,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         guard !receipt.wakeID.isEmpty, !receipt.date.isEmpty else {
             return .drop(reason: .invalidTimestamp)
         }
-        guard receipt.date == today else {
-            return .drop(reason: .dayMismatch)
-        }
-        if let receiptVault = receipt.vaultRoot, !receiptVault.isEmpty,
-            let configured = configuredVaultRoot, !configured.isEmpty
-        {
-            guard
-                Self.standardizedPath(receiptVault) == Self.standardizedPath(configured)
-            else {
-                return .drop(reason: .vaultMismatch)
-            }
-        } else if receipt.vaultRoot == nil || receipt.vaultRoot?.isEmpty == true {
-            return .drop(reason: .vaultMismatch)
-        }
         guard let wokenAt = CaptureRFC3339Date.date(from: receipt.wokenAt) else {
             return .drop(reason: .invalidTimestamp)
         }
@@ -223,9 +226,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         if now.timeIntervalSince(wokenAt) > Self.receiptMaxAgeSeconds {
             return .drop(reason: .expired)
         }
-        if knownHandled.contains(receipt.wakeID) {
-            return .drop(reason: .duplicate)
-        }
 
         if settings.holdWhileAway, presence.isAway {
             let nextCheck = now.addingTimeInterval(2)
@@ -233,20 +233,74 @@ public struct SnoozeWakeNoticePolicy: Sendable {
                 reason: .away(signals: presence.awaySignals), nextCheck: nextCheck)
         }
 
-        if settings.holdDuringMeetings,
-            let until = Self.runningMeetingEnd(events: events, now: now, bobNow: bobNow)
-        {
-            return .hold(reason: .meeting(until: until), nextCheck: until)
+        if settings.holdDuringMeetings {
+            if !agendaHasSameDayData {
+                let until = now.addingTimeInterval(Self.agendaRetrySeconds)
+                return .hold(reason: .agendaUnavailable(until: until), nextCheck: until)
+            }
+            if let until = Self.runningMeetingEnd(events: events, now: now, bobNow: bobNow) {
+                return .hold(reason: .meeting(until: until), nextCheck: until)
+            }
         }
 
+        // Day, vault, and duplicate need bob's fresh read. Defer them
+        // until verification carries that read; never pair a stale receipt
+        // date with a new local clock.
         switch verification {
         case .unverified:
             return .verify(recheckAt: now)
         case .failed(let reason):
             return .drop(reason: .verificationFailed(reason: reason))
         case .empty:
+            // An empty verification still proves bob's day: a receipt for
+            // another day is a day mismatch, not an empty batch.
+            guard receipt.date == today else {
+                return .drop(reason: .dayMismatch)
+            }
             return .drop(reason: .emptyVerification)
         case .verified(let eligible):
+            guard receipt.date == today else {
+                return .drop(reason: .dayMismatch)
+            }
+            // Vault identity comes from bob on both sides: the receipt's
+            // vault_root against the current list read's vault_root, which
+            // bob canonicalized in the same environment. Missing on either
+            // side is never permission to announce.
+            guard let receiptVault = receipt.vaultRoot, !receiptVault.isEmpty else {
+                return .drop(reason: .vaultMismatch)
+            }
+            if let listVault = listVaultRoot, !listVault.isEmpty {
+                guard Self.standardizedPath(receiptVault) == Self.standardizedPath(listVault)
+                else {
+                    return .drop(reason: .vaultMismatch)
+                }
+            } else if let configured = configuredVaultRoot, !configured.isEmpty {
+                // Legacy path (no list vault): compare against Settings
+                // symlink-safe. The coordinator always supplies listVault.
+                guard
+                    Self.symlinkResolvedPath(receiptVault)
+                        == Self.symlinkResolvedPath(configured)
+                else {
+                    return .drop(reason: .vaultMismatch)
+                }
+            } else {
+                return .drop(reason: .vaultMismatch)
+            }
+            // The Settings comparison is symlink-safe: ~/bob or /tmp
+            // (/private/tmp) must not drop every receipt.
+            if let configured = configuredVaultRoot, !configured.isEmpty,
+                let listVault = listVaultRoot, !listVault.isEmpty
+            {
+                guard
+                    Self.symlinkResolvedPath(receiptVault)
+                        == Self.symlinkResolvedPath(configured)
+                else {
+                    return .drop(reason: .vaultMismatch)
+                }
+            }
+            if knownHandled.contains(receipt.wakeID) {
+                return .drop(reason: .duplicate)
+            }
             let rowsByIdentity = Dictionary(
                 eligible.compactMap { row in row.identityKey.map { ($0, row) } },
                 uniquingKeysWith: { first, _ in first }
@@ -293,6 +347,13 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
+    /// Symlink-resolving comparison for the Settings vault root: a
+    /// symlinked ~/bob or /tmp (/private/tmp) vault must not drop every
+    /// receipt as vaultMismatch.
+    static func symlinkResolvedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
     /// The earliest end of a currently running qualifying meeting, or nil
     /// when none is running. Recomputes every span against `now`; the
     /// stored `phase` label is never trusted. Cancelled rows and
@@ -322,6 +383,35 @@ public struct SnoozeWakeNoticePolicy: Sendable {
             }
         }
         return earliestEnd
+    }
+
+    /// The next qualifying meeting start after now, for mid-display
+    /// re-evaluation. A meeting that begins while a notice is on screen
+    /// hides the HUD immediately. Cancelled rows, non-task rows, and rows
+    /// without spans never qualify; buffered spans are ignored.
+    public static func nextMeetingStart(
+        events: CaptureAgendaEvents?, now: Date, bobNow: String?
+    ) -> Date? {
+        guard let rows = events?.rows, !rows.isEmpty else { return nil }
+        let offset = Self.offsetSuffix(from: bobNow)
+        var earliestStart: Date?
+        for row in rows {
+            guard row.kind == .task else { continue }
+            if let statusType = row.statusType, statusType.lowercased() == "cancelled" {
+                continue
+            }
+            if row.statusSymbol == "-" { continue }
+            guard let startsRaw = row.startsAt,
+                let starts = Self.meetingDate(from: startsRaw, offsetSuffix: offset)
+            else { continue }
+            guard starts > now else { continue }
+            if let current = earliestStart {
+                earliestStart = min(current, starts)
+            } else {
+                earliestStart = starts
+            }
+        }
+        return earliestStart
     }
 
     static func meetingDate(from raw: String, offsetSuffix: String?) -> Date? {

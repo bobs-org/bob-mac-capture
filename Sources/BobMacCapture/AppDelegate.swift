@@ -568,13 +568,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.settings.snoozeWakeNoticeSettings ?? SnoozeWakeNoticeSettings()
             },
             agendaEvents: { [weak self] in
+                // Legacy path: usable same-day events only. The coordinator
+                // prefers agendaSnapshot below; this stays for safety.
                 guard let self,
-                    self.agendaStore?.status == .ready,
-                    self.agendaStore?.snapshot?.date == CaptureAgendaStore.localToday()
+                    let status = self.agendaStore?.status,
+                    status == .ready || status == .stale
                 else {
                     return nil
                 }
                 return self.agendaStore?.snapshot?.events
+            },
+            agendaSnapshot: { [weak self] in
+                guard let self,
+                    let status = self.agendaStore?.status
+                else {
+                    return nil
+                }
+                return SnoozeAgendaSnapshot(
+                    date: self.agendaStore?.snapshot?.date,
+                    status: status,
+                    events: self.agendaStore?.snapshot?.events
+                )
             },
             requestAgendaRefresh: { [weak self] in
                 self?.agendaStore?.refresh(reason: .snoozeWake)

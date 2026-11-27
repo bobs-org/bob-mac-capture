@@ -9,10 +9,9 @@ import Foundation
 /// is sampled live on every read, and a 2-second poll runs only while
 /// work is held.
 ///
-/// Initial state assumes a present session: launch itself implies an
-/// interactive user with awake displays and an unlocked screen, and the
-/// first lock/sleep/resign event corrects it. Idle is sampled
-/// immediately at start, not merely on subsequent ticks.
+/// Launch samples the initial lock, session, and display-sleep state
+/// instead of assuming present, so a wake that arrives while locked or
+/// with an inactive session holds from the first evaluation.
 @MainActor
 final class SnoozeWakePresenceSource {
     static let idlePollInterval: TimeInterval = 2
@@ -29,6 +28,7 @@ final class SnoozeWakePresenceSource {
     private let defaultCenter: NotificationCenter
     private let distributedCenter: DistributedNotificationCenter
     private let idleSampler: () -> TimeInterval
+    private let initialStateSampler: () -> (screenLocked: Bool, sessionInactive: Bool, displaysAsleep: Bool)
     private var observers: [NSObjectProtocol] = []
     private var idleTimer: Timer?
     private var idlePolling = false
@@ -41,7 +41,8 @@ final class SnoozeWakePresenceSource {
         workspaceCenter: NotificationCenter? = nil,
         defaultCenter: NotificationCenter = .default,
         distributedCenter: DistributedNotificationCenter? = nil,
-        idleSampler: (() -> TimeInterval)? = nil
+        idleSampler: (() -> TimeInterval)? = nil,
+        initialStateSampler: (() -> (screenLocked: Bool, sessionInactive: Bool, displaysAsleep: Bool))? = nil
     ) {
         self.workspaceCenter = workspaceCenter ?? NSWorkspace.shared.notificationCenter
         self.defaultCenter = defaultCenter
@@ -54,9 +55,52 @@ final class SnoozeWakePresenceSource {
                     .combinedSessionState, eventType: .null)
             }
         }
+        self.initialStateSampler = initialStateSampler ?? Self.liveInitialState
+    }
+
+    /// Live launch sample: lock and on-console session state from
+    /// `CGSessionCopyCurrentDictionary`, plus display-sleep state.
+    /// Unknown or unreadable state reports present (false) so a missing
+    /// API never holds every wake.
+    static func liveInitialState() -> (screenLocked: Bool, sessionInactive: Bool, displaysAsleep: Bool) {
+        var locked = false
+        var inactive = false
+        if let dict = CGSessionCopyCurrentDictionary() as? [String: Any] {
+            // Screen lock: try the known keys across macOS releases.
+            for key in [
+                "CGSSessionScreenIsLocked", "kCGSSessionScreenIsLocked",
+                "ScreenIsLocked", "CGSessionScreenIsLocked",
+            ] {
+                if let value = dict[key] as? Bool, value {
+                    locked = true
+                    break
+                }
+                if let number = dict[key] as? NSNumber, number.boolValue {
+                    locked = true
+                    break
+                }
+            }
+            // On-console session: false means the session is inactive.
+            for key in ["kCGSessionOnConsoleKey", "CGSessionOnConsole", "onConsole"] {
+                if let value = dict[key] as? Bool {
+                    inactive = !value
+                    break
+                }
+                if let number = dict[key] as? NSNumber {
+                    inactive = !number.boolValue
+                    break
+                }
+            }
+        }
+        let asleep = CGDisplayIsAsleep(CGMainDisplayID())
+        return (screenLocked: locked, sessionInactive: inactive, displaysAsleep: asleep)
     }
 
     func start() {
+        let initial = initialStateSampler()
+        screenLocked = initial.screenLocked
+        sessionInactive = initial.sessionInactive
+        displaysAsleep = initial.displaysAsleep
         stopObservers()
         let workspace = workspaceCenter
         let center = defaultCenter

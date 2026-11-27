@@ -33,6 +33,56 @@ final class SnoozeWakePresenceSourceTests: XCTestCase {
         source.stop()
     }
 
+    func testLaunchingLockedHoldsFromFirstEvaluation() {
+        let workspace = NotificationCenter()
+        let center = NotificationCenter()
+        let source = SnoozeWakePresenceSource(
+            workspaceCenter: workspace,
+            defaultCenter: center,
+            idleSampler: { 0 },
+            initialStateSampler: {
+                (screenLocked: true, sessionInactive: false, displaysAsleep: false)
+            })
+        source.start()
+        XCTAssertTrue(source.currentPresence().screenLocked)
+        XCTAssertTrue(source.currentPresence().isAway)
+        XCTAssertTrue(source.currentPresence().awaySignals.contains(.screenLocked))
+        source.stop()
+    }
+
+    func testLaunchingWithInactiveSessionHolds() {
+        let workspace = NotificationCenter()
+        let center = NotificationCenter()
+        let source = SnoozeWakePresenceSource(
+            workspaceCenter: workspace,
+            defaultCenter: center,
+            idleSampler: { 0 },
+            initialStateSampler: {
+                (screenLocked: false, sessionInactive: true, displaysAsleep: false)
+            })
+        source.start()
+        XCTAssertTrue(source.currentPresence().sessionInactive)
+        XCTAssertTrue(source.currentPresence().isAway)
+        XCTAssertTrue(source.currentPresence().awaySignals.contains(.sessionInactive))
+        source.stop()
+    }
+
+    func testLaunchingWithDisplayAsleepHolds() {
+        let workspace = NotificationCenter()
+        let center = NotificationCenter()
+        let source = SnoozeWakePresenceSource(
+            workspaceCenter: workspace,
+            defaultCenter: center,
+            idleSampler: { 0 },
+            initialStateSampler: {
+                (screenLocked: false, sessionInactive: false, displaysAsleep: true)
+            })
+        source.start()
+        XCTAssertTrue(source.currentPresence().displaysAsleep)
+        XCTAssertTrue(source.currentPresence().isAway)
+        source.stop()
+    }
+
     func testIdleThresholdBoundary() {
         for (idle, expectAway) in [(179.9, false), (180.0, true)] as [(TimeInterval, Bool)] {
             let (source, _, _) = makeSource(idleSeconds: idle)

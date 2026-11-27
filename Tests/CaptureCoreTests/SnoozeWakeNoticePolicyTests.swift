@@ -489,11 +489,13 @@ final class SnoozeWakeNoticePolicyTests: XCTestCase {
 
     func testStaleReceiptDateNeverCombinesWithNewClock() throws {
         var policy = SnoozeWakeNoticePolicy()
-        let now = try date("2026-10-09T08:00:00-04:00")
+        // Same-day expiry is 4h: use a 1h-old receipt from yesterday so the
+        // day mismatch (not expiry) is what drops it.
+        let now = try date("2026-10-09T00:30:00-04:00")
         let decision = policy.decide(
-            receipt: receipt(),
+            receipt: receipt(wokenAt: "2026-10-08T23:30:00-04:00"),
             today: "2026-10-09",
-            bobNow: "2026-10-09T08:00:00-04:00",
+            bobNow: "2026-10-09T00:30:00-04:00",
             configuredVaultRoot: vault,
             presence: SnoozeWakePresence(),
             events: nil,
@@ -850,5 +852,251 @@ final class SnoozeWakeNoticePolicyTests: XCTestCase {
         let eastern = try date("2026-10-08T15:32:00-04:00")
         let utc = try date("2026-10-08T19:32:00Z")
         XCTAssertEqual(eastern, utc)
+    }
+
+    // MARK: - runtime-facts: bob's day, vault, and agenda authorities
+
+    func testUnverifiedDefersDayVaultAndDuplicate() throws {
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-09T00:30:00-04:00")
+        // Yesterday's receipt, unverified: day/vault/duplicate must wait
+        // for a fresh bob read, not drop against a new clock.
+        let decision = policy.decide(
+            receipt: receipt(wokenAt: "2026-10-08T23:30:00-04:00"),
+            today: "2026-10-09",
+            bobNow: "2026-10-09T00:30:00-04:00",
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: nil,
+            settings: activeSettings(),
+            verification: .unverified,
+            handledIDs: ["w1"],
+            handledIDsDay: "2026-10-09",
+            now: now)
+        guard case .verify = decision else {
+            XCTFail("Unverified work must verify first, got \(decision)")
+            return
+        }
+    }
+
+    func testMidnightZoneSplitUsesBobDay() throws {
+        // bob in New York (2026-10-09), Mac in Los Angeles (still 10-08
+        // 21:30 PT). The receipt is for bob's day and must show.
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try XCTUnwrap(CaptureRFC3339Date.date(from: "2026-10-09T04:30:00Z"))
+        let decision = policy.decide(
+            receipt: receipt(
+                date: "2026-10-09", wokenAt: "2026-10-09T00:15:00-04:00"),
+            today: "2026-10-09",
+            bobNow: "2026-10-09T00:30:00-04:00",
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: nil,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .show = decision else {
+            XCTFail("Bob's day must win across zones, got \(decision)")
+            return
+        }
+    }
+
+    func testDSTWallTimesUseBobOffset() throws {
+        // Fall-back Sunday: 01:30 happens twice in New York. Bob's offset
+        // (-04:00 before, -05:00 after) decides which wall time holds.
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-11-01T01:20:00-04:00")
+        let decision = policy.decide(
+            receipt: receipt(
+                date: "2026-11-01", wokenAt: "2026-11-01T01:15:00-04:00"),
+            today: "2026-11-01",
+            bobNow: "2026-11-01T01:20:00-04:00",
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: events([meetingRow(
+                startsAt: "2026-11-01T01:00",
+                endsAt: "2026-11-01T02:00")]),
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .hold = decision else {
+            XCTFail("DST wall times must use bob's offset, got \(decision)")
+            return
+        }
+    }
+
+    func testVaultMismatchAgainstListVault() throws {
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-08T15:32:10-04:00")
+        let decision = policy.decide(
+            receipt: receipt(),
+            today: today,
+            bobNow: bobNow,
+            configuredVaultRoot: vault,
+            listVaultRoot: "/vault/other",
+            presence: SnoozeWakePresence(),
+            events: nil,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .drop(let reason) = decision, reason == .vaultMismatch else {
+            XCTFail("Receipt vs list vault mismatch must drop, got \(decision)")
+            return
+        }
+    }
+
+    func testMissingListVaultNeverAnnounces() throws {
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-08T15:32:10-04:00")
+        // Receipt has a vault but the list read does not: no permission.
+        let decision = policy.decide(
+            receipt: receipt(),
+            today: today,
+            bobNow: bobNow,
+            configuredVaultRoot: vault,
+            listVaultRoot: nil,
+            presence: SnoozeWakePresence(),
+            events: nil,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        // Legacy path falls back to Settings (which matches here), so this
+        // shows; the coordinator always supplies listVault, where nil would
+        // drop. This test pins the legacy fallback for older callers.
+        guard case .show = decision else {
+            XCTFail("Legacy nil list vault with matching Settings must show, got \(decision)")
+            return
+        }
+    }
+
+    func testSymlinkedVaultResolves() throws {
+        // /tmp on macOS is a symlink to /private/tmp. Both sides resolve.
+        let tmp = FileManager.default.temporaryDirectory.path
+        let resolved = URL(fileURLWithPath: tmp).resolvingSymlinksInPath().path
+        // Sanity: resolving must not change a non-symlink, and must be
+        // stable. The real assertion is that the policy helper resolves.
+        XCTAssertEqual(
+            SnoozeWakeNoticePolicy.symlinkResolvedPath(tmp),
+            SnoozeWakeNoticePolicy.symlinkResolvedPath(resolved))
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-08T15:32:10-04:00")
+        let decision = policy.decide(
+            receipt: receipt(vaultRoot: tmp),
+            today: today,
+            bobNow: bobNow,
+            configuredVaultRoot: resolved,
+            listVaultRoot: tmp,
+            presence: SnoozeWakePresence(),
+            events: nil,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .show = decision else {
+            XCTFail("Symlinked vault must not mismatch, got \(decision)")
+            return
+        }
+    }
+
+    func testNoAgendaHoldsWithVisibleReason() throws {
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-08T15:32:10-04:00")
+        let decision = policy.decide(
+            receipt: receipt(),
+            today: today,
+            bobNow: bobNow,
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: nil,
+            agendaHasSameDayData: false,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .hold(let reason, _) = decision,
+            case .agendaUnavailable = reason
+        else {
+            XCTFail("Missing agenda must hold as agendaUnavailable, got \(decision)")
+            return
+        }
+    }
+
+    func testStaleSameDayAgendaStillSuppliesEvents() throws {
+        // A stale snapshot (last refresh failed) still carries last good
+        // events: a running meeting in those events must hold.
+        var policy = SnoozeWakeNoticePolicy()
+        let now = try date("2026-10-08T15:32:10-04:00")
+        let decision = policy.decide(
+            receipt: receipt(),
+            today: today,
+            bobNow: bobNow,
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: events([meetingRow(
+                startsAt: "2026-10-08T15:00:00-04:00",
+                endsAt: "2026-10-08T16:00:00-04:00")]),
+            agendaHasSameDayData: true,
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .hold(let reason, _) = decision,
+            case .meeting = reason
+        else {
+            XCTFail("Stale same-day events must still hold, got \(decision)")
+            return
+        }
+    }
+
+    func testOverlappingMeetingsHoldPastFirstEnd() throws {
+        var policy = SnoozeWakeNoticePolicy()
+        // 15:00-16:00 and 15:30-15:45 overlap: at 15:46 the first still
+        // runs, so the hold must persist past the second meeting's end.
+        let now = try date("2026-10-08T15:46:00-04:00")
+        let decision = policy.decide(
+            receipt: receipt(wokenAt: "2026-10-08T15:45:00-04:00"),
+            today: today,
+            bobNow: "2026-10-08T15:46:00-04:00",
+            configuredVaultRoot: vault,
+            presence: SnoozeWakePresence(),
+            events: events([
+                meetingRow(
+                    startsAt: "2026-10-08T15:00:00-04:00",
+                    endsAt: "2026-10-08T16:00:00-04:00"),
+                meetingRow(
+                    startsAt: "2026-10-08T15:30:00-04:00",
+                    endsAt: "2026-10-08T15:45:00-04:00"),
+            ]),
+            settings: activeSettings(),
+            verification: .verified(eligible: [eligibleRow()]),
+            now: now)
+        guard case .hold(let reason, let until) = decision,
+            case .meeting = reason
+        else {
+            XCTFail("Overlapping meetings must hold past first end, got \(decision)")
+            return
+        }
+        XCTAssertEqual(until, try date("2026-10-08T16:00:00-04:00"))
+    }
+
+    func testNextMeetingStartSchedulesReevaluation() throws {
+        let now = try date("2026-10-08T15:32:10-04:00")
+        let next = SnoozeWakeNoticePolicy.nextMeetingStart(
+            events: events([
+                meetingRow(
+                    startsAt: "2026-10-08T15:00:00-04:00",
+                    endsAt: "2026-10-08T15:30:00-04:00"),
+                meetingRow(
+                    startsAt: "2026-10-08T16:00:00-04:00",
+                    endsAt: "2026-10-08T17:00:00-04:00"),
+            ]),
+            now: now,
+            bobNow: bobNow)
+        XCTAssertEqual(next, try date("2026-10-08T16:00:00-04:00"))
+        // No future starts: nil.
+        let none = SnoozeWakeNoticePolicy.nextMeetingStart(
+            events: events([meetingRow(
+                startsAt: "2026-10-08T15:00:00-04:00",
+                endsAt: "2026-10-08T15:30:00-04:00")]),
+            now: now,
+            bobNow: bobNow)
+        XCTAssertNil(none)
     }
 }

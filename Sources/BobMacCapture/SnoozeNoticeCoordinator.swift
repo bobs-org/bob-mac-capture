@@ -21,6 +21,15 @@ import Foundation
 ///   consumed while disabled) persist in the bounded day-scoped store;
 ///   a held batch is never marked delivered merely because the
 ///   observer read it.
+/// Usable agenda snapshot for one evaluation: the store's date, health,
+/// and events. The coordinator holds unless the snapshot is ready/stale
+/// for bob's day.
+struct SnoozeAgendaSnapshot: Sendable {
+    var date: String?
+    var status: CaptureAgendaStoreStatus
+    var events: CaptureAgendaEvents?
+}
+
 @MainActor
 final class SnoozeNoticeCoordinator {
     /// One queued receipt awaiting hold clearance and verification.
@@ -72,6 +81,7 @@ final class SnoozeNoticeCoordinator {
     private let nowProvider: () -> Date
     private let settingsProvider: () -> SnoozeWakeNoticeSettings
     private let agendaEventsProvider: () -> CaptureAgendaEvents?
+    private let agendaSnapshotProvider: (() -> SnoozeAgendaSnapshot?)?
     private let requestAgendaRefresh: () -> Void
     private let settleDelaySeconds: TimeInterval
     private let retryIntervalSeconds: TimeInterval
@@ -91,6 +101,9 @@ final class SnoozeNoticeCoordinator {
     private var fetchRetryAfter: Date?
     private var lastListPlan = SnoozeWakeLinkPlan()
     private var lastListNow: String?
+    private var lastListDate: String?
+    private var lastListVaultRoot: String?
+    private var lastAgendaRefreshRequestAt: Date?
     private var lastEvaluatedDay: String?
     private var lastConfigIdentity: String?
     private var generation: UInt64 = 0
@@ -119,6 +132,7 @@ final class SnoozeNoticeCoordinator {
         now: (() -> Date)? = nil,
         settings: (() -> SnoozeWakeNoticeSettings)? = nil,
         agendaEvents: (() -> CaptureAgendaEvents?)? = nil,
+        agendaSnapshot: (() -> SnoozeAgendaSnapshot?)? = nil,
         requestAgendaRefresh: (() -> Void)? = nil,
         settleDelaySeconds: TimeInterval = defaultSettleDelaySeconds,
         retryIntervalSeconds: TimeInterval = defaultRetryIntervalSeconds
@@ -132,6 +146,7 @@ final class SnoozeNoticeCoordinator {
         self.nowProvider = now ?? { Date() }
         self.settingsProvider = settings ?? { SnoozeWakeNoticeSettings() }
         self.agendaEventsProvider = agendaEvents ?? { nil }
+        self.agendaSnapshotProvider = agendaSnapshot
         self.requestAgendaRefresh = requestAgendaRefresh ?? {}
         self.settleDelaySeconds = settleDelaySeconds
         self.retryIntervalSeconds = retryIntervalSeconds
@@ -249,6 +264,9 @@ final class SnoozeNoticeCoordinator {
         fetchRetryAfter = nil
         verification = .unverified
         verificationFetchID = nil
+        lastListDate = nil
+        lastListNow = nil
+        lastListVaultRoot = nil
         if identityChanged {
             isCapable = nil
         }
@@ -279,7 +297,7 @@ final class SnoozeNoticeCoordinator {
             return
         }
         CaptureSignpost.event(CaptureSignpost.snoozeAction)
-        let today = todayProvider()
+        let today = effectiveToday()
         for entry in delivered {
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
@@ -308,8 +326,8 @@ final class SnoozeNoticeCoordinator {
             CaptureSignpost.event(CaptureSignpost.snoozeAction)
             restoredBeacon.remove(at: index)
             beaconStore.remove(wakeID: wakeID)
-            handledStore.acknowledge(wakeID, day: todayProvider())
-            policy.markHandled(wakeID, day: todayProvider())
+            handledStore.acknowledge(wakeID, day: effectiveToday())
+            policy.markHandled(wakeID, day: effectiveToday())
             onDismiss(wakeID)
             onTransientDismiss(wakeID)
             emitQueueChanged()
@@ -321,8 +339,8 @@ final class SnoozeNoticeCoordinator {
         CaptureSignpost.event(CaptureSignpost.snoozeAction)
         let entry = delivered.remove(at: index)
         suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
-        handledStore.acknowledge(entry.batch.wakeID, day: todayProvider())
-        policy.markHandled(entry.batch.wakeID, day: todayProvider())
+        handledStore.acknowledge(entry.batch.wakeID, day: effectiveToday())
+        policy.markHandled(entry.batch.wakeID, day: effectiveToday())
         beaconStore.remove(wakeID: entry.batch.wakeID)
         onDismiss(entry.batch.wakeID)
         onTransientDismiss(entry.batch.wakeID)
@@ -343,8 +361,8 @@ final class SnoozeNoticeCoordinator {
             CaptureSignpost.event(CaptureSignpost.snoozeAction)
             restoredBeacon.removeAll(where: { $0.wakeID == wakeID })
             beaconStore.remove(wakeID: wakeID)
-            handledStore.acknowledge(wakeID, day: todayProvider())
-            policy.markHandled(wakeID, day: todayProvider())
+            handledStore.acknowledge(wakeID, day: effectiveToday())
+            policy.markHandled(wakeID, day: effectiveToday())
             onDismiss(wakeID)
             emitQueueChanged()
             return
@@ -362,8 +380,8 @@ final class SnoozeNoticeCoordinator {
             CaptureSignpost.event(CaptureSignpost.snoozeAction)
             delivered.remove(at: index)
             suppressedDeliveredWakeIDs.remove(wakeID)
-            handledStore.acknowledge(wakeID, day: todayProvider())
-            policy.markHandled(wakeID, day: todayProvider())
+            handledStore.acknowledge(wakeID, day: effectiveToday())
+            policy.markHandled(wakeID, day: effectiveToday())
             beaconStore.remove(wakeID: wakeID)
             onDismiss(wakeID)
         } else {
@@ -465,7 +483,7 @@ final class SnoozeNoticeCoordinator {
             diagnose("ignoring \(receipt.wakeID): Bob does not support wake notices")
             return
         }
-        let today = todayProvider()
+        let today = effectiveToday()
         if handledStore.contains(receipt.wakeID, day: today) {
             diagnose("ignoring duplicate \(receipt.wakeID)")
             return
@@ -497,8 +515,25 @@ final class SnoozeNoticeCoordinator {
             return
         }
         _ = reason
-        let today = todayProvider()
+        // Bob's day is the authority. Before the first list read there is
+        // no bob date yet; pending receipts wait for verification instead
+        // of being judged against the local clock.
+        let today = effectiveToday()
         let now = nowProvider()
+        // A local day/clock change never pairs a stale receipt with a new
+        // clock: it forces a fresh bob read first.
+        if reason == "presence" || reason == "timer" || reason == "agenda" {
+            let localDay = todayProvider()
+            if lastListDate == nil || localDay != lastListDate {
+                // No bob date yet, or the local calendar moved past bob's
+                // date: refresh bob facts before judging any receipt.
+                if !pending.isEmpty || !delivered.isEmpty, !fetchInFlight,
+                    fetchRetryAfter.map({ now < $0 }) != true
+                {
+                    fetchVerification()
+                }
+            }
+        }
         if lastEvaluatedDay != today {
             purgeDay(today: today)
         }
@@ -530,16 +565,28 @@ final class SnoozeNoticeCoordinator {
             scheduleReevaluate(after: max(0.05, nextExpiry.timeIntervalSince(now)))
         }
         let presence = presenceSource.currentPresence()
-        let events = agendaEventsProvider()
+        let events = effectiveEvents(bobDay: today)
+        let hasSameDayAgenda = agendaHasSameDayData(bobDay: today)
         presenceSource.setIdlePollingActive(!pending.isEmpty)
         var earliestRecheck: Date?
         let deliveryHeld = currentDeliveryIsHeld(
             presence: presence,
             events: events,
+            hasSameDayData: hasSameDayAgenda,
             settings: settings,
             now: now,
             bobNow: lastListNow
         )
+        // While a notice is on screen, re-evaluate at the next meeting
+        // start: a meeting that begins mid-display hides the HUD.
+        if !delivered.isEmpty, settings.holdDuringMeetings, hasSameDayAgenda {
+            if let nextStart = SnoozeWakeNoticePolicy.nextMeetingStart(
+                events: events, now: now, bobNow: lastListNow),
+                nextStart > now
+            {
+                earliestRecheck = min(earliestRecheck ?? nextStart, nextStart)
+            }
+        }
         if deliveryHeld {
             for entry in delivered
             where suppressedDeliveredWakeIDs.insert(entry.batch.wakeID).inserted {
@@ -562,6 +609,7 @@ final class SnoozeNoticeCoordinator {
                 restoreSuppressedDeliveries(
                     presence: presence,
                     events: events,
+                    hasSameDayData: hasSameDayAgenda,
                     settings: settings,
                     now: now,
                     bobNow: lastListNow
@@ -587,8 +635,10 @@ final class SnoozeNoticeCoordinator {
                 today: today,
                 bobNow: lastListNow,
                 configuredVaultRoot: configuredVaultRoot,
+                listVaultRoot: lastListVaultRoot,
                 presence: presence,
                 events: events,
+                agendaHasSameDayData: hasSameDayAgenda,
                 settings: settings,
                 verification: entryVerification,
                 handledIDs: handledStore.handledIDs(for: today),
@@ -605,12 +655,19 @@ final class SnoozeNoticeCoordinator {
                 }
                 isHeld = true
                 heldReasonText = holdDescription(holdReason)
-                verification = .unverified
-                verifyAfter = nil
-                fetchTask?.cancel()
-                fetchTask = nil
-                fetchInFlight = false
-                fetchID &+= 1
+                if case .agendaUnavailable = holdReason {
+                    // No usable agenda: hold visibly, refresh with bounded
+                    // backoff, retain until expiry. Do not cancel the
+                    // verification read; bob facts are still needed.
+                    requestAgendaRefreshIfNeeded(now: now)
+                } else {
+                    verification = .unverified
+                    verifyAfter = nil
+                    fetchTask?.cancel()
+                    fetchTask = nil
+                    fetchInFlight = false
+                    fetchID &+= 1
+                }
                 if nextCheck > now {
                     earliestRecheck = min(earliestRecheck ?? nextCheck, nextCheck)
                 }
@@ -900,7 +957,6 @@ final class SnoozeNoticeCoordinator {
         fetchID &+= 1
         let expectedFetch = fetchID
         let expectedGeneration = generation
-        let today = todayProvider()
         fetchTask?.cancel()
         fetchTask = Task { [weak self] in
             let result: Result<SnoozeWakeListResponse, Error>
@@ -911,7 +967,7 @@ final class SnoozeNoticeCoordinator {
             }
             await MainActor.run { [weak self] in
                 self?.finishFetch(
-                    result, generation: expectedGeneration, fetch: expectedFetch, today: today)
+                    result, generation: expectedGeneration, fetch: expectedFetch)
             }
         }
     }
@@ -919,17 +975,16 @@ final class SnoozeNoticeCoordinator {
     private func finishFetch(
         _ result: Result<SnoozeWakeListResponse, Error>,
         generation expected: UInt64,
-        fetch expectedFetch: UInt64,
-        today: String
+        fetch expectedFetch: UInt64
     ) {
-        guard expected == generation, expectedFetch == fetchID,
-            today == todayProvider(), isStarted
+        guard expected == generation, expectedFetch == fetchID, isStarted
         else {
             return
         }
         fetchInFlight = false
         fetchTask = nil
         verificationFetchID = expectedFetch
+        let today = effectiveToday()
         switch result {
         case .success(let response):
             fetchRetryAfter = nil
@@ -937,6 +992,8 @@ final class SnoozeNoticeCoordinator {
             isCapable = response.supportsWakeNotice
             lastListPlan = response.plan
             lastListNow = response.now
+            lastListDate = response.date
+            lastListVaultRoot = response.vaultRoot
             lastVerificationText = "verified(\(response.eligibleRows.count))"
             if response.supportsWakeNotice {
                 if response.eligibleRows.isEmpty {
@@ -1002,6 +1059,73 @@ final class SnoozeNoticeCoordinator {
 
     // MARK: - Helpers
 
+    /// Bob's day authority: the latest list read's date, falling back to
+    /// the local calendar only before the first read. Every receipt-day,
+    /// handled-ID, purge, and meeting check uses this, never
+    /// `CaptureAgendaStore.localToday()` or a fresh Mac clock alone.
+    func effectiveToday() -> String {
+        lastListDate ?? todayProvider()
+    }
+
+    /// Usable agenda events for bob's day. When a snapshot provider is
+    /// present (production), only ready/stale same-day snapshots supply
+    /// events; loading, failed with no same-day data, and other-day
+    /// snapshots supply nil so the coordinator holds instead of
+    /// delivering. Without a snapshot provider (older tests), the legacy
+    /// events provider is used directly.
+    private func effectiveEvents(bobDay: String) -> CaptureAgendaEvents? {
+        guard let snapshotProvider = agendaSnapshotProvider else {
+            return agendaEventsProvider()
+        }
+        guard let snapshot = snapshotProvider() else {
+            return nil
+        }
+        guard snapshot.date == bobDay else {
+            return nil
+        }
+        switch snapshot.status {
+        case .ready, .stale:
+            return snapshot.events
+        case .idle, .loading, .failed, .unsupported:
+            return nil
+        }
+    }
+
+    /// Whether the agenda has usable same-day data for bob's day. Without
+    /// a snapshot provider (older tests) this is true so nil events keep
+    /// meaning "no meetings". With a provider, missing/loading/failed/
+    /// other-day snapshots are unavailable and hold.
+    private func agendaHasSameDayData(bobDay: String) -> Bool {
+        guard let snapshotProvider = agendaSnapshotProvider else {
+            return true
+        }
+        guard let snapshot = snapshotProvider() else {
+            return false
+        }
+        guard snapshot.date == bobDay else {
+            return false
+        }
+        switch snapshot.status {
+        case .ready, .stale:
+            return true
+        case .idle, .loading, .failed, .unsupported:
+            return false
+        }
+    }
+
+    /// Bounded agenda refresh: no more often than the agenda retry
+    /// interval, so an unavailable agenda does not spin the refresh lane.
+    private func requestAgendaRefreshIfNeeded(now: Date) {
+        let interval = SnoozeWakeNoticePolicy.agendaRetrySeconds
+        if let last = lastAgendaRefreshRequestAt,
+            now.timeIntervalSince(last) < interval
+        {
+            return
+        }
+        lastAgendaRefreshRequestAt = now
+        requestAgendaRefresh()
+    }
+
     private func scheduleReevaluate(after delay: TimeInterval) {
         reevaluateTask?.cancel()
         let expectedGeneration = generation
@@ -1028,11 +1152,13 @@ final class SnoozeNoticeCoordinator {
     private func currentDeliveryIsHeld(
         presence: SnoozeWakePresence,
         events: CaptureAgendaEvents?,
+        hasSameDayData: Bool = true,
         settings: SnoozeWakeNoticeSettings,
         now: Date,
         bobNow: String?
     ) -> Bool {
         (settings.holdWhileAway && presence.isAway)
+            || (settings.holdDuringMeetings && !hasSameDayData)
             || (settings.holdDuringMeetings
                 && SnoozeWakeNoticePolicy.runningMeetingEnd(
                     events: events,
@@ -1101,6 +1227,7 @@ final class SnoozeNoticeCoordinator {
     private func restoreSuppressedDeliveries(
         presence: SnoozeWakePresence,
         events: CaptureAgendaEvents?,
+        hasSameDayData: Bool = true,
         settings: SnoozeWakeNoticeSettings,
         now: Date,
         bobNow: String?
@@ -1109,6 +1236,7 @@ final class SnoozeNoticeCoordinator {
             !currentDeliveryIsHeld(
                 presence: presence,
                 events: events,
+                hasSameDayData: hasSameDayData,
                 settings: settings,
                 now: now,
                 bobNow: bobNow
@@ -1139,6 +1267,8 @@ final class SnoozeNoticeCoordinator {
             return "meeting(until:\(until))"
         case .settling(let until):
             return "settling(until:\(until))"
+        case .agendaUnavailable(let until):
+            return "agendaUnavailable(until:\(until))"
         }
     }
 
