@@ -398,6 +398,11 @@ struct SettingsView: View {
                             notificationService.requestAuthorization()
                         }
                     }
+                    if let failure = notificationService.authorizationRequestFailure {
+                        Text(failure)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Button("Open System Notification Settings") {
                         if let url = URL(
                             string: "x-apple.systempreferences:com.apple.preference.notifications")
@@ -418,6 +423,7 @@ struct SettingsView: View {
                     if !testNotificationStatus.isEmpty {
                         Text(testNotificationStatus)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
@@ -560,10 +566,22 @@ struct SettingsView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else {
+        // The Settings panel never activates the app, so a modal run would
+        // hang behind it. Attach as a sheet on the key Settings panel, and
+        // only fall back to a modal run when no key window exists.
+        guard let window = NSApp.keyWindow else {
+            guard panel.runModal() == .OK, let url = panel.url else {
+                return
+            }
+            settings.refsHighlightsAppPath = url.path
             return
         }
-        settings.refsHighlightsAppPath = url.path
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else {
+                return
+            }
+            settings.refsHighlightsAppPath = url.path
+        }
     }
 
     private var stashCapacityLabel: String {

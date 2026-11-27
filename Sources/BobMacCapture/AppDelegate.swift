@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let targetsCache = CaptureTargetsCache()
     var targetsRefreshGate = CaptureTargetsRefreshGate()
     private var processClient: BobProcessClient?
-    private var settingsSceneRepresentation: SettingsSceneRepresentation?
+    private var settingsWindowController: SettingsWindowController<SettingsView>?
     private var settingsCancellables: Set<AnyCancellable> = []
     private var hotKeyCancellables: Set<AnyCancellable> = []
     private var statusItemController: StatusItemController?
@@ -74,8 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let savedTemplateShelf = SavedTemplateShelf()
         self.savedTemplateShelf = savedTemplateShelf
         observeCanceledDraftStashCapacity()
-        let representation = NSHostingSceneRepresentation {
-            BobSettingsScene(
+        // Settings lives in an app-owned non-activating panel, not the
+        // SwiftUI Settings scene: activation requests from the status menu
+        // are declined on macOS 26, and the panel takes focus on its own.
+        let settingsWindowController = SettingsWindowController {
+            SettingsView(
                 settings: settings,
                 notificationService: notificationService,
                 canceledDraftStash: canceledDraftStash,
@@ -91,11 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onClearNoteGotoHistory: { [weak self] in self?.panelModel?.clearNoteGotoHistory() }
             )
         }
-
-        NSApplication.shared.addSceneRepresentation(representation)
-        settingsSceneRepresentation = representation
+        self.settingsWindowController = settingsWindowController
         settingsPresentation = SettingsPresentation {
-            representation.environment.openSettings()
+            settingsWindowController.show()
         }
     }
 
@@ -1433,49 +1434,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 struct SettingsPresentation {
-    var openSettings: () -> Void
-    var activateApplication: () -> Void
+    var showSettings: () -> Void
 
-    init(
-        openSettings: @escaping () -> Void = {},
-        activateApplication: @escaping () -> Void = {
-            NSApplication.shared.activate()
-        }
-    ) {
-        self.openSettings = openSettings
-        self.activateApplication = activateApplication
+    init(showSettings: @escaping () -> Void = {}) {
+        self.showSettings = showSettings
     }
 
     func present() {
-        openSettings()
-        activateApplication()
-    }
-}
-
-private typealias SettingsSceneRepresentation = NSHostingSceneRepresentation<BobSettingsScene>
-
-@MainActor
-private struct BobSettingsScene: Scene {
-    let settings: AppSettings
-    let notificationService: NotificationService
-    let canceledDraftStash: CanceledDraftStash
-    let savedTemplateShelf: SavedTemplateShelf
-    let onResetOpenHistory: (() -> Void)?
-    let onResetTypingTips: (() -> Void)?
-    let onClearNoteGotoHistory: (() -> Void)?
-
-    var body: some Scene {
-        Settings {
-            SettingsView(
-                settings: settings,
-                notificationService: notificationService,
-                canceledDraftStash: canceledDraftStash,
-                savedTemplateShelf: savedTemplateShelf,
-                onResetOpenHistory: onResetOpenHistory,
-                onResetTypingTips: onResetTypingTips,
-                onClearNoteGotoHistory: onClearNoteGotoHistory
-            )
-        }
-        .windowResizability(.contentSize)
+        showSettings()
     }
 }

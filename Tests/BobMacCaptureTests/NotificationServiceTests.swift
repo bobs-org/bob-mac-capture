@@ -2903,4 +2903,38 @@ final class NotificationServiceTests: XCTestCase {
             )
         )
     }
+
+    func testAuthorizationFailureMessageOutsideTempDirHasNoHint() {
+        let error = NSError(
+            domain: "com.apple.UserNotifications", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Not allowed"])
+        let message = NotificationService.authorizationFailureMessage(
+            error: error, bundlePath: "/Applications/Bob Mac Capture.app")
+        XCTAssertEqual(message, "Enable failed: Not allowed")
+    }
+
+    func testAuthorizationFailureMessageInsideTempDirAddsHint() {
+        let error = NSError(
+            domain: "com.apple.UserNotifications", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Not allowed"])
+        let message = NotificationService.authorizationFailureMessage(
+            error: error,
+            bundlePath: "/private/tmp/bob-wake-accept/Bob Mac Capture Accept.app")
+        XCTAssertTrue(message.hasPrefix("Enable failed: Not allowed"))
+        XCTAssertTrue(message.contains("temporary folders"))
+    }
+
+    func testTemporaryBundlePathDetection() {
+        let acceptApp =
+            NSHomeDirectory()
+            + "/Library/Application Support/bob-wake-accept/Bob Mac Capture Accept.app"
+        XCTAssertTrue(
+            NotificationService.isTemporaryBundlePath("/tmp/Bob Mac Capture Accept.app"))
+        XCTAssertTrue(
+            NotificationService.isTemporaryBundlePath(
+                "/private/var/folders/xy/T/Bob Mac Capture Accept.app"))
+        XCTAssertFalse(
+            NotificationService.isTemporaryBundlePath("/Applications/Bob Mac Capture.app"))
+        XCTAssertFalse(NotificationService.isTemporaryBundlePath(acceptApp))
+    }
 }

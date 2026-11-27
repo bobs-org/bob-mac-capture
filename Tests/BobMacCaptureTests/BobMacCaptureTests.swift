@@ -4883,21 +4883,16 @@ final class BobMacCaptureTests: XCTestCase {
     @MainActor
     func testOpenSettingsMenuActionUsesRegisteredSettingsPresenterOnce() {
         let delegate = AppDelegate()
-        var openSettingsCount = 0
-        var activationCount = 0
-        delegate.settingsPresentation = SettingsPresentation(
-            openSettings: {
-                openSettingsCount += 1
-            },
-            activateApplication: {
-                activationCount += 1
-            }
-        )
+        var showSettingsCount = 0
+        delegate.settingsPresentation = SettingsPresentation {
+            showSettingsCount += 1
+        }
 
         delegate.openSettings()
 
-        XCTAssertEqual(openSettingsCount, 1)
-        XCTAssertEqual(activationCount, 1)
+        // Settings shows in an app-owned panel that takes focus on its own;
+        // presenting never asks NSApp to activate anymore.
+        XCTAssertEqual(showSettingsCount, 1)
     }
 
     @MainActor

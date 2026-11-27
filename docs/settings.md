@@ -5,6 +5,8 @@ description: "Settings window controls for Bob, hotkeys, Refs, agenda, snoozed t
 
 The Settings window is a 620 pt form that scrolls. Section order matches `SettingsView`: Bob, Hotkey, References, Agenda, Snoozed Tasks, Similar Tasks, Typing Tips, Go To Notes, Canceled Draft Stash, Saved Templates, Launch, Notifications, Diagnostics. The app owns these controls. Capture grammar, template capacity, and vault mutation stay in `bob` ([thin client decision](https://bobs-org.github.io/develop/decisions/#mac-capture-is-a-thin-client)). Values persist in `UserDefaults` under `org.bobs.bob-mac-capture` unless noted as transient.
 
+Settings opens as a non-activating panel, like Capture and Refs. Opening it from the menu-bar item, the issue row, or Bob Refs brings it to the front on the current Space with keyboard focus, so Control-D works at once, even while another app stays frontmost. It never shows a Dock icon. Command-W closes it.
+
 The window opens no taller than the screen and resizes vertically between 420 pt and unbounded; the trackpad, scroll wheel, and scroller all scroll. Control-D pages down and Control-U pages up by half the window's height, from any field. A slim pinned footer reads `⌃D Down  ⌃U Up`. Panel keys are in [Keyboard](keyboard.md).
 
 Install identity and executable search are in [Install](install.md). Permission grants are in [Permissions](permissions.md). Panel keys are in [Keyboard](keyboard.md). Refs behavior is in [Bob Refs](refs.md).

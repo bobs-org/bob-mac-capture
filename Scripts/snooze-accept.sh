@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Scripts/snooze-accept.sh -- isolated Mac wake-notice acceptance harness.
 #
-# Runs on the Mac. Root: /tmp/bob-wake-accept. Every subcommand prints one
-# JSON line on stdout; human diagnostics go to stderr. Exit 0 on success,
-# non-zero with {"ok":false,...} (or an error line) on failure.
+# Runs on the Mac. Root: /tmp/bob-wake-accept (vault, state, evidence, PID
+# files). The scratch app bundle lives outside every temp dir at
+# "$HOME/Library/Application Support/bob-wake-accept/<name>.app": usernoted
+# refuses notification clients whose bundle LaunchServices flags
+# `in-temp-dir` (/private/tmp, /private/var/folders). Every subcommand
+# prints one JSON line on stdout; human diagnostics go to stderr. Exit 0
+# on success, non-zero with {"ok":false,...} (or an error line) on failure.
 #
 # The scratch app gets its own bundle ID (org.bobs.bob-mac-capture.accept),
 # its own defaults domain, disabled hotkeys, XDG state, and a disposable
@@ -43,7 +47,8 @@ VAULT_DIR="$ROOT/vault"
 STATE_DIR="$ROOT/state"
 EVIDENCE_DIR="$ROOT/evidence"
 CONFIG_FILE="$ROOT/bob-config.yml"
-SCRATCH_APP="$ROOT/$ACCEPT_NAME.app"
+SCRATCH_APP_DIR="$HOME/Library/Application Support/bob-wake-accept"
+SCRATCH_APP="$SCRATCH_APP_DIR/$ACCEPT_NAME.app"
 PROD_PID_FILE="$ROOT/production.pid"
 SCRATCH_PID_FILE="$ROOT/scratch.pid"
 STREAM_PID_FILE="$ROOT/signpost.pid"
@@ -96,11 +101,13 @@ pids_matching() {
 
 find_prod_pid() {
     # Production binary lives under ~/Applications; the scratch copy lives
-    # under $ROOT, so this pattern never matches scratch.
+    # under the app-support dir, so this pattern never matches scratch.
     pids_matching "Applications/Bob Mac Capture.app/Contents/MacOS/BobMacCapture"
 }
 
 find_scratch_pids() {
+    # Matches the scratch bundle at both the legacy $ROOT location and
+    # the app-support dir; never matches ~/Applications production.
     pids_matching "bob-wake-accept/$ACCEPT_NAME.app"
 }
 
@@ -108,6 +115,36 @@ scratch_env() {
     export BOB_DIR="$VAULT_DIR"
     export XDG_STATE_HOME="$STATE_DIR"
     export BOB_CONFIG_FILE="$CONFIG_FILE"
+}
+
+check_notification_client() {
+    # Poll usernoted's log for this harness's accept client: accepted
+    # ("Connection <id> with path:") or rejected ("Failed to find or
+    # validate client of identifier <id>"). Saves the matching lines to
+    # the evidence log. Prints accepted|unknown on stdout; dies loudly on
+    # rejection, naming the bundle path and the in-temp-dir cause.
+    local waited=0 output=""
+    mkdir -p "$EVIDENCE_DIR"
+    while [ "$waited" -lt 30 ]; do
+        output="$(/usr/bin/log show --last 2m --style compact \
+            --predicate "process == \"usernoted\" AND eventMessage CONTAINS \"$ACCEPT_ID\"" \
+            2>/dev/null)" || output=""
+        if printf '%s' "$output" | grep -q "Failed to find or validate client of identifier $ACCEPT_ID"; then
+            printf '%s\n' "$output" >"$EVIDENCE_DIR/usernoted-client.log"
+            die "usernoted refused client $ACCEPT_ID at $SCRATCH_APP (bundle flagged in-temp-dir)"
+        fi
+        if printf '%s' "$output" | grep -q "Connection $ACCEPT_ID with path:"; then
+            printf '%s\n' "$output" >"$EVIDENCE_DIR/usernoted-client.log"
+            printf 'accepted\n'
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    printf '%s\n' "$output" >"$EVIDENCE_DIR/usernoted-client.log"
+    printf 'snooze-accept: no usernoted verdict for %s in the last 2m; recording unknown\n' \
+        "$ACCEPT_ID" >&2
+    printf 'unknown\n'
 }
 
 write_channel_config() {
@@ -258,7 +295,7 @@ stop_stream() {
 }
 
 do_up() {
-    local sha="" src_repo src_sha dirty src_bundle plist_id
+    local sha="" src_repo src_sha dirty src_bundle plist_id notification_client
     mac_only
     need git
     need rsync
@@ -286,6 +323,9 @@ do_up() {
     if [ -e "$ROOT" ]; then
         die "root $ROOT exists; run down first"
     fi
+    if [ -e "$SCRATCH_APP_DIR" ]; then
+        die "app dir $SCRATCH_APP_DIR exists; run down first"
+    fi
     src_repo="$(script_repo_root)"
     if [ -z "$sha" ]; then
         [ -d "$src_repo/.git" ] || die "no --sha given and $src_repo is not a git checkout"
@@ -298,7 +338,7 @@ do_up() {
     else
         dirty=""
     fi
-    mkdir -p "$SRC_DIR" "$VAULT_DIR" "$STATE_DIR" "$EVIDENCE_DIR"
+    mkdir -p "$SRC_DIR" "$VAULT_DIR" "$STATE_DIR" "$EVIDENCE_DIR" "$SCRATCH_APP_DIR"
     rsync -a --delete --exclude .build --exclude .git "$src_repo/" "$SRC_DIR/"
     (cd "$SRC_DIR" && ./Scripts/bundle.sh --identity - >/dev/null) \
         || die "bundle.sh failed"
@@ -349,11 +389,13 @@ EOF
     printf '%s' "$sha" >"$HARNESS_SHA_FILE"
     scratch_pid="$(launch_scratch)"
     start_stream "$scratch_pid"
+    notification_client="$(check_notification_client)"
     do_guard >/dev/null || die "guard failed right after up; see guard output"
-    printf '{"status":"up","sha":%s,"dirty":%s,"production_pid":%s,"scratch_pid":%s,"vault":%s,"bundle_id":%s}\n' \
+    printf '{"status":"up","sha":%s,"dirty":%s,"production_pid":%s,"scratch_pid":%s,"vault":%s,"bundle_id":%s,"scratch_app":%s,"notification_client":%s}\n' \
         "$(jstr "$sha")" \
         "$(if [ -n "${dirty:-}" ]; then printf 'true'; else printf 'false'; fi)" \
-        "$prod_pid" "$scratch_pid" "$(jstr "$VAULT_DIR")" "$(jstr "$ACCEPT_ID")"
+        "$prod_pid" "$scratch_pid" "$(jstr "$VAULT_DIR")" "$(jstr "$ACCEPT_ID")" \
+        "$(jstr "$SCRATCH_APP")" "$(jstr "$notification_client")"
 }
 
 do_guard() {
@@ -361,7 +403,7 @@ do_guard() {
     # JSON line with ok true/false; exits 1 when not ok.
     mac_only
     local ok="true" reason="" rec_prod now_prod prod_claim scratch_pid
-    local scratch_count scratch_claim stream_pid
+    local scratch_count scratch_claim stream_pid scratch_real
     reason_init() { reason="$1"; ok="false"; }
     if [ ! -f "$PROD_PID_FILE" ]; then
         printf '{"ok":false,"reason":%s}\n' "$(jstr "no harness: $PROD_PID_FILE missing")"
@@ -404,6 +446,15 @@ do_guard() {
     scratch_claim="$(json_field "$STATE_DIR/bob-cli/snooze/notifier.json" pid)"
     if [ -n "${scratch_pid:-}" ] && [ "$scratch_claim" != "$scratch_pid" ]; then
         reason_init "scratch notifier names '${scratch_claim:-none}', not $scratch_pid"
+    fi
+    if [ -e "$SCRATCH_APP" ]; then
+        scratch_real="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
+            "$SCRATCH_APP" 2>/dev/null)" || scratch_real=""
+        case "$scratch_real" in
+            /private/tmp/* | /private/var/folders/*)
+                reason_init "scratch app is under a temp dir: $scratch_real"
+                ;;
+        esac
     fi
     if [ ! -f "$STREAM_PID_FILE" ]; then
         reason_init "signpost stream pid file missing"
@@ -521,11 +572,23 @@ do_restart() {
 
 do_status() {
     mac_only
-    HARNESS_ROOT="$ROOT" python3 <<'EOF'
+    HARNESS_ROOT="$ROOT" SCRATCH_APP="$SCRATCH_APP" ACCEPT_ID="$ACCEPT_ID" python3 <<'EOF'
 import json, os
 
 root = os.environ["HARNESS_ROOT"]
 out = {"status": "status"}
+
+
+def notification_client():
+    try:
+        with open(os.path.join(root, "evidence/usernoted-client.log")) as fh:
+            body = fh.read()
+    except OSError:
+        return "unknown"
+    accept_id = os.environ.get("ACCEPT_ID", "")
+    if accept_id and ("Connection %s with path:" % accept_id) in body:
+        return "accepted"
+    return "unknown"
 
 
 def read(path):
@@ -555,6 +618,8 @@ def alive(pid):
 out["production_pid"] = read("production.pid")
 out["scratch_pid"] = read("scratch.pid")
 out["harness_sha"] = read("harness-sha")
+out["scratch_app"] = os.environ.get("SCRATCH_APP", "")
+out["notification_client"] = notification_client()
 state = os.path.join(root, "state")
 out["claim"] = load_json(
     os.path.join(state, "bob-cli/snooze/notifier.json"))
@@ -585,11 +650,7 @@ EOF
 do_down() {
     mac_only
     local leftovers="" nc_hint="System Settings > Notifications > Bob Mac Capture Accept"
-    if [ ! -e "$ROOT" ]; then
-        printf '{"status":"down","removed":true,"note":%s}\n' \
-            "$(jstr "root already gone")"
-        return 0
-    fi
+    local legacy_app="$ROOT/$ACCEPT_NAME.app"
     # Stop by recorded PIDs only; never by name or bundle ID.
     stop_stream
     if [ -f "$SCRATCH_PID_FILE" ]; then
@@ -602,7 +663,20 @@ do_down() {
     if [ -d "$SCRATCH_APP" ]; then
         "$LSREGISTER" -u "$SCRATCH_APP" 2>/dev/null || true
     fi
-    rm -rf "$ROOT"
+    if [ -d "$legacy_app" ]; then
+        "$LSREGISTER" -u "$legacy_app" 2>/dev/null || true
+    fi
+    if [ -e "$ROOT" ]; then
+        rm -rf "$ROOT"
+    fi
+    rm -rf "$SCRATCH_APP_DIR"
+    if [ -e "$SCRATCH_APP_DIR" ]; then
+        if [ -n "$leftovers" ]; then
+            leftovers="$leftovers; app dir still exists: $SCRATCH_APP_DIR"
+        else
+            leftovers="app dir still exists: $SCRATCH_APP_DIR"
+        fi
+    fi
     printf '{"status":"down","removed":true,"leftover":%s,"notification_center":%s}\n' \
         "$(jstr "${leftovers:-none}")" \
         "$(jstr "$nc_hint")"

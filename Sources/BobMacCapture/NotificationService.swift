@@ -3,6 +3,11 @@ import CaptureCore
 import RefsCore
 import UserNotifications
 
+/// Injectable authorization request, defaulting to the live notification
+/// center. Tests inject a throwing closure to cover the failure surface.
+typealias NotificationAuthorizationRequest =
+    @Sendable (UNAuthorizationOptions) async throws -> Bool
+
 struct NotificationAuthorizationDisplay: Equatable {
     let status: UNAuthorizationStatus
     let displayName: String
@@ -103,11 +108,16 @@ final class NotificationService: NSObject, ObservableObject {
     ]
 
     @Published private(set) var authorization = NotificationAuthorizationDisplay(status: .notDetermined)
+    /// The last authorization-request failure, if any. Cleared when a
+    /// request starts and on success; Settings shows it under Authorization
+    /// instead of leaving a failed Enable click silent.
+    @Published private(set) var authorizationRequestFailure: String?
 
     private let center: UNUserNotificationCenter
     private let opener: (URL) -> Void
     private let showCapture: () -> Void
     private let showRefs: (String?) -> Void
+    private let requestAuthorizationAction: NotificationAuthorizationRequest
     /// Acknowledgement hook for the shared wake lifecycle. Fired when the
     /// Default click or Open action runs on a snooze record; the coordinator
     /// owns the beacon/record clearing that follows task navigation.
@@ -118,12 +128,16 @@ final class NotificationService: NSObject, ObservableObject {
         center: UNUserNotificationCenter = .current(),
         opener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
         showCapture: @escaping () -> Void = {},
-        showRefs: @escaping (String?) -> Void = { _ in }
+        showRefs: @escaping (String?) -> Void = { _ in },
+        requestAuthorizationAction: NotificationAuthorizationRequest? = nil
     ) {
         self.center = center
         self.opener = opener
         self.showCapture = showCapture
         self.showRefs = showRefs
+        self.requestAuthorizationAction =
+            requestAuthorizationAction
+            ?? { [center] options in try await center.requestAuthorization(options: options) }
         super.init()
         // The delegate must be assigned before any authorization request so a foreground
         // notification delivered during the same launch is never silently suppressed.
@@ -133,9 +147,42 @@ final class NotificationService: NSObject, ObservableObject {
 
     func requestAuthorization() {
         Task {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound])
+            authorizationRequestFailure = nil
+            do {
+                _ = try await requestAuthorizationAction([.alert, .sound])
+            } catch {
+                authorizationRequestFailure = Self.authorizationFailureMessage(
+                    error: error, bundlePath: Bundle.main.bundlePath)
+            }
             await refreshAuthorizationStatus()
         }
+    }
+
+    /// Pure message for a failed authorization request. A bundle inside a
+    /// temporary directory gets one extra sentence: macOS refuses
+    /// notification permission there, so the app must move out of one.
+    nonisolated static func authorizationFailureMessage(
+        error: Error, bundlePath: String
+    ) -> String {
+        var message = "Enable failed: \(error.localizedDescription)"
+        if isTemporaryBundlePath(bundlePath) {
+            message +=
+                " macOS does not allow notifications for apps inside temporary folders,"
+                + " so install or move the app outside them."
+        }
+        return message
+    }
+
+    /// Whether the bundle path resolves under a temporary directory
+    /// (`/tmp`, `/private/tmp`, `/private/var/folders`, or the resolved
+    /// `NSTemporaryDirectory()`).
+    nonisolated static func isTemporaryBundlePath(_ bundlePath: String) -> Bool {
+        let resolved = (bundlePath as NSString).resolvingSymlinksInPath
+        let candidate = resolved.hasSuffix("/") ? resolved : resolved + "/"
+        var roots = ["/tmp/", "/private/tmp/", "/private/var/folders/"]
+        let temporary = (NSTemporaryDirectory() as NSString).resolvingSymlinksInPath
+        roots.append(temporary.hasSuffix("/") ? temporary : temporary + "/")
+        return roots.contains { candidate.hasPrefix($0) }
     }
 
     func refreshAuthorizationStatus() async {

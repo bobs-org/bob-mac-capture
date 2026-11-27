@@ -19,7 +19,7 @@ macOS ties an ad-hoc app's grant to its exact `cdhash`, so every ad-hoc `just in
 
 Notification delivery and authorization persistence require the installed, signed `Bob Mac Capture.app` bundle (`just bundle` + `just install`), not `swift run` or a raw `.build` binary. Settings › Notifications shows live authorization (`Not requested`, `Denied — enable in System Settings`, `Authorized`, `Provisional`, `Ephemeral`, or `Unknown`), a button to request authorization while that is still possible, a link to the system notification settings pane, and a test-notification action. Settings › Diagnostics reports the current signing state.
 
-An install never prompts for notification permission. Denied or not-yet-requested authorization is silent and non-fatal. Notification copy and the install-complete banner are in [Settings](settings.md#notification-copy). Scan notifications may show reference titles, as capture notifications already show task text.
+An install never prompts for notification permission. Denied or not-yet-requested authorization is silent and non-fatal. A failed Enable Notifications request now shows `Enable failed: …` under Authorization instead of doing nothing. macOS refuses notification permission for an app bundle inside a temporary folder (`/tmp`, `/private/var/folders`), so install it outside one. Notification copy and the install-complete banner are in [Settings](settings.md#notification-copy). Scan notifications may show reference titles, as capture notifications already show task text.
 
 ## Launch at login
 
