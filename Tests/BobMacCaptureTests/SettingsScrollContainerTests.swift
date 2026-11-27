@@ -126,6 +126,7 @@ final class SettingsScrollContainerTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        other.isReleasedWhenClosed = false
         defer { other.close() }
         other.makeKeyAndOrderFront(nil)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
@@ -145,6 +146,7 @@ final class SettingsScrollContainerTests: XCTestCase {
             backing: .buffered,
             defer: false
         )
+        sheet.isReleasedWhenClosed = false
         harness.window.beginSheet(sheet)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
         let anchor = tryUnwrapAnchor(harness.window)
