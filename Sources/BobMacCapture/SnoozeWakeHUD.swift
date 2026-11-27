@@ -292,6 +292,7 @@ final class SnoozeWakeHUDController {
             var successfulKeys: [String] = []
             var labels: [String] = []
             var failedCount = 0
+            var refusalMessage: String?
             for row in verified {
                 guard today() == batch.date,
                     let key = row.identityKey,
@@ -312,6 +313,11 @@ final class SnoozeWakeHUDController {
                     } else {
                         failedCount += 1
                     }
+                } catch let error as BobClientError {
+                    failedCount += 1
+                    if case .snoozeRefused(_, let message) = error {
+                        refusalMessage = refusalMessage ?? message
+                    }
                 } catch {
                     failedCount += 1
                 }
@@ -321,10 +327,17 @@ final class SnoozeWakeHUDController {
                 refreshAgenda()
             }
             if failedCount > 0 {
-                state.feedback =
-                    successfulKeys.isEmpty
-                    ? "Couldn't snooze these tasks. They are still ready."
-                    : "Snoozed \(successfulKeys.count); \(failedCount) still ready."
+                if let refusalMessage {
+                    state.feedback =
+                        successfulKeys.isEmpty
+                        ? refusalMessage
+                        : "Snoozed \(successfulKeys.count); \(refusalMessage)"
+                } else {
+                    state.feedback =
+                        successfulKeys.isEmpty
+                        ? "Couldn't snooze these tasks. They are still ready."
+                        : "Snoozed \(successfulKeys.count); \(failedCount) still ready."
+                }
             } else if let label = labels.first, Set(labels).count == 1 {
                 state.feedback = "Snoozed until \(label)"
             } else {

@@ -2752,6 +2752,10 @@ JSON
         printf "error: unrecognized subcommand 'add'\n\nUsage: bob snooze [OPTIONS] <COMMAND>\n" >&2
         exit 2
       fi
+      if [[ -n "${FAKE_BOB_SNOOZE_ADD_ERROR_JSON:-}" ]]; then
+        printf '%s\n' "${FAKE_BOB_SNOOZE_ADD_ERROR_JSON}"
+        exit 2
+      fi
       if [[ -n "${FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS:-}" ]]; then
         sleep "${FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS}" &
         wait $!
@@ -2778,6 +2782,8 @@ JSON
       fi
       if [[ -n "${FAKE_BOB_SNOOZE_LIST_JSON:-}" ]]; then
         printf '%s\n' "${FAKE_BOB_SNOOZE_LIST_JSON}"
+      elif [[ -n "${FAKE_BOB_SNOOZE_LIST_JSON_FILE:-}" ]]; then
+        cat "${FAKE_BOB_SNOOZE_LIST_JSON_FILE}"
       elif [[ -n "${FAKE_BOB_SNOOZE_LIST_FIXTURE:-}" ]]; then
         if [[ "${FAKE_BOB_SNOOZE_LIST_FIXTURE}" == */* ]]; then
           cat "${FAKE_BOB_SNOOZE_LIST_FIXTURE}"

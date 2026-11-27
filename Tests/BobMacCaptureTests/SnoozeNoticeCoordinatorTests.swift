@@ -73,6 +73,15 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             executablePath: try fakeBobPath(), environment: full)
     }
 
+    private func writeListJSON(_ json: String, to url: URL) throws {
+        try Data(json.utf8).write(to: url, options: .atomic)
+    }
+
+    private func listReadCount(_ url: URL) throws -> Int {
+        let record = try String(contentsOf: url)
+        return record.components(separatedBy: "argv=snooze -f json").count - 1
+    }
+
     private func goodClient() throws -> BobProcessClient {
         try client(environment: [
             "FAKE_BOB_SNOOZE_LIST_JSON": listJSON(rows: eligibleRowJSON())
@@ -108,7 +117,10 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         processClient: BobProcessClient?,
         idleSeconds: TimeInterval = 0,
         settings: SnoozeWakeNoticeSettings = SnoozeWakeNoticeSettings(),
-        events: CaptureAgendaEvents? = nil
+        events: CaptureAgendaEvents? = nil,
+        settleDelaySeconds: TimeInterval = 0.05,
+        retryIntervalSeconds: TimeInterval = 0.2,
+        observer: SnoozeWakeObserver? = nil
     ) throws -> (
         SnoozeNoticeCoordinator, FakeClock, SnoozeWakePresenceSource,
         NotificationCenter, URL, SnoozeWakeHandledStore,
@@ -141,13 +153,15 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         let refreshBox = MutableBox(0)
         let presentedBox = MutableBox<[SnoozeWakeNoticeBatch]>([])
         let dismissedBox = MutableBox<[String]>([])
-        let observer = SnoozeWakeObserver(
-            readReceipt: { nil },
+        let testObserver =
+            observer
+            ?? SnoozeWakeObserver(
+                readReceipt: { nil },
             register: { _ in 42 },
             cancel: { _ in }
         )
         let coordinator = SnoozeNoticeCoordinator(
-            observer: observer,
+            observer: testObserver,
             presenceSource: presence,
             claim: claim,
             handledStore: handledStore,
@@ -159,8 +173,8 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             settings: { settingsBox.value },
             agendaEvents: { eventsBox.value },
             requestAgendaRefresh: { refreshBox.value += 1 },
-            settleDelaySeconds: 0.05,
-            retryIntervalSeconds: 0.2
+            settleDelaySeconds: settleDelaySeconds,
+            retryIntervalSeconds: retryIntervalSeconds
         )
         coordinator.onPresent = { batch, _ in presentedBox.value.append(batch) }
         coordinator.onDismiss = { dismissedBox.value.append($0) }
@@ -192,6 +206,23 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         coordinator.start()
         await waitUntil { coordinator.isCapableForTests == true }
         XCTAssertTrue(coordinator.isStartedForTests)
+        XCTAssertTrue(coordinator.isObserverRegisteredForTests)
+        XCTAssertFalse(coordinator.isClaimedForTests)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: claimURL.path))
+        coordinator.stop()
+    }
+
+    func testFailedObserverRegistrationNeverClaims() async throws {
+        let failedObserver = SnoozeWakeObserver(
+            readReceipt: { nil },
+            register: { _ in nil },
+            cancel: { _ in }
+        )
+        let (coordinator, _, _, _, claimURL, _, _, _, _, _, _) = try makeHarness(
+            processClient: try goodClient(), observer: failedObserver)
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
         XCTAssertFalse(coordinator.isClaimedForTests)
         XCTAssertFalse(FileManager.default.fileExists(atPath: claimURL.path))
         coordinator.stop()
@@ -244,6 +275,79 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         XCTAssertEqual(batch.rows.count, 1)
         XCTAssertEqual(coordinator.deliveredCountForTests, 1)
         XCTAssertGreaterThanOrEqual(refreshes.value, 1)
+        coordinator.stop()
+    }
+
+    func testAcceptedReceiptUsesFreshReadAndActiveDeliveryDoesNotSettle() async throws {
+        let responseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try writeListJSON(listJSON(rows: ""), to: responseURL)
+        let processClient = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SNOOZE_LIST_JSON_FILE": responseURL.path,
+        ])
+        let (coordinator, _, _, _, _, _, _, _, _, presented, _) = try makeHarness(
+            processClient: processClient, settleDelaySeconds: 1.5)
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        XCTAssertEqual(try listReadCount(recordURL), 1)
+
+        try writeListJSON(listJSON(rows: eligibleRowJSON()), to: responseURL)
+        coordinator.receiveForTests(receipt())
+        await waitUntil(timeout: 1.0) { presented.value.count == 1 }
+
+        XCTAssertEqual(presented.value.first?.wakeID, "w1")
+        XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
+        coordinator.stop()
+    }
+
+    func testDistinctWakeAfterShownBatchGetsItsOwnFreshRead() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let processClient = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SNOOZE_LIST_JSON": listJSON(rows: eligibleRowJSON()),
+        ])
+        let (coordinator, _, _, _, _, _, _, _, _, presented, _) = try makeHarness(
+            processClient: processClient)
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt(wakeID: "w1"))
+        await waitUntil { presented.value.count == 1 }
+
+        coordinator.receiveForTests(receipt(wakeID: "w2"))
+        await waitUntil { presented.value.count == 2 }
+        XCTAssertEqual(presented.value.map(\.wakeID), ["w1", "w2"])
+        XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 3)
+        coordinator.stop()
+    }
+
+    func testFreshReadWithoutReceiptRowsDropsAndHandlesTheBatch() async throws {
+        let responseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try writeListJSON(listJSON(rows: ""), to: responseURL)
+        let processClient = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SNOOZE_LIST_JSON_FILE": responseURL.path,
+        ])
+        let (coordinator, _, _, _, _, handledStore, _, _, _, presented, _) = try makeHarness(
+            processClient: processClient)
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt())
+
+        await waitUntil { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        await waitUntil { handledStore.contains("w1", day: "2026-11-26") }
+        XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
+        XCTAssertTrue(presented.value.isEmpty)
+        XCTAssertEqual(coordinator.pendingCountForTests, 0)
         coordinator.stop()
     }
 
@@ -397,6 +501,84 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
 
         coordinator.reconfigure(processClient: try goodClient(), vaultRoot: "/tmp/vault")
         await waitUntil(timeout: 10) { presented.value.count == 1 }
+        coordinator.stop()
+    }
+
+    func testOrdinaryListFailureRespectsRetrySpacing() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let failing = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SNOOZE_LIST_EXIT": "1",
+        ])
+        let (coordinator, _, _, _, _, _, _, _, _, _, _) = try makeHarness(
+            processClient: failing, retryIntervalSeconds: 0.4)
+        coordinator.start()
+        await waitUntil { coordinator.diagnosticSnapshot().lastFailure != nil }
+        XCTAssertEqual(try listReadCount(recordURL), 1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(try listReadCount(recordURL), 1)
+
+        await waitUntil(timeout: 2) { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
+        coordinator.stop()
+    }
+
+    func testClockLifecycleSignalClearsRetryDelayForPendingNotice() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let failing = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SNOOZE_LIST_EXIT": "1",
+        ])
+        let (coordinator, _, _, defaultCenter, _, _, _, _, _, _, _) = try makeHarness(
+            processClient: failing, retryIntervalSeconds: 2)
+        coordinator.start()
+        await waitUntil { coordinator.diagnosticSnapshot().lastFailure != nil }
+        coordinator.receiveForTests(receipt())
+        XCTAssertEqual(try listReadCount(recordURL), 1)
+
+        defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
+        await waitUntil(timeout: 0.8) { ((try? listReadCount(recordURL)) ?? 0) >= 2 }
+        XCTAssertGreaterThanOrEqual(try listReadCount(recordURL), 2)
+        XCTAssertEqual(coordinator.pendingCountForTests, 1)
+        coordinator.stop()
+    }
+
+    func testLateCompletionAfterReconfigureDoesNotCancelCurrentRead() async throws {
+        let oldRecordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let oldTerminatedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let oldClient = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": oldRecordURL.path,
+            "FAKE_BOB_TERM_PATH": oldTerminatedURL.path,
+            "FAKE_BOB_SNOOZE_LIST_DELAY_SECONDS": "1",
+            "FAKE_BOB_SNOOZE_LIST_JSON": listJSON(rows: ""),
+        ])
+        let newRecordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let newTerminatedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let newClient = try client(environment: [
+            "FAKE_BOB_RECORD_PATH": newRecordURL.path,
+            "FAKE_BOB_TERM_PATH": newTerminatedURL.path,
+            "FAKE_BOB_SNOOZE_LIST_DELAY_SECONDS": "0.4",
+            "FAKE_BOB_SNOOZE_LIST_JSON": listJSON(rows: eligibleRowJSON()),
+        ])
+        let (coordinator, _, _, _, _, _, _, _, _, presented, _) = try makeHarness(
+            processClient: oldClient)
+        coordinator.attachPresenter()
+        coordinator.start()
+        await waitUntil { ((try? listReadCount(oldRecordURL)) ?? 0) == 1 }
+        coordinator.reconfigure(processClient: newClient, vaultRoot: "/tmp/vault")
+        coordinator.receiveForTests(receipt())
+        await waitUntil { ((try? listReadCount(newRecordURL)) ?? 0) >= 1 }
+        await waitUntil(timeout: 5) { presented.value.count == 1 }
+
+        XCTAssertGreaterThanOrEqual(try listReadCount(newRecordURL), 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: newTerminatedURL.path))
+        XCTAssertEqual(presented.value.first?.wakeID, "w1")
         coordinator.stop()
     }
 

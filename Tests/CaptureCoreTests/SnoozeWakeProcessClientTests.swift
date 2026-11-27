@@ -15,6 +15,30 @@ final class SnoozeWakeProcessClientTests: XCTestCase {
             .path
     }
 
+    private func waitForRecord(_ url: URL, invocations: Int) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            let record = (try? String(contentsOf: url)) ?? ""
+            if record.components(separatedBy: "argv=snooze add").count - 1 >= invocations {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("Expected \(invocations) snooze-add invocation(s)")
+    }
+
+    private func waitForListRecord(_ url: URL) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            let record = (try? String(contentsOf: url)) ?? ""
+            if record.contains("argv=snooze -f json") {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTFail("Expected a snooze-list invocation")
+    }
+
     func testSnoozeListUsesExactArgvAndDecodesCapabilities() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -97,6 +121,109 @@ final class SnoozeWakeProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=snooze add tasks.md:^job +15m -f json"))
         XCTAssertTrue(record.contains("argv=snooze -f json"))
+    }
+
+    func testSnoozeAddCallsSerializeUntilThePriorWriterExits() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS": "0.5",
+            ]
+        )
+
+        let first = Task { try await client.snoozeAdd(route: "tasks.md", blockID: "^first") }
+        try await waitForRecord(recordURL, invocations: 1)
+        let second = Task { try await client.snoozeAdd(route: "tasks.md", blockID: "^second") }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let whileFirstRuns = try String(contentsOf: recordURL)
+        XCTAssertEqual(whileFirstRuns.components(separatedBy: "argv=snooze add").count - 1, 1)
+
+        let firstResponse = try await first.value
+        let secondResponse = try await second.value
+        XCTAssertTrue(firstResponse.didWrite)
+        XCTAssertTrue(secondResponse.didWrite)
+        try await waitForRecord(recordURL, invocations: 2)
+        let record = try String(contentsOf: recordURL)
+        let firstStart = try XCTUnwrap(record.range(of: "argv=snooze add tasks.md:^first"))
+        let secondStart = try XCTUnwrap(record.range(of: "argv=snooze add tasks.md:^second"))
+        XCTAssertLessThan(firstStart.lowerBound, secondStart.lowerBound)
+    }
+
+    func testSnoozeAddContinuesWhenItsCallerIsCancelled() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let terminatedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TERM_PATH": terminatedURL.path,
+                "FAKE_BOB_SNOOZE_ADD_DELAY_SECONDS": "0.3",
+            ]
+        )
+
+        let mutation = Task { try await client.snoozeAdd(route: "tasks.md", blockID: "^job") }
+        try await waitForRecord(recordURL, invocations: 1)
+        mutation.cancel()
+        let response = try await mutation.value
+        XCTAssertTrue(response.didWrite)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: terminatedURL.path))
+    }
+
+    func testCoordinatorAndHUDReadsUseIsolatedNonCancellingLanes() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let terminatedURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TERM_PATH": terminatedURL.path,
+                "FAKE_BOB_SNOOZE_LIST_DELAY_SECONDS": "0.35",
+            ]
+        )
+
+        let verification = Task { try await client.snoozeListForWakeVerification() }
+        try await waitForListRecord(recordURL)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        async let hudRead = client.snoozeList()
+
+        let verificationResponse = try await verification.value
+        let hudResponse = try await hudRead
+        XCTAssertEqual(verificationResponse.schemaVersion, 1)
+        XCTAssertEqual(hudResponse.schemaVersion, 1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: terminatedURL.path))
+    }
+
+    func testSnoozeAddDecodesBobRefusalFromStdout() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_SNOOZE_ADD_ERROR_JSON":
+                    #"{"ok":false,"error":{"kind":"invalid_time","message":"task cannot be snoozed after midnight"}}"#,
+            ]
+        )
+
+        do {
+            _ = try await client.snoozeAdd(route: "tasks.md", blockID: "^job")
+            XCTFail("Expected Bob refusal")
+        } catch BobClientError.snoozeRefused(let kind, let message) {
+            XCTAssertEqual(kind, "invalid_time")
+            XCTAssertEqual(message, "task cannot be snoozed after midnight")
+        }
     }
 
     func testSnoozeListAndAddMapOldBobToUnsupported() async throws {

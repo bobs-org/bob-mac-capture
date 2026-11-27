@@ -228,9 +228,6 @@ struct StatusItemPresentation: Equatable {
         if isBobResolved {
             toolTip = "Bob Mac Capture\(beaconSuffix)"
             accessibilityLabel = "Bob Mac Capture\(beaconAccessibilitySuffix)"
-            if count == 0 {
-                accessibilityLabel = "Bob Mac Capture"
-            }
         } else {
             let baseTip = "Bob Mac Capture — bob is not resolved. Check Settings."
             let baseLabel = "Bob Mac Capture, bob not resolved"

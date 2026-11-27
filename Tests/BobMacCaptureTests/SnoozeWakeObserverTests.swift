@@ -45,6 +45,7 @@ final class SnoozeWakeObserverTests: XCTestCase {
         observer.onReceipt = { delivered.append($0.wakeID) }
 
         observer.start()
+        XCTAssertTrue(observer.isRegistered)
         await waitUntil { delivered == ["w1"] }
         XCTAssertEqual(registered, 1)
 
@@ -84,6 +85,7 @@ final class SnoozeWakeObserverTests: XCTestCase {
         observer.start()
         // The registration failure is reported synchronously; no
         // startup read follows a nil token.
+        XCTAssertFalse(observer.isRegistered)
         XCTAssertEqual(reads, 0)
         XCTAssertEqual(diagnostics.count, 1)
         observer.stop()

@@ -21,6 +21,9 @@ final class SnoozeWakePresenceSource {
     /// sleep/wake, session resign/active, day/clock change, and each
     /// idle-poll tick while held.
     var onChange: () -> Void = {}
+    /// Lifecycle and clock signals clear a bounded retry delay before
+    /// `onChange` asks the coordinator to reevaluate.
+    var onLifecycleChange: () -> Void = {}
 
     private let workspaceCenter: NotificationCenter
     private let defaultCenter: NotificationCenter
@@ -68,6 +71,7 @@ final class SnoozeWakePresenceSource {
                     forName: name, object: nil, queue: .main
                 ) { [weak self] _ in
                     update()
+                    self?.onLifecycleChange()
                     self?.onChange()
                 })
         }
@@ -92,6 +96,7 @@ final class SnoozeWakePresenceSource {
                 forName: .screenIsLocked, object: nil, queue: .main
             ) { [weak self] _ in
                 self?.screenLocked = true
+                self?.onLifecycleChange()
                 self?.onChange()
             })
         observers.append(
@@ -99,6 +104,7 @@ final class SnoozeWakePresenceSource {
                 forName: .screenIsUnlocked, object: nil, queue: .main
             ) { [weak self] _ in
                 self?.screenLocked = false
+                self?.onLifecycleChange()
                 self?.onChange()
             })
     }

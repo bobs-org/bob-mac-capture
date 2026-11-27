@@ -102,7 +102,7 @@ final class SnoozeWakeNoticePolicyTests: XCTestCase {
         XCTAssertEqual(batch.rows.count, 1)
     }
 
-    func testUnverifiedWorkWaitsForRecheck() throws {
+    func testUnheldUnverifiedWorkVerifiesImmediately() throws {
         var policy = SnoozeWakeNoticePolicy()
         let now = try date("2026-10-08T15:32:10-04:00")
         let decision = policy.decide(
@@ -119,8 +119,9 @@ final class SnoozeWakeNoticePolicyTests: XCTestCase {
             XCTFail("Expected .verify, got \(decision)")
             return
         }
-        XCTAssertEqual(recheckAt.timeIntervalSince1970, now.timeIntervalSince1970 + 1.5,
-                       accuracy: 0.001)
+        XCTAssertEqual(
+            recheckAt.timeIntervalSince1970, now.timeIntervalSince1970,
+            accuracy: 0.001)
     }
 
     func testIdleThresholdBoundary() throws {
@@ -822,52 +823,6 @@ final class SnoozeWakeNoticePolicyTests: XCTestCase {
             return
         }
         XCTAssertEqual(reason, .announcementsDisabled)
-    }
-
-    func testCompletionTokenInvalidatesOnConfigChange() throws {
-        var policy = SnoozeWakeNoticePolicy()
-        let now = try date("2026-10-08T15:32:10-04:00")
-        _ = policy.decide(
-            receipt: receipt(),
-            today: today,
-            bobNow: bobNow,
-            configuredVaultRoot: vault,
-            presence: SnoozeWakePresence(),
-            events: nil,
-            settings: activeSettings(),
-            verification: .unverified,
-            now: now)
-        let config = SnoozeWakeNoticePolicy.configIdentity(
-            today: today, vaultRoot: vault, settings: activeSettings())
-        let token = policy.currentToken(wakeID: "w1", configIdentity: config)
-        XCTAssertTrue(policy.isCurrent(token))
-
-        policy.invalidate()
-        XCTAssertFalse(policy.isCurrent(token))
-
-        var fresh = SnoozeWakeNoticePolicy()
-        _ = fresh.decide(
-            receipt: receipt(),
-            today: today,
-            bobNow: bobNow,
-            configuredVaultRoot: vault,
-            presence: SnoozeWakePresence(),
-            events: nil,
-            settings: activeSettings(),
-            verification: .unverified,
-            now: now)
-        let staleToken = fresh.currentToken(wakeID: "w1", configIdentity: config)
-        _ = fresh.decide(
-            receipt: receipt(),
-            today: "2026-10-09",
-            bobNow: "2026-10-09T08:00:00-04:00",
-            configuredVaultRoot: vault,
-            presence: SnoozeWakePresence(),
-            events: nil,
-            settings: activeSettings(),
-            verification: .unverified,
-            now: try date("2026-10-09T08:00:00-04:00"))
-        XCTAssertFalse(fresh.isCurrent(staleToken))
     }
 
     func testDifferingSystemZoneUsesBobOffset() throws {

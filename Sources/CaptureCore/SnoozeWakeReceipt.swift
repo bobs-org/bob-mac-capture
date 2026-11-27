@@ -182,7 +182,7 @@ public struct SnoozeWakeReceipt: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         wakeID = try container.decodeIfPresent(String.self, forKey: .wakeID) ?? ""
         date = try container.decodeIfPresent(String.self, forKey: .date) ?? ""
         wokenAt = try container.decodeIfPresent(String.self, forKey: .wokenAt) ?? ""

@@ -140,52 +140,18 @@ public struct SnoozeWakeNoticeBatch: Equatable, Sendable {
     }
 }
 
-/// A completion token proving a settle-delay or subprocess result still
-/// belongs to the current batch and configuration. Settings changes,
-/// executable/vault replacement, day rollover, and shutdown invalidate
-/// obsolete callbacks by bumping the generation.
-public struct SnoozeWakeCompletionToken: Equatable, Sendable {
-    public let generation: UInt64
-    public let wakeID: String
-    public let configIdentity: String
-}
-
 /// Pure, clock-injected wake-notice policy. Every timestamp comparison
 /// uses the caller-supplied `now`, so tests never sleep. Bob's fresh
 /// `today`/`bobNow` is the task-day authority; a stale receipt date is
 /// never combined with a new local clock.
 public struct SnoozeWakeNoticePolicy: Sendable {
     public static let awayThresholdSeconds: TimeInterval = 180
-    public static let returnSettleSeconds: TimeInterval = 1.5
     public static let receiptMaxAgeSeconds: TimeInterval = 4 * 60 * 60
 
-    private var generation: UInt64 = 0
-    private var currentWakeID: String?
-    private var currentConfigIdentity: String?
     private var handledWakeIDs: Set<String> = []
     private var handledDay: String?
 
     public init() {}
-
-    public func token(
-        generation: UInt64, wakeID: String, configIdentity: String
-    ) -> SnoozeWakeCompletionToken {
-        SnoozeWakeCompletionToken(
-            generation: generation, wakeID: wakeID, configIdentity: configIdentity)
-    }
-
-    public func currentToken(
-        wakeID: String, configIdentity: String
-    ) -> SnoozeWakeCompletionToken {
-        SnoozeWakeCompletionToken(
-            generation: generation, wakeID: wakeID, configIdentity: configIdentity)
-    }
-
-    public func isCurrent(_ token: SnoozeWakeCompletionToken) -> Bool {
-        token.generation == generation
-            && token.wakeID == currentWakeID
-            && token.configIdentity == currentConfigIdentity
-    }
 
     /// Canonical config identity: today plus the configured vault plus the
     /// hold toggles. Any of these changing invalidates pending work.
@@ -213,9 +179,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         handledIDsDay: String? = nil,
         now: Date
     ) -> SnoozeWakeNoticeDecision {
-        let configIdentity = Self.configIdentity(
-            today: today, vaultRoot: configuredVaultRoot, settings: settings)
-
         if handledDay != today {
             handledWakeIDs = []
             handledDay = today
@@ -230,11 +193,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
         }
         guard receipt.schemaVersion == 1 else {
             return .drop(reason: .unsupportedBob)
-        }
-        if currentConfigIdentity != configIdentity {
-            generation &+= 1
-            currentWakeID = nil
-            currentConfigIdentity = configIdentity
         }
         guard receipt.notificationChannel.permitsMacNotice else {
             return .drop(reason: .wrongChannel)
@@ -269,11 +227,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
             return .drop(reason: .duplicate)
         }
 
-        if currentWakeID != receipt.wakeID {
-            generation &+= 1
-            currentWakeID = receipt.wakeID
-        }
-
         if settings.holdWhileAway, presence.isAway {
             let nextCheck = now.addingTimeInterval(2)
             return .hold(
@@ -288,8 +241,7 @@ public struct SnoozeWakeNoticePolicy: Sendable {
 
         switch verification {
         case .unverified:
-            let recheckAt = now.addingTimeInterval(Self.returnSettleSeconds)
-            return .verify(recheckAt: recheckAt)
+            return .verify(recheckAt: now)
         case .failed(let reason):
             return .drop(reason: .verificationFailed(reason: reason))
         case .empty:
@@ -314,8 +266,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
             guard !usable.isEmpty else {
                 return .drop(reason: .noEligibleTasks)
             }
-            let verifiedDate = eligible.first?.wokeAt.flatMap { _ in today }
-            _ = verifiedDate
             return .show(
                 batch: SnoozeWakeNoticeBatch(
                     wakeID: receipt.wakeID,
@@ -337,14 +287,6 @@ public struct SnoozeWakeNoticePolicy: Sendable {
             handledDay = day
         }
         handledWakeIDs.insert(wakeID)
-    }
-
-    /// Invalidates every pending callback after a settings change,
-    /// executable/vault replacement, or shutdown.
-    public mutating func invalidate() {
-        generation &+= 1
-        currentWakeID = nil
-        currentConfigIdentity = nil
     }
 
     private static func standardizedPath(_ path: String) -> String {

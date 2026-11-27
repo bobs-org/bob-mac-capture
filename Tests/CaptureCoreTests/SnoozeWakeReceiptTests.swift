@@ -33,6 +33,15 @@ final class SnoozeWakeReceiptTests: XCTestCase {
         return url
     }
 
+    private func fixtureURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Tests/Fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+    }
+
     func testDecodesRustShapedReceipt() throws {
         let receipt = try JSONDecoder().decode(
             SnoozeWakeReceipt.self, from: Data(receiptJSON().utf8))
@@ -130,6 +139,27 @@ final class SnoozeWakeReceiptTests: XCTestCase {
     func testReaderIgnoresSchemaMismatch() throws {
         let url = try writeReceipt(receiptJSON(schemaVersion: 2))
         XCTAssertNil(try SnoozeWakeReceiptReader().read(at: url))
+    }
+
+    func testReaderDoesNotAssumeMissingSchemaVersionIsOne() throws {
+        let json = receiptJSON().replacingOccurrences(of: "\"schema_version\":1,", with: "")
+        let url = try writeReceipt(json)
+        do {
+            _ = try SnoozeWakeReceiptReader().read(at: url)
+            XCTFail("Expected an explicit schema version")
+        } catch let error as SnoozeWakeReceiptError {
+            guard case .malformed = error else {
+                XCTFail("Expected .malformed, got \(error)")
+                return
+            }
+        }
+    }
+
+    func testReadsFractionalRFC3339WakeTimeFixture() throws {
+        let receipt = try XCTUnwrap(
+            SnoozeWakeReceiptReader().read(at: fixtureURL("snooze-wake-fractional.json")))
+        XCTAssertEqual(receipt.wokenAt, "2026-11-26T15:32:00.123456789-05:00")
+        XCTAssertNotNil(CaptureRFC3339Date.date(from: receipt.wokenAt))
     }
 
     func testReaderReportsMalformedJSONAsDiagnostic() throws {

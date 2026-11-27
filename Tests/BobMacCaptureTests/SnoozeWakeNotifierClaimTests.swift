@@ -67,22 +67,42 @@ final class SnoozeWakeNotifierClaimTests: XCTestCase {
         XCTAssertFalse(writer.isOwned)
     }
 
-    func testRelinquishLeavesRivalClaimAlone() throws {
+    func testLiveClaimCannotBeDisplacedAndDeadClaimCanBeReclaimed() throws {
         let url = try temporaryClaimURL()
-        let first = claim(at: url, pid: 1001, startedAt: "2026-11-26T10:00:00-05:00")
-        let second = claim(at: url, pid: 1002, startedAt: "2026-11-26T10:00:01-05:00")
+        let first = claim(
+            at: url, pid: 1001, startedAt: "2026-11-26T10:00:00-05:00",
+            pidIsAlive: { _ in true })
+        let second = claim(
+            at: url, pid: 1002, startedAt: "2026-11-26T10:00:01-05:00",
+            pidIsAlive: { _ in true })
         try first.publish()
         try second.publish()
+        try second.publish()
 
-        XCTAssertTrue(second.isOwned)
-        XCTAssertFalse(first.isOwned)
-        // The first instance no longer owns the file: relinquishing it
-        // must not delete the rival's claim.
+        XCTAssertTrue(first.isOwned)
+        XCTAssertFalse(second.isOwned)
         first.relinquish()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        try second.publish()
         XCTAssertTrue(second.isOwned)
         second.relinquish()
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func testPublishAtomicallyReclaimsDeadOwner() throws {
+        let url = try temporaryClaimURL()
+        let dead = claim(
+            at: url, pid: 1001, startedAt: "2026-11-26T10:00:00-05:00",
+            pidIsAlive: { _ in false })
+        let live = claim(
+            at: url, pid: 1002, startedAt: "2026-11-26T10:00:01-05:00",
+            pidIsAlive: { $0 == 1002 })
+        try dead.publish()
+        try live.publish()
+
+        XCTAssertFalse(dead.isOwned)
+        XCTAssertTrue(live.isOwned)
+        XCTAssertEqual(SnoozeWakeNotifierClaim.readRecord(at: url)?.pid, 1002)
     }
 
     func testSamePIDStartTokenDistinguishesRelaunch() throws {

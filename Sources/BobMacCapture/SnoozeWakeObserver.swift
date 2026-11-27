@@ -28,6 +28,10 @@ final class SnoozeWakeObserver {
     private var needsReread = false
     private var generation: UInt64 = 0
 
+    var isRegistered: Bool {
+        token != nil
+    }
+
     init(
         readReceipt: ((@Sendable () async throws -> SnoozeWakeReceipt?))? = nil,
         register: (((@escaping @Sendable () -> Void) -> Int32?))? = nil,

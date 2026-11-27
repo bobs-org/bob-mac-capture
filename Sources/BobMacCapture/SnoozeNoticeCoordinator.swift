@@ -15,7 +15,8 @@ import Foundation
 ///   a real lifecycle/configuration change, while pending work is
 ///   retained.
 /// - Every async completion proves it still belongs to the current
-///   batch and configuration via the generation token.
+///   configuration and fetch; each receipt is verified only by a read
+///   started after that receipt was accepted.
 /// - Terminally handled IDs (acknowledged, expired, day-purged, or
 ///   consumed while disabled) persist in the bounded day-scoped store;
 ///   a held batch is never marked delivered merely because the
@@ -26,6 +27,7 @@ final class SnoozeNoticeCoordinator {
     struct PendingEntry: Sendable {
         let receipt: SnoozeWakeReceipt
         let firstSeenAt: Date
+        let verificationAfterFetchID: UInt64
     }
 
     /// One delivered batch awaiting acknowledgement or expiry.
@@ -83,6 +85,7 @@ final class SnoozeNoticeCoordinator {
     private var suppressedDeliveredWakeIDs: Set<String> = []
     private var deliveredSettleDeadline: Date?
     private var verification: SnoozeWakeVerification = .unverified
+    private var verificationFetchID: UInt64?
     private var verifyAfter: Date?
     private var fetchInFlight = false
     private var fetchRetryAfter: Date?
@@ -177,6 +180,9 @@ final class SnoozeNoticeCoordinator {
         presenceSource.onChange = { [weak self] in
             self?.evaluate(reason: "presence")
         }
+        presenceSource.onLifecycleChange = { [weak self] in
+            self?.fetchRetryAfter = nil
+        }
         presenceSource.start()
         observer.start()
         probeCapabilityIfNeeded()
@@ -207,7 +213,9 @@ final class SnoozeNoticeCoordinator {
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
+        verificationFetchID = nil
         fetchInFlight = false
+        fetchRetryAfter = nil
         wasHeld = false
     }
 
@@ -238,9 +246,11 @@ final class SnoozeNoticeCoordinator {
         fetchTask = nil
         fetchInFlight = false
         fetchID &+= 1
+        fetchRetryAfter = nil
+        verification = .unverified
+        verificationFetchID = nil
         if identityChanged {
             isCapable = nil
-            policy.invalidate()
         }
         updateClaim()
         probeCapabilityIfNeeded()
@@ -403,6 +413,7 @@ final class SnoozeNoticeCoordinator {
     var isClaimedForTests: Bool { claim.isOwned }
     var isCapableForTests: Bool? { isCapable }
     var isStartedForTests: Bool { isStarted }
+    var isObserverRegisteredForTests: Bool { observer.isRegistered }
 
     /// Total unacknowledged delivered tasks across live batches plus restored
     /// beacon metadata. Drives the menu-bar beacon count.
@@ -469,7 +480,12 @@ final class SnoozeNoticeCoordinator {
             diagnose("ignoring duplicate \(receipt.wakeID)")
             return
         }
-        pending.append(PendingEntry(receipt: receipt, firstSeenAt: nowProvider()))
+        pending.append(
+            PendingEntry(
+                receipt: receipt,
+                firstSeenAt: nowProvider(),
+                verificationAfterFetchID: fetchID
+            ))
         requestAgendaRefresh()
         evaluate(reason: "receipt")
     }
@@ -492,7 +508,13 @@ final class SnoozeNoticeCoordinator {
         if lastConfigIdentity != configIdentity {
             lastConfigIdentity = configIdentity
             generation &+= 1
+            fetchRetryAfter = nil
+            fetchTask?.cancel()
+            fetchTask = nil
             fetchInFlight = false
+            fetchID &+= 1
+            verification = .unverified
+            verificationFetchID = nil
         }
         if !settings.announceWakes {
             consumeWhileDisabled(today: today)
@@ -545,7 +567,18 @@ final class SnoozeNoticeCoordinator {
         }
         var dropping: [PendingEntry] = []
         var isHeld = false
+        let cycleVerification = verification
+        let cycleVerificationFetchID = verificationFetchID
+        var consumedVerification = false
         for entry in Array(pending) {
+            let entryVerification: SnoozeWakeVerification
+            if let cycleVerificationFetchID,
+                cycleVerificationFetchID > entry.verificationAfterFetchID
+            {
+                entryVerification = cycleVerification
+            } else {
+                entryVerification = .unverified
+            }
             let decision = policy.decide(
                 receipt: entry.receipt,
                 today: today,
@@ -554,7 +587,7 @@ final class SnoozeNoticeCoordinator {
                 presence: presence,
                 events: events,
                 settings: settings,
-                verification: verification,
+                verification: entryVerification,
                 handledIDs: handledStore.handledIDs(for: today),
                 handledIDsDay: today,
                 now: now
@@ -562,6 +595,7 @@ final class SnoozeNoticeCoordinator {
             switch decision {
             case .show(let batch):
                 present(batch: batch)
+                consumedVerification = true
             case .hold(let holdReason, let nextCheck):
                 if !isHeld {
                     CaptureSignpost.event(CaptureSignpost.snoozeHold)
@@ -579,21 +613,28 @@ final class SnoozeNoticeCoordinator {
                 }
             case .verify(let recheckAt):
                 heldReasonText = nil
-                if let retryAfter = fetchRetryAfter, now < retryAfter {
-                    earliestRecheck = min(earliestRecheck ?? retryAfter, retryAfter)
-                } else if verificationNeedsFetch {
-                    if let verifyAfter {
+                if case .unverified = entryVerification {
+                    if let retryAfter = fetchRetryAfter, now < retryAfter {
+                        earliestRecheck = min(earliestRecheck ?? retryAfter, retryAfter)
+                    } else if let verifyAfter {
                         if now < verifyAfter {
                             earliestRecheck = min(earliestRecheck ?? verifyAfter, verifyAfter)
                         } else {
                             self.verifyAfter = nil
                             fetchVerification()
                         }
-                    } else if recheckAt > now {
-                        verifyAfter = recheckAt
-                        earliestRecheck = min(earliestRecheck ?? recheckAt, recheckAt)
                     } else {
-                        fetchVerification()
+                        let requiredRecheckAt =
+                            wasHeld && !deliveryHeld
+                            ? max(recheckAt, now.addingTimeInterval(settleDelaySeconds))
+                            : recheckAt
+                        if requiredRecheckAt > now {
+                            verifyAfter = requiredRecheckAt
+                            earliestRecheck = min(
+                                earliestRecheck ?? requiredRecheckAt, requiredRecheckAt)
+                        } else {
+                            fetchVerification()
+                        }
                     }
                 }
                 if let verifyAfter, verifyAfter > now {
@@ -602,10 +643,14 @@ final class SnoozeNoticeCoordinator {
             case .drop(let dropReason):
                 dropping.append(entry)
                 handleDrop(entry: entry, reason: dropReason, today: today)
+                consumedVerification = true
             }
         }
         for entry in dropping {
             pending.removeAll(where: { $0.receipt.wakeID == entry.receipt.wakeID })
+        }
+        if consumedVerification {
+            verification = .unverified
         }
         if !dropping.isEmpty || !pending.isEmpty {
             emitQueueChanged()
@@ -778,6 +823,7 @@ final class SnoozeNoticeCoordinator {
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
+        verificationFetchID = nil
         verifyAfter = nil
         wasHeld = false
         presenceSource.setIdlePollingActive(false)
@@ -790,7 +836,11 @@ final class SnoozeNoticeCoordinator {
         CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
         lastEvaluatedDay = today
         handledStore.purge(day: today)
-        policy.invalidate()
+        generation &+= 1
+        fetchTask?.cancel()
+        fetchTask = nil
+        fetchInFlight = false
+        fetchID &+= 1
         for entry in delivered {
             beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
@@ -807,6 +857,7 @@ final class SnoozeNoticeCoordinator {
         suppressedDeliveredWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
+        verificationFetchID = nil
         verifyAfter = nil
         fetchRetryAfter = nil
         wasHeld = false
@@ -843,7 +894,7 @@ final class SnoozeNoticeCoordinator {
         fetchTask = Task { [weak self] in
             let result: Result<SnoozeWakeListResponse, Error>
             do {
-                result = .success(try await client.snoozeList())
+                result = .success(try await client.snoozeListForWakeVerification())
             } catch {
                 result = .failure(error)
             }
@@ -860,13 +911,14 @@ final class SnoozeNoticeCoordinator {
         fetch expectedFetch: UInt64,
         today: String
     ) {
-        fetchInFlight = false
-        fetchTask = nil
         guard expected == generation, expectedFetch == fetchID,
             today == todayProvider(), isStarted
         else {
             return
         }
+        fetchInFlight = false
+        fetchTask = nil
+        verificationFetchID = expectedFetch
         switch result {
         case .success(let response):
             fetchRetryAfter = nil
@@ -920,7 +972,9 @@ final class SnoozeNoticeCoordinator {
     // MARK: - Claim
 
     private func updateClaim() {
-        guard isStarted, presenterAttached, isCapable == true, processClient != nil else {
+        guard isStarted, observer.isRegistered, presenterAttached,
+            isCapable == true, processClient != nil
+        else {
             if claim.isOwned {
                 claim.relinquish()
             }

@@ -58,6 +58,29 @@ struct RelationRenameEnvelope: Decodable {
     }
 }
 
+private actor SnoozeAddProcessLane {
+    private var occupied = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !occupied {
+            occupied = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            occupied = false
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
 public final class BobProcessClient: @unchecked Sendable {
     // Every `bob` invocation is local, offline, and expected to finish in well under a
     // second; 20s is a generous bound that only fires for a genuinely wedged process
@@ -67,6 +90,7 @@ public final class BobProcessClient: @unchecked Sendable {
     private let executablePath: String
     private let environment: [String: String]
     private let decoder: JSONDecoder
+    private let snoozeAddLane = SnoozeAddProcessLane()
     private let stateQueue = DispatchQueue(label: "org.bobs.bob-mac-capture.process-client")
     private var activeProcesses: [String: ActiveProcess] = [:]
     private var activeGeneration: UInt64 = 0
@@ -900,6 +924,19 @@ public final class BobProcessClient: @unchecked Sendable {
     /// subcommand fails with clap's unrecognized-subcommand error, which
     /// maps to `BobClientError.unsupportedCommand`.
     public func snoozeList() async throws -> SnoozeWakeListResponse {
+        try await snoozeList(lane: "snooze-list", cancelsPreviousInLane: true)
+    }
+
+    /// A notice-verification read uses its own non-cancelling process lane.
+    /// HUD revalidation and coordinator verification therefore cannot
+    /// terminate each other's reads.
+    public func snoozeListForWakeVerification() async throws -> SnoozeWakeListResponse {
+        try await snoozeList(lane: "snooze-notice-verify", cancelsPreviousInLane: false)
+    }
+
+    private func snoozeList(
+        lane: String, cancelsPreviousInLane: Bool
+    ) async throws -> SnoozeWakeListResponse {
         let identity = identityToken
         let alreadyUnsupported = stateQueue.sync {
             unsupportedSnoozeListIdentity == identity
@@ -911,7 +948,8 @@ public final class BobProcessClient: @unchecked Sendable {
         let arguments = ["snooze", "-f", "json"]
         let result = try await run(
             arguments: arguments,
-            lane: "snooze-list",
+            lane: lane,
+            cancelsPreviousInLane: cancelsPreviousInLane,
             timeout: Self.defaultTimeout
         )
         let stderr = boundedProcessText(result.stderr)
@@ -976,6 +1014,21 @@ public final class BobProcessClient: @unchecked Sendable {
     public func snoozeAdd(route: String, blockID: String, offset: String = "+15m")
         async throws -> SnoozeWakeAddResponse
     {
+        await snoozeAddLane.acquire()
+        do {
+            let response = try await performSnoozeAdd(
+                route: route, blockID: blockID, offset: offset)
+            await snoozeAddLane.release()
+            return response
+        } catch {
+            await snoozeAddLane.release()
+            throw error
+        }
+    }
+
+    private func performSnoozeAdd(route: String, blockID: String, offset: String)
+        async throws -> SnoozeWakeAddResponse
+    {
         let identity = identityToken
         let alreadyUnsupported = stateQueue.sync {
             unsupportedSnoozeAddIdentity == identity
@@ -989,10 +1042,15 @@ public final class BobProcessClient: @unchecked Sendable {
             arguments: arguments,
             lane: "snooze-add",
             cancelsPreviousInLane: false,
+            cancelsOnTaskCancellation: false,
             timeout: Self.defaultTimeout
         )
         let stderr = boundedProcessText(result.stderr)
         if result.exitStatus != 0 {
+            if let refusal = Self.decodeSnoozeRefusal(stdout: result.stdout) {
+                throw BobClientError.snoozeRefused(
+                    kind: refusal.kind, message: refusal.message)
+            }
             if Self.isUnsupportedSnoozeFailure(
                 exitStatus: result.exitStatus, stderr: stderr)
             {
@@ -1040,6 +1098,30 @@ public final class BobProcessClient: @unchecked Sendable {
                 reason: error.localizedDescription
             )
         }
+    }
+
+    private struct SnoozeRefusal: Decodable {
+        struct Detail: Decodable {
+            let kind: String
+            let message: String
+        }
+
+        let ok: Bool
+        let error: Detail?
+    }
+
+    private static func decodeSnoozeRefusal(stdout: String) -> SnoozeRefusal.Detail? {
+        guard
+            let refusal = try? JSONDecoder().decode(
+                SnoozeRefusal.self, from: Data(stdout.utf8)),
+            refusal.ok == false,
+            let detail = refusal.error,
+            !detail.kind.isEmpty,
+            !detail.message.isEmpty
+        else {
+            return nil
+        }
+        return detail
     }
 
     static func isUnsupportedSnoozeFailure(exitStatus: Int32, stderr: String) -> Bool {
@@ -2019,6 +2101,7 @@ public final class BobProcessClient: @unchecked Sendable {
         environmentOverrides: [String: String] = [:],
         lane: String = "default",
         cancelsPreviousInLane: Bool = true,
+        cancelsOnTaskCancellation: Bool = true,
         timeout: TimeInterval = BobProcessClient.defaultTimeout
     ) async throws -> BobProcessResult {
         let process = Process()
@@ -2116,7 +2199,9 @@ public final class BobProcessClient: @unchecked Sendable {
                 }
             }
         } onCancel: {
-            Self.terminateIfRunning(process)
+            if cancelsOnTaskCancellation {
+                Self.terminateIfRunning(process)
+            }
         }
     }
 

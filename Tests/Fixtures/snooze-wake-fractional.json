@@ -1,0 +1,1 @@
+{"schema_version":1,"wake_id":"fractional-1","date":"2026-11-26","woken_at":"2026-11-26T15:32:00.123456789-05:00","host":"mac","notification_channel":"mac_capture","vault_root":"/vault/example","daily_file":"2026/20261126.md","tasks":[],"plan":{"count":0,"cap":10,"over":false}}

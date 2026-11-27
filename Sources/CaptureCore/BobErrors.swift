@@ -8,6 +8,7 @@ public enum BobClientError: Error, Equatable, CustomStringConvertible {
     case malformedJSON(command: [String], exitStatus: Int32, stderr: String, reason: String)
     case schemaMismatch(command: [String], expected: Int, actual: Int)
     case processFailed(command: [String], exitStatus: Int32, stderr: String)
+    case snoozeRefused(kind: String, message: String)
     case timedOut(command: [String], seconds: TimeInterval)
     case unsupportedOption(String)
     case unsupportedCommand(String)
@@ -31,6 +32,8 @@ public enum BobClientError: Error, Equatable, CustomStringConvertible {
                 "Unsupported bob JSON schema for \(commandLine(command)): expected \(expected), got \(actual)"
         case .processFailed(let command, let exitStatus, let stderr):
             return "bob command failed (exit \(exitStatus)): \(commandLine(command)). \(stderr)"
+        case .snoozeRefused(let kind, let message):
+            return "bob refused the snooze request (\(kind)): \(message)"
         case .timedOut(let command, let seconds):
             return
                 "bob command timed out after \(Int(seconds))s and was terminated: \(commandLine(command))"
