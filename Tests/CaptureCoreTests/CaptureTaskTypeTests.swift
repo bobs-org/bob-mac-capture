@@ -90,6 +90,38 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertNil(candidate.effect)
         XCTAssertNil(candidate.refused)
         XCTAssertFalse(candidate.hidden)
+        XCTAssertNil(candidate.lead)
+    }
+
+    func testTaskTypeLeadDecodesAndMalformedLeadIsIgnored() throws {
+        let valid = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(
+                """
+                {"ok":true,"schema_version":1,"cursor":2,
+                 "replacement":{"start":0,"end":2},"context":"task_type",
+                 "candidates":[{"replacement":"#fix ","name":"FIX",
+                   "lead":{"text":"Fix","insert_at":5,"insertion":"Fix ","cursor_after":9}}]}
+                """.utf8
+            )
+        )
+        XCTAssertEqual(
+            valid.candidates.first?.lead,
+            CaptureTaskTypeLead(text: "Fix", insertAt: 5, insertion: "Fix ", cursorAfter: 9)
+        )
+
+        let malformed = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(
+                """
+                {"ok":true,"schema_version":1,"cursor":2,
+                 "replacement":{"start":0,"end":2},"context":"task_type",
+                 "candidates":[{"replacement":"#fix ","name":"FIX","lead":{"text":4}}]}
+                """.utf8
+            )
+        )
+        XCTAssertEqual(malformed.candidates.first?.name, "FIX")
+        XCTAssertNil(malformed.candidates.first?.lead)
     }
 
     func testParseEmptyAndLiteralAndUnicodeAndMidline() throws {
@@ -363,6 +395,22 @@ final class CaptureTaskTypeTests: XCTestCase {
         XCTAssertTrue(typedRow.badges.contains(CaptureUnconfiguredThemePresentation.createBadge))
         XCTAssertEqual(typedMenu.listAccessibilityLabel, "Task type suggestions, 1 result")
         XCTAssertTrue(typedRow.accessibilityLabel.contains("FIXS"))
+    }
+
+    func testLeadPreviewAppearsInRowFooterAndVoiceOver() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "#fix ", name: "FIX", origin: "configured", key: "fix",
+            effect: "set",
+            lead: CaptureTaskTypeLead(text: "Fix", insertAt: 5, insertion: "Fix ", cursorAfter: 9)
+        )
+        let response = CaptureCompletionResponse(
+            ok: true, cursor: 2, replacement: CaptureRange(start: 0, end: 2),
+            context: "task_type", candidates: [candidate], query: "f", subject: "new"
+        )
+        let menu = CaptureTaskTypeMenuPresentation(response: response, today: today)
+        XCTAssertEqual(menu.rows.first?.leadPreview, "Fix…")
+        XCTAssertEqual(menu.selectedFooter, "types “Fix” · this task becomes FIX · no default here")
+        XCTAssertTrue(menu.rows.first?.accessibilityLabel.contains("Types Fix.") == true)
     }
 
     func testPinnedExemptHiddenAndCurrentBadges() {

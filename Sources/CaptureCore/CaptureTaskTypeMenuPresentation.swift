@@ -46,6 +46,7 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
         public let currentlyHidden: Bool
         public let effect: String?
         public let key: String?
+        public let leadPreview: String?
         public let accessibilityLabel: String
     }
 
@@ -148,30 +149,34 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
         subject: String?,
         suggestion: CaptureThemeSuggestion?
     ) -> String {
+        let lead = candidate.lead.map { "types \u{201C}\($0.text)\u{201D}" }
+        let base: String
         if candidate.refused != nil {
-            return "Add it under types: to use it"
-        }
-        let name = candidate.name ?? candidate.replacement
-        let inherited = inheritedSuggestion(subject: subject, suggestion: suggestion)
-        let suggests: String
-        let from: String
-        if let inherited {
-            suggests = caption(for: inherited)
-            from = fromLabel(inherited)
+            base = "Add it under types: to use it"
         } else {
-            suggests = "no default here"
-            from = "no default here"
+            let name = candidate.name ?? candidate.replacement
+            let inherited = inheritedSuggestion(subject: subject, suggestion: suggestion)
+            let suggests: String
+            let from: String
+            if let inherited {
+                suggests = caption(for: inherited)
+                from = fromLabel(inherited)
+            } else {
+                suggests = "no default here"
+                from = "no default here"
+            }
+            switch candidate.effect {
+            case "set":
+                base = "this task becomes \(name) · \(suggests)"
+            case "clear":
+                base = "task type cleared · \(suggests)"
+            case "keep":
+                base = "stays \(name) · \(from)"
+            default:
+                base = suggests
+            }
         }
-        switch candidate.effect {
-        case "set":
-            return "this task becomes \(name) · \(suggests)"
-        case "clear":
-            return "task type cleared · \(suggests)"
-        case "keep":
-            return "stays \(name) · \(from)"
-        default:
-            return suggests
-        }
+        return [lead, base].compactMap { $0 }.joined(separator: " · ")
     }
 
     public static func similarCaption(similarTo: [String]) -> String? {
@@ -228,6 +233,9 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
                 CaptureUnconfiguredThemePresentation.spokenColor(for: $0)
             } ?? name
         var accessibility = "Task type \(name), \(spoken). \(footer)."
+        if let lead = candidate.lead {
+            accessibility += " Types \(lead.text)."
+        }
         if candidate.refused != nil {
             accessibility += " Unavailable."
         }
@@ -246,6 +254,7 @@ public struct CaptureTaskTypeMenuPresentation: Equatable, Sendable {
             currentlyHidden: currentlyHidden,
             effect: candidate.effect,
             key: candidate.key ?? theme?.key,
+            leadPreview: candidate.lead.map { "\($0.text)…" },
             accessibilityLabel: accessibility
         )
     }

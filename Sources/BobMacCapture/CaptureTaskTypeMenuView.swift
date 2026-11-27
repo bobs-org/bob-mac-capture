@@ -92,6 +92,13 @@ struct CaptureTaskTypeMenuView: View {
                             )
                     }
                 }
+            if let lead = row.leadPreview {
+                Text(lead)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityHidden(true)
+            }
             ForEach(row.badges, id: \.self) { badge in
                 Text(badge)
                     .font(.caption2)

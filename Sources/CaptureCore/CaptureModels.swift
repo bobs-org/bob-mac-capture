@@ -11088,6 +11088,37 @@ public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned
     }
 }
 
+/// Bob-authored text preview and UTF-8 insertion metadata for a task-type row.
+/// The Mac Capture client only displays this object in the menu.
+public struct CaptureTaskTypeLead: Codable, Equatable, Sendable {
+    public let text: String
+    public let insertAt: Int
+    public let insertion: String
+    public let cursorAfter: Int
+
+    public init(text: String, insertAt: Int, insertion: String, cursorAfter: Int) {
+        self.text = text
+        self.insertAt = insertAt
+        self.insertion = insertion
+        self.cursorAfter = cursorAfter
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        insertAt = try container.decode(Int.self, forKey: .insertAt)
+        insertion = try container.decode(String.self, forKey: .insertion)
+        cursorAfter = try container.decode(Int.self, forKey: .cursorAfter)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case insertAt = "insert_at"
+        case insertion
+        case cursorAfter = "cursor_after"
+    }
+}
+
 public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifiable {
     public let replacement: String
     /// Additive `directive` row fields: the literal `%` token, a one-line `summary`,
@@ -11273,6 +11304,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
     /// Additive `task_type` effect: `set`, `clear`, or `keep`. Older Bob
     /// and every other context omit it.
     public let effect: String?
+    /// Additive `task_type` lead preview. Older Bob omits it; malformed lead
+    /// metadata is ignored without rejecting the completion response.
+    public let lead: CaptureTaskTypeLead?
     /// Additive `task_type` refusal: `type_not_configured` when the typed
     /// row is refused. Warn-policy rows and older Bob omit it. On a `drawer`
     /// row it is Bob's one-line reason the commit would refuse (a reserved
@@ -11429,6 +11463,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         current: Bool = false,
         inherited: Bool = false,
         effect: String? = nil,
+        lead: CaptureTaskTypeLead? = nil,
         refused: String? = nil,
         entryCount: Int? = nil,
         noteCount: Int? = nil,
@@ -11536,6 +11571,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         self.current = current
         self.inherited = inherited
         self.effect = effect
+        self.lead = lead
         self.refused = refused
         self.entryCount = entryCount
         self.noteCount = noteCount
@@ -11652,6 +11688,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         current = (try? container.decodeIfPresent(Bool.self, forKey: .current)) ?? false
         inherited = (try? container.decodeIfPresent(Bool.self, forKey: .inherited)) ?? false
         effect = (try? container.decodeIfPresent(String.self, forKey: .effect)) ?? nil
+        lead = (try? container.decodeIfPresent(CaptureTaskTypeLead.self, forKey: .lead)) ?? nil
         refused = (try? container.decodeIfPresent(String.self, forKey: .refused)) ?? nil
         entryCount = (try? container.decodeIfPresent(Int.self, forKey: .entryCount)) ?? nil
         noteCount = (try? container.decodeIfPresent(Int.self, forKey: .noteCount)) ?? nil
@@ -11770,6 +11807,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Sendable, Identifi
         case current
         case inherited
         case effect
+        case lead
         case refused
         case entryCount = "entry_count"
         case noteCount = "note_count"
