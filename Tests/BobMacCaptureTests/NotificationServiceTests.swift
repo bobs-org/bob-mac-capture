@@ -1150,7 +1150,8 @@ final class NotificationServiceTests: XCTestCase {
     private func snoozeBatch(
         wakeID: String = "abc",
         count: Int = 1,
-        vaultRoot: String = "/vault/example"
+        vaultRoot: String = "/vault/example",
+        plan: SnoozeWakeLinkPlan = SnoozeWakeLinkPlan(count: 11, cap: 13, over: false)
     ) -> (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation) {
         let rows = (0..<count).map { index in
             SnoozeWakeListRow(
@@ -1180,7 +1181,7 @@ final class NotificationServiceTests: XCTestCase {
                     destination: "WRITE",
                     line: row.line)
             })
-        let presentation = SnoozeWakeNoticePresentation(batch: batch)
+        let presentation = SnoozeWakeNoticePresentation(batch: batch, listBudget: plan)
         return (batch, presentation)
     }
 
@@ -1190,7 +1191,9 @@ final class NotificationServiceTests: XCTestCase {
             batch: batch, presentation: presentation)
         XCTAssertEqual(content.title, "Ready now · Task 1")
         XCTAssertTrue(content.body.contains("woke 15:32"))
-        XCTAssertTrue(content.body.contains("TODAY 11/26"))
+        XCTAssertTrue(content.body.contains("in WRITE"))
+        XCTAssertTrue(content.body.contains("TODAY 11/13"))
+        XCTAssertFalse(content.body.contains("TODAY 11/26"))
         XCTAssertNil(content.sound)
         XCTAssertNil(content.badge)
         XCTAssertEqual(content.interruptionLevel, .passive)
@@ -1207,13 +1210,31 @@ final class NotificationServiceTests: XCTestCase {
     }
 
     func testSnoozeWakeContentBatchNamesTitlesAndCount() {
-        let (batch, presentation) = snoozeBatch(wakeID: "w2", count: 5)
+        let (batch, presentation) = snoozeBatch(
+            wakeID: "w2", count: 5,
+            plan: SnoozeWakeLinkPlan(count: 14, cap: 13, over: true))
         let content = NotificationService.snoozeWakeContent(
             batch: batch, presentation: presentation)
         XCTAssertEqual(content.title, "5 snoozed tasks are ready")
         XCTAssertTrue(content.body.contains("Task 1"))
         XCTAssertTrue(content.body.contains("+ 2 more"))
+        XCTAssertTrue(content.body.contains("woke 15:32"))
+        XCTAssertTrue(content.body.contains("TODAY 14/13"))
+        XCTAssertFalse(content.body.contains("TODAY 11/26"))
         XCTAssertEqual(content.userInfo[NotificationService.snoozeWakeIDKey] as? String, "w2")
+    }
+
+    func testSnoozeWakeContentUsesBobBudgetAndWokeTime() {
+        let (batch, presentation) = snoozeBatch(
+            wakeID: "budget", count: 2,
+            plan: SnoozeWakeLinkPlan(count: 4, cap: 10, over: false))
+        let content = NotificationService.snoozeWakeContent(
+            batch: batch, presentation: presentation)
+        XCTAssertTrue(content.body.contains("woke 15:32 · TODAY 4/10"))
+        XCTAssertFalse(content.body.contains("TODAY 11/26"))
+        XCTAssertEqual(presentation.budgetText, "TODAY 4/10")
+        XCTAssertEqual(presentation.wokeTimeText, "15:32")
+        XCTAssertEqual(presentation.subtitleText, "woke 15:32 · TODAY 4/10")
     }
 
     func testSnoozeWakeRoutesDefaultAndOpenToTask() {
@@ -1234,6 +1255,7 @@ final class NotificationServiceTests: XCTestCase {
                 XCTAssertEqual(urls.count, 1)
                 XCTAssertEqual(urls.first?.scheme, "obsidian")
                 XCTAssertEqual(urls.first?.host, "bob-goto-task")
+                XCTAssertTrue(urls.first?.absoluteString.contains("block=task-0") ?? false)
             default:
                 XCTFail("expected openSnoozeWake for \(action), got \(route)")
             }

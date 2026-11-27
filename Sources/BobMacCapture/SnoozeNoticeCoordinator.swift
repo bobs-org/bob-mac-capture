@@ -66,6 +66,7 @@ final class SnoozeNoticeCoordinator {
     var onPresent: (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation) -> Void = { _, _ in }
     var onDismiss: (String) -> Void = { _ in }
     var onTransientDismiss: (String) -> Void = { _ in }
+    var onRestore: (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation) -> Void = { _, _ in }
     var onQueueChanged: (Int, Int) -> Void = { _, _ in }
     var onDiagnostic: (String) -> Void = { _ in }
     var isPanelOpen: () -> Bool = { false }
@@ -93,6 +94,10 @@ final class SnoozeNoticeCoordinator {
     private var pending: [PendingEntry] = []
     private var delivered: [DeliveredEntry] = []
     private var suppressedDeliveredWakeIDs: Set<String> = []
+    // Wake IDs whose transient HUD nudge already ended (x or timeout),
+    // keyed by wake ID. A ended nudge is never re-presented, re-chimed,
+    // re-announced, or re-posted after a later hold.
+    private var nudgeEndedWakeIDs: Set<String> = []
     private var deliveredSettleDeadline: Date?
     private var verification: SnoozeWakeVerification = .unverified
     private var verificationFetchID: UInt64?
@@ -226,6 +231,7 @@ final class SnoozeNoticeCoordinator {
         pending = []
         delivered = []
         suppressedDeliveredWakeIDs = []
+        nudgeEndedWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
         verificationFetchID = nil
@@ -289,6 +295,23 @@ final class SnoozeNoticeCoordinator {
 
     // MARK: - Acknowledgements
 
+    /// The transient HUD nudge ended (x or timeout), keyed by wake ID. The
+    /// batch stays delivered so its beacon and record keep their lifecycle,
+    /// but it is never re-presented, re-chimed, re-announced, or re-posted
+    /// after a later hold. Hold hides call `onTransientDismiss` directly
+    /// and never land here.
+    func noteTransientEnded(wakeID: String) {
+        guard delivered.contains(where: { $0.batch.wakeID == wakeID }) else {
+            return
+        }
+        nudgeEndedWakeIDs.insert(wakeID)
+        suppressedDeliveredWakeIDs.remove(wakeID)
+        if suppressedDeliveredWakeIDs.isEmpty {
+            deliveredSettleDeadline = nil
+        }
+        emitQueueChanged()
+    }
+
     /// The capture panel opened: delivered beacons/records count as
     /// acknowledged. Pending notices still follow the announcement path.
     /// Restored beacons clear through the same shared path.
@@ -313,6 +336,7 @@ final class SnoozeNoticeCoordinator {
         delivered = []
         restoredBeacon = []
         suppressedDeliveredWakeIDs = []
+        nudgeEndedWakeIDs = []
         deliveredSettleDeadline = nil
         emitQueueChanged()
     }
@@ -339,6 +363,7 @@ final class SnoozeNoticeCoordinator {
         CaptureSignpost.event(CaptureSignpost.snoozeAction)
         let entry = delivered.remove(at: index)
         suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
+        nudgeEndedWakeIDs.remove(entry.batch.wakeID)
         handledStore.acknowledge(entry.batch.wakeID, day: effectiveToday())
         policy.markHandled(entry.batch.wakeID, day: effectiveToday())
         beaconStore.remove(wakeID: entry.batch.wakeID)
@@ -380,6 +405,7 @@ final class SnoozeNoticeCoordinator {
             CaptureSignpost.event(CaptureSignpost.snoozeAction)
             delivered.remove(at: index)
             suppressedDeliveredWakeIDs.remove(wakeID)
+            nudgeEndedWakeIDs.remove(wakeID)
             handledStore.acknowledge(wakeID, day: effectiveToday())
             policy.markHandled(wakeID, day: effectiveToday())
             beaconStore.remove(wakeID: wakeID)
@@ -812,6 +838,7 @@ final class SnoozeNoticeCoordinator {
         for entry in expired {
             delivered.removeAll(where: { $0.batch.wakeID == entry.batch.wakeID })
             suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
+            nudgeEndedWakeIDs.remove(entry.batch.wakeID)
             handledStore.acknowledge(entry.batch.wakeID, day: today)
             policy.markHandled(entry.batch.wakeID, day: today)
             beaconStore.remove(wakeID: entry.batch.wakeID)
@@ -881,6 +908,7 @@ final class SnoozeNoticeCoordinator {
         delivered = []
         restoredBeacon = []
         suppressedDeliveredWakeIDs = []
+        nudgeEndedWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
         verificationFetchID = nil
@@ -923,6 +951,7 @@ final class SnoozeNoticeCoordinator {
         delivered = []
         restoredBeacon = []
         suppressedDeliveredWakeIDs = []
+        nudgeEndedWakeIDs = []
         deliveredSettleDeadline = nil
         verification = .unverified
         verificationFetchID = nil
@@ -1244,10 +1273,16 @@ final class SnoozeNoticeCoordinator {
         else {
             return
         }
+        // Only a HUD the hold hid while still on screen is restored, without
+        // a chime, announcement, or record re-post. An ended nudge stays
+        // ended; its beacon and record keep their own lifecycle.
         let entries = delivered.filter { suppressedDeliveredWakeIDs.contains($0.batch.wakeID) }
         for entry in entries {
-            onPresent(entry.batch, entry.presentation)
             suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
+            guard !nudgeEndedWakeIDs.contains(entry.batch.wakeID) else {
+                continue
+            }
+            onRestore(entry.batch, entry.presentation)
         }
         if suppressedDeliveredWakeIDs.isEmpty {
             deliveredSettleDeadline = nil

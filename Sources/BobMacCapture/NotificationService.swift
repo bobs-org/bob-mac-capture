@@ -549,47 +549,7 @@ final class NotificationService: NSObject, ObservableObject {
         if presentation.remainingCount > 0 {
             lines.append("+ \(presentation.remainingCount) more")
         }
-        let firstRow = presentation.actionableRows.first
-        let firstReceipt = firstRow.flatMap { row in
-            batch.receiptTasks.first(where: { $0.identityKey == row.identityKey })
-        }
-        let wallClockTime = firstReceipt?.wokeAt ?? firstRow?.wokeAt
-        let time: String = {
-            if let wallClockTime,
-                wallClockTime.count == 5,
-                wallClockTime[wallClockTime.index(wallClockTime.startIndex, offsetBy: 2)] == ":",
-                let hour = Int(wallClockTime.prefix(2)),
-                let minute = Int(wallClockTime.suffix(2)),
-                (0...23).contains(hour), (0...59).contains(minute)
-            {
-                return wallClockTime
-            }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: batch.wokenAt)
-        }()
-        let dateParts = batch.date.split(separator: "-")
-        let todayText: String = {
-            guard dateParts.count == 3,
-                let month = Int(dateParts[1]),
-                let day = Int(dateParts[2])
-            else {
-                return "TODAY"
-            }
-            return "TODAY \(month)/\(day)"
-        }()
-        let provenance: String = {
-            if batch.rows.count == 1,
-                let row = batch.rows.first,
-                let receipt = batch.receiptTasks.first(where: { $0.identityKey == row.identityKey }),
-                let destination = receipt.destination, !destination.isEmpty
-            {
-                return "woke \(time) · in \(destination) · \(todayText)"
-            }
-            return "woke \(time) · \(todayText)"
-        }()
-        lines.append(provenance)
+        lines.append(presentation.subtitleText)
         content.body = lines.joined(separator: "\n")
         content.sound = nil
         content.badge = nil

@@ -837,6 +837,58 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         coordinator.stop()
     }
 
+    func testTransientEndedPreventsRestoreAfterHold() async throws {
+        let idle = MutableBox<TimeInterval>(0)
+        let (coordinator, _, presence, defaultCenter, _, _, _, _, _, presented, _) =
+            try makeHarnessWithIdle(idle, processClient: try goodClient())
+        let restored = MutableBox<[String]>([])
+        coordinator.onRestore = { batch, _ in restored.value.append(batch.wakeID) }
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt(wakeID: "w-end"))
+        await waitUntil { presented.value.count == 1 }
+
+        // Hold hides the HUD while it is on screen.
+        idle.value = 1_000
+        defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        // The x/timeout ends the nudge while held: it must never restore.
+        coordinator.noteTransientEnded(wakeID: "w-end")
+        // Hold clears: no chime, announcement, or record re-post.
+        idle.value = 0
+        defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(presented.value.count, 1)
+        XCTAssertTrue(restored.value.isEmpty)
+        XCTAssertEqual(coordinator.deliveredCountForTests, 1)
+        coordinator.stop()
+        XCTAssertFalse(presence.isIdlePolling)
+    }
+
+    func testHoldRestoreUsesSilentPathWithoutReplay() async throws {
+        let idle = MutableBox<TimeInterval>(0)
+        let (coordinator, _, _, defaultCenter, _, _, _, _, _, presented, _) =
+            try makeHarnessWithIdle(idle, processClient: try goodClient())
+        let restored = MutableBox<[String]>([])
+        coordinator.onRestore = { batch, _ in restored.value.append(batch.wakeID) }
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt(wakeID: "w-restore"))
+        await waitUntil { presented.value.count == 1 }
+
+        idle.value = 1_000
+        defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        idle.value = 0
+        defaultCenter.post(name: .NSSystemClockDidChange, object: nil)
+        await waitUntil { restored.value.count == 1 }
+        XCTAssertEqual(presented.value.count, 1)
+        XCTAssertEqual(restored.value, ["w-restore"])
+        coordinator.stop()
+    }
+
     // MARK: - Harness variants
 
     private func makeHarnessWithIdle(

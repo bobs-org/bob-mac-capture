@@ -16,6 +16,7 @@ final class SnoozeWakeHUDTests: XCTestCase {
         XCTAssertFalse(panel.canBecomeMain)
         XCTAssertFalse(panel.ignoresMouseEvents)
         XCTAssertTrue(panel.acceptsMouseMovedEvents)
+        XCTAssertEqual(panel.sharingType, .none)
 
         let host = FirstMouseHostingView(rootView: EmptyView())
         XCTAssertTrue(host.acceptsFirstMouse(for: nil))
@@ -57,6 +58,20 @@ final class SnoozeWakeHUDTests: XCTestCase {
         XCTAssertEqual(url.host, "bob-goto-task")
         XCTAssertTrue(url.absoluteString.contains("path="))
         XCTAssertTrue(url.absoluteString.contains("line=7"))
+        XCTAssertTrue(url.absoluteString.contains("block=email-dan"))
+        let missingBlock = SnoozeWakeListRow(
+            line: 7,
+            route: "Projects/Email Dan.md",
+            blockID: nil,
+            title: "Email Dan",
+            target: "1532",
+            state: "woken",
+            wokeAt: "15:32",
+            wakeNoticeEligible: true
+        )
+        XCTAssertNil(
+            SnoozeWakeHUDController.validatedTaskURL(row: missingBlock, vaultRoot: root.path)
+        )
         XCTAssertNil(
             SnoozeWakeHUDController.validatedRoute("../outside.md", vaultRoot: root.path)
         )
@@ -65,11 +80,33 @@ final class SnoozeWakeHUDTests: XCTestCase {
         )
     }
 
+    func testHUDSubtitleUsesBobBudgetAndWokeTime() {
+        let single = makePresentation(count: 1, overCap: false, plan: (11, 13))
+        XCTAssertEqual(single.budgetText, "TODAY 11/13")
+        XCTAssertEqual(single.wokeTimeText, "15:32")
+        XCTAssertEqual(single.subtitleText, "woke 15:32 · in WRITE · TODAY 11/13")
+        // The fixture date (01/02) must not coincide with the budget (11/13):
+        // the TODAY text can only come from bob's live-link plan.
+        XCTAssertEqual(single.batch.date, "2026-01-02")
+        XCTAssertEqual(single.listBudget.count, 11)
+        XCTAssertEqual(single.listBudget.cap, 13)
+
+        let batch = makePresentation(count: 2, overCap: false, plan: (4, 10))
+        XCTAssertEqual(batch.subtitleText, "woke 15:32 · TODAY 4/10")
+
+        let over = makePresentation(count: 5, overCap: true, plan: (14, 13))
+        XCTAssertTrue(over.isOverCap)
+        XCTAssertEqual(over.subtitleText, "woke 15:32 · TODAY 14/13")
+    }
+
     func testHUDRenderFixturesForSingleBatchAndOpaqueFallback() throws {
-        let single = makePresentation(count: 1, overCap: false)
+        let single = makePresentation(count: 1, overCap: false, plan: (11, 13))
         try render(single, name: "snooze-wake-hud-single")
 
-        let batch = makePresentation(count: 5, overCap: true)
+        let three = makePresentation(count: 3, overCap: false, plan: (4, 10))
+        try render(three, name: "snooze-wake-hud-batch-three")
+
+        let batch = makePresentation(count: 5, overCap: true, plan: (14, 13))
         try render(batch, name: "snooze-wake-hud-batch-over-cap")
         try render(
             batch,
@@ -112,7 +149,8 @@ final class SnoozeWakeHUDTests: XCTestCase {
 
     private func makePresentation(
         count: Int,
-        overCap: Bool
+        overCap: Bool,
+        plan: (Int, Int)? = nil
     ) -> SnoozeWakeNoticePresentation {
         let rows = (0..<count).map { index in
             SnoozeWakeListRow(
@@ -126,11 +164,11 @@ final class SnoozeWakeHUDTests: XCTestCase {
                 wakeNoticeEligible: true
             )
         }
-        let instant = CaptureRFC3339Date.date(from: "2026-11-13T15:32:00-05:00")!
+        let instant = CaptureRFC3339Date.date(from: "2026-01-02T15:32:00-05:00")!
         let batch = SnoozeWakeNoticeBatch(
             wakeID: "wake-\(count)",
             wokenAt: instant,
-            date: "2026-11-13",
+            date: "2026-01-02",
             rows: rows,
             vaultRoot: "/vault/example",
             receiptTasks: rows.map { row in
@@ -145,9 +183,15 @@ final class SnoozeWakeHUDTests: XCTestCase {
                 )
             }
         )
+        let budget: SnoozeWakeLinkPlan = {
+            if let plan {
+                return SnoozeWakeLinkPlan(count: plan.0, cap: plan.1, over: overCap)
+            }
+            return SnoozeWakeLinkPlan(count: count, cap: 3, over: overCap)
+        }()
         return SnoozeWakeNoticePresentation(
             batch: batch,
-            listBudget: SnoozeWakeLinkPlan(count: count, cap: 3, over: overCap)
+            listBudget: budget
         )
     }
 }

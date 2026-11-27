@@ -18,11 +18,16 @@ final class SnoozeWakeHUDState: ObservableObject {
     @Published var presentation: SnoozeWakeNoticePresentation
     @Published var isSnoozing = false
     @Published var feedback: String?
+    @Published var headlineOverride: String?
     @Published var secondsRemaining = SnoozeWakeNoticePresentation.hudDisplaySeconds
 
     init(batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation) {
         self.batch = batch
         self.presentation = presentation
+    }
+
+    var headline: String {
+        headlineOverride ?? presentation.headline
     }
 }
 
@@ -34,6 +39,7 @@ final class SnoozeWakeHUDController {
 
     var onAcknowledge: (String) -> Void = { _ in }
     var onTasksRemoved: (String, [String]) -> Void = { _, _ in }
+    var onTransientEnded: (String) -> Void = { _ in }
 
     private let processClient: () -> BobProcessClient?
     private let vaultRoot: () -> String
@@ -52,6 +58,7 @@ final class SnoozeWakeHUDController {
     private var generation: UInt64 = 0
     private var currentWakeID: String?
     private var soundedWakeIDs: Set<String> = []
+    private var pendingBatch: (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation)?
 
     init(
         processClient: @escaping () -> BobProcessClient?,
@@ -75,20 +82,32 @@ final class SnoozeWakeHUDController {
         self.playChime = playChime
     }
 
-    func show(batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation) {
+    func show(
+        batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation,
+        silent: Bool = false
+    ) {
         let isNewWake = currentWakeID != batch.wakeID
+        // A new batch arriving while +15m is in flight must not inherit the
+        // in-flight feedback: queue it until the action settles.
+        if isNewWake, let current = state, current.isSnoozing {
+            pendingBatch = (batch, presentation)
+            return
+        }
         let needsOrderIn = panel?.isVisible != true
         let isSameVisibleWake = !isNewWake && !needsOrderIn
         currentWakeID = batch.wakeID
         generation &+= 1
         let expectedGeneration = generation
         dismissalTask?.cancel()
-        hovered = false
+        if !isSameVisibleWake {
+            hovered = false
+        }
         let model = state ?? SnoozeWakeHUDState(batch: batch, presentation: presentation)
         model.batch = batch
         model.presentation = presentation
         if !isSameVisibleWake {
             model.feedback = nil
+            model.headlineOverride = nil
             model.isSnoozing = false
             model.secondsRemaining = SnoozeWakeNoticePresentation.hudDisplaySeconds
         }
@@ -106,7 +125,7 @@ final class SnoozeWakeHUDController {
             maximumWidth: preferredWidth,
             onOpen: { [weak self] row in self?.open(row: row, wakeID: batch.wakeID) },
             onSnooze: { [weak self] in self?.snoozeRemaining(wakeID: batch.wakeID) },
-            onDismiss: { [weak self] in self?.dismiss() },
+            onDismiss: { [weak self] in self?.dismiss(wakeID: batch.wakeID) },
             onHover: { [weak self] isHovering in self?.setHovered(isHovering) }
         )
         if let hostingView {
@@ -142,20 +161,29 @@ final class SnoozeWakeHUDController {
         created.alphaValue = 1
         created.orderFrontRegardless()
 
-        if isNewWake, soundedWakeIDs.insert(batch.wakeID).inserted {
-            if soundedWakeIDs.count > SnoozeWakeHandledStore.maxEntries,
-                let oldest = soundedWakeIDs.first
-            {
-                soundedWakeIDs.remove(oldest)
+        if !silent {
+            if isNewWake, soundedWakeIDs.insert(batch.wakeID).inserted {
+                if soundedWakeIDs.count > SnoozeWakeHandledStore.maxEntries,
+                    let oldest = soundedWakeIDs.first
+                {
+                    soundedWakeIDs.remove(oldest)
+                }
+                if chimeEnabled() {
+                    playChime()
+                }
             }
-            if chimeEnabled() {
-                playChime()
+            if isNewWake || needsOrderIn {
+                announce(model.headline, on: created)
             }
-        }
-        if isNewWake || needsOrderIn {
-            announce(presentation.headline, on: created)
         }
         startCountdown(generation: expectedGeneration)
+    }
+
+    /// Restores a hold-hidden HUD without a chime, announcement, or record
+    /// re-post. Only the HUD that the hold hid while on screen is restored;
+    /// the coordinator filters ended wakes before calling here.
+    func restore(batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation) {
+        show(batch: batch, presentation: presentation, silent: true)
     }
 
     /// Hides task copy without acknowledging the delivered wake. The
@@ -165,11 +193,44 @@ final class SnoozeWakeHUDController {
         panel?.orderOut(nil)
     }
 
+    func dismissTransient(wakeID: String) {
+        guard currentWakeID == wakeID else { return }
+        dismissTransient()
+    }
+
     func dismiss() {
         generation &+= 1
         cancelCountdown()
         panel?.alphaValue = 0
         panel?.orderOut(nil)
+    }
+
+    func dismiss(wakeID: String) {
+        guard currentWakeID == wakeID else { return }
+        let endedID = currentWakeID
+        dismiss()
+        if let endedID {
+            onTransientEnded(endedID)
+        }
+        drainPending()
+    }
+
+    /// The countdown firing ends the transient nudge, keyed by wake ID, so
+    /// the coordinator never re-presents it after a later hold.
+    private func endNudgeForTimeout() {
+        guard let endedID = currentWakeID else {
+            dismiss()
+            return
+        }
+        dismiss()
+        onTransientEnded(endedID)
+        drainPending()
+    }
+
+    private func drainPending() {
+        guard let next = pendingBatch else { return }
+        pendingBatch = nil
+        show(batch: next.0, presentation: next.1)
     }
 
     static func makePanel() -> SnoozeWakeHUDPanel {
@@ -180,6 +241,7 @@ final class SnoozeWakeHUDController {
             defer: false
         )
         GlassPanelHost.configure(panel, interaction: .interactive)
+        panel.sharingType = .none
         return panel
     }
 
@@ -187,11 +249,13 @@ final class SnoozeWakeHUDController {
         row: SnoozeWakeListRow, vaultRoot: String
     ) -> URL? {
         guard let route = validatedRoute(row.route, vaultRoot: vaultRoot),
-            let line = row.line, line > 0
+            let line = row.line, line > 0,
+            let rawBlockID = row.blockID, !rawBlockID.isEmpty
         else {
             return nil
         }
-        return ObsidianOpenURL.taskGotoURL(path: route.path, line: line, ref: nil)
+        let blockID = rawBlockID.hasPrefix("^") ? String(rawBlockID.dropFirst()) : rawBlockID
+        return ObsidianOpenURL.taskGotoURL(path: route.path, line: line, ref: nil, blockID: blockID)
     }
 
     static func validatedRoute(_ route: String?, vaultRoot: String) -> URL? {
@@ -217,24 +281,30 @@ final class SnoozeWakeHUDController {
     }
 
     private func open(row: SnoozeWakeListRow, wakeID: String) {
+        guard currentWakeID == wakeID else { return }
         guard let url = Self.validatedTaskURL(row: row, vaultRoot: vaultRoot()),
             openURL(url)
         else {
             state?.feedback = "Couldn't open this task in Obsidian."
             return
         }
+        pendingBatch = nil
         dismiss()
         onAcknowledge(wakeID)
     }
 
     private func snoozeRemaining(wakeID: String) {
-        guard let state, !state.isSnoozing else { return }
+        guard let state, state.batch.wakeID == wakeID, !state.isSnoozing else { return }
         state.isSnoozing = true
         state.feedback = nil
+        state.headlineOverride = nil
         Task { [weak self, weak state] in
             guard let self, let state else { return }
             await self.performSnooze(state: state, wakeID: wakeID)
-            state.isSnoozing = false
+            await MainActor.run {
+                state.isSnoozing = false
+                self.drainPending()
+            }
         }
     }
 
@@ -258,7 +328,7 @@ final class SnoozeWakeHUDController {
 
         let oldRows = state.batch.rows.filter { $0.identityKey != nil }
         do {
-            let response = try await client.snoozeList()
+            let response = try await client.snoozeListForWakeVerification()
             guard response.supportsWakeNotice, response.date == batch.date,
                 let responseRoot = response.vaultRoot,
                 URL(fileURLWithPath: responseRoot, isDirectory: true)
@@ -332,16 +402,20 @@ final class SnoozeWakeHUDController {
                         successfulKeys.isEmpty
                         ? refusalMessage
                         : "Snoozed \(successfulKeys.count); \(refusalMessage)"
+                    state.headlineOverride = nil
                 } else {
                     state.feedback =
                         successfulKeys.isEmpty
                         ? "Couldn't snooze these tasks. They are still ready."
                         : "Snoozed \(successfulKeys.count); \(failedCount) still ready."
+                    state.headlineOverride = nil
                 }
             } else if let label = labels.first, Set(labels).count == 1 {
                 state.feedback = "Snoozed until \(label)"
+                state.headlineOverride = "Snoozed until \(label)"
             } else {
                 state.feedback = "Snoozed \(successfulKeys.count) tasks"
+                state.headlineOverride = "Snoozed \(successfulKeys.count) tasks"
             }
         } catch {
             state.feedback = "Couldn't verify these tasks. They are still ready."
@@ -403,7 +477,7 @@ final class SnoozeWakeHUDController {
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 guard let self, self.generation == expected else { return }
-                self.dismiss()
+                self.endNudgeForTimeout()
             }
         }
     }
@@ -415,8 +489,12 @@ final class SnoozeWakeHUDController {
     }
 
     private func announce(_ message: String, on panel: NSPanel) {
+        // VoiceOver tracks views, not the non-key panel itself: announce
+        // against the hosted content when it exists so the request is
+        // spoken for a non-activating panel.
+        let element: Any = hostingView ?? panel
         NSAccessibility.post(
-            element: panel,
+            element: element,
             notification: .announcementRequested,
             userInfo: [
                 .announcement: message,
@@ -449,16 +527,22 @@ struct SnoozeWakeHUDView: View {
                     .accessibilityHidden(true)
                     .modifier(AlarmMotion(enabled: !reduceMotion, value: animationTick))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(state.presentation.headline)
+                    Text(state.headline)
                         .font(.system(size: 14, weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
                         .lineLimit(2)
                         .accessibilityAddTraits(.isHeader)
-                    Text(wakeDetail)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    Button {
+                        if let first = rows.first { onOpen(first) }
+                    } label: {
+                        subtitleText
+                            .font(.system(size: 11.5))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(rows.isEmpty)
+                    .accessibilityLabel(subtitleAccessibilityLabel)
                     ForEach(Array(rows.prefix(3).enumerated()), id: \.offset) { entry in
                         let row = entry.element
                         Button {
@@ -541,27 +625,37 @@ struct SnoozeWakeHUDView: View {
                 animationTick.toggle()
             }
         }
+        .onChange(of: state.batch.wakeID) { _ in
+            if !reduceMotion {
+                animationTick.toggle()
+            }
+        }
         .onHover(perform: onHover)
     }
 
-    private var wakeDetail: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        let time = formatter.string(from: state.batch.wokenAt)
-        let dateParts = state.batch.date.split(separator: "-")
-        let todayText =
-            dateParts.count == 3
-            ? "TODAY \(Int(dateParts[1]) ?? 0)/\(Int(dateParts[2]) ?? 0)"
-            : "TODAY"
-        if let row = rows.first, rows.count == 1,
-            let receiptTask = state.batch.receiptTasks.first(where: {
+    /// The shared second line: bob's wall-clock time and live-link budget.
+    /// The budget portion renders amber when over cap; color supplements
+    /// the text rather than carrying the signal alone.
+    private var subtitleText: Text {
+        let time = state.presentation.wokeTimeText
+        let budget = state.presentation.budgetText
+        let budgetView = Text(budget)
+            .foregroundStyle(overCap ? Color.orange : Color.secondary)
+        if rows.count == 1,
+            let row = rows.first,
+            let receipt = state.batch.receiptTasks.first(where: {
                 $0.identityKey == row.identityKey
-            }), let destination = receiptTask.destination, !destination.isEmpty
+            }),
+            let destination = receipt.destination, !destination.isEmpty
         {
-            return "woke \(time) · in \(destination) · \(todayText)"
+            return Text("woke \(time) · in \(destination) · ")
+                .foregroundStyle(.secondary) + budgetView
         }
-        return "woke \(time) · \(todayText)"
+        return Text("woke \(time) · ").foregroundStyle(.secondary) + budgetView
+    }
+
+    private var subtitleAccessibilityLabel: String {
+        state.presentation.subtitleText
     }
 }
 

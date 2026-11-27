@@ -602,9 +602,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CaptureSignpost.event(CaptureSignpost.snoozeAction)
             coordinator?.removeDeliveredTasks(wakeID: wakeID, keys: keys)
         }
+        hud.onTransientEnded = { [weak coordinator] wakeID in
+            coordinator?.noteTransientEnded(wakeID: wakeID)
+        }
         coordinator.onPresent = { [weak self, weak hud] batch, presentation in
             hud?.show(batch: batch, presentation: presentation)
             self?.notificationService.postSnoozeWakeRecord(batch: batch, presentation: presentation)
+            self?.updateSnoozeBeacon()
+            self?.refreshSnoozeDiagnostics()
+        }
+        coordinator.onRestore = { [weak self, weak hud] batch, presentation in
+            hud?.restore(batch: batch, presentation: presentation)
             self?.updateSnoozeBeacon()
             self?.refreshSnoozeDiagnostics()
         }
@@ -613,8 +621,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateSnoozeBeacon()
             self?.refreshSnoozeDiagnostics()
         }
-        coordinator.onTransientDismiss = { [weak hud] _ in
-            hud?.dismissTransient()
+        coordinator.onTransientDismiss = { [weak hud] wakeID in
+            hud?.dismissTransient(wakeID: wakeID)
         }
         coordinator.onQueueChanged = { [weak self] _, _ in
             self?.updateSnoozeBeacon()

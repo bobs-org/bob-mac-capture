@@ -81,6 +81,84 @@ public struct SnoozeWakeNoticePresentation: Equatable, Sendable {
         listBudget.over
     }
 
+    /// Bob's live-link budget, never a calendar date: `TODAY {count}/{cap}`.
+    public var budgetText: String {
+        "TODAY \(listBudget.count)/\(listBudget.cap)"
+    }
+
+    /// Bob's wall-clock wake time (`HH:MM`), never Mac-zone formatting of
+    /// the wake instant. Prefers the receipt/row `woke_at` strings bob
+    /// wrote; falls back to formatting the wake instant only when bob
+    /// supplied no usable wall-clock value.
+    public var wokeTimeText: String {
+        Self.wokeHHMM(batch: batch) ?? {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: batch.wokenAt)
+        }()
+    }
+
+    /// The shared second-line copy for the HUD subtitle and the record
+    /// body: `woke HH:MM · in DEST · TODAY count/cap` for a single task
+    /// with a destination, otherwise `woke HH:MM · TODAY count/cap`.
+    public var subtitleText: String {
+        let time = wokeTimeText
+        let today = budgetText
+        if batch.rows.count == 1,
+            let row = batch.rows.first,
+            let receipt = batch.receiptTasks.first(where: {
+                $0.identityKey == row.identityKey
+            }),
+            let destination = receipt.destination, !destination.isEmpty
+        {
+            return "woke \(time) · in \(destination) · \(today)"
+        }
+        return "woke \(time) · \(today)"
+    }
+
+    /// Extracts bob's `HH:MM` wall-clock value from the receipt/row
+    /// `woke_at` strings. Nil unless one is a valid `HH:MM` value.
+    public static func wokeHHMM(batch: SnoozeWakeNoticeBatch) -> String? {
+        if let first = batch.rows.first {
+            if let receipt = batch.receiptTasks.first(where: {
+                $0.identityKey == first.identityKey
+            }),
+                let candidate = receipt.wokeAt, isValidHHMM(candidate)
+            {
+                return candidate
+            }
+            if let candidate = first.wokeAt, isValidHHMM(candidate) {
+                return candidate
+            }
+        }
+        for row in batch.rows {
+            if let candidate = row.wokeAt, isValidHHMM(candidate) {
+                return candidate
+            }
+            if let receipt = batch.receiptTasks.first(where: {
+                $0.identityKey == row.identityKey
+            }),
+                let candidate = receipt.wokeAt, isValidHHMM(candidate)
+            {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    static func isValidHHMM(_ value: String) -> Bool {
+        guard value.count == 5,
+            value[value.index(value.startIndex, offsetBy: 2)] == ":",
+            let hour = Int(value.prefix(2)),
+            let minute = Int(value.suffix(2)),
+            (0...23).contains(hour), (0...59).contains(minute)
+        else {
+            return false
+        }
+        return true
+    }
+
     /// Stable Notification Center record ID for this wake.
     public var recordID: String {
         "snooze-woken-\(batch.wakeID)"
