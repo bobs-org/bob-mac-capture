@@ -63,6 +63,13 @@ struct CaptureNativeRewriteEdit: Equatable {
     var expectedSelection: NSRange? = nil
 }
 
+/// One-key Backspace peel for an untouched type lead. Ranges are UTF-16.
+struct TypeLeadPeel: Equatable {
+    let draft: String
+    let caretUTF16: Int
+    let range: NSRange
+}
+
 /// One native `NSTextView` insert of a saved template block. Ranges are
 /// UTF-16; `cursorUTF8Offset` is bob's caret after the insert.
 struct CaptureTemplateInsertEdit: Equatable {
@@ -2180,6 +2187,38 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Backspace: delete an untouched type lead in one native edit so Undo
+    /// restores the lead. First in the `.deleteBackward` chain.
+    static func deleteTypeLeadInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              textView.isEditable,
+              !textView.hasMarkedText()
+        else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0,
+              let deletionRange = model.consumeTypeLeadBackspace(
+                  caretLocation: selection.location,
+                  text: textView.string
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.breakUndoCoalescing()
+        textView.insertText("", replacementRange: deletionRange)
+        let caret = NSRange(location: deletionRange.location, length: 0)
+        textView.setSelectedRange(caret)
+        textView.scrollRangeToVisible(caret)
+        textView.breakUndoCoalescing()
+        return true
+    }
+
     /// Backspace: delete Bob's four-byte `[ ] ` requirement marker in one
     /// native edit, preserving the bullet prefix and one-step undo.
     static func deleteRequirementMarkerInEditableTextView(
@@ -2303,6 +2342,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             verticalMovementGoal = nil
             return Self.moveByWord(direction, unit, firstResponder: panel?.firstResponder)
         case .deleteBackward:
+            if Self.deleteTypeLeadInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            ) {
+                return true
+            }
             if Self.deleteRequirementMarkerInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model

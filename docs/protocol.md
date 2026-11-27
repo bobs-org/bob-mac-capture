@@ -284,7 +284,7 @@ Absent fields decode tolerantly and hide only affected UI:
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
 - `plan_budget`, destination `role`, `code`, `added_theme_refs`
 - span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`, `task_type`), agenda entry `themes`, Refs Today row `themes`
-- `task_type` completion context, top-level `subject` (`new`/`existing`), candidate `current` / `inherited` / `effect` / `refused`
+- `task_type` completion context, top-level `subject` (`new`/`existing`), candidate `current` / `inherited` / `effect` / `refused` / `lead`
 - `task_theme.action` `kept`, `type_relocation` (`outcome`, `from`, `to`)
 - `configured` on theme refs and `themes list` rows, `configured_themes`, `hue_source`, and `theme_not_configured` warnings on capture and `capture-pomodoro-name`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
@@ -332,7 +332,7 @@ Absent fields decode tolerantly and hide only affected UI:
 | `theme_suggestion` on `capture-complete` (`pomodoro_name`), `suggested` + `suggestion_label` on candidates | Suggested row preselected with `Suggested · <reason>` secondary, `Suggested` header on a suggested create row, reason in accessibility label | First row selected; no reason shown | Upgrade `bob` for suggestions |
 | `task_theme` on `capture --format json` items | `type → X · <inherited>` / `type cleared · <inherited>` / `type X · <source>` (`kept`) line in new-task, link, toggle, and relationship previews, VoiceOver summaries, and notifications (`type FIX` on set/kept) | No type line | Upgrade `bob` for type writes |
 | `type_relocation` on `capture --format json` items | Ledger line (`BUILD → FIX · running entry renamed`, `moved under FIX`, …) beside the type row | No ledger line | Upgrade `bob` for typed relocation |
-| `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` / optional `lead` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops; `lead` adds a row hint, footer text, and VoiceOver text | No task-type menu or refusal details; older responses omit `lead` | Upgrade `bob` for `#` completion and lead previews |
+| `task_type` completion context, `subject`, candidate `current` / `inherited` / `effect` / `refused` / optional `lead` | Compact type menu with header, consequence footer, Ctrl+D hide/show, refused typed rows as no-ops; `lead` adds a hint, footer, VoiceOver, and typing (`#f` → `#fix Fix ▌`) | No type menu; older responses omit `lead` | Upgrade `bob` for `#` completion and leads |
 | Grammar 26 `notebook_section_bullet`, notebook `section` completion, `place_menu` | Notebook section menus for glued `@route#` and first-level bullets, using Bob's chrome | Older Bob: ordinary section completion and the legacy drawer menu | Upgrade `bob` for notebook section menus |
 | `grammar` ≥ 5 on `capture-parse` | Capture with whole-item `=/` split and `=*` merge syntax, along with earlier capture grammar | Capture disabled; "Update bob to use Pomodoro split and merge syntax"; the draft stays | Upgrade `bob` for split and merge |
 | `grammar` 12 / 14, `pomodoro_past` / `pomodoro_past_segment`, `--expect-past-windows` / `pomodoro_past_windows_changed` | Past stacks/windows/trims; segment picker/card; stale preview refresh | Older Bob omits past cards and the stale guard | Upgrade `bob` for past segments |

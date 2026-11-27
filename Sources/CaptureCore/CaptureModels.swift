@@ -11089,7 +11089,8 @@ public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned
 }
 
 /// Bob-authored text preview and UTF-8 insertion metadata for a task-type row.
-/// The Mac Capture client only displays this object in the menu.
+/// The Mac Capture client displays this in the menu and, when the response
+/// snapshot still matches, inserts it as a second native undo group.
 public struct CaptureTaskTypeLead: Codable, Equatable, Sendable {
     public let text: String
     public let insertAt: Int

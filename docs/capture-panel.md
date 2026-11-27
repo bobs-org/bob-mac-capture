@@ -86,14 +86,12 @@ states, and announcements.
   the usual 50 ms debounce. A trailing `#` opens Bob's `task_type` menu when the current draft is an incomplete task-type marker. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
-  The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
-  render orange and green, sharing the badge colors of the rows they select; the
-  whole-item completion spans `task_complete_sigil` (green, the same complete-green
-  as `x!`), `task_complete_note` (route), and `task_complete_block_id` (block ID)
-  reuse those existing colors, so the editor and completion card always agree;
-  `pomodoro_close_drop` renders muted gray. The Work Log index span
-  `pomodoro_close_log_index` renders cyan, sharing the tint of the typed entry
-  line it lands on in the close card; it is not a completion span kind.
+  Close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete` are
+  orange and green like the selected rows; `task_complete_sigil`,
+  `task_complete_note`, and `task_complete_block_id` reuse complete-green, route,
+  and block-ID colors so the editor matches the card; `pomodoro_close_drop` is
+  muted gray. The Work Log index span `pomodoro_close_log_index` is cyan like the
+  typed close-card line, not a completion kind.
   The editor also auto-inserts `,` between close task numbers: typing `1`–`9`
   right after a task number in a close list inserts the separator itself
   (`x1` + `2` → `x1,2`, or `x==1` + `2` → `x==1,2`, and `2x1` + `2` →
@@ -182,6 +180,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   `place_menu` object. First-level notebook section bullets use the
   `notebook_section_bullet` completion context; ordinary bullets under a note remain
   plain note content.
+- A type lead is the title word Bob offers after `#<type>` on an empty
+  task, previewed as `Fix…`. Tab, Return, and click type it (`#f` →
+  `#fix Fix ▌`); Backspace or Command-Z peels it; Control/Command-Return skip
+  it. Space after `#fix` never adds one. See
+  [Typing tasks with `#<type>`](https://bobs-org.github.io/capture/#typing-tasks-with-type).
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and

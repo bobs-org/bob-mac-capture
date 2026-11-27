@@ -1299,6 +1299,10 @@ final class CapturePanelModel: ObservableObject {
     var pendingAliasTipForTesting: CaptureSigilAliasTip? { pendingAliasTip?.tip }
     var aliasTipSessionForTesting: AliasTipSession { aliasTipSession }
     var completionDraftSnapshotForTesting: String? { completionDraftSnapshot }
+    func setCompletionDraftSnapshotForTests(_ draft: String?) {
+        completionDraftSnapshot = draft
+    }
+    func typeLeadPeelForTests() -> TypeLeadPeel? { typeLeadPeel }
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.
@@ -1911,6 +1915,9 @@ final class CapturePanelModel: ObservableObject {
     /// unaffected pairs survive shifts; wholesale replacement clears it.
     private var closeCommaProvenance = CaptureCloseTaskCommaProvenance()
     private var lastProvenanceDraft = ""
+    /// Armed after a successful two-step type-lead accept. One Backspace
+    /// whose caret and draft still match deletes the trailing `text + " "`.
+    private var typeLeadPeel: TypeLeadPeel?
 
     func setCurrentPomodoroTaskLinkCountForTests(_ count: Int?) {
         currentPomodoroTaskLinkCount = count
@@ -3952,6 +3959,35 @@ final class CapturePanelModel: ObservableObject {
         return range
     }
 
+    func disarmTypeLeadPeel() {
+        typeLeadPeel = nil
+    }
+
+    private func disarmTypeLeadPeelIfStale(draft: String, caretUTF8: Int?) {
+        guard let peel = typeLeadPeel else {
+            return
+        }
+        let caretUTF16 = caretUTF8.flatMap { cursor in
+            utf16Range(in: draft, start: cursor, end: cursor)?.location
+        }
+        if draft != peel.draft || caretUTF16 != peel.caretUTF16 {
+            typeLeadPeel = nil
+        }
+    }
+
+    /// Returns the native deletion range when the collapsed caret still sits
+    /// on an armed, untouched type lead, else nil. A match consumes the arm.
+    func consumeTypeLeadBackspace(caretLocation: Int, text: String) -> NSRange? {
+        guard let peel = typeLeadPeel else {
+            return nil
+        }
+        guard text == peel.draft, caretLocation == peel.caretUTF16 else {
+            return nil
+        }
+        typeLeadPeel = nil
+        return peel.range
+    }
+
     /// The four `*` bytes around a caret parked between Bob's expanded pairs,
     /// or nil when the caret is not at `**|**`.
     private static func drawerExpansionStarRange(
@@ -4209,6 +4245,10 @@ final class CapturePanelModel: ObservableObject {
         if drawerMarkerOvertypeArm?.draft != draft {
             drawerMarkerOvertypeArm = nil
         }
+        disarmTypeLeadPeelIfStale(
+            draft: draft,
+            caretUTF8: cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
+        )
         if recordCardDismissedDraft != draft {
             recordCardDismissedDraft = nil
         }
@@ -4480,6 +4520,7 @@ final class CapturePanelModel: ObservableObject {
         {
             drawerMarkerOvertypeArm = nil
         }
+        disarmTypeLeadPeelIfStale(draft: plainDraft, caretUTF8: insertionOffset)
         if let intent = pendingRewriteSubmitIntent,
            intent.inputDraft == plainDraft,
            let expected = rewriteExpectedCursorUTF8,
@@ -4837,6 +4878,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submit(openAfterCapture: Bool) {
+        disarmTypeLeadPeel()
         cancelPendingExplicitSubmit()
         cancelPastBoundaryRefresh()
         clearOpenHintReveal()
@@ -8076,6 +8118,7 @@ final class CapturePanelModel: ObservableObject {
 
         dismissTemplateShelf()
         suppressedCompletionAcceptanceDraft = nil
+        disarmTypeLeadPeel()
         if applyTemplateInsert?(edit) == true {
             templateOrigin = template.id
             requestFocus(.editor)
@@ -8377,6 +8420,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        disarmTypeLeadPeel()
         invalidateRecordInteraction(clearPresentation: true)
         cancelPendingExplicitSubmit()
         stopClipboardPolling()
@@ -14699,7 +14743,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func acceptSelectedCompletionThenSubmitAndOpen() {
-        guard acceptSelectedCompletion(),
+        guard acceptSelectedCompletion(includeLead: false),
               !completionVisible,
               !pickerVisible,
               !inlinePromptVisible,
@@ -15154,7 +15198,8 @@ final class CapturePanelModel: ObservableObject {
     }
 
     @discardableResult
-    func acceptSelectedCompletion() -> Bool {
+    func acceptSelectedCompletion(includeLead: Bool = true) -> Bool {
+        disarmTypeLeadPeel()
         guard let completionResponse else {
             statusText = "Completion range is stale"
             dismissCompletion()
@@ -15261,16 +15306,162 @@ final class CapturePanelModel: ObservableObject {
         return applySelectedCompletionReplacement(
             candidate: candidate,
             range: range,
-            completionResponse: completionResponse
+            completionResponse: completionResponse,
+            includeLead: includeLead
         )
+    }
+
+    /// Two native undo groups for a lead-bearing `task_type` accept. Returns
+    /// false when the caller should keep today's marker-only `setPlainDraft`
+    /// path: no lead, skip-lead, a stale snapshot, or a failed marker edit.
+    /// A failed lead edit keeps the marker (D0) and returns true.
+    private func applyTaskTypeLeadReplacement(
+        candidate: CaptureCompletionCandidate,
+        range: Range<String.Index>,
+        completionResponse: CaptureCompletionResponse,
+        includeLead: Bool
+    ) -> Bool {
+        guard includeLead,
+              completionResponse.context == "task_type",
+              let lead = candidate.lead,
+              completionDraftSnapshot == plainDraft,
+              collapsedSelectionUTF8Offset() == completionResponse.cursor
+        else {
+            return false
+        }
+
+        let peelSuffix = lead.text + " "
+        guard lead.insertion.hasSuffix(peelSuffix) else {
+            return false
+        }
+
+        let preDraft = plainDraft
+        var d0 = preDraft
+        d0.replaceSubrange(range, with: candidate.replacement)
+        let markerCursor = candidate.cursorAfter
+            ?? completionResponse.replacement.start + candidate.replacement.utf8.count
+        guard stringRange(in: d0, start: markerCursor, end: markerCursor) != nil,
+              let insertIndex = stringRange(
+                  in: d0, start: lead.insertAt, end: lead.insertAt)
+        else {
+            return false
+        }
+        var d1 = d0
+        d1.replaceSubrange(insertIndex, with: lead.insertion)
+        let peelUTF8Start = lead.cursorAfter - peelSuffix.utf8.count
+        guard peelUTF8Start >= 0,
+              stringRange(in: d1, start: lead.cursorAfter, end: lead.cursorAfter) != nil,
+              let markerUTF16 = utf16Range(
+                  in: preDraft, byteRange: completionResponse.replacement),
+              let preCaretUTF16 = utf16Range(
+                  in: preDraft,
+                  start: completionResponse.cursor,
+                  end: completionResponse.cursor
+              )?.location,
+              let d0CaretUTF16 = utf16Range(
+                  in: d0, start: markerCursor, end: markerCursor)?.location,
+              let insertUTF16 = utf16Range(
+                  in: d0, start: lead.insertAt, end: lead.insertAt),
+              let d1CaretUTF16 = utf16Range(
+                  in: d1, start: lead.cursorAfter, end: lead.cursorAfter)?.location,
+              let peelUTF16 = utf16Range(
+                  in: d1, start: peelUTF8Start, end: lead.cursorAfter),
+              (d1 as NSString).substring(with: peelUTF16) == peelSuffix
+        else {
+            return false
+        }
+
+        let markerEdit = CaptureNativeRewriteEdit(
+            replacementRange: markerUTF16,
+            replacementText: candidate.replacement,
+            resultingSelection: NSRange(location: d0CaretUTF16, length: 0),
+            expectedDraft: preDraft,
+            resultingDraft: d0,
+            expectedSelection: NSRange(location: preCaretUTF16, length: 0)
+        )
+        let leadEdit = CaptureNativeRewriteEdit(
+            replacementRange: insertUTF16,
+            replacementText: lead.insertion,
+            resultingSelection: NSRange(location: d1CaretUTF16, length: 0),
+            expectedDraft: d0,
+            resultingDraft: d1,
+            expectedSelection: NSRange(location: d0CaretUTF16, length: 0)
+        )
+
+        retireAliasTipDisplayEligibility()
+        let wasFileUnder = fileUnderActive
+        dismissCompletion()
+        if wasFileUnder {
+            fileUnderDismissedURL = nil
+        }
+        if preDraft != d0 {
+            recordCardDismissedDraft = nil
+        }
+
+        isApplyingProgrammaticDraft = true
+        suppressedCompletionAcceptanceDraft = d0
+        let markerApplied = applyNativeRewriteEdit?(markerEdit) == true
+        isApplyingProgrammaticDraft = false
+        guard markerApplied else {
+            suppressedCompletionAcceptanceDraft = nil
+            return false
+        }
+        adoptNativeDraft(d0, cursor: markerCursor)
+
+        isApplyingProgrammaticDraft = true
+        suppressedCompletionAcceptanceDraft = d1
+        let leadApplied = applyNativeRewriteEdit?(leadEdit) == true
+        isApplyingProgrammaticDraft = false
+        guard leadApplied else {
+            suppressedCompletionAcceptanceDraft = d0
+            scheduleAnalysis(
+                cursorUTF8Offset: markerCursor,
+                requestCompletion: false,
+                trigger: .edit
+            )
+            requestFocus(.editor)
+            return true
+        }
+
+        adoptNativeDraft(d1, cursor: lead.cursorAfter)
+        typeLeadPeel = TypeLeadPeel(
+            draft: d1,
+            caretUTF16: d1CaretUTF16,
+            range: peelUTF16
+        )
+        scheduleAnalysis(
+            cursorUTF8Offset: lead.cursorAfter,
+            requestCompletion: false,
+            trigger: .edit
+        )
+        requestFocus(.editor)
+        return true
+    }
+
+    private func adoptNativeDraft(_ text: String, cursor: Int) {
+        if plainDraft != text {
+            isApplyingProgrammaticDraft = true
+            attributedDraft = AttributedString(text)
+            isApplyingProgrammaticDraft = false
+        }
+        restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
     }
 
     @discardableResult
     private func applySelectedCompletionReplacement(
         candidate: CaptureCompletionCandidate,
         range: Range<String.Index>,
-        completionResponse: CaptureCompletionResponse
+        completionResponse: CaptureCompletionResponse,
+        includeLead: Bool = true
     ) -> Bool {
+        if applyTaskTypeLeadReplacement(
+            candidate: candidate,
+            range: range,
+            completionResponse: completionResponse,
+            includeLead: includeLead
+        ) {
+            return true
+        }
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
         let continuation = candidate.recordContinuation
@@ -17736,6 +17927,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func restoreDraftUndoably(_ text: String, cursor: Int) {
+        disarmTypeLeadPeel()
         guard text != plainDraft else {
             if stringRange(in: plainDraft, start: cursor, end: cursor) != nil {
                 setPlainDraft(plainDraft, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
@@ -20920,6 +21112,7 @@ final class CapturePanelModel: ObservableObject {
         stopClipboardPolling()
         closeCommaProvenance.clear()
         lastProvenanceDraft = text
+        disarmTypeLeadPeel()
         isApplyingProgrammaticDraft = true
         attributedDraft = AttributedString(text)
         restoreSelection(
