@@ -40,13 +40,14 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     }
 
     private func listJSON(
-        rows: String, vaultRoot: String = "/tmp/vault", wakeNoticeVersion: Int? = 1
+        rows: String, vaultRoot: String = "/tmp/vault", wakeNoticeVersion: Int? = 1,
+        date: String = "2026-11-26"
     ) -> String {
         let version = wakeNoticeVersion.map { "\"wake_notice_version\":\($0)," } ?? ""
         return
             """
             {"schema_version":1,\(version)"vault_root":"\(vaultRoot)",\
-            "date":"2026-11-26","now":"2026-11-26T15:32:10-05:00",\
+            "date":"\(date)","now":"\(date)T15:32:10-05:00",\
             "rows":[\(rows)],"next_wake_at":null,"plan":{"count":1,"cap":10,"over":false}}
             """
     }
@@ -794,27 +795,30 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     }
 
     func testSixtyMinuteBeaconExpiryClears() async throws {
+        // Bob owns the day: a local-only day roll clears nothing. Simulate
+        // a bob-confirmed new day through the list file; the agenda path
+        // picks up the fresh read and the shared day-boundary path clears
+        // the delivered beacon and its record together.
+        let responseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        try writeListJSON(listJSON(rows: eligibleRowJSON()), to: responseURL)
+        let processClient = try client(environment: [
+            "FAKE_BOB_SNOOZE_LIST_JSON_FILE": responseURL.path
+        ])
         let (coordinator, clock, _, _, _, handledStore, _, _, _, presented, dismissed) =
-            try makeHarness(processClient: try goodClient())
+            try makeHarness(processClient: processClient)
         coordinator.start()
         coordinator.attachPresenter()
         await waitUntil { coordinator.isCapableForTests == true }
         coordinator.receiveForTests(receipt(wakeID: "w60"))
         await waitUntil { presented.value.count == 1 }
         XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 1)
-        // Advance past the 60-minute beacon lifetime without moving the day.
-        // The fake clock's now advances with wall time; simulate expiry by
-        // acknowledging through the expiry path via day evaluation is covered
-        // separately — here verify the expiry helper sees the beacon window.
-        let woken = try wokenDate()
-        let deliveredAt = woken.addingTimeInterval(10)
-        let expiry = deliveredAt.addingTimeInterval(60 * 60)
-        XCTAssertTrue(expiry > clock.now)
-        // Force expiry by rolling the day: the shared path clears both.
+        // Bob confirms the new day; the agenda path refreshes bob facts.
+        try writeListJSON(
+            listJSON(rows: eligibleRowJSON(), date: "2026-11-27"), to: responseURL)
         clock.today = "2026-11-27"
-        coordinator.notifySettingsChanged()
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 0)
+        coordinator.notifyAgendaChanged()
+        await waitUntil(timeout: 10) { coordinator.unacknowledgedTaskCount() == 0 }
         XCTAssertTrue(handledStore.contains("w60", day: "2026-11-27"))
         XCTAssertTrue(dismissed.value.contains("w60"))
         coordinator.stop()
