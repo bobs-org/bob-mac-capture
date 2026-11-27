@@ -520,6 +520,9 @@ final class SnoozeNoticeCoordinator {
             consumeWhileDisabled(today: today)
             return
         }
+        if isCapable == nil {
+            probeCapabilityIfNeeded()
+        }
         expireDelivered(today: today, now: now)
         // The 60-minute beacon and four-hour receipt expiries need a timer
         // even when no hold or verification is pending.
@@ -836,17 +839,25 @@ final class SnoozeNoticeCoordinator {
         CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
         lastEvaluatedDay = today
         handledStore.purge(day: today)
+        for entry in pending {
+            handledStore.acknowledge(entry.receipt.wakeID, day: today)
+            policy.markHandled(entry.receipt.wakeID, day: today)
+        }
         generation &+= 1
         fetchTask?.cancel()
         fetchTask = nil
         fetchInFlight = false
         fetchID &+= 1
         for entry in delivered {
+            handledStore.acknowledge(entry.batch.wakeID, day: today)
+            policy.markHandled(entry.batch.wakeID, day: today)
             beaconStore.remove(wakeID: entry.batch.wakeID)
             onDismiss(entry.batch.wakeID)
             onTransientDismiss(entry.batch.wakeID)
         }
         for restored in restoredBeacon {
+            handledStore.acknowledge(restored.wakeID, day: today)
+            policy.markHandled(restored.wakeID, day: today)
             beaconStore.remove(wakeID: restored.wakeID)
             onDismiss(restored.wakeID)
             onTransientDismiss(restored.wakeID)

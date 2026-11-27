@@ -549,10 +549,26 @@ final class NotificationService: NSObject, ObservableObject {
         if presentation.remainingCount > 0 {
             lines.append("+ \(presentation.remainingCount) more")
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        let time = formatter.string(from: batch.wokenAt)
+        let firstRow = presentation.actionableRows.first
+        let firstReceipt = firstRow.flatMap { row in
+            batch.receiptTasks.first(where: { $0.identityKey == row.identityKey })
+        }
+        let wallClockTime = firstReceipt?.wokeAt ?? firstRow?.wokeAt
+        let time: String = {
+            if let wallClockTime,
+                wallClockTime.count == 5,
+                wallClockTime[wallClockTime.index(wallClockTime.startIndex, offsetBy: 2)] == ":",
+                let hour = Int(wallClockTime.prefix(2)),
+                let minute = Int(wallClockTime.suffix(2)),
+                (0...23).contains(hour), (0...59).contains(minute)
+            {
+                return wallClockTime
+            }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: batch.wokenAt)
+        }()
         let dateParts = batch.date.split(separator: "-")
         let todayText: String = {
             guard dateParts.count == 3,
@@ -624,7 +640,8 @@ final class NotificationService: NSObject, ObservableObject {
         guard file.path.hasPrefix(prefix) else {
             return nil
         }
-        let blockID = userInfo[snoozeTaskBlockIDKey] as? String
+        let rawBlockID = userInfo[snoozeTaskBlockIDKey] as? String
+        let blockID = rawBlockID.map { $0.hasPrefix("^") ? String($0.dropFirst()) : $0 }
         return ObsidianOpenURL.taskGotoURL(
             path: file.path, line: line, ref: nil, blockID: blockID)
     }
