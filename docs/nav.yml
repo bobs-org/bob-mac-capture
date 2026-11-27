@@ -34,6 +34,8 @@
   path: wikilink-completion.md
 - title: Idle agenda
   path: idle-agenda.md
+- title: Snooze wake notices
+  path: snooze-wake-notices.md
 - title: Bob Refs
   path: refs.md
 - title: Bob Refs inspector

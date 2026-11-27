@@ -45,27 +45,19 @@ enum StatusItemGlyph {
         /// Inner radius of the stroked bowl.
         static let counterRadius: CGFloat = 4.0
         /// Wake-beacon accessory: a small amber badge in the top-right corner.
-        /// Drawn only when `snoozeCount > 0`. The badge radius keeps the count
-        /// legible at 1x while staying inside the 18pt canvas.
         static let beaconCenter = CGPoint(x: 14.2, y: 4.2)
         static let beaconRadius: CGFloat = 3.3
         static let beaconFontSize: CGFloat = 6.5
-        /// Union of all ink in either state plus the wake beacon; the beacon
-        /// extends the resting bounds to the top-right corner.
-        static let inkBounds = NSRect(x: 3.5, y: 0.5, width: 14, height: 15)
+        /// Union of all ink in either state.
+        static let inkBounds = NSRect(x: 3.5, y: 2.5, width: 11, height: 13)
     }
 
     /// Draws the glyph for `state`, tinted by AppKit as a template image.
-    /// `bulletRadius` varies only during the capture-landed pulse.
-    /// `snoozeCount` adds the wake beacon: a small amber badge with the
-    /// unacknowledged delivered-task count. The base glyph stays monochrome;
-    /// the badge is rendered in color on purpose, so the image is marked
-    /// non-template when the beacon is present and AppKit tinting cannot
-    /// erase the amber.
+    /// `bulletRadius` varies only during the capture-landed pulse. The wake
+    /// beacon is drawn separately so this base remains template-tinted.
     static func image(
         for state: State,
-        bulletRadius: CGFloat = Metrics.bulletRadius,
-        snoozeCount: Int = 0
+        bulletRadius: CGFloat = Metrics.bulletRadius
     ) -> NSImage {
         let length = Metrics.canvasLength
         let size = NSSize(width: length, height: length)
@@ -119,47 +111,111 @@ enum StatusItemGlyph {
                 NSBezierPath(ovalIn: dotRect).fill()
             }
 
-            if snoozeCount > 0 {
-                // Amber beacon: filled circle plus a centered count. Drawn in
-                // color on purpose; the caller marks the image non-template
-                // so menu-bar tinting cannot erase the amber.
-                NSColor.systemOrange.setFill()
-                let badgeSide = Metrics.beaconRadius * 2
-                let badgeRect = NSRect(
-                    x: Metrics.beaconCenter.x - Metrics.beaconRadius,
-                    y: Metrics.beaconCenter.y - Metrics.beaconRadius,
-                    width: badgeSide,
-                    height: badgeSide
-                )
-                NSBezierPath(ovalIn: badgeRect).fill()
+            return true
+        }
+        image.isTemplate = true
+        let label = StatusItemPresentation(isBobResolved: state == .ready)
+        image.accessibilityDescription = label.accessibilityLabel
+        return image
+    }
+}
 
-                let label = snoozeCount > 99 ? "99+" : "\(snoozeCount)"
-                let paragraph = NSMutableParagraphStyle()
-                paragraph.alignment = .center
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.boldSystemFont(ofSize: Metrics.beaconFontSize),
+/// The amber wake badge is a separate non-template image layered over the
+/// menu-bar button's template glyph, so AppKit can tint the base independently.
+enum StatusItemBeaconGlyph {
+    static func image(count: Int) -> NSImage {
+        let size = NSSize(
+            width: StatusItemGlyph.Metrics.canvasLength,
+            height: StatusItemGlyph.Metrics.canvasLength
+        )
+        let image = NSImage(size: size, flipped: true) { _ in
+            guard count > 0 else { return true }
+            NSColor.systemOrange.setFill()
+            let radius = StatusItemGlyph.Metrics.beaconRadius
+            let center = StatusItemGlyph.Metrics.beaconCenter
+            let bells = [-1.0, 1.0].map { offset in
+                NSRect(x: center.x + offset * 1.55 - 0.7, y: 0.55, width: 1.4, height: 1.5)
+            }
+            for bell in bells {
+                NSBezierPath(ovalIn: bell).fill()
+            }
+            NSColor.systemOrange.setStroke()
+            let feet = NSBezierPath()
+            feet.move(to: NSPoint(x: center.x - 1.45, y: 6.55))
+            feet.line(to: NSPoint(x: center.x - 2.05, y: 7.9))
+            feet.move(to: NSPoint(x: center.x + 1.45, y: 6.55))
+            feet.line(to: NSPoint(x: center.x + 2.05, y: 7.9))
+            feet.lineWidth = 0.9
+            feet.lineCapStyle = .round
+            feet.stroke()
+            NSBezierPath(
+                ovalIn: NSRect(
+                    x: center.x - radius,
+                    y: center.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                )
+            ).fill()
+
+            let label = count > 99 ? "99+" : "\(count)"
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let text = NSAttributedString(
+                string: label,
+                attributes: [
+                    .font: NSFont.boldSystemFont(ofSize: StatusItemGlyph.Metrics.beaconFontSize),
                     .foregroundColor: NSColor.white,
                     .paragraphStyle: paragraph,
                 ]
-                let text = NSAttributedString(string: label, attributes: attributes)
-                // Center the count in the badge. The y-down flipped context
-                // draws text upright; nudge by half the cap height.
-                let textSize = text.size()
-                let textOrigin = NSPoint(
-                    x: Metrics.beaconCenter.x - textSize.width / 2,
-                    y: Metrics.beaconCenter.y - textSize.height / 2 + 0.5
-                )
-                text.draw(at: textOrigin)
-            }
+            )
+            let textSize = text.size()
+            text.draw(
+                at: NSPoint(
+                    x: center.x - textSize.width / 2,
+                    y: center.y - textSize.height / 2 + 0.5
+                ))
             return true
         }
-        // Template only while the beacon is absent; a colored badge must opt
-        // out of tinting or AppKit would recolor the amber to the menu tint.
-        image.isTemplate = snoozeCount == 0
-        let label = StatusItemPresentation(
-            isBobResolved: state == .ready, snoozeCount: snoozeCount)
-        image.accessibilityDescription = label.accessibilityLabel
+        image.isTemplate = false
         return image
+    }
+}
+
+/// Mouse-transparent overlay for the colored badge. The status-item button
+/// continues to own the template glyph and all click/accessibility behavior.
+@MainActor
+final class StatusItemBeaconAccessoryView: NSView {
+    var count = 0 {
+        didSet {
+            isHidden = count <= 0
+            needsDisplay = true
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isHidden = true
+        autoresizingMask = [.width, .height]
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard count > 0 else { return }
+        let canvas = StatusItemGlyph.Metrics.canvasLength
+        let glyphRect = NSRect(
+            x: (bounds.width - canvas) / 2,
+            y: (bounds.height - canvas) / 2,
+            width: canvas,
+            height: canvas
+        )
+        StatusItemBeaconGlyph.image(count: count).draw(in: glyphRect)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
     }
 }
 

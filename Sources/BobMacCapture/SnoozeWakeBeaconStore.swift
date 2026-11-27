@@ -107,6 +107,22 @@ final class SnoozeWakeBeaconStore: Sendable {
         }
     }
 
+    /// Removes every persisted beacon for `vaultRoot`. Call when the app's
+    /// configured vault or Bob executable changes so no old record survives
+    /// into the new client configuration.
+    func removeAll(vaultRoot: String) {
+        guard !vaultRoot.isEmpty else { return }
+        let root = standardized(vaultRoot)
+        lock.lock()
+        defer { lock.unlock() }
+        var stored = readLocked()
+        let before = stored.entries.count
+        stored.entries.removeAll { standardized($0.vaultRoot) == root }
+        if stored.entries.count != before {
+            writeLocked(stored)
+        }
+    }
+
     /// Drops entries that do not belong to `today` or `vaultRoot`, or that
     /// have expired as of `now`.
     func purge(today: String, vaultRoot: String, now: Date) {

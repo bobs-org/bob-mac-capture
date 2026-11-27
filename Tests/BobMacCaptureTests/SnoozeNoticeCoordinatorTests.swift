@@ -1,4 +1,4 @@
-import CaptureCore
+@testable import CaptureCore
 import Foundation
 import XCTest
 
@@ -9,10 +9,16 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     private final class FakeClock: @unchecked Sendable {
         private let baseNow: Date
         private let baseUptime: TimeInterval
+        private var adjustment: TimeInterval = 0
         var today: String
 
         var now: Date {
-            baseNow.addingTimeInterval(ProcessInfo.processInfo.systemUptime - baseUptime)
+            baseNow.addingTimeInterval(
+                ProcessInfo.processInfo.systemUptime - baseUptime + adjustment)
+        }
+
+        func advance(by seconds: TimeInterval) {
+            adjustment += seconds
         }
 
         init(now: Date, today: String) {
@@ -52,9 +58,11 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
             """
     }
 
-    private func eligibleRowJSON() -> String {
+    private func eligibleRowJSON(
+        blockID: String = "^job", title: String = "Email Dan", line: Int = 4
+    ) -> String {
         """
-        {"line":4,"route":"tasks.md","block_id":"^job","title":"Email Dan",\
+        {"line":\(line),"route":"tasks.md","block_id":"\(blockID)","title":"\(title)",\
         "target":"1532","state":"woken","woke_at":"15:32","wake_notice_eligible":true}
         """
     }
@@ -92,16 +100,11 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     private func receipt(
         wakeID: String = "w1",
         channel: SnoozeWakeNotificationChannel = .macCapture,
-        vaultRoot: String? = "/tmp/vault"
+        vaultRoot: String? = "/tmp/vault",
+        tasks: [SnoozeWakeReceiptTask]? = nil
     ) -> SnoozeWakeReceipt {
-        SnoozeWakeReceipt(
-            wakeID: wakeID,
-            date: "2026-11-26",
-            wokenAt: "2026-11-26T15:32:00-05:00",
-            notificationChannel: channel,
-            vaultRoot: vaultRoot,
-            dailyFile: "2026/20261126.md",
-            tasks: [
+        let receiptTasks =
+            tasks ?? [
                 SnoozeWakeReceiptTask(
                     title: "Email Dan",
                     route: "tasks.md",
@@ -111,6 +114,14 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
                     destination: "WRITE",
                     line: 4)
             ]
+        return SnoozeWakeReceipt(
+            wakeID: wakeID,
+            date: "2026-11-26",
+            wokenAt: "2026-11-26T15:32:00-05:00",
+            notificationChannel: channel,
+            vaultRoot: vaultRoot,
+            dailyFile: "2026/20261126.md",
+            tasks: receiptTasks
         )
     }
 
@@ -703,6 +714,35 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         coordinator.stop()
     }
 
+    func testReconfigureForVaultOrExecutableChangeWithdrawsOldWakeState() async throws {
+        for changesExecutable in [false, true] {
+            let oldClient = try goodClient()
+            oldClient.identityTokenProvider = { "old-executable" }
+            let newClient = try goodClient()
+            newClient.identityTokenProvider = {
+                changesExecutable ? "new-executable" : "old-executable"
+            }
+            let (coordinator, _, _, _, _, _, _, _, _, presented, dismissed) =
+                try makeHarness(processClient: oldClient)
+            coordinator.start()
+            coordinator.attachPresenter()
+            await waitUntil { coordinator.isCapableForTests == true }
+            coordinator.receiveForTests(receipt(wakeID: "reconfigure-\(changesExecutable)"))
+            await waitUntil { presented.value.count == 1 }
+
+            coordinator.reconfigure(
+                processClient: newClient,
+                vaultRoot: changesExecutable ? "/tmp/vault" : "/tmp/new-vault"
+            )
+
+            XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 0)
+            XCTAssertTrue(coordinator.activeWakeIDs().isEmpty)
+            XCTAssertTrue(
+                dismissed.value.contains("reconfigure-\(changesExecutable)"))
+            coordinator.stop()
+        }
+    }
+
     func testDayPurgeClearsPending() async throws {
         // No process client: verification can never complete, so the
         // batch stays pending until the day boundary purges it.
@@ -795,10 +835,8 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
     }
 
     func testSixtyMinuteBeaconExpiryClears() async throws {
-        // Bob owns the day: a local-only day roll clears nothing. Simulate
-        // a bob-confirmed new day through the list file; the agenda path
-        // picks up the fresh read and the shared day-boundary path clears
-        // the delivered beacon and its record together.
+        // Advancing the injected clock inside the same Bob day exercises the
+        // 60-minute beacon lifetime rather than the separate day purge.
         let responseURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
         try writeListJSON(listJSON(rows: eligibleRowJSON()), to: responseURL)
@@ -813,32 +851,128 @@ final class SnoozeNoticeCoordinatorTests: XCTestCase {
         coordinator.receiveForTests(receipt(wakeID: "w60"))
         await waitUntil { presented.value.count == 1 }
         XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 1)
-        // Bob confirms the new day; the agenda path refreshes bob facts.
+        clock.advance(by: 60 * 60 + 1)
+        coordinator.notifyAgendaChanged()
+        await waitUntil(timeout: 10) { coordinator.unacknowledgedTaskCount() == 0 }
+        XCTAssertTrue(handledStore.contains("w60", day: "2026-11-26"))
+        XCTAssertTrue(dismissed.value.contains("w60"))
+        coordinator.stop()
+    }
+
+    func testDayRolloverClearsDeliveredBeacon() async throws {
+        let responseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        try writeListJSON(listJSON(rows: eligibleRowJSON()), to: responseURL)
+        let processClient = try client(environment: [
+            "FAKE_BOB_SNOOZE_LIST_JSON_FILE": responseURL.path
+        ])
+        let (coordinator, clock, _, _, _, handledStore, _, _, _, presented, dismissed) =
+            try makeHarness(processClient: processClient)
+        coordinator.start()
+        coordinator.attachPresenter()
+        await waitUntil { coordinator.isCapableForTests == true }
+        coordinator.receiveForTests(receipt(wakeID: "w-day"))
+        await waitUntil { presented.value.count == 1 }
+
         try writeListJSON(
             listJSON(rows: eligibleRowJSON(), date: "2026-11-27"), to: responseURL)
         clock.today = "2026-11-27"
         coordinator.notifyAgendaChanged()
         await waitUntil(timeout: 10) { coordinator.unacknowledgedTaskCount() == 0 }
-        XCTAssertTrue(handledStore.contains("w60", day: "2026-11-27"))
-        XCTAssertTrue(dismissed.value.contains("w60"))
+        XCTAssertTrue(handledStore.contains("w-day", day: "2026-11-27"))
+        XCTAssertTrue(dismissed.value.contains("w-day"))
         coordinator.stop()
     }
 
     func testRemoveDeliveredTasksPartialKeepsRemainder() async throws {
+        let tasks = [
+            SnoozeWakeReceiptTask(
+                title: "Email Dan", route: "tasks.md", blockID: "^job", target: "1532",
+                wokeAt: "15:32", destination: "WRITE", line: 4),
+            SnoozeWakeReceiptTask(
+                title: "Review notes", route: "tasks.md", blockID: "^job2", target: "1532",
+                wokeAt: "15:32", destination: "WRITE", line: 5),
+        ]
+        let processClient = try client(environment: [
+            "FAKE_BOB_SNOOZE_LIST_JSON": listJSON(
+                rows: [
+                    eligibleRowJSON(),
+                    eligibleRowJSON(blockID: "^job2", title: "Review notes", line: 5),
+                ].joined(separator: ","))
+        ])
         let (coordinator, _, _, _, _, _, _, _, _, presented, dismissed) = try makeHarness(
-            processClient: try goodClient())
-        // Use a two-row batch by feeding a receipt then replacing rows via
-        // the coordinator's partial-removal path directly.
+            processClient: processClient)
         coordinator.start()
         coordinator.attachPresenter()
         await waitUntil { coordinator.isCapableForTests == true }
-        coordinator.receiveForTests(receipt(wakeID: "w1"))
+        coordinator.receiveForTests(receipt(wakeID: "w1", tasks: tasks))
         await waitUntil { presented.value.count == 1 }
-        XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 1)
+        XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 2)
         coordinator.removeDeliveredTasks(wakeID: "w1", keys: ["tasks.md#^job"])
+        XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 1)
+        XCTAssertFalse(dismissed.value.contains("w1"))
+        coordinator.removeDeliveredTasks(wakeID: "w1", keys: ["tasks.md#^job2"])
         XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 0)
         XCTAssertTrue(dismissed.value.contains("w1"))
         coordinator.stop()
+    }
+
+    func testRestoredBeaconClearsOnEveryLifecycleTrigger() async throws {
+        enum Trigger: CaseIterable {
+            case panelOpen
+            case open
+            case plusFifteen
+            case expiry
+            case dayRollover
+            case disabled
+            case vaultChange
+        }
+
+        for trigger in Trigger.allCases {
+            let (coordinator, clock, _, _, _, _, settings, _, _, _, dismissed) =
+                try makeHarness(processClient: nil)
+            let entry = SnoozeWakeBeaconStore.Entry(
+                wakeID: "restored-\(trigger)",
+                taskKeys: ["tasks.md#^job"],
+                taskCount: 1,
+                deliveredAt: clock.now,
+                wokenAt: try wokenDate(),
+                date: "2026-11-26",
+                vaultRoot: "/tmp/vault"
+            )
+            coordinator.saveBeaconForTests(entry)
+            coordinator.start()
+            XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 1, "\(trigger)")
+
+            switch trigger {
+            case .panelOpen:
+                coordinator.acknowledgePanelOpen()
+            case .open:
+                coordinator.acknowledgeDelivered(wakeID: entry.wakeID)
+            case .plusFifteen:
+                coordinator.removeDeliveredTasks(
+                    wakeID: entry.wakeID, keys: ["tasks.md#^job"])
+            case .expiry:
+                clock.advance(by: 60 * 60 + 1)
+                coordinator.notifyAgendaChanged()
+            case .dayRollover:
+                clock.today = "2026-11-27"
+                coordinator.notifyAgendaChanged()
+            case .disabled:
+                settings.value = SnoozeWakeNoticeSettings(
+                    announceWakes: false,
+                    holdWhileAway: true,
+                    holdDuringMeetings: true
+                )
+                coordinator.notifySettingsChanged()
+            case .vaultChange:
+                coordinator.reconfigure(processClient: nil, vaultRoot: "/tmp/other-vault")
+            }
+
+            XCTAssertEqual(coordinator.unacknowledgedTaskCount(), 0, "\(trigger)")
+            XCTAssertTrue(dismissed.value.contains(entry.wakeID), "\(trigger)")
+            coordinator.stop()
+        }
     }
 
     func testTransientEndedPreventsRestoreAfterHold() async throws {

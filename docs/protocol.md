@@ -264,7 +264,7 @@ Required commands must exist; otherwise their feature hides or Bob refuses:
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
 
-Bob Refs ⌘S and the enabled Highlights-save trigger use this scan command; the receipt path and notification are in [Bob Refs](refs.md).
+See [Bob Refs](refs.md).
 
 ## Optional commands
 
@@ -273,12 +273,12 @@ Optional commands stay hidden when absent:
 - `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
 - `gcal note` JSON: list/show/preview/save/clear; [Event notes](event-notes.md)
 - `walks --format json` (s/w/b title-row attention, schema 1)
-- `snooze wake -q -f json` (schema 1; `woke`, `nothing_due`, `deferred`, `skipped`; `deferred`/`skipped` never settle)
-- `snooze -f json` (`wake_notice_version: 1`); version 1 gates the claim.
+- `bob snooze -f json`; `bob snooze add <route:block-id> +15m -f json`.
+- Wake uses latest-only `last-wake.json`, Darwin `org.bobs.bob.snooze.woken`, and a live `notifier.json` claim: `auto` selects `mac_capture` or desktop fallback; older Bob stays on desktop. See [Wake notice protocol](snooze-wake-notices.md).
 
 ## Optional fields
 
-Absent fields decode tolerantly and only hide their own row, badge, or offer:
+Absent fields decode tolerantly and hide only affected UI:
 
 - `creates_pomodoro`, `pomodoro_start`, `pomodoro_adjust`, `pomodoro_shift`, `pomodoro_close` (plus `log`, `details`, `typed_work_log`, `typed_work_log_details`)
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
@@ -293,7 +293,6 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `block_id` object, `picker` descriptor, `parent_replacement`, Parent Task continuation metadata, `pomodoro_start_name` context
 - `wikilink_task` `link_target`, `wikilink_replacement`
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
-- `headline`, snoozed agenda rows and wake provenance; `snooze` span tint
 - `walks` `counts` (s=`walk`, legacy fallback=`commitments`; w=`excess`; b=`waiting`), `tier`/`label`/`reason`; unknown families ignored
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `mail_close` on success

@@ -1,5 +1,6 @@
 import CaptureCore
 import Foundation
+import UserNotifications
 import XCTest
 
 @testable import BobMacCapture
@@ -52,6 +53,31 @@ final class SnoozeWakeBeaconStoreTests: XCTestCase {
             ).isEmpty)
     }
 
+    func testBeaconRestoresAcrossRestartWhenNotificationRecordIsDenied() {
+        let (store, defaults, _) = makeStore()
+        let deliveredAt = woken().addingTimeInterval(10)
+        XCTAssertFalse(
+            NotificationService.canPostSnoozeWakeRecord(
+                authorizationStatus: .denied))
+        store.save(
+            wakeID: "denied-record",
+            taskKeys: ["tasks.md#^a"],
+            taskCount: 1,
+            deliveredAt: deliveredAt,
+            wokenAt: woken(),
+            date: "2026-11-26",
+            vaultRoot: "/tmp/vault"
+        )
+
+        let afterRestart = SnoozeWakeBeaconStore(defaults: defaults).activeEntries(
+            today: "2026-11-26",
+            vaultRoot: "/tmp/vault",
+            now: deliveredAt.addingTimeInterval(30)
+        )
+        XCTAssertEqual(afterRestart.map(\.wakeID), ["denied-record"])
+        XCTAssertEqual(afterRestart.first?.taskCount, 1)
+    }
+
     func testRemoveAndBounded() {
         let (store, _, _) = makeStore()
         let now = woken().addingTimeInterval(10)
@@ -68,5 +94,25 @@ final class SnoozeWakeBeaconStoreTests: XCTestCase {
         let after = store.activeEntries(
             today: "2026-11-26", vaultRoot: "/tmp/vault", now: now)
         XCTAssertEqual(after.count, active.count - 1)
+    }
+
+    func testRemoveAllForVaultKeepsOtherVaults() {
+        let (store, _, _) = makeStore()
+        let now = woken().addingTimeInterval(10)
+        store.save(
+            wakeID: "old-vault", taskKeys: ["a"], taskCount: 1,
+            deliveredAt: now, wokenAt: woken(),
+            date: "2026-11-26", vaultRoot: "/tmp/old-vault")
+        store.save(
+            wakeID: "other-vault", taskKeys: ["b"], taskCount: 1,
+            deliveredAt: now, wokenAt: woken(),
+            date: "2026-11-26", vaultRoot: "/tmp/other-vault")
+
+        store.removeAll(vaultRoot: "/tmp/old-vault")
+
+        XCTAssertEqual(
+            store.activeEntries(
+                today: "2026-11-26", vaultRoot: "/tmp/other-vault", now: now
+            ).map(\.wakeID), ["other-vault"])
     }
 }

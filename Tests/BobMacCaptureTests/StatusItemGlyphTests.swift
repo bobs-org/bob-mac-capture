@@ -152,20 +152,31 @@ final class StatusItemGlyphTests: XCTestCase {
     }
 
     @MainActor
-    func testBeaconImageIsNonTemplateWithAmber() {
-        let plain = StatusItemGlyph.image(for: .ready, snoozeCount: 0)
+    func testBeaconUsesTemplateBaseAndSeparateColorAccessory() {
+        let plain = StatusItemGlyph.image(for: .ready)
         XCTAssertTrue(plain.isTemplate)
 
-        let beacon = StatusItemGlyph.image(for: .ready, snoozeCount: 2)
+        // The base remains a template for every beacon count; only the
+        // separate accessory image opts out of tinting to keep its amber.
+        let baseWithBeacon = StatusItemGlyph.image(for: .ready)
+        let beacon = StatusItemBeaconGlyph.image(count: 2)
+        XCTAssertTrue(baseWithBeacon.isTemplate)
         XCTAssertFalse(beacon.isTemplate)
         XCTAssertEqual(beacon.size, NSSize(width: 18, height: 18))
-        XCTAssertTrue(
-            beacon.accessibilityDescription?.contains("2 snoozed tasks ready") ?? false)
 
-        let both = StatusItemGlyph.image(for: .bobUnresolved, snoozeCount: 1)
-        XCTAssertFalse(both.isTemplate)
+        let unresolved = StatusItemGlyph.image(for: .bobUnresolved)
+        XCTAssertTrue(unresolved.isTemplate)
         XCTAssertTrue(
-            both.accessibilityDescription?.contains("bob not resolved") ?? false)
+            unresolved.accessibilityDescription?.contains("bob not resolved") ?? false)
+    }
+
+    @MainActor
+    func testBeaconAccessoryDoesNotInterceptStatusItemClick() {
+        let accessory = StatusItemBeaconAccessoryView(
+            frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+        accessory.count = 1
+        XCTAssertFalse(accessory.isHidden)
+        XCTAssertNil(accessory.hitTest(NSPoint(x: 16, y: 16)))
     }
 
     @MainActor

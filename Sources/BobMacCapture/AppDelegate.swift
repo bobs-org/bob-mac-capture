@@ -423,18 +423,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.imagePosition = .imageOnly
         item.button?.title = ""
+        let beaconView = StatusItemBeaconAccessoryView(
+            frame: item.button?.bounds ?? .zero)
+        item.button?.addSubview(beaconView)
         let menu = Self.makeStatusMenu()
         item.menu = menu
         statusItem = item
         let controller = StatusItemController(
-            render: { [weak item] frame in
-                item?.button?.image = StatusItemGlyph.image(
+            render: { [weak item, weak beaconView] frame in
+                guard let button = item?.button else { return }
+                button.image = StatusItemGlyph.image(
                     for: frame.glyphState,
-                    bulletRadius: frame.bulletRadius,
-                    snoozeCount: frame.snoozeCount
+                    bulletRadius: frame.bulletRadius
                 )
-                item?.button?.toolTip = frame.toolTip
-                item?.button?.setAccessibilityLabel(frame.accessibilityLabel)
+                beaconView?.frame = button.bounds
+                beaconView?.count = frame.snoozeCount
+                button.toolTip = frame.toolTip
+                button.setAccessibilityLabel(frame.accessibilityLabel)
             },
             menu: menu
         )
@@ -633,9 +638,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateSnoozeBeacon()
             self?.refreshSnoozeDiagnostics()
         }
-        coordinator.onDiagnostic = { [weak self] message in
+        coordinator.onDiagnostic = { [weak self] _ in
             // Metadata only: the coordinator never logs task text.
-            self?.settings.diagnosticStatus = message
+            self?.refreshSnoozeDiagnostics()
         }
         coordinator.isPanelOpen = { [weak self] in
             self?.panelController?.isVisible == true

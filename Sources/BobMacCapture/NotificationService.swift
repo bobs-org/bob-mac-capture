@@ -33,6 +33,38 @@ struct NotificationAuthorizationDisplay: Equatable {
     }
 }
 
+/// Tracks wake records withdrawn while a Notification Center add is in
+/// flight. A late completion removes its own record instead of resurrecting
+/// it after acknowledgement, expiry, or a vault change.
+final class SnoozeWakeRecordWithdrawalLedger: @unchecked Sendable {
+    private let lock = NSLock()
+    private var withdrawnIDs: Set<String> = []
+
+    func withdraw(_ wakeID: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        withdrawnIDs.insert(wakeID)
+        while withdrawnIDs.count > SnoozeWakeHandledStore.maxEntries {
+            if let oldest = withdrawnIDs.first {
+                withdrawnIDs.remove(oldest)
+            } else {
+                break
+            }
+        }
+    }
+
+    func contains(_ wakeID: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return withdrawnIDs.contains(wakeID)
+    }
+
+    func removeLateAddIfWithdrawn(_ wakeID: String, remove: () -> Void) {
+        guard contains(wakeID) else { return }
+        remove()
+    }
+}
+
 @MainActor
 final class NotificationService: NSObject, ObservableObject {
     nonisolated static let openNoteActionIdentifier = "org.bobs.bob-mac-capture.open-note"
@@ -80,10 +112,7 @@ final class NotificationService: NSObject, ObservableObject {
     /// Default click or Open action runs on a snooze record; the coordinator
     /// owns the beacon/record clearing that follows task navigation.
     var onSnoozeWakeOpened: (String) -> Void = { _ in }
-    /// Wake IDs withdrawn before a pending add completed. A late add that
-    /// finds its ID here skips the post so it cannot resurrect a cleared
-    /// record. Bounded by the acknowledgement store's cap.
-    private var snoozeWithdrawnIDs = Set<String>()
+    private let snoozeWakeWithdrawalLedger = SnoozeWakeRecordWithdrawalLedger()
 
     init(
         center: UNUserNotificationCenter = .current(),
@@ -233,15 +262,14 @@ final class NotificationService: NSObject, ObservableObject {
         let wakeID = batch.wakeID
         Task {
             let settings = await center.notificationSettings()
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                break
-            case .notDetermined, .denied:
-                return
-            @unknown default:
+            guard
+                Self.canPostSnoozeWakeRecord(
+                    authorizationStatus: settings.authorizationStatus
+                )
+            else {
                 return
             }
-            guard !snoozeWithdrawnIDs.contains(wakeID) else {
+            guard !snoozeWakeWithdrawalLedger.contains(wakeID) else {
                 return
             }
             let content = Self.snoozeWakeContent(batch: batch, presentation: presentation)
@@ -252,7 +280,7 @@ final class NotificationService: NSObject, ObservableObject {
             }
             // A withdraw that landed while the add was in flight wins: remove
             // the just-added record instead of leaving a resurrected one.
-            if snoozeWithdrawnIDs.contains(wakeID) {
+            snoozeWakeWithdrawalLedger.removeLateAddIfWithdrawn(wakeID) {
                 center.removeDeliveredNotifications(withIdentifiers: [presentation.recordID])
                 center.removePendingNotificationRequests(withIdentifiers: [presentation.recordID])
             }
@@ -263,14 +291,7 @@ final class NotificationService: NSObject, ObservableObject {
     /// the ID withdrawn so a late add cannot resurrect it.
     func withdrawSnoozeWakeRecord(wakeID: String) {
         CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
-        snoozeWithdrawnIDs.insert(wakeID)
-        while snoozeWithdrawnIDs.count > SnoozeWakeHandledStore.maxEntries {
-            if let oldest = snoozeWithdrawnIDs.first {
-                snoozeWithdrawnIDs.remove(oldest)
-            } else {
-                break
-            }
-        }
+        snoozeWakeWithdrawalLedger.withdraw(wakeID)
         let recordID = SnoozeWakeNoticePresentation.recordID(wakeID: wakeID)
         center.removeDeliveredNotifications(withIdentifiers: [recordID])
         center.removePendingNotificationRequests(withIdentifiers: [recordID])
@@ -291,15 +312,42 @@ final class NotificationService: NSObject, ObservableObject {
                     continuation.resume(returning: requests.map(\.identifier))
                 }
             }
-            let prefix = "snooze-woken-"
-            let activeIDs = Set(activeWakeIDs.map { "\(prefix)\($0)" })
-            for identifier in delivered + pending where identifier.hasPrefix(prefix) {
-                if !activeIDs.contains(identifier) {
-                    center.removeDeliveredNotifications(withIdentifiers: [identifier])
-                    center.removePendingNotificationRequests(withIdentifiers: [identifier])
-                }
+            let staleIDs = Self.snoozeWakeRecordIdentifiersToWithdraw(
+                deliveredIdentifiers: delivered,
+                pendingIdentifiers: pending,
+                activeWakeIDs: activeWakeIDs
+            )
+            for identifier in staleIDs {
+                center.removeDeliveredNotifications(withIdentifiers: [identifier])
+                center.removePendingNotificationRequests(withIdentifiers: [identifier])
             }
         }
+    }
+
+    nonisolated static func canPostSnoozeWakeRecord(
+        authorizationStatus: UNAuthorizationStatus
+    ) -> Bool {
+        switch authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .notDetermined, .denied:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    nonisolated static func snoozeWakeRecordIdentifiersToWithdraw(
+        deliveredIdentifiers: [String],
+        pendingIdentifiers: [String],
+        activeWakeIDs: Set<String>
+    ) -> Set<String> {
+        let prefix = "snooze-woken-"
+        let activeIDs = Set(activeWakeIDs.map { "\(prefix)\($0)" })
+        return Set(
+            (deliveredIdentifiers + pendingIdentifiers).filter { identifier in
+                identifier.hasPrefix(prefix) && !activeIDs.contains(identifier)
+            })
     }
 
     private func add(_ content: UNMutableNotificationContent) async throws {

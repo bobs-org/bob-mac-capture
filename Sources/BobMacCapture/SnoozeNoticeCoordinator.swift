@@ -256,10 +256,16 @@ final class SnoozeNoticeCoordinator {
     }
 
     /// Re-points the coordinator at a new executable or vault. Pending
-    /// async work is invalidated, capability is re-probed, and the
-    /// claim follows the new configuration.
+    /// async work and wake records for the previous configuration are
+    /// withdrawn, capability is re-probed, and the claim follows the new
+    /// configuration.
     func reconfigure(processClient: BobProcessClient?, vaultRoot: String) {
         let identityChanged = processClient?.identityToken != self.processClient?.identityToken
+        let oldVaultRoot = configuredVaultRoot
+        let vaultChanged = canonicalVaultRoot(oldVaultRoot) != canonicalVaultRoot(vaultRoot)
+        if identityChanged || vaultChanged {
+            withdrawForConfigurationChange(oldVaultRoot: oldVaultRoot)
+        }
         self.processClient = processClient
         configuredVaultRoot = vaultRoot
         generation &+= 1
@@ -279,6 +285,47 @@ final class SnoozeNoticeCoordinator {
         updateClaim()
         probeCapabilityIfNeeded()
         evaluate(reason: "reconfigure")
+    }
+
+    private func withdrawForConfigurationChange(oldVaultRoot: String) {
+        for entry in pending {
+            handledStore.acknowledge(entry.receipt.wakeID, day: entry.receipt.date)
+            policy.markHandled(entry.receipt.wakeID, day: entry.receipt.date)
+        }
+        for entry in delivered {
+            handledStore.acknowledge(entry.batch.wakeID, day: entry.batch.date)
+            policy.markHandled(entry.batch.wakeID, day: entry.batch.date)
+            onDismiss(entry.batch.wakeID)
+            onTransientDismiss(entry.batch.wakeID)
+        }
+        for restored in restoredBeacon {
+            handledStore.acknowledge(restored.wakeID, day: restored.date)
+            policy.markHandled(restored.wakeID, day: restored.date)
+            onDismiss(restored.wakeID)
+            onTransientDismiss(restored.wakeID)
+        }
+        beaconStore.removeAll(vaultRoot: oldVaultRoot)
+        pending = []
+        delivered = []
+        restoredBeacon = []
+        suppressedDeliveredWakeIDs = []
+        nudgeEndedWakeIDs = []
+        deliveredSettleDeadline = nil
+        verification = .unverified
+        verificationFetchID = nil
+        verifyAfter = nil
+        wasHeld = false
+        heldReasonText = nil
+        lastFailure = nil
+        lastVerificationText = nil
+        presenceSource.setIdlePollingActive(false)
+        emitQueueChanged()
+    }
+
+    private func canonicalVaultRoot(_ path: String) -> String {
+        guard !path.isEmpty else { return "" }
+        return URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     /// The agenda store published a new snapshot or status.
@@ -475,6 +522,18 @@ final class SnoozeNoticeCoordinator {
     /// Restored beacon metadata for diagnostics and launch restore.
     func restoredBeaconEntries() -> [SnoozeWakeBeaconStore.Entry] {
         restoredBeacon
+    }
+
+    func saveBeaconForTests(_ entry: SnoozeWakeBeaconStore.Entry) {
+        beaconStore.save(
+            wakeID: entry.wakeID,
+            taskKeys: entry.taskKeys,
+            taskCount: entry.taskCount,
+            deliveredAt: entry.deliveredAt,
+            wokenAt: entry.wokenAt,
+            date: entry.date,
+            vaultRoot: entry.vaultRoot
+        )
     }
 
     func diagnosticSnapshot() -> DiagnosticSnapshot {
@@ -805,8 +864,8 @@ final class SnoozeNoticeCoordinator {
             policy.markHandled(entry.receipt.wakeID, day: today)
             diagnose("dropping \(entry.receipt.wakeID): \(dropDescription(reason))")
         }
-        if case .verificationFailed(let message) = reason {
-            lastFailure = message
+        if case .verificationFailed = reason {
+            lastFailure = "verification failed"
         }
     }
 
@@ -1045,8 +1104,9 @@ final class SnoozeNoticeCoordinator {
                 dropAllPendingUnsupported(today: today)
             } else {
                 fetchRetryAfter = nowProvider().addingTimeInterval(retryIntervalSeconds)
-                lastFailure = String(describing: error)
-                diagnose("snooze list failed: \(error)")
+                let failure = error is BobClientError ? "Bob command failed" : "read failed"
+                lastFailure = failure
+                diagnose("snooze list failed: \(failure)")
                 requestAgendaRefresh()
                 scheduleReevaluate(after: retryIntervalSeconds)
             }
@@ -1081,7 +1141,7 @@ final class SnoozeNoticeCoordinator {
             do {
                 try claim.publish()
             } catch {
-                diagnose("claim publish failed: \(error)")
+                diagnose("claim publish failed")
             }
         }
     }
@@ -1319,7 +1379,7 @@ final class SnoozeNoticeCoordinator {
         case .expired: return "expired"
         case .duplicate: return "duplicate"
         case .emptyVerification: return "emptyVerification"
-        case .verificationFailed(let message): return "verificationFailed(\(message))"
+        case .verificationFailed: return "verificationFailed"
         case .noEligibleTasks: return "noEligibleTasks"
         }
     }

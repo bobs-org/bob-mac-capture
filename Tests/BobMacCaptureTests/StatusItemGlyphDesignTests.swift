@@ -65,6 +65,25 @@ final class StatusItemGlyphDesignTests: XCTestCase {
             }
         }
 
+        // The template-tinted base and colored accessory are separate layers
+        // in the status item. Keep combined review renders for light, dark,
+        // and highlighted menu-bar appearances.
+        for backdrop in backdrops {
+            let rep = renderGlyph(
+                state: .ready,
+                bulletRadius: resting,
+                pixelsWide: 54,
+                pixelsHigh: 54,
+                background: backdrop.color,
+                snoozeCount: 2
+            )
+            try Self.pngData(for: rep).write(
+                to: directory.appendingPathComponent(
+                    "status-item-glyph-ready-beacon-2-\(backdrop.name).png"
+                )
+            )
+        }
+
         // Landed-pulse filmstrip: one 2x cell per pulse sample on light.
         let cell = 36
         let radii = StatusItemPulse.bulletRadii
@@ -125,7 +144,8 @@ final class StatusItemGlyphDesignTests: XCTestCase {
         bulletRadius: CGFloat,
         pixelsWide: Int,
         pixelsHigh: Int,
-        background: NSColor
+        background: NSColor,
+        snoozeCount: Int = 0
     ) -> NSBitmapImageRep {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
@@ -143,9 +163,11 @@ final class StatusItemGlyphDesignTests: XCTestCase {
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         background.setFill()
         NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
-        StatusItemGlyph.image(for: state, bulletRadius: bulletRadius).draw(
-            in: NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh)
-        )
+        let glyphRect = NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh)
+        StatusItemGlyph.image(for: state, bulletRadius: bulletRadius).draw(in: glyphRect)
+        if snoozeCount > 0 {
+            StatusItemBeaconGlyph.image(count: snoozeCount).draw(in: glyphRect)
+        }
         NSGraphicsContext.restoreGraphicsState()
         return rep
     }

@@ -1147,6 +1147,52 @@ final class NotificationServiceTests: XCTestCase {
             NotificationService.foregroundPresentationOptions, [.banner, .sound, .list])
     }
 
+    func testSnoozeWakeRecordsRequireExistingAuthorizationWithoutPrompting() {
+        XCTAssertFalse(
+            NotificationService.canPostSnoozeWakeRecord(
+                authorizationStatus: .notDetermined))
+        XCTAssertFalse(
+            NotificationService.canPostSnoozeWakeRecord(
+                authorizationStatus: .denied))
+        XCTAssertTrue(
+            NotificationService.canPostSnoozeWakeRecord(
+                authorizationStatus: .authorized))
+        XCTAssertTrue(
+            NotificationService.canPostSnoozeWakeRecord(
+                authorizationStatus: .provisional))
+    }
+
+    func testWakeRecordWithdrawalWinsWhenAnAddFinishesLate() {
+        let ledger = SnoozeWakeRecordWithdrawalLedger()
+        let wakeID = "wake-race"
+        let addWasAuthorized = !ledger.contains(wakeID)
+        XCTAssertTrue(addWasAuthorized)
+        ledger.withdraw(wakeID)
+
+        var removed: [String] = []
+        ledger.removeLateAddIfWithdrawn(wakeID) { removed.append(wakeID) }
+
+        XCTAssertEqual(removed, [wakeID])
+    }
+
+    func testLaunchReconciliationLeavesUnrelatedNotificationsAlone() {
+        let staleIDs = NotificationService.snoozeWakeRecordIdentifiersToWithdraw(
+            deliveredIdentifiers: [
+                "snooze-woken-active",
+                "snooze-woken-stale",
+                "capture-success-1",
+            ],
+            pendingIdentifiers: [
+                "snooze-woken-pending-stale",
+                "install-restart",
+                "snooze-woken-active",
+            ],
+            activeWakeIDs: ["active"]
+        )
+
+        XCTAssertEqual(staleIDs, ["snooze-woken-stale", "snooze-woken-pending-stale"])
+    }
+
     private func snoozeBatch(
         wakeID: String = "abc",
         count: Int = 1,

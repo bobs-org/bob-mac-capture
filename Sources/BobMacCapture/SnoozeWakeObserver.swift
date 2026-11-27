@@ -130,8 +130,8 @@ final class SnoozeWakeObserver {
             if let receipt {
                 accept(receipt)
             }
-        case .failure(let error):
-            onDiagnostic("snooze wake receipt read failed: \(error)")
+        case .failure:
+            onDiagnostic("snooze wake receipt read failed")
         }
         if needsReread {
             needsReread = false
