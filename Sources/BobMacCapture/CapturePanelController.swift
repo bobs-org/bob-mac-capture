@@ -1488,10 +1488,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // Redo replays exactly this replacement.
         textView.breakUndoCoalescing()
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
-        textView.breakUndoCoalescing()
         textView.setSelectedRange(edit.resultingSelection)
         textView.scrollRangeToVisible(edit.resultingSelection)
-        return textView.string == edit.resultingDraft
+        guard textView.string == edit.resultingDraft else {
+            return false
+        }
+        closeUndoGroupForNextEdit(textView)
+        return true
+    }
+
+    /// Close the current `groupsByEvent` undo group so the native insert just
+    /// registered is one ⌘Z, then open a fresh group for the next edit in this
+    /// event. `breakUndoCoalescing` only splits NSTextView typing coalescing;
+    /// two synchronous `insertText` calls still share one run-loop group.
+    static func closeUndoGroupForNextEdit(_ textView: NSTextView) {
+        textView.breakUndoCoalescing()
+        guard let undoManager = textView.undoManager, undoManager.groupingLevel > 0 else {
+            return
+        }
+        undoManager.endUndoGrouping()
+        undoManager.beginUndoGrouping()
     }
 
     /// Applies a block-ID splice to the draft editor even when the picker
@@ -1523,6 +1539,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             cached.setSelectedRange(edit.resultingSelection)
             cached.scrollRangeToVisible(edit.resultingSelection)
             if cached.string == edit.resultingDraft {
+                closeUndoGroupForNextEdit(cached)
                 panel?.makeFirstResponder(cached)
                 return true
             }
@@ -1550,6 +1567,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         editor.setSelectedRange(edit.resultingSelection)
         editor.scrollRangeToVisible(edit.resultingSelection)
         if editor.string == edit.resultingDraft {
+            closeUndoGroupForNextEdit(editor)
             panel?.makeFirstResponder(editor)
             return true
         }
@@ -2215,7 +2233,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let caret = NSRange(location: deletionRange.location, length: 0)
         textView.setSelectedRange(caret)
         textView.scrollRangeToVisible(caret)
-        textView.breakUndoCoalescing()
+        closeUndoGroupForNextEdit(textView)
         return true
     }
 

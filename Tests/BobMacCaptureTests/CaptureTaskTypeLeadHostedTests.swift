@@ -113,7 +113,7 @@ final class CaptureTaskTypeLeadHostedTests: XCTestCase {
         XCTAssertEqual(textView.string, "#f")
     }
 
-    func testBackspacePeelsTheLeadAndUndoRestoresIt() {
+    func testBackspacePeelsTheLeadAndUndoRestoresIt() async throws {
         let (model, controller, textView, panel) = makeHostedEditor(draft: "#f")
         defer { panel.orderOut(nil) }
         installFixLead(on: model, textView: textView)
@@ -121,6 +121,11 @@ final class CaptureTaskTypeLeadHostedTests: XCTestCase {
         XCTAssertTrue(model.acceptSelectedCompletion())
         XCTAssertEqual(textView.string, "#fix Fix ")
         XCTAssertTrue(panel.makeFirstResponder(textView))
+        // Accept and Backspace are separate key events in production, so they
+        // land in separate undo groups. Yield a runloop turn here for the same
+        // boundary; otherwise the peel joins the still-open accept group.
+        CapturePanelController.closeUndoGroupForNextEdit(textView)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         XCTAssertTrue(controller.perform(.deleteBackward))
         XCTAssertEqual(textView.string, "#fix ")
