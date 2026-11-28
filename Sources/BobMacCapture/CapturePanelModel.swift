@@ -15377,7 +15377,8 @@ final class CapturePanelModel: ObservableObject {
             resultingSelection: NSRange(location: d0CaretUTF16, length: 0),
             expectedDraft: preDraft,
             resultingDraft: d0,
-            expectedSelection: NSRange(location: preCaretUTF16, length: 0)
+            expectedSelection: NSRange(location: preCaretUTF16, length: 0),
+            closeUndoGroupAfter: true
         )
         let leadEdit = CaptureNativeRewriteEdit(
             replacementRange: insertUTF16,

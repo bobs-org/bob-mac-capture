@@ -61,6 +61,11 @@ struct CaptureNativeRewriteEdit: Equatable {
     let expectedDraft: String
     let resultingDraft: String
     var expectedSelection: NSRange? = nil
+    /// End the current `groupsByEvent` group after this insert so a later
+    /// synchronous `insertText` in the same event is its own ⌘Z. Used only
+    /// between a type-lead marker and its lead; closing after the last edit
+    /// of an event leaves an empty group that eats the next undo.
+    var closeUndoGroupAfter: Bool = false
 }
 
 /// One-key Backspace peel for an untouched type lead. Ranges are UTF-16.
@@ -1493,7 +1498,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard textView.string == edit.resultingDraft else {
             return false
         }
-        closeUndoGroupForNextEdit(textView)
+        finishNativeRewrite(textView, closeUndoGroupAfter: edit.closeUndoGroupAfter)
         return true
     }
 
@@ -1501,6 +1506,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// registered is one ⌘Z, then open a fresh group for the next edit in this
     /// event. `breakUndoCoalescing` only splits NSTextView typing coalescing;
     /// two synchronous `insertText` calls still share one run-loop group.
+    /// Call this *between* two inserts, never after the last edit of an event.
     static func closeUndoGroupForNextEdit(_ textView: NSTextView) {
         textView.breakUndoCoalescing()
         guard let undoManager = textView.undoManager, undoManager.groupingLevel > 0 else {
@@ -1508,6 +1514,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
         undoManager.endUndoGrouping()
         undoManager.beginUndoGrouping()
+    }
+
+    private static func finishNativeRewrite(
+        _ textView: NSTextView,
+        closeUndoGroupAfter: Bool
+    ) {
+        if closeUndoGroupAfter {
+            closeUndoGroupForNextEdit(textView)
+        } else {
+            textView.breakUndoCoalescing()
+        }
     }
 
     /// Applies a block-ID splice to the draft editor even when the picker
@@ -1539,7 +1556,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             cached.setSelectedRange(edit.resultingSelection)
             cached.scrollRangeToVisible(edit.resultingSelection)
             if cached.string == edit.resultingDraft {
-                closeUndoGroupForNextEdit(cached)
+                if edit.closeUndoGroupAfter {
+                    closeUndoGroupForNextEdit(cached)
+                }
                 panel?.makeFirstResponder(cached)
                 return true
             }
@@ -1567,7 +1586,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         editor.setSelectedRange(edit.resultingSelection)
         editor.scrollRangeToVisible(edit.resultingSelection)
         if editor.string == edit.resultingDraft {
-            closeUndoGroupForNextEdit(editor)
+            if edit.closeUndoGroupAfter {
+                closeUndoGroupForNextEdit(editor)
+            }
             panel?.makeFirstResponder(editor)
             return true
         }
@@ -2233,7 +2254,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let caret = NSRange(location: deletionRange.location, length: 0)
         textView.setSelectedRange(caret)
         textView.scrollRangeToVisible(caret)
-        closeUndoGroupForNextEdit(textView)
+        textView.breakUndoCoalescing()
         return true
     }
 
