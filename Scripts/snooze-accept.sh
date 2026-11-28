@@ -17,10 +17,21 @@
 # Subcommands:
 #   up [--sha SHA]     build + install + launch the scratch app, start the
 #                      signpost stream, run guard
+#   rebuild --sha SHA  stop the scratch app by PID, rebuild and re-sign at
+#                      the same path and bundle ID, relaunch, wait for claim
 #   guard              assert production is untouched and scratch is healthy
 #   wake SLUG TITLE [--channel auto|desktop|off]
 #                      add a task to the disposable vault and wake it now
 #   ping               post the org.bobs.bob.snooze.woken Darwin notification
+#   probe COMMAND [ARGS...]
+#                      write a probe request, ping Darwin, print the response
+#   idle               HID idle seconds, lock, display sleep, pmset assertions
+#   evidence --since T save log show --signpost for the scratch PID
+#   shim passthrough|oldbob|off
+#                      set bobExecutableOverride to an argv-logging shim
+#   variant noauth|accept
+#                      bring up accept-noauth (never authorized) or restore
+#   lockwatch          lock-accept driver (foreground JSON lines)
 #   stop               stop the scratch app and the signpost stream by PID
 #   restart            stop, then relaunch the way up did
 #   status             PIDs, claim, latest receipt, recent snooze signposts
@@ -37,8 +48,11 @@ set -euo pipefail
 ROOT="/tmp/bob-wake-accept"
 ACCEPT_ID="org.bobs.bob-mac-capture.accept"
 ACCEPT_NAME="Bob Mac Capture Accept"
+NOAUTH_ID="org.bobs.bob-mac-capture.accept-noauth"
+NOAUTH_NAME="Bob Mac Capture Accept Noauth"
 PROD_ID="org.bobs.bob-mac-capture"
 WOKEN_KEY="org.bobs.bob.snooze.woken"
+PROBE_KEY="org.bobs.bob-mac-capture.accept.probe"
 SUBSYSTEM="org.bobs.bob-mac-capture"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
@@ -57,14 +71,24 @@ HARNESS_SHA_FILE="$ROOT/harness-sha"
 
 usage() {
     cat <<'EOF'
-Usage: Scripts/snooze-accept.sh <up|guard|wake|ping|stop|restart|status|down> [...]
+Usage: Scripts/snooze-accept.sh <up|rebuild|guard|wake|ping|probe|idle|evidence|shim|variant|lockwatch|stop|restart|status|down> [...]
 
   up [--sha SHA]     Build the scratch app at SHA (default: source checkout
                      HEAD), launch it isolated, start the signpost stream.
+  rebuild --sha SHA  Stop by PID, rebuild and re-sign in place, relaunch.
   guard              Verify production is untouched and scratch is healthy.
   wake SLUG TITLE [--channel auto|desktop|off]
                      Add jobs:SLUG to the disposable vault and wake it now.
   ping               Post the woken Darwin notification.
+  probe COMMAND [ARGS...]
+                     Drive the in-app probe and print the response JSON.
+  idle               HID idle, lock, display sleep, pmset assertions.
+  evidence --since T Save signposts for the scratch PID since T.
+  shim passthrough|oldbob|off
+                     Point bobExecutableOverride at an argv-logging shim.
+  variant noauth|accept
+                     Switch the only scratch instance to accept-noauth or back.
+  lockwatch          Foreground lock-accept driver; prints JSON result lines.
   stop               Stop the scratch app and stream by recorded PID.
   restart            stop, then relaunch the way up did.
   status             PIDs, claim, latest receipt, recent snooze signposts.
@@ -106,9 +130,31 @@ find_prod_pid() {
 }
 
 find_scratch_pids() {
-    # Matches the scratch bundle at both the legacy $ROOT location and
-    # the app-support dir; never matches ~/Applications production.
-    pids_matching "bob-wake-accept/$ACCEPT_NAME.app"
+    # Matches any scratch bundle under the app-support dir (accept and
+    # accept-noauth); never matches ~/Applications production.
+    pids_matching "bob-wake-accept/"
+}
+
+load_variant() {
+    local variant="accept"
+    if [ -f "$ROOT/variant" ]; then
+        variant="$(cat "$ROOT/variant")"
+    fi
+    case "$variant" in
+        noauth)
+            ACCEPT_ID="$NOAUTH_ID"
+            ACCEPT_NAME="$NOAUTH_NAME"
+            ;;
+        *)
+            ACCEPT_ID="org.bobs.bob-mac-capture.accept"
+            ACCEPT_NAME="Bob Mac Capture Accept"
+            ;;
+    esac
+    SCRATCH_APP="$SCRATCH_APP_DIR/$ACCEPT_NAME.app"
+}
+
+probe_dir() {
+    printf '%s\n' "$STATE_DIR/bob-mac-capture-accept/probe"
 }
 
 scratch_env() {
@@ -265,7 +311,7 @@ launch_scratch() {
             "$SCRATCH_APP/Contents/MacOS/BobMacCapture" \
             >>"$EVIDENCE_DIR/app.stdout.log" 2>&1 &
     fi
-    wait_for_pid_match 1 "bob-wake-accept/$ACCEPT_NAME.app" 25 \
+    wait_for_pid_match 1 "bob-wake-accept/" 25 \
         || die "scratch app did not reach exactly one process"
     scratch_pid="$(find_scratch_pids | head -n 1)"
     ps -E -p "$scratch_pid" 2>/dev/null | grep -q "XDG_STATE_HOME=$STATE_DIR" \
@@ -368,11 +414,13 @@ do_up() {
         cp "$HOME/.local/state/bob-cli/snooze/notifier.json" "$ROOT/production-claim.json"
     fi
     # Seed only the accept domain. The production domain is never written.
+    printf 'accept\n' >"$ROOT/variant"
     defaults write "$ACCEPT_ID" bobDirectory -string "$VAULT_DIR"
     defaults write "$ACCEPT_ID" useProductionHotkey -bool false
     defaults write "$ACCEPT_ID" captureAliasHotkeyEnabled -bool false
     defaults write "$ACCEPT_ID" refsHotkeyEnabled -bool false
     defaults write "$ACCEPT_ID" refsAliasHotkeyEnabled -bool false
+    defaults write "$ACCEPT_ID" snoozeAcceptanceProbe -bool true
     ensure_vault
     write_channel_config auto
     scratch_env
@@ -402,6 +450,7 @@ do_guard() {
     # Assert production is untouched and scratch is healthy. Prints one
     # JSON line with ok true/false; exits 1 when not ok.
     mac_only
+    load_variant
     local ok="true" reason="" rec_prod now_prod prod_claim scratch_pid
     local scratch_count scratch_claim stream_pid scratch_real
     reason_init() { reason="$1"; ok="false"; }
@@ -506,6 +555,7 @@ do_wake() {
             ;;
     esac
     [ -d "$VAULT_DIR" ] || die "no harness vault; run up first"
+    ensure_vault
     write_channel_config "$channel"
     if ! grep -q "\\^$slug" "$VAULT_DIR/jobs.md" 2>/dev/null; then
         printf -- '- [ ] #task %s ^%s\n' "$title" "$slug" >>"$VAULT_DIR/jobs.md"
@@ -538,6 +588,7 @@ do_ping() {
 do_stop() {
     # Stop the scratch app and the signpost stream by recorded PID only.
     mac_only
+    load_variant
     local scratch_pid="" stream_pid=""
     if [ -f "$SCRATCH_PID_FILE" ]; then
         scratch_pid="$(cat "$SCRATCH_PID_FILE")"
@@ -572,6 +623,7 @@ do_restart() {
 
 do_status() {
     mac_only
+    load_variant
     HARNESS_ROOT="$ROOT" SCRATCH_APP="$SCRATCH_APP" ACCEPT_ID="$ACCEPT_ID" python3 <<'EOF'
 import json, os
 
@@ -649,6 +701,7 @@ EOF
 
 do_down() {
     mac_only
+    load_variant
     local leftovers="" nc_hint="System Settings > Notifications > Bob Mac Capture Accept"
     local legacy_app="$ROOT/$ACCEPT_NAME.app"
     # Stop by recorded PIDs only; never by name or bundle ID.
@@ -660,9 +713,13 @@ do_down() {
         leftovers="scratch processes still match after stop: $(find_scratch_pids | tr '\n' ' ')"
     fi
     defaults delete "$ACCEPT_ID" 2>/dev/null || true
-    if [ -d "$SCRATCH_APP" ]; then
-        "$LSREGISTER" -u "$SCRATCH_APP" 2>/dev/null || true
-    fi
+    defaults delete "$NOAUTH_ID" 2>/dev/null || true
+    for name in "Bob Mac Capture Accept" "Bob Mac Capture Accept Noauth"; do
+        app="$SCRATCH_APP_DIR/$name.app"
+        if [ -d "$app" ]; then
+            "$LSREGISTER" -u "$app" 2>/dev/null || true
+        fi
+    done
     if [ -d "$legacy_app" ]; then
         "$LSREGISTER" -u "$legacy_app" 2>/dev/null || true
     fi
@@ -682,6 +739,413 @@ do_down() {
         "$(jstr "$nc_hint")"
 }
 
+install_scratch_bundle() {
+    local src_repo="$1" sha="$2" src_bundle plist_id
+    [ -d "$src_repo/.git" ] || die "no git checkout at $src_repo"
+    src_sha="$(git -C "$src_repo" rev-parse HEAD)"
+    [ "$src_sha" = "$sha" ] || die "source checkout is $src_sha, not requested $sha"
+    mkdir -p "$SRC_DIR"
+    rsync -a --delete --exclude .build --exclude .git "$src_repo/" "$SRC_DIR/"
+    (cd "$SRC_DIR" && ./Scripts/bundle.sh --identity - >/dev/null) \
+        || die "bundle.sh failed"
+    src_bundle="$SRC_DIR/.build/bundle/Bob Mac Capture.app"
+    [ -d "$src_bundle" ] || die "bundle missing at $src_bundle"
+    rm -rf "$SCRATCH_APP"
+    mkdir -p "$SCRATCH_APP_DIR"
+    cp -R "$src_bundle" "$SCRATCH_APP"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $ACCEPT_ID" \
+        "$SCRATCH_APP/Contents/Info.plist" || die "PlistBuddy bundle id failed"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleName $ACCEPT_NAME" \
+        "$SCRATCH_APP/Contents/Info.plist" || die "PlistBuddy bundle name failed"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $ACCEPT_NAME" \
+        "$SCRATCH_APP/Contents/Info.plist" || die "PlistBuddy display name failed"
+    plist_id="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
+        "$SCRATCH_APP/Contents/Info.plist")" || die "PlistBuddy print failed"
+    [ "$plist_id" = "$ACCEPT_ID" ] || die "bundle id is $plist_id, not $ACCEPT_ID"
+    /usr/bin/codesign --force --deep --sign - "$SCRATCH_APP" \
+        || die "ad-hoc sign failed"
+    /usr/bin/codesign --verify --deep --strict "$SCRATCH_APP" \
+        || die "codesign verify failed"
+}
+
+seed_accept_defaults() {
+    defaults write "$ACCEPT_ID" bobDirectory -string "$VAULT_DIR"
+    defaults write "$ACCEPT_ID" useProductionHotkey -bool false
+    defaults write "$ACCEPT_ID" captureAliasHotkeyEnabled -bool false
+    defaults write "$ACCEPT_ID" refsHotkeyEnabled -bool false
+    defaults write "$ACCEPT_ID" refsAliasHotkeyEnabled -bool false
+    defaults write "$ACCEPT_ID" snoozeAcceptanceProbe -bool true
+}
+
+do_rebuild() {
+    local sha="" src_repo scratch_pid
+    mac_only
+    load_variant
+    need git
+    need rsync
+    [ -x /usr/libexec/PlistBuddy ] || die "missing required command: PlistBuddy"
+    [ -d "$ROOT" ] || die "no harness root; run up first"
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --sha)
+                sha="${2:?missing --sha value}"
+                shift 2
+                ;;
+            *)
+                die "rebuild: unexpected argument $1"
+                ;;
+        esac
+    done
+    src_repo="$(script_repo_root)"
+    if [ -z "$sha" ]; then
+        sha="$(git -C "$src_repo" rev-parse HEAD)"
+    fi
+    do_stop >/dev/null
+    install_scratch_bundle "$src_repo" "$sha"
+    printf '%s' "$sha" >"$HARNESS_SHA_FILE"
+    scratch_pid="$(launch_scratch)"
+    stop_stream
+    start_stream "$scratch_pid"
+    do_guard >/dev/null || die "guard failed after rebuild; see guard output"
+    printf '{"status":"rebuilt","sha":%s,"scratch_pid":%s,"bundle_id":%s}\n' \
+        "$(jstr "$sha")" "$scratch_pid" "$(jstr "$ACCEPT_ID")"
+}
+
+do_probe() {
+    local seq_file seq request tmp waited response
+    mac_only
+    load_variant
+    need python3
+    need notifyutil
+    [ -d "$ROOT" ] || die "no harness root; run up first"
+    if [ "$#" -lt 1 ]; then
+        die "usage: snooze-accept.sh probe COMMAND [ARGS...]"
+    fi
+    mkdir -p "$(probe_dir)"
+    seq_file="$(probe_dir)/seq"
+    if [ -f "$seq_file" ]; then
+        seq=$(($(cat "$seq_file") + 1))
+    else
+        seq=1
+    fi
+    printf '%s' "$seq" >"$seq_file"
+    request="$(python3 -c 'import json,sys
+print(json.dumps({"seq": int(sys.argv[1]), "command": sys.argv[2], "args": sys.argv[3:]}))
+' "$seq" "$@")"
+    tmp="$(mktemp "$(probe_dir)/request.XXXXXX")"
+    printf '%s' "$request" >"$tmp"
+    mv "$tmp" "$(probe_dir)/request.json"
+    notifyutil -p "$PROBE_KEY" || die "notifyutil -p $PROBE_KEY failed"
+    waited=0
+    response="$(probe_dir)/response-$seq.json"
+    while [ "$waited" -lt 50 ]; do
+        if [ -f "$response" ]; then
+            cat "$response"
+            printf '\n'
+            return 0
+        fi
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    die "probe response $response did not appear"
+}
+
+do_idle() {
+    mac_only
+    python3 <<'PY'
+import json, os, re, subprocess, ctypes
+from ctypes import c_uint32, c_int, c_double
+
+out = {
+    "status": "idle",
+    "hid_idle_seconds": None,
+    "screen_locked": False,
+    "displays_asleep": False,
+    "prevent_display_sleep": False,
+    "no_display_sleep": False,
+}
+
+try:
+    hid = subprocess.check_output(
+        ["ioreg", "-c", "IOHIDSystem"], text=True, stderr=subprocess.DEVNULL
+    )
+    match = re.search(r'"HIDIdleTime"\s*=\s*(\d+)', hid)
+    if match:
+        out["hid_idle_seconds"] = int(match.group(1)) / 1_000_000_000
+except (OSError, subprocess.CalledProcessError):
+    pass
+
+try:
+    root = subprocess.check_output(
+        ["ioreg", "-n", "Root", "-d1"], text=True, stderr=subprocess.DEVNULL
+    )
+    if re.search(r'"CGSSessionScreenIsLocked"\s*=\s*Yes', root):
+        out["screen_locked"] = True
+    elif re.search(r"CGSSessionScreenIsLocked.*Yes", root):
+        out["screen_locked"] = True
+except (OSError, subprocess.CalledProcessError):
+    pass
+
+try:
+    cg = ctypes.cdll.LoadLibrary(
+        "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+    )
+    cg.CGMainDisplayID.restype = c_uint32
+    cg.CGDisplayIsAsleep.argtypes = [c_uint32]
+    cg.CGDisplayIsAsleep.restype = c_int
+    out["displays_asleep"] = bool(cg.CGDisplayIsAsleep(cg.CGMainDisplayID()))
+except OSError:
+    pass
+
+try:
+    assertions = subprocess.check_output(
+        ["pmset", "-g", "assertions"], text=True, stderr=subprocess.DEVNULL
+    )
+    if "PreventUserIdleDisplaySleep" in assertions and re.search(
+        r"PreventUserIdleDisplaySleep\s+[1-9]", assertions
+    ):
+        out["prevent_display_sleep"] = True
+    if re.search(r"\bNoDisplaySleep\b", assertions):
+        out["no_display_sleep"] = True
+except (OSError, subprocess.CalledProcessError):
+    pass
+
+print(json.dumps(out))
+PY
+}
+
+do_evidence() {
+    local since="" pid dest
+    mac_only
+    load_variant
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --since)
+                since="${2:?missing --since value}"
+                shift 2
+                ;;
+            *)
+                die "evidence: unexpected argument $1"
+                ;;
+        esac
+    done
+    [ -n "$since" ] || die "usage: snooze-accept.sh evidence --since T"
+    [ -f "$SCRATCH_PID_FILE" ] || die "no scratch pid; run up first"
+    pid="$(cat "$SCRATCH_PID_FILE")"
+    mkdir -p "$EVIDENCE_DIR"
+    dest="$EVIDENCE_DIR/signposts-since.log"
+    case "$since" in
+        *[smhd])
+            /usr/bin/log show --signpost --last "$since" --style compact \
+                --predicate "subsystem == \"$SUBSYSTEM\" AND processIdentifier == $pid" \
+                >"$dest" 2>"$EVIDENCE_DIR/signposts-since.err" || true
+            ;;
+        *)
+            /usr/bin/log show --signpost --start "$since" --style compact \
+                --predicate "subsystem == \"$SUBSYSTEM\" AND processIdentifier == $pid" \
+                >"$dest" 2>"$EVIDENCE_DIR/signposts-since.err" || true
+            ;;
+    esac
+    printf '{"status":"evidence","pid":%s,"since":%s,"path":%s,"bytes":%s}\n' \
+        "$pid" "$(jstr "$since")" "$(jstr "$dest")" "$(wc -c <"$dest" | tr -d ' ')"
+}
+
+write_shim() {
+    local mode="$1" real_bob shim log
+    real_bob="$(command -v bob)" || die "missing required command: bob"
+    mkdir -p "$STATE_DIR/shim" "$EVIDENCE_DIR"
+    shim="$STATE_DIR/shim/bob"
+    log="$EVIDENCE_DIR/shim-argv.log"
+    touch "$log"
+    python3 - "$mode" "$real_bob" "$shim" "$log" <<'PY'
+import os, sys
+mode, real_bob, shim, log = sys.argv[1:]
+if mode == "passthrough":
+    body = """#!/bin/bash
+printf 'argv=%%s\\n' "$*" >>%s
+exec %s "$@"
+""" % (repr(log), repr(real_bob))
+elif mode == "oldbob":
+    body = """#!/bin/bash
+printf 'argv=%%s\\n' "$*" >>%s
+if [ "${1:-}" = "snooze" ] && { [ "${2:-}" = "-f" ] || [ "${2:-}" = "--format" ] || [ -z "${2:-}" ]; }; then
+  output="$(%s "$@" )"
+  status=$?
+  printf '%%s' "$output" | python3 -c 'import json,sys
+raw=sys.stdin.read()
+try:
+    payload=json.loads(raw)
+except Exception:
+    sys.stdout.write(raw)
+    raise SystemExit(0)
+payload.pop("wake_notice_version", None)
+json.dump(payload, sys.stdout)
+print()
+'
+  exit $status
+fi
+exec %s "$@"
+""" % (repr(log), repr(real_bob), repr(real_bob))
+else:
+    raise SystemExit("unknown shim mode")
+os.makedirs(os.path.dirname(shim), exist_ok=True)
+with open(shim, "w") as fh:
+    fh.write(body)
+os.chmod(shim, 0o755)
+print(shim)
+PY
+}
+
+do_shim() {
+    local mode="${1:-}"
+    mac_only
+    load_variant
+    [ -d "$ROOT" ] || die "no harness root; run up first"
+    case "$mode" in
+        passthrough | oldbob)
+            shim_path="$(write_shim "$mode")"
+            do_probe set bobExecutableOverride "$shim_path" >/dev/null
+            printf '{"status":"shim","mode":%s,"path":%s}\n' \
+                "$(jstr "$mode")" "$(jstr "$shim_path")"
+            ;;
+        off)
+            do_probe set bobExecutableOverride "" >/dev/null
+            printf '{"status":"shim","mode":"off"}\n'
+            ;;
+        *)
+            die "usage: snooze-accept.sh shim passthrough|oldbob|off"
+            ;;
+    esac
+}
+
+do_variant() {
+    local which="${1:-}" src_repo sha scratch_pid
+    mac_only
+    [ -d "$ROOT" ] || die "no harness root; run up first"
+    case "$which" in
+        noauth | accept) ;;
+        *) die "usage: snooze-accept.sh variant noauth|accept" ;;
+    esac
+    do_stop >/dev/null
+    printf '%s\n' "$which" >"$ROOT/variant"
+    load_variant
+    src_repo="$(script_repo_root)"
+    sha="$(cat "$HARNESS_SHA_FILE" 2>/dev/null || git -C "$src_repo" rev-parse HEAD)"
+    install_scratch_bundle "$src_repo" "$sha"
+    seed_accept_defaults
+    scratch_pid="$(launch_scratch)"
+    stop_stream
+    start_stream "$scratch_pid"
+    do_guard >/dev/null || die "guard failed after variant $which"
+    printf '{"status":"variant","variant":%s,"bundle_id":%s,"scratch_pid":%s}\n' \
+        "$(jstr "$which")" "$(jstr "$ACCEPT_ID")" "$scratch_pid"
+}
+
+idle_field() {
+    python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"
+}
+
+do_lockwatch() {
+    local lock_wait=0 idle_json locked hid prevent asleep last_sleep=0
+    local wake_n=0 wake_id="" pass=0 unlock_wait=0
+    mac_only
+    load_variant
+    [ -d "$ROOT" ] || die "no harness root; run up first"
+    mkdir -p "$EVIDENCE_DIR"
+    printf '{"status":"lockwatch","phase":"waiting-lock"}\n'
+    while true; do
+        idle_json="$(do_idle)"
+        locked="$(printf '%s' "$idle_json" | idle_field screen_locked)"
+        hid="$(printf '%s' "$idle_json" | idle_field hid_idle_seconds)"
+        prevent="$(printf '%s' "$idle_json" | idle_field prevent_display_sleep)"
+        asleep="$(printf '%s' "$idle_json" | idle_field displays_asleep)"
+        if [ "$locked" = "True" ] || [ "$locked" = "true" ]; then
+            lock_wait=$((lock_wait + 1))
+        else
+            # Accelerator: HID idle >= 30 min, unlocked, display awake,
+            # no display-sleep assertion, at most once per 6 h.
+            case "$hid" in
+                None | none | "") hid_int=0 ;;
+                *) hid_int="${hid%.*}" ;;
+            esac
+            hid_int="${hid_int:-0}"
+            now_epoch="$(date +%s)"
+            if [ "$hid_int" -ge 1800 ] && [ "$asleep" != "True" ] && [ "$asleep" != "true" ] \
+                && [ "$prevent" != "True" ] && [ "$prevent" != "true" ]; then
+                if [ $((now_epoch - last_sleep)) -ge 21600 ]; then
+                    pmset displaysleepnow >/dev/null 2>&1 || true
+                    last_sleep="$now_epoch"
+                    printf '{"status":"lockwatch","phase":"accelerator","hid_idle_seconds":%s}\n' \
+                        "$(jstr "$hid")"
+                fi
+            fi
+            lock_wait=0
+        fi
+        if [ "$lock_wait" -ge 10 ]; then
+            do_guard >/dev/null || die "guard failed inside lockwatch"
+            wake_n=$((wake_n + 1))
+            wake_out="$(do_wake "lock$wake_n" "Lock check $wake_n (test, no action needed)" --channel auto)"
+            wake_id="$(printf '%s' "$wake_out" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("wake_id") or "")')"
+            printf '{"status":"lockwatch","phase":"held","wake_id":%s,"lock_seconds":%s}\n' \
+                "$(jstr "$wake_id")" "$lock_wait"
+            while true; do
+                idle_json="$(do_idle)"
+                locked="$(printf '%s' "$idle_json" | idle_field screen_locked)"
+                snap="$(do_probe snapshot 2>/dev/null || true)"
+                printf '{"status":"lockwatch","phase":"held-snapshot","wake_id":%s,"idle":%s,"snapshot":%s}\n' \
+                    "$(jstr "$wake_id")" "$idle_json" "${snap:-null}"
+                if [ "$locked" != "True" ] && [ "$locked" != "true" ]; then
+                    if [ "$lock_wait" -lt 10 ]; then
+                        printf '{"status":"lockwatch","phase":"retry","reason":"unlock within 10s of lock"}\n'
+                        break
+                    fi
+                    unlock_wait=0
+                    printf '{"status":"lockwatch","phase":"unlocking","wake_id":%s}\n' \
+                        "$(jstr "$wake_id")"
+                    while [ "$unlock_wait" -lt 60 ]; do
+                        sleep 0.5
+                        unlock_wait=$((unlock_wait + 1))
+                        snap="$(do_probe snapshot 2>/dev/null || true)"
+                        python3 - "$wake_id" "$snap" <<'PY' && pass=1
+import json, sys
+wake = sys.argv[1]
+try:
+    snap = json.loads(sys.argv[2] or "{}")
+except Exception:
+    raise SystemExit(1)
+result = snap.get("result") or snap
+hud = (result.get("hud") or {}) if isinstance(result, dict) else {}
+coord = (result.get("coordinator") or {}) if isinstance(result, dict) else {}
+events = (result.get("last_events") or {}) if isinstance(result, dict) else {}
+records = (result.get("records") or {}) if isinstance(result, dict) else {}
+visible = hud.get("visible") is True
+presenting = coord.get("state") == "presenting"
+announced = bool(events.get("announcement_text"))
+chimed = events.get("chime_played") is True
+delivered = records.get("delivered") or []
+if visible and presenting and announced and chimed and delivered:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+                        if [ "$pass" = "1" ] && [ "$unlock_wait" -ge 3 ]; then
+                            printf '{"status":"lockwatch","phase":"pass","wake_id":%s,"unlock_seconds":%s}\n' \
+                                "$(jstr "$wake_id")" "$(python3 -c "print($unlock_wait * 0.5)")"
+                            return 0
+                        fi
+                    done
+                    printf '{"status":"lockwatch","phase":"unlock-timeout","wake_id":%s}\n' \
+                        "$(jstr "$wake_id")"
+                    break
+                fi
+                sleep 60
+                lock_wait=$((lock_wait + 60))
+            done
+            lock_wait=0
+        fi
+        sleep 1
+    done
+}
+
 main() {
     if [ "$#" -lt 1 ]; then
         usage >&2
@@ -691,9 +1155,16 @@ main() {
     shift
     case "$cmd" in
         up) do_up "$@" ;;
+        rebuild) do_rebuild "$@" ;;
         guard) do_guard "$@" ;;
         wake) do_wake "$@" ;;
         ping) do_ping "$@" ;;
+        probe) do_probe "$@" ;;
+        idle) do_idle "$@" ;;
+        evidence) do_evidence "$@" ;;
+        shim) do_shim "$@" ;;
+        variant) do_variant "$@" ;;
+        lockwatch) do_lockwatch "$@" ;;
         stop) do_stop "$@" ;;
         restart) do_restart "$@" ;;
         status) do_status "$@" ;;

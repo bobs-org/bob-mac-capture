@@ -80,6 +80,17 @@ final class StatusItemController {
         }
     }
 
+    /// Acceptance-probe view of the menu-bar beacon. Count, visibility,
+    /// tooltip, and AX label only.
+    func probeSnapshot() -> [String: Any] {
+        [
+            "count": presentation.snoozeCount,
+            "accessory_visible": presentation.snoozeCount > 0,
+            "tooltip": presentation.toolTip,
+            "ax_label": presentation.accessibilityLabel,
+        ]
+    }
+
     /// Combined update for resolution and beacon, used at launch restore.
     func update(isBobResolved: Bool, snoozeCount: Int) {
         pulseTask?.cancel()
@@ -113,13 +124,14 @@ final class StatusItemController {
                     return
                 }
                 let current = self.presentation
-                self.render(StatusItemFrame(
-                    glyphState: .ready,
-                    bulletRadius: radii[index],
-                    toolTip: current.toolTip,
-                    accessibilityLabel: current.accessibilityLabel,
-                    snoozeCount: current.snoozeCount
-                ))
+                self.render(
+                    StatusItemFrame(
+                        glyphState: .ready,
+                        bulletRadius: radii[index],
+                        toolTip: current.toolTip,
+                        accessibilityLabel: current.accessibilityLabel,
+                        snoozeCount: current.snoozeCount
+                    ))
             }
         }
     }

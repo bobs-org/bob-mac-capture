@@ -366,7 +366,12 @@ final class SnoozeNoticeCoordinator {
         guard !delivered.isEmpty || !restoredBeacon.isEmpty else {
             return
         }
-        CaptureSignpost.event(CaptureSignpost.snoozeAction)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeAction,
+            wakeID: delivered.first?.batch.wakeID,
+            reason: "panel-open",
+            count: delivered.count
+        )
         let today = effectiveToday()
         for entry in delivered {
             handledStore.acknowledge(entry.batch.wakeID, day: today)
@@ -394,7 +399,12 @@ final class SnoozeNoticeCoordinator {
     /// restart.
     func acknowledgeDelivered(wakeID: String) {
         if let index = restoredBeacon.firstIndex(where: { $0.wakeID == wakeID }) {
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "acknowledge",
+                count: 0
+            )
             restoredBeacon.remove(at: index)
             beaconStore.remove(wakeID: wakeID)
             handledStore.acknowledge(wakeID, day: effectiveToday())
@@ -407,7 +417,12 @@ final class SnoozeNoticeCoordinator {
         guard let index = delivered.firstIndex(where: { $0.batch.wakeID == wakeID }) else {
             return
         }
-        CaptureSignpost.event(CaptureSignpost.snoozeAction)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeAction,
+            wakeID: wakeID,
+            reason: "acknowledge",
+            count: delivered[index].presentation.taskCount
+        )
         let entry = delivered.remove(at: index)
         suppressedDeliveredWakeIDs.remove(entry.batch.wakeID)
         nudgeEndedWakeIDs.remove(entry.batch.wakeID)
@@ -430,7 +445,12 @@ final class SnoozeNoticeCoordinator {
         if restoredBeacon.contains(where: { $0.wakeID == wakeID }) {
             // A restored beacon has no live rows to filter: a successful
             // +15m clears it, since Bob confirmed the tasks moved.
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "snooze15",
+                count: keys.count
+            )
             restoredBeacon.removeAll(where: { $0.wakeID == wakeID })
             beaconStore.remove(wakeID: wakeID)
             handledStore.acknowledge(wakeID, day: effectiveToday())
@@ -449,7 +469,12 @@ final class SnoozeNoticeCoordinator {
             return !removed.contains(key)
         }
         if rows.isEmpty {
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "snooze15",
+                count: keys.count
+            )
             delivered.remove(at: index)
             suppressedDeliveredWakeIDs.remove(wakeID)
             nudgeEndedWakeIDs.remove(wakeID)
@@ -486,7 +511,13 @@ final class SnoozeNoticeCoordinator {
                 vaultRoot: batch.vaultRoot ?? configuredVaultRoot
             )
             if !suppressedDeliveredWakeIDs.contains(wakeID) {
-                CaptureSignpost.event(CaptureSignpost.snoozePresent)
+                CaptureSignpost.snooze(
+                    CaptureSignpost.snoozePresent,
+                    wakeID: wakeID,
+                    reason: "refresh",
+                    count: presentation.taskCount,
+                    channel: lastChannel
+                )
                 onPresent(batch, presentation)
             }
         }
@@ -550,13 +581,47 @@ final class SnoozeNoticeCoordinator {
         )
     }
 
+    /// Acceptance-probe view of coordinator state. IDs and reasons only.
+    func probeSnapshot() -> [String: Any] {
+        let today = todayProvider()
+        let state: String
+        if !isStarted {
+            state = "stopped"
+        } else if heldReasonText != nil {
+            state = "held"
+        } else if !delivered.isEmpty {
+            state = "presenting"
+        } else {
+            state = "started"
+        }
+        return [
+            "state": state,
+            "hold_reason": probeJSONBox(heldReasonText),
+            "queue": pending.map(\.receipt.wakeID),
+            "delivered": delivered.map(\.batch.wakeID),
+            "handled_today": Array(handledStore.handledIDs(for: today)).sorted(),
+            "claimed": claim.isOwned,
+            "capable": probeJSONBox(isCapable),
+            "last_receipt_id": probeJSONBox(lastReceiptID),
+            "last_channel": probeJSONBox(lastChannel),
+            "last_verification": probeJSONBox(lastVerificationText),
+            "last_failure": probeJSONBox(lastFailure),
+            "pending_count": pending.count,
+            "delivered_count": delivered.count,
+        ]
+    }
+
     // MARK: - Receipt intake
 
     private func handleReceipt(_ receipt: SnoozeWakeReceipt) {
         guard isStarted else {
             return
         }
-        CaptureSignpost.event(CaptureSignpost.snoozeReceiptRead)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeReceiptRead,
+            wakeID: receipt.wakeID,
+            channel: receipt.notificationChannel.rawValue
+        )
         lastReceiptID = receipt.wakeID
         lastChannel = receipt.notificationChannel.rawValue
         guard receipt.notificationChannel.permitsMacNotice else {
@@ -736,7 +801,13 @@ final class SnoozeNoticeCoordinator {
                 consumedVerification = true
             case .hold(let holdReason, let nextCheck):
                 if !isHeld {
-                    CaptureSignpost.event(CaptureSignpost.snoozeHold)
+                    CaptureSignpost.snooze(
+                        CaptureSignpost.snoozeHold,
+                        wakeID: entry.receipt.wakeID,
+                        reason: holdDescription(holdReason),
+                        count: entry.receipt.tasks.count,
+                        channel: entry.receipt.notificationChannel.rawValue
+                    )
                 }
                 isHeld = true
                 heldReasonText = holdDescription(holdReason)
@@ -806,7 +877,13 @@ final class SnoozeNoticeCoordinator {
         // A hold that just cleared gets a fresh agenda read before
         // delivery: meeting facts may have changed while held.
         if wasHeld, !isHeld, !pending.isEmpty {
-            CaptureSignpost.event(CaptureSignpost.snoozeReturn)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeReturn,
+                wakeID: pending.first?.receipt.wakeID,
+                reason: "hold-cleared",
+                count: pending.count,
+                channel: lastChannel
+            )
             requestAgendaRefresh()
         }
         wasHeld = isHeld
@@ -824,7 +901,13 @@ final class SnoozeNoticeCoordinator {
         guard !delivered.contains(where: { $0.batch.wakeID == batch.wakeID }) else {
             return
         }
-        CaptureSignpost.event(CaptureSignpost.snoozePresent)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozePresent,
+            wakeID: batch.wakeID,
+            reason: "present",
+            count: batch.rows.count,
+            channel: lastChannel
+        )
         pending.removeAll(where: { $0.receipt.wakeID == batch.wakeID })
         // A restored beacon for the same ID is superseded by the live batch.
         restoredBeacon.removeAll(where: { $0.wakeID == batch.wakeID })
@@ -892,7 +975,12 @@ final class SnoozeNoticeCoordinator {
                 || receiptAge > SnoozeWakeNoticePolicy.receiptMaxAgeSeconds
         }
         if !expired.isEmpty || !expiredRestored.isEmpty {
-            CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeWithdraw,
+                wakeID: expired.first?.batch.wakeID ?? expiredRestored.first?.wakeID,
+                reason: "expired",
+                count: expired.count + expiredRestored.count
+            )
         }
         for entry in expired {
             delivered.removeAll(where: { $0.batch.wakeID == entry.batch.wakeID })
@@ -928,16 +1016,20 @@ final class SnoozeNoticeCoordinator {
     private func nextDeliveredExpiry(now: Date) -> Date? {
         var candidates: [Date] = []
         for entry in delivered {
-            candidates.append(entry.deliveredAt.addingTimeInterval(
-                SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
-            candidates.append(entry.batch.wokenAt.addingTimeInterval(
-                SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
+            candidates.append(
+                entry.deliveredAt.addingTimeInterval(
+                    SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
+            candidates.append(
+                entry.batch.wokenAt.addingTimeInterval(
+                    SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
         }
         for restored in restoredBeacon {
-            candidates.append(restored.deliveredAt.addingTimeInterval(
-                SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
-            candidates.append(restored.wokenAt.addingTimeInterval(
-                SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
+            candidates.append(
+                restored.deliveredAt.addingTimeInterval(
+                    SnoozeWakeNoticePresentation.beaconLifetimeSeconds))
+            candidates.append(
+                restored.wokenAt.addingTimeInterval(
+                    SnoozeWakeNoticePolicy.receiptMaxAgeSeconds))
         }
         return candidates.filter { $0 > now }.min()
     }
@@ -980,7 +1072,11 @@ final class SnoozeNoticeCoordinator {
     }
 
     private func purgeDay(today: String) {
-        CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeWithdraw,
+            reason: "day-purge",
+            count: pending.count + delivered.count
+        )
         lastEvaluatedDay = today
         handledStore.purge(day: today)
         for entry in pending {
@@ -1034,7 +1130,13 @@ final class SnoozeNoticeCoordinator {
     }
 
     private func fetchVerification() {
-        CaptureSignpost.event(CaptureSignpost.snoozeVerify)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeVerify,
+            wakeID: lastReceiptID,
+            reason: "verify",
+            count: pending.count,
+            channel: lastChannel
+        )
         guard let client = processClient, !fetchInFlight else {
             return
         }

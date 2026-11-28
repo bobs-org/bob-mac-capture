@@ -93,6 +93,24 @@ public func XCTAssertNotEqual<T: Equatable>(
     line: UInt = #line
 ) {}
 
+public func XCTAssertNotEqual<T: FloatingPoint>(
+    _ expression1: @autoclosure () throws -> T,
+    _ expression2: @autoclosure () throws -> T,
+    accuracy: T,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {}
+
+public func XCTAssertNotEqual<T: Numeric>(
+    _ expression1: @autoclosure () throws -> T,
+    _ expression2: @autoclosure () throws -> T,
+    accuracy: T,
+    _ message: @autoclosure () -> String = "",
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {}
+
 public func XCTAssertGreaterThan<T: Comparable>(
     _ expression1: @autoclosure () throws -> T,
     _ expression2: @autoclosure () throws -> T,

@@ -54,8 +54,11 @@ adds interval `templates-refresh`; the related lane adds interval
 the visible rows), and `capture-related-empty` (settled response had no
 matches); the snooze wake lifecycle adds metadata-only events
 `snooze-receipt-read`, `snooze-hold`, `snooze-return`, `snooze-verify`,
-`snooze-present`, `snooze-action`, and `snooze-withdraw` around receipt read,
-hold/return, verification, presentation, action, and withdrawal. These, and the bounded
+`snooze-present`, `snooze-record`, `snooze-action`, and `snooze-withdraw` around receipt
+read, hold/return, verification, presentation, the Notification Center record post,
+action, and withdrawal. Every snooze event carries public metadata: wake ID, hold or
+drop reason, task count, and channel, never task titles. Record posts use
+`snooze-record` so one presentation is one `snooze-present`. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).
 
@@ -64,6 +67,37 @@ Inspect them with:
 ```bash
 log show --signpost --predicate 'subsystem == "org.bobs.bob-mac-capture"'
 ```
+
+Settings › Snoozed Tasks includes a `Records:` line for the Notification Center
+authorization status (`Not requested`, `Denied — enable in System Settings`,
+`Authorized`, …). Snooze posts never call `requestAuthorization`; Enable in Settings
+is the only prompt.
+
+## Acceptance probe
+
+The in-app probe is compiled into every Mac Capture build and stays off for the
+production identity `org.bobs.bob-mac-capture`. It enables only when the running
+bundle ID starts with `org.bobs.bob-mac-capture.accept` and that domain has
+`snoozeAcceptanceProbe = true`. The accept-noauth scratch identity matches the same
+prefix. The probe never parses or writes the vault.
+
+The isolated harness `Scripts/snooze-accept.sh` is the only supported client:
+
+- `up` seeds `snoozeAcceptanceProbe` on the accept domain.
+- `probe <command> [args…]` atomically writes
+  `$XDG_STATE_HOME/bob-mac-capture-accept/probe/request.json`, posts Darwin
+  `org.bobs.bob-mac-capture.accept.probe`, and prints `response-<seq>.json`.
+- Commands: `snapshot [png]`, `press <open|snooze15|dismiss|body|row:N>`,
+  `hover <enter|exit>`,
+  `set <snoozeWakeAnnounce|snoozeWakeChime|snoozeWakeHoldWhileAway|snoozeWakeHoldDuringMeetings|bobDirectory|bobExecutableOverride> <value>`,
+  `override <reduce-motion|reduce-transparency> <on|off|system>`,
+  `open-sink <on|off>` (on by default in probe mode), `panel <show|hide>`.
+- `rebuild --sha`, `idle`, `evidence --since`, `shim passthrough|oldbob|off`,
+  `variant noauth|accept`, and `lockwatch` drive the unattended accept checks.
+
+Open in probe mode records the Obsidian URL instead of launching it. Press finds the
+live HUD control by `accessibilityIdentifier` and calls `accessibilityPerformPress()`,
+falling back to the controller handler only if that fails, and reports which path ran.
 
 ## refs-rank
 

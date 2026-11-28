@@ -28,6 +28,26 @@ enum CaptureSignpost {
         )
     }
 
+    /// Metadata-only snooze event: wake ID, hold or drop reason, task
+    /// count, and channel. Never task titles. Empty strings and 0 fill
+    /// unused fields so `log show --signpost` always has the same keys.
+    static func snooze(
+        _ name: StaticString,
+        wakeID: String? = nil,
+        reason: String? = nil,
+        count: Int? = nil,
+        channel: String? = nil
+    ) {
+        let wake = wakeID ?? ""
+        let why = reason ?? ""
+        let n = count ?? 0
+        let ch = channel ?? ""
+        signposter.emitEvent(
+            name,
+            "wake_id=\(wake, privacy: .public) reason=\(why, privacy: .public) count=\(n) channel=\(ch, privacy: .public)"
+        )
+    }
+
     static func begin(_ name: StaticString) -> IntervalToken {
         IntervalToken(name: name, state: signposter.beginInterval(name))
     }
@@ -36,7 +56,9 @@ enum CaptureSignpost {
         signposter.endInterval(token.name, token.state)
     }
 
-    static func measure<T>(_ name: StaticString, operation: () async throws -> T) async rethrows -> T {
+    static func measure<T>(_ name: StaticString, operation: () async throws -> T) async rethrows
+        -> T
+    {
         let token = begin(name)
         defer { end(token) }
         return try await operation()
@@ -61,12 +83,14 @@ enum CaptureSignpost {
 
     // Snooze wake-notice lifecycle (metadata only: IDs, counts, reasons,
     // never task text). Receipt read, hold/return, verification, presentation,
-    // action, and withdrawal each emit one bounded event.
+    // action, and withdrawal each emit one bounded event. Record posts use
+    // `snooze-record` so one presentation is one `snooze-present`.
     static let snoozeReceiptRead: StaticString = "snooze-receipt-read"
     static let snoozeHold: StaticString = "snooze-hold"
     static let snoozeReturn: StaticString = "snooze-return"
     static let snoozeVerify: StaticString = "snooze-verify"
     static let snoozePresent: StaticString = "snooze-present"
+    static let snoozeRecord: StaticString = "snooze-record"
     static let snoozeAction: StaticString = "snooze-action"
     static let snoozeWithdraw: StaticString = "snooze-withdraw"
 }

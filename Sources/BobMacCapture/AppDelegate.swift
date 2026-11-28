@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snoozeWakeScheduler: SnoozeWakeScheduler?
     private var snoozeNoticeCoordinator: SnoozeNoticeCoordinator?
     private var snoozeWakeHUD: SnoozeWakeHUDController?
+    private let probeDisplayOverrides = ProbeDisplayOverrides()
+    private var acceptanceProbe: SnoozeWakeAcceptanceProbe?
     private var walkAttentionStore: WalkAttentionStore?
     private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
@@ -305,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         snoozeWakeScheduler?.stop()
         snoozeNoticeCoordinator?.stop()
         snoozeWakeHUD?.dismiss()
+        acceptanceProbe?.stop()
         processClient?.cancelActiveProcess()
     }
 
@@ -562,7 +565,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refreshAgenda: { [weak self] in
                 self?.agendaStore?.refresh(reason: .snoozeWake)
             },
-            chimeEnabled: { [weak self] in self?.settings.snoozeWakeChime ?? true }
+            chimeEnabled: { [weak self] in self?.settings.snoozeWakeChime ?? true },
+            reduceMotion: { [weak self] in
+                self?.probeDisplayOverrides.motion()
+                    ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            },
+            reduceTransparency: { [weak self] in
+                self?.probeDisplayOverrides.transparency()
+                    ?? NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+            }
         )
         let coordinator = SnoozeNoticeCoordinator(
             claim: SnoozeWakeNotifierClaim(
@@ -606,11 +617,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         hud.onAcknowledge = { [weak coordinator] wakeID in
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "open"
+            )
             coordinator?.acknowledgeDelivered(wakeID: wakeID)
         }
         hud.onTasksRemoved = { [weak coordinator] wakeID, keys in
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "snooze15",
+                count: keys.count
+            )
             coordinator?.removeDeliveredTasks(wakeID: wakeID, keys: keys)
         }
         hud.onTransientEnded = { [weak coordinator] wakeID in
@@ -649,7 +669,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.snoozeWakeHUD = hud
         self.snoozeNoticeCoordinator = coordinator
         notificationService.onSnoozeWakeOpened = { [weak coordinator] wakeID in
-            CaptureSignpost.event(CaptureSignpost.snoozeAction)
+            CaptureSignpost.snooze(
+                CaptureSignpost.snoozeAction,
+                wakeID: wakeID,
+                reason: "record-open"
+            )
             coordinator?.acknowledgeDelivered(wakeID: wakeID)
         }
         coordinator.start()
@@ -659,6 +683,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateSnoozeBeacon()
         notificationService.reconcileSnoozeRecords(activeWakeIDs: coordinator.activeWakeIDs())
         refreshSnoozeDiagnostics()
+        startAcceptanceProbe()
 
         Publishers.CombineLatest4(
             settings.$snoozeWakeAnnounce,
@@ -725,7 +750,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let failure = snapshot.lastFailure, !failure.isEmpty {
             parts.append("Notice: \(failure)")
         }
+        parts.append(
+            NotificationService.recordsDiagnostic(
+                status: notificationService.authorization.status)
+        )
         settings.snoozeWakeDiagnostic = "Wake notices: " + parts.joined(separator: " · ")
+    }
+
+    private func startAcceptanceProbe() {
+        let probe = SnoozeWakeAcceptanceProbe(host: self)
+        acceptanceProbe = probe
+        guard probe.isEnabled else { return }
+        snoozeWakeHUD?.openSinkEnabled = true
+        probe.start()
     }
 
     private func registerHotKey() {
@@ -1429,6 +1466,193 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+extension AppDelegate: SnoozeWakeAcceptanceProbeHost {
+    func probeHandle(command: String, args: [String]) async throws -> [String: Any] {
+        switch command {
+        case "snapshot":
+            return await probeSnapshot(png: args.contains("png"))
+        case "press":
+            guard let target = args.first else {
+                throw ProbeCommandError("press requires open|snooze15|dismiss|body|row:N")
+            }
+            guard let hud = snoozeWakeHUD else {
+                throw ProbeCommandError("HUD is not configured")
+            }
+            return try hud.probePress(target)
+        case "hover":
+            guard let action = args.first else {
+                throw ProbeCommandError("hover requires enter|exit")
+            }
+            let hovering: Bool
+            switch action {
+            case "enter": hovering = true
+            case "exit": hovering = false
+            default: throw ProbeCommandError("hover requires enter|exit")
+            }
+            snoozeWakeHUD?.probeHover(hovering)
+            return ["hovered": hovering]
+        case "set":
+            return try probeSet(args: args)
+        case "override":
+            return try probeOverride(args: args)
+        case "open-sink":
+            guard let value = args.first else {
+                throw ProbeCommandError("open-sink requires on|off")
+            }
+            let enabled = try Self.parseProbeBool(value)
+            snoozeWakeHUD?.openSinkEnabled = enabled
+            return ["open_sink": enabled]
+        case "panel":
+            guard let action = args.first else {
+                throw ProbeCommandError("panel requires show|hide")
+            }
+            switch action {
+            case "show":
+                showCapturePanel()
+            case "hide":
+                panelModel?.closeRetainingDraft()
+            default:
+                throw ProbeCommandError("panel requires show|hide")
+            }
+            return [
+                "panel": action,
+                "visible": panelController?.isVisible ?? false,
+            ]
+        default:
+            throw ProbeCommandError("unknown command \(command)")
+        }
+    }
+
+    private func probeSet(args: [String]) throws -> [String: Any] {
+        guard args.count >= 2 else {
+            throw ProbeCommandError("set requires <key> <value>")
+        }
+        let key = args[0]
+        let value = args[1]
+        switch key {
+        case "snoozeWakeAnnounce":
+            settings.snoozeWakeAnnounce = try Self.parseProbeBool(value)
+        case "snoozeWakeChime":
+            settings.snoozeWakeChime = try Self.parseProbeBool(value)
+        case "snoozeWakeHoldWhileAway":
+            settings.snoozeWakeHoldWhileAway = try Self.parseProbeBool(value)
+        case "snoozeWakeHoldDuringMeetings":
+            settings.snoozeWakeHoldDuringMeetings = try Self.parseProbeBool(value)
+        case "bobDirectory":
+            settings.bobDirectory = value
+        case "bobExecutableOverride":
+            settings.bobExecutableOverride = value
+        default:
+            throw ProbeCommandError("unknown setting \(key)")
+        }
+        return ["key": key, "value": value]
+    }
+
+    private func probeOverride(args: [String]) throws -> [String: Any] {
+        guard args.count >= 2 else {
+            throw ProbeCommandError(
+                "override requires <reduce-motion|reduce-transparency> <on|off|system>")
+        }
+        let parsed: Bool?
+        switch args[1] {
+        case "on", "true", "1": parsed = true
+        case "off", "false", "0": parsed = false
+        case "system": parsed = nil
+        default:
+            throw ProbeCommandError("override value must be on|off|system")
+        }
+        switch args[0] {
+        case "reduce-motion":
+            probeDisplayOverrides.reduceMotion = parsed
+        case "reduce-transparency":
+            probeDisplayOverrides.reduceTransparency = parsed
+        default:
+            throw ProbeCommandError("unknown override \(args[0])")
+        }
+        if let hud = snoozeWakeHUD, hud.isVisible, let state = hud.currentState {
+            hud.show(
+                batch: state.batch, presentation: state.presentation, silent: true)
+        }
+        return ["key": args[0], "value": args[1]]
+    }
+
+    private func probeSnapshot(png: Bool) async -> [String: Any] {
+        let hud = snoozeWakeHUD
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let lastEvents: [String: Any] = [
+            "announcement_text": probeJSONBox(hud?.lastAnnouncementText),
+            "announcement_at": probeJSONBox(
+                hud?.lastAnnouncementAt.map { formatter.string(from: $0) }),
+            "chime_sound": probeJSONBox(hud?.lastChimeSound),
+            "chime_played": probeJSONBox(hud?.lastChimePlayed),
+        ]
+        let laterToday: [[String: Any]] =
+            (agendaStore?.snapshot?.snoozed?.rows ?? []).map { row in
+                [
+                    "title": row.title,
+                    "route": row.route,
+                    "block_id": row.blockID,
+                    "target": row.target,
+                    "state": Self.probeSnoozedState(row.state),
+                ]
+            }
+        var snapshot: [String: Any] = [
+            "hud": hud?.probeSnapshot() ?? ["visible": false],
+            "beacon": statusItemController?.probeSnapshot() ?? ["count": 0],
+            "coordinator": snoozeNoticeCoordinator?.probeSnapshot() ?? ["state": "stopped"],
+            "last_events": lastEvents,
+            "focus": [
+                "nsapp_active": NSApp.isActive,
+                "frontmost": probeJSONBox(
+                    NSWorkspace.shared.frontmostApplication?.localizedName),
+                "frontmost_bundle": probeJSONBox(
+                    NSWorkspace.shared.frontmostApplication?.bundleIdentifier),
+            ],
+            "agenda": ["later_today": laterToday],
+            "records": [
+                "authorization": notificationService.authorization.displayName,
+                "authorization_status": String(
+                    describing: notificationService.authorization.status),
+                "request_authorization_count": notificationService.requestAuthorizationCount,
+                "delivered": [],
+            ],
+        ]
+        let delivered = await notificationService.probeDeliveredRecords()
+        if var records = snapshot["records"] as? [String: Any] {
+            records["delivered"] = delivered
+            snapshot["records"] = records
+        }
+        if png, let data = hud?.renderPNGData() {
+            let directory = SnoozeWakeAcceptanceProbe.probeDirectory()
+            try? FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent("hud.png")
+            try? data.write(to: url, options: .atomic)
+            snapshot["png_path"] = url.path
+            snapshot["png_bytes"] = data.count
+        }
+        return snapshot
+    }
+
+    private static func probeSnoozedState(_ state: CaptureAgendaSnoozedState) -> String {
+        switch state {
+        case .asleep: return "asleep"
+        case .due: return "due"
+        case .blocked: return "blocked"
+        case .other(let value): return value
+        }
+    }
+
+    private static func parseProbeBool(_ value: String) throws -> Bool {
+        switch value.lowercased() {
+        case "on", "true", "1", "yes": return true
+        case "off", "false", "0", "no": return false
+        default: throw ProbeCommandError("expected on|off, got \(value)")
+        }
     }
 }
 

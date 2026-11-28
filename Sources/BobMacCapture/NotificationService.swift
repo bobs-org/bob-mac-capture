@@ -74,17 +74,21 @@ final class SnoozeWakeRecordWithdrawalLedger: @unchecked Sendable {
 final class NotificationService: NSObject, ObservableObject {
     nonisolated static let openNoteActionIdentifier = "org.bobs.bob-mac-capture.open-note"
     nonisolated static let openNotesActionIdentifier = "org.bobs.bob-mac-capture.open-notes"
-    nonisolated static let captureActionIdentifier = "org.bobs.bob-mac-capture.install-restart.capture"
+    nonisolated static let captureActionIdentifier =
+        "org.bobs.bob-mac-capture.install-restart.capture"
     nonisolated static let captureCategoryIdentifier = "org.bobs.bob-mac-capture.capture"
     nonisolated static let captureBatchCategoryIdentifier = "org.bobs.bob-mac-capture.capture-batch"
-    nonisolated static let installRestartCategoryIdentifier = "org.bobs.bob-mac-capture.install-restart"
+    nonisolated static let installRestartCategoryIdentifier =
+        "org.bobs.bob-mac-capture.install-restart"
     nonisolated static let refsScanCategoryIdentifier = "org.bobs.bob-mac-capture.refs-scan"
     nonisolated static let refsScanShowActionIdentifier = "org.bobs.bob-mac-capture.refs-scan.show"
-    nonisolated static let refsPDFUpdatesThreadIdentifier = "org.bobs.bob-mac-capture.refs-pdf-updates"
+    nonisolated static let refsPDFUpdatesThreadIdentifier =
+        "org.bobs.bob-mac-capture.refs-pdf-updates"
     /// Stable Notification Center record for one wake batch. The request
     /// identifier is `snooze-woken-<wake_id>`; the thread is shared.
     nonisolated static let snoozeWakeCategoryIdentifier = "org.bobs.bob-mac-capture.snooze-wake"
-    nonisolated static let snoozeWakeOpenActionIdentifier = "org.bobs.bob-mac-capture.snooze-wake.open"
+    nonisolated static let snoozeWakeOpenActionIdentifier =
+        "org.bobs.bob-mac-capture.snooze-wake.open"
     nonisolated static let snoozeWakeIDKey = "snoozeWakeID"
     nonisolated static let snoozeVaultRootKey = "snoozeVaultRoot"
     nonisolated static let snoozeDateKey = "snoozeDate"
@@ -103,15 +107,21 @@ final class NotificationService: NSObject, ObservableObject {
     ]
     /// Silent record presentation: list-only, never banners, sounds, or badges
     /// while the app is frontmost. Other categories keep the banner path.
-    nonisolated static let snoozeForegroundPresentationOptions: UNNotificationPresentationOptions = [
-        .list
-    ]
+    nonisolated static let snoozeForegroundPresentationOptions: UNNotificationPresentationOptions =
+        [
+            .list
+        ]
 
-    @Published private(set) var authorization = NotificationAuthorizationDisplay(status: .notDetermined)
+    @Published private(set) var authorization = NotificationAuthorizationDisplay(
+        status: .notDetermined)
     /// The last authorization-request failure, if any. Cleared when a
     /// request starts and on success; Settings shows it under Authorization
     /// instead of leaving a failed Enable click silent.
     @Published private(set) var authorizationRequestFailure: String?
+    /// Count of `requestAuthorization()` calls this process. Snooze posts
+    /// never request; the probe reports this so a denied scratch cannot
+    /// hide a prompt.
+    private(set) var requestAuthorizationCount = 0
 
     private let center: UNUserNotificationCenter
     private let opener: (URL) -> Void
@@ -146,6 +156,7 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     func requestAuthorization() {
+        requestAuthorizationCount += 1
         Task {
             authorizationRequestFailure = nil
             do {
@@ -155,6 +166,30 @@ final class NotificationService: NSObject, ObservableObject {
                     error: error, bundlePath: Bundle.main.bundlePath)
             }
             await refreshAuthorizationStatus()
+        }
+    }
+
+    /// Settings / probe line for the Notification Center record channel.
+    nonisolated static func recordsDiagnostic(status: UNAuthorizationStatus) -> String {
+        "Records: \(NotificationAuthorizationDisplay(status: status).displayName)"
+    }
+
+    /// Delivered `snooze-woken-*` identifiers and the Default-action URL
+    /// each record would open. Used by the acceptance probe only.
+    func probeDeliveredRecords() async -> [[String: Any]] {
+        let notifications: [UNNotification] = await withCheckedContinuation { continuation in
+            center.getDeliveredNotifications { notifications in
+                continuation.resume(returning: notifications)
+            }
+        }
+        return notifications.compactMap { notification in
+            let identifier = notification.request.identifier
+            guard identifier.hasPrefix("snooze-woken-") else { return nil }
+            let url = Self.snoozeWakeTaskURL(userInfo: notification.request.content.userInfo)
+            return [
+                "id": identifier,
+                "default_action_url": probeJSONBox(url?.absoluteString),
+            ]
         }
     }
 
@@ -198,13 +233,14 @@ final class NotificationService: NSObject, ObservableObject {
         jumpLost: Bool = false
     ) {
         Task {
-            try? await add(Self.successContent(
-                captures: captures,
-                globalDestination: globalDestination,
-                openPlan: openPlan,
-                jump: jump,
-                jumpLost: jumpLost
-            ))
+            try? await add(
+                Self.successContent(
+                    captures: captures,
+                    globalDestination: globalDestination,
+                    openPlan: openPlan,
+                    jump: jump,
+                    jumpLost: jumpLost
+                ))
         }
     }
 
@@ -304,8 +340,16 @@ final class NotificationService: NSObject, ObservableObject {
     /// not-determined skips the record and keeps the HUD functional. A wake
     /// ID withdrawn before the add completes skips the post so a late add
     /// cannot resurrect a cleared record.
-    func postSnoozeWakeRecord(batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation) {
-        CaptureSignpost.event(CaptureSignpost.snoozePresent)
+    func postSnoozeWakeRecord(
+        batch: SnoozeWakeNoticeBatch, presentation: SnoozeWakeNoticePresentation
+    ) {
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeRecord,
+            wakeID: batch.wakeID,
+            reason: "record",
+            count: presentation.taskCount,
+            channel: "record"
+        )
         let wakeID = batch.wakeID
         Task {
             let settings = await center.notificationSettings()
@@ -337,7 +381,12 @@ final class NotificationService: NSObject, ObservableObject {
     /// Withdraws one wake record from delivered and pending stores and marks
     /// the ID withdrawn so a late add cannot resurrect it.
     func withdrawSnoozeWakeRecord(wakeID: String) {
-        CaptureSignpost.event(CaptureSignpost.snoozeWithdraw)
+        CaptureSignpost.snooze(
+            CaptureSignpost.snoozeWithdraw,
+            wakeID: wakeID,
+            reason: "withdraw-record",
+            channel: "record"
+        )
         snoozeWakeWithdrawalLedger.withdraw(wakeID)
         let recordID = SnoozeWakeNoticePresentation.recordID(wakeID: wakeID)
         center.removeDeliveredNotifications(withIdentifiers: [recordID])
@@ -408,7 +457,8 @@ final class NotificationService: NSObject, ObservableObject {
                 content: content,
                 trigger: nil
             )
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
                 center.add(request) { error in
                     if let error {
                         continuation.resume(throwing: error)
@@ -458,11 +508,13 @@ final class NotificationService: NSObject, ObservableObject {
         if let jump, !jump.label.isEmpty, jumpPlan != nil {
             content.body += (content.body.isEmpty ? "" : "\n") + "↗ \(jump.label)"
         } else if jumpLost, let jump, !jump.label.isEmpty {
-            content.body += (content.body.isEmpty ? "" : "\n")
+            content.body +=
+                (content.body.isEmpty ? "" : "\n")
                 + "↗ Couldn't find “\(jump.label)” to jump to"
         }
         if !openPlan.isEmpty {
-            content.categoryIdentifier = captureOpenPlanCategoryIdentifier(count: openPlan.notes.count)
+            content.categoryIdentifier = captureOpenPlanCategoryIdentifier(
+                count: openPlan.notes.count)
             var userInfo: [AnyHashable: Any] = [
                 openPlanKey: openPlan.notificationPayload,
                 targetPathKey: presentation.targetPaths[0],
@@ -502,7 +554,7 @@ final class NotificationService: NSObject, ObservableObject {
                 kind: "task",
                 created: "",
                 placement: "inserted"
-            ),
+            )
         ])
     }
 
@@ -758,9 +810,11 @@ final class NotificationService: NSObject, ObservableObject {
         response: RefsTodayLinkResponse,
         title: String
     ) -> UNMutableNotificationContent? {
-        guard let presentation = RefsTodayLinkPresentation.notification(
-            response: response, title: title
-        ) else {
+        guard
+            let presentation = RefsTodayLinkPresentation.notification(
+                response: response, title: title
+            )
+        else {
             return nil
         }
         let content = UNMutableNotificationContent()
@@ -917,16 +971,16 @@ final class NotificationService: NSObject, ObservableObject {
         // one-entry jump plan. The explicit Open Notes action still opens
         // the captured notes through the open-plan payload below.
         if actionIdentifier == UNNotificationDefaultActionIdentifier,
-           let payload = userInfo[jumpPlanKey] as? [[String: Any]],
-           let plan = CaptureOpenPlan(notificationPayload: payload),
-           let url = ObsidianOpenURL.openNotesURL(for: plan)
+            let payload = userInfo[jumpPlanKey] as? [[String: Any]],
+            let plan = CaptureOpenPlan(notificationPayload: payload),
+            let url = ObsidianOpenURL.openNotesURL(for: plan)
         {
             return [url]
         }
 
         if let payload = userInfo[openPlanKey] as? [[String: Any]],
-           let plan = CaptureOpenPlan(notificationPayload: payload),
-           let url = ObsidianOpenURL.openNotesURL(for: plan)
+            let plan = CaptureOpenPlan(notificationPayload: payload),
+            let url = ObsidianOpenURL.openNotesURL(for: plan)
         {
             return [url]
         }
@@ -1003,7 +1057,7 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if CapturePomodoroStartPresentation.isSessionStart(capture),
-               let start = CapturePomodoroStartPresentation(capture: capture)
+                let start = CapturePomodoroStartPresentation(capture: capture)
             {
                 return CaptureNotificationPresentation(
                     title: start.notificationTitle,
@@ -1074,13 +1128,13 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if let notePull = capture.notePull,
-               let presentation = CaptureNotePullPresentation(
-                   notePull: notePull,
-                   group: capture.pullIn?.groups.first(where: {
-                       $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
-                   })
-               ),
-               !presentation.notificationBody.isEmpty
+                let presentation = CaptureNotePullPresentation(
+                    notePull: notePull,
+                    group: capture.pullIn?.groups.first(where: {
+                        $0.group == "note_pull" && ($0.note == notePull.note || $0.note == nil)
+                    })
+                ),
+                !presentation.notificationBody.isEmpty
             {
                 return CaptureNotificationPresentation(
                     title: presentation.notificationTitle,
@@ -1090,7 +1144,7 @@ final class NotificationService: NSObject, ObservableObject {
                 )
             }
             if let summary = capture.recordNote,
-               capture.kind == "record_note" || capture.kind == "record_update"
+                capture.kind == "record_note" || capture.kind == "record_update"
             {
                 return singlePresentation(
                     title: CaptureRecordPreviewPresentation.notificationTitle(
@@ -1151,7 +1205,9 @@ final class NotificationService: NSObject, ObservableObject {
         if nonemptyCaptures.allSatisfy({ CaptureTaskCompletePresentation(capture: $0) != nil }) {
             let lines = nonemptyCaptures.enumerated().map { index, capture in
                 let presentation = CaptureTaskCompletePresentation(capture: capture)
-                let detail = presentation.map { "\($0.destinationLabel): \($0.transitionText)" } ?? batchLineText(capture)
+                let detail =
+                    presentation.map { "\($0.destinationLabel): \($0.transitionText)" }
+                    ?? batchLineText(capture)
                 return "\(index + 1). \(detail)"
             }
             let summaryParts = [
@@ -1163,7 +1219,8 @@ final class NotificationService: NSObject, ObservableObject {
             return CaptureNotificationPresentation(
                 title: "Completed \(nonemptyCaptures.count) tasks",
                 subtitle: summary,
-                body: ([summary] + lines + heldLines).filter { !$0.isEmpty }.joined(separator: "\n"),
+                body: ([summary] + lines + heldLines).filter { !$0.isEmpty }.joined(
+                    separator: "\n"),
                 targetPaths: targetPaths
             )
         }
@@ -1183,7 +1240,8 @@ final class NotificationService: NSObject, ObservableObject {
             .joined(separator: " · ")
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
-            let suffix = "\(scheduled)\(startedSuffix(for: capture))"
+            let suffix =
+                "\(scheduled)\(startedSuffix(for: capture))"
                 + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(resetSuffix(for: capture))\(closedSuffix(for: capture))"
             return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): "
                 + "\(batchLineText(capture))\(suffix)"
@@ -1208,7 +1266,8 @@ final class NotificationService: NSObject, ObservableObject {
         let overrideCount = captures.filter {
             !captureUsesGlobalDestination($0, globalDestination)
         }.count
-        let overrideSummary = overrideCount == 0
+        let overrideSummary =
+            overrideCount == 0
             ? ""
             : "\(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
         let destinationLabel = globalDestination.destinationLabel
@@ -1220,10 +1279,12 @@ final class NotificationService: NSObject, ObservableObject {
             .joined(separator: " \u{00b7} ")
         let lines = captures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
-            let override = captureUsesGlobalDestination(capture, globalDestination)
+            let override =
+                captureUsesGlobalDestination(capture, globalDestination)
                 ? ""
                 : " \u{2192} \(displayLabel(for: capture))"
-            let suffix = "\(scheduled)\(startedSuffix(for: capture))"
+            let suffix =
+                "\(scheduled)\(startedSuffix(for: capture))"
                 + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(resetSuffix(for: capture))\(closedSuffix(for: capture))"
             return "\(index + 1). \(batchLineText(capture))\(override)\(suffix)"
         }
@@ -1244,13 +1305,17 @@ final class NotificationService: NSObject, ObservableObject {
             return close.notificationBody
         }
         let scheduled = capture.scheduled.map { "\nScheduled: \($0)" } ?? ""
-        let started = CapturePomodoroStartPresentation(capture: capture)
+        let started =
+            CapturePomodoroStartPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        let adjusted = CapturePomodoroAdjustPresentation(capture: capture)
+        let adjusted =
+            CapturePomodoroAdjustPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        let shifted = CapturePomodoroShiftPresentation(capture: capture)
+        let shifted =
+            CapturePomodoroShiftPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        let projectNote = CaptureProjectNotePresentation(capture: capture)
+        let projectNote =
+            CaptureProjectNotePresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
         let typeSuffix: String = {
             if CapturePomodoroLinkPresentation(capture: capture) != nil
@@ -1259,8 +1324,8 @@ final class NotificationService: NSObject, ObservableObject {
                 return ""
             }
             guard let change = capture.taskTheme,
-                  change.action == "set" || change.action == "kept",
-                  let name = change.theme?.name, !name.isEmpty
+                change.action == "set" || change.action == "kept",
+                let name = change.theme?.name, !name.isEmpty
             else {
                 return ""
             }
@@ -1340,7 +1405,8 @@ final class NotificationService: NSObject, ObservableObject {
             }
         }
         let count = eligible.reduce(into: 0) { total, capture in
-            let rows = capture.allUnblockedRows + capture.allRelationSuccessors
+            let rows =
+                capture.allUnblockedRows + capture.allRelationSuccessors
                 + capture.allKeepMovingRows + capture.allNotePullRows
             var selectedKeys = Set<String>()
             var unkeyedSelectedCount = 0
@@ -1366,14 +1432,17 @@ final class NotificationService: NSObject, ObservableObject {
                 noteNames.append(name)
             }
             notePullCount += selected.count
-            notePullLines.append(contentsOf: selected.map { row in
-                let destination = row.offer?.destination.entryName
-                let suffix = destination.flatMap { $0.isEmpty ? nil : $0 }.map { " → \($0)" } ?? ""
-                return "• \(row.text)\(suffix)"
-            })
+            notePullLines.append(
+                contentsOf: selected.map { row in
+                    let destination = row.offer?.destination.entryName
+                    let suffix =
+                        destination.flatMap { $0.isEmpty ? nil : $0 }.map { " → \($0)" } ?? ""
+                    return "• \(row.text)\(suffix)"
+                })
         }
         if notePullCount > 0 {
-            let noteLabel = noteNames.count == 1
+            let noteLabel =
+                noteNames.count == 1
                 ? "‹\(noteNames[0])›"
                 : "\(noteNames.count) notes"
             let noteSummary = "📥 Pulled in \(notePullCount) from \(noteLabel)"
@@ -1383,14 +1452,16 @@ final class NotificationService: NSObject, ObservableObject {
             return (["Pulled in \(count) successor offers", noteSummary] + notePullLines)
                 .joined(separator: "\n")
         }
-        let keepMovingRows: [TaskCompleteUnblocked] = eligible
+        let keepMovingRows: [TaskCompleteUnblocked] =
+            eligible
             .flatMap(\.allKeepMovingRows)
             .filter { $0.offer?.selected == true }
         if !keepMovingRows.isEmpty {
-            let movingKeys = Set(keepMovingRows.compactMap { row -> String? in
-                guard let key = row.offer?.key, !key.isEmpty else { return nil }
-                return key
-            })
+            let movingKeys = Set(
+                keepMovingRows.compactMap { row -> String? in
+                    guard let key = row.offer?.key, !key.isEmpty else { return nil }
+                    return key
+                })
             let unkeyedMovingCount = keepMovingRows.filter {
                 $0.offer?.key.isEmpty != false
             }.count
@@ -1402,7 +1473,8 @@ final class NotificationService: NSObject, ObservableObject {
                 let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
                 return seen.insert(name).inserted ? name : nil
             }
-            let projectText = projects.count == 1
+            let projectText =
+                projects.count == 1
                 ? (projects.first ?? "the project")
                 : "\(projects.count) projects"
             let otherCount = max(0, count - movingCount)
@@ -1416,10 +1488,10 @@ final class NotificationService: NSObject, ObservableObject {
             return "⏭ Pulled in \(count) · keeps \(projectText) moving"
         }
         if relationSelectedTotal > 0, unblockedSelectedTotal == 0,
-           let relationLine = SuccessorRows.relationPulledInLine(
-               count: relationSelectedTotal,
-               rows: relationSelectedRows
-           )
+            let relationLine = SuccessorRows.relationPulledInLine(
+                count: relationSelectedTotal,
+                rows: relationSelectedRows
+            )
         {
             return relationLine
         }
@@ -1461,7 +1533,9 @@ final class NotificationService: NSObject, ObservableObject {
     /// still surfaces the held-only item; a picker with offers suppresses
     /// only its own held rows. Ordered unique to avoid doubling a root
     /// that mirrors its first item.
-    nonisolated private static func batchHeldLines(for captures: [CaptureCommandSuccess]) -> [String] {
+    nonisolated private static func batchHeldLines(for captures: [CaptureCommandSuccess])
+        -> [String]
+    {
         var seen = Set<String>()
         var out: [String] = []
         for capture in captures {
@@ -1486,7 +1560,7 @@ final class NotificationService: NSObject, ObservableObject {
             return CaptureNotebookPresentation.batchLine(for: capture)
         }
         if let summary = capture.recordNote,
-           capture.kind == "record_note" || capture.kind == "record_update"
+            capture.kind == "record_note" || capture.kind == "record_update"
         {
             return CaptureRecordPreviewPresentation.recordBatchLine(for: summary)
         }
@@ -1555,7 +1629,8 @@ final class NotificationService: NSObject, ObservableObject {
         case "record-update", "record_update":
             return "Record update"
         default:
-            return kind
+            return
+                kind
                 .split { $0 == "-" || $0 == "_" || $0 == " " }
                 .map { word in
                     guard let first = word.first else {
@@ -1623,7 +1698,8 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) ->
+            Void
     ) {
         // Snooze records stay silent in the foreground: list-only, never a
         // banner, sound, or badge. Every other category keeps banner+sound.

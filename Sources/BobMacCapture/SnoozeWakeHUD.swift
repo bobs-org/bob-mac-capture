@@ -47,8 +47,9 @@ final class SnoozeWakeHUDController {
     private let refreshAgenda: () -> Void
     private let chimeEnabled: () -> Bool
     private let reduceMotion: () -> Bool
+    private let reduceTransparency: () -> Bool
     private let openURL: (URL) -> Bool
-    private let playChime: () -> Void
+    private let playChime: () -> Bool
     private var panel: SnoozeWakeHUDPanel?
     private var hostingView: FirstMouseHostingView<SnoozeWakeHUDView>?
     private var state: SnoozeWakeHUDState?
@@ -59,6 +60,29 @@ final class SnoozeWakeHUDController {
     private var currentWakeID: String?
     private var soundedWakeIDs: Set<String> = []
     private var pendingBatch: (SnoozeWakeNoticeBatch, SnoozeWakeNoticePresentation)?
+    private(set) var opaqueFallbackActive = false
+    /// When true, Open records the URL instead of launching Obsidian.
+    var openSinkEnabled = false
+    private(set) var lastOpenedURLs: [String] = []
+    private(set) var lastAnnouncementText: String?
+    private(set) var lastAnnouncementAt: Date?
+    private(set) var lastChimeSound: String?
+    private(set) var lastChimePlayed: Bool?
+    var announcementSink: ((String) -> Void)?
+
+    enum ProbeIdentifier {
+        static let open = "snooze-wake-open"
+        static let snooze15 = "snooze-wake-snooze15"
+        static let dismiss = "snooze-wake-dismiss"
+        static let body = "snooze-wake-body"
+        static func row(_ index: Int) -> String { "snooze-wake-row-\(index)" }
+    }
+
+    var isVisible: Bool { panel?.isVisible == true }
+    var isHovered: Bool { hovered }
+    var secondsRemaining: TimeInterval { state?.secondsRemaining ?? 0 }
+    var currentState: SnoozeWakeHUDState? { state }
+    var currentWakeIdentifier: String? { currentWakeID }
 
     init(
         processClient: @escaping () -> BobProcessClient?,
@@ -69,8 +93,11 @@ final class SnoozeWakeHUDController {
         reduceMotion: @escaping () -> Bool = {
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         },
+        reduceTransparency: @escaping () -> Bool = {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        },
         openURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
-        playChime: @escaping () -> Void = { NSSound(named: "Pop")?.play() }
+        playChime: @escaping () -> Bool = { NSSound(named: "Pop")?.play() ?? false }
     ) {
         self.processClient = processClient
         self.vaultRoot = vaultRoot
@@ -78,6 +105,7 @@ final class SnoozeWakeHUDController {
         self.refreshAgenda = refreshAgenda
         self.chimeEnabled = chimeEnabled
         self.reduceMotion = reduceMotion
+        self.reduceTransparency = reduceTransparency
         self.openURL = openURL
         self.playChime = playChime
     }
@@ -143,11 +171,12 @@ final class SnoozeWakeHUDController {
         }
         size.width = min(preferredWidth, max(min(280, preferredWidth), size.width))
         size.height = min(max(120, size.height), max(120, screenFrame.height - 40))
+        opaqueFallbackActive = reduceTransparency()
         GlassPanelHost.install(
             content: hostingView,
             size: size,
             in: created,
-            reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+            reduceTransparency: opaqueFallbackActive,
             opaqueCornerRadius: 24,
             glassCornerRadius: 24
         )
@@ -169,7 +198,8 @@ final class SnoozeWakeHUDController {
                     soundedWakeIDs.remove(oldest)
                 }
                 if chimeEnabled() {
-                    playChime()
+                    lastChimeSound = "Pop"
+                    lastChimePlayed = playChime()
                 }
             }
             if isNewWake || needsOrderIn {
@@ -283,7 +313,7 @@ final class SnoozeWakeHUDController {
     private func open(row: SnoozeWakeListRow, wakeID: String) {
         guard currentWakeID == wakeID else { return }
         guard let url = Self.validatedTaskURL(row: row, vaultRoot: vaultRoot()),
-            openURL(url)
+            openResolvedURL(url)
         else {
             state?.feedback = "Couldn't open this task in Obsidian."
             return
@@ -445,7 +475,7 @@ final class SnoozeWakeHUDController {
         onTasksRemoved(wakeID, keys)
     }
 
-    private func setHovered(_ isHovering: Bool) {
+    func setHovered(_ isHovering: Bool) {
         guard hovered != isHovering else { return }
         hovered = isHovering
         if isHovering {
@@ -492,6 +522,9 @@ final class SnoozeWakeHUDController {
         // VoiceOver tracks views, not the non-key panel itself: announce
         // against the hosted content when it exists so the request is
         // spoken for a non-activating panel.
+        lastAnnouncementText = message
+        lastAnnouncementAt = Date()
+        announcementSink?(message)
         let element: Any = hostingView ?? panel
         NSAccessibility.post(
             element: element,
@@ -502,6 +535,259 @@ final class SnoozeWakeHUDController {
             ]
         )
     }
+
+    private func openResolvedURL(_ url: URL) -> Bool {
+        if openSinkEnabled {
+            lastOpenedURLs.append(url.absoluteString)
+            if lastOpenedURLs.count > 16 {
+                lastOpenedURLs.removeFirst(lastOpenedURLs.count - 16)
+            }
+            return true
+        }
+        return openURL(url)
+    }
+
+    func probeHover(_ isHovering: Bool) {
+        setHovered(isHovering)
+    }
+
+    func probePress(_ target: String) throws -> [String: Any] {
+        let identifier = try Self.pressIdentifier(target)
+        if pressAXIdentifier(identifier) {
+            return ["path": "ax", "identifier": identifier]
+        }
+        try invokePressHandler(target)
+        return ["path": "handler", "identifier": identifier]
+    }
+
+    func probeSnapshot() -> [String: Any] {
+        let created = panel
+        let pointer = NSEvent.mouseLocation
+        let pointerScreen = NSScreen.screens.first { $0.frame.contains(pointer) }
+        let frame = created?.frame ?? .zero
+        let occlusionVisible = created?.occlusionState.contains(.visible) == true
+        let style = created?.styleMask ?? []
+        let sharing: String = {
+            switch created?.sharingType {
+            case .none: return "none"
+            case .readOnly: return "readOnly"
+            case .readWrite: return "readWrite"
+            default: return "unknown"
+            }
+        }()
+        let rows = state?.batch.rows ?? []
+        let rowTexts: [[String: Any]] = rows.enumerated().map { index, row in
+            [
+                "index": index,
+                "title": row.title ?? "",
+                "ax_id": ProbeIdentifier.row(index),
+                "open_url": Self.validatedTaskURL(row: row, vaultRoot: vaultRoot())?
+                    .absoluteString ?? "",
+            ]
+        }
+        return [
+            "visible": isVisible,
+            "on_active_space": created?.isOnActiveSpace ?? false,
+            "occlusion_visible": occlusionVisible,
+            "frame": [
+                "x": frame.origin.x,
+                "y": frame.origin.y,
+                "width": frame.width,
+                "height": frame.height,
+            ],
+            "pointer_screen": [
+                "x": pointerScreen?.frame.origin.x ?? 0,
+                "y": pointerScreen?.frame.origin.y ?? 0,
+                "width": pointerScreen?.frame.width ?? 0,
+                "height": pointerScreen?.frame.height ?? 0,
+            ],
+            "level": created?.level.rawValue ?? 0,
+            "nonactivating": style.contains(.nonactivatingPanel),
+            "can_become_key": created?.canBecomeKey ?? false,
+            "is_key": created?.isKeyWindow ?? false,
+            "sharing_type": sharing,
+            "headline": state?.headline ?? "",
+            "rows": rowTexts,
+            "countdown_remaining": secondsRemaining,
+            "hovered": hovered,
+            "reduce_motion": reduceMotion(),
+            "opaque_fallback": opaqueFallbackActive,
+            "wake_id": currentWakeID ?? "",
+            "feedback": state?.feedback ?? "",
+            "is_snoozing": state?.isSnoozing ?? false,
+            "open_urls": lastOpenedURLs,
+            "ax": axSnapshot(),
+        ]
+    }
+
+    func renderPNGData() -> Data? {
+        guard let state else { return nil }
+        let width = max(280, panel?.frame.width ?? Self.maximumWidth)
+        let view = SnoozeWakeHUDView(
+            state: state,
+            reduceMotion: reduceMotion(),
+            maximumWidth: width,
+            onOpen: { _ in },
+            onSnooze: {},
+            onDismiss: {},
+            onHover: { _ in }
+        )
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.nsImage,
+            let tiff = image.tiffRepresentation,
+            let rep = NSBitmapImageRep(data: tiff),
+            let png = rep.representation(using: .png, properties: [:])
+        else {
+            return nil
+        }
+        return png
+    }
+
+    static func pressIdentifier(_ target: String) throws -> String {
+        switch target {
+        case "open":
+            return ProbeIdentifier.open
+        case "snooze15":
+            return ProbeIdentifier.snooze15
+        case "dismiss":
+            return ProbeIdentifier.dismiss
+        case "body":
+            return ProbeIdentifier.body
+        case let raw where raw.hasPrefix("row:"):
+            guard let index = Int(raw.dropFirst(4)), index >= 0 else {
+                throw ProbeCommandError("press target \(target) is not a row index")
+            }
+            return ProbeIdentifier.row(index)
+        default:
+            throw ProbeCommandError("unknown press target \(target)")
+        }
+    }
+
+    private func invokePressHandler(_ target: String) throws {
+        guard let wakeID = currentWakeID else {
+            throw ProbeCommandError("HUD is not presenting")
+        }
+        switch target {
+        case "open", "body":
+            guard let first = state?.batch.rows.first else {
+                throw ProbeCommandError("HUD has no rows to open")
+            }
+            open(row: first, wakeID: wakeID)
+        case "snooze15":
+            snoozeRemaining(wakeID: wakeID)
+        case "dismiss":
+            dismiss(wakeID: wakeID)
+        case let raw where raw.hasPrefix("row:"):
+            guard let index = Int(raw.dropFirst(4)), index >= 0 else {
+                throw ProbeCommandError("press target \(target) is not a row index")
+            }
+            let rows = Array((state?.batch.rows ?? []).prefix(3))
+            guard index < rows.count else {
+                throw ProbeCommandError("HUD has no row \(index)")
+            }
+            open(row: rows[index], wakeID: wakeID)
+        default:
+            throw ProbeCommandError("unknown press target \(target)")
+        }
+    }
+
+    private func pressAXIdentifier(_ identifier: String) -> Bool {
+        guard let root = probeAXRoot() else { return false }
+        guard let element = findAX(identifier: identifier, root: root) else {
+            return false
+        }
+        return element.performPress()
+    }
+
+    private func findAX(identifier: String, root: Any) -> ProbeAXNode? {
+        guard let node = ProbeAXNode(root) else { return nil }
+        if node.identifier == identifier {
+            return node
+        }
+        for child in node.children {
+            if let found = findAX(identifier: identifier, root: child) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func axSnapshot() -> [[String: Any]] {
+        guard let root = probeAXRoot() else { return [] }
+        var nodes: [[String: Any]] = []
+        collectAX(root: root, depth: 0, into: &nodes)
+        return nodes
+    }
+
+    private func collectAX(root: Any, depth: Int, into nodes: inout [[String: Any]]) {
+        guard depth < 8, let node = ProbeAXNode(root) else { return }
+        if !node.identifier.isEmpty || !node.label.isEmpty {
+            nodes.append(
+                [
+                    "id": node.identifier,
+                    "label": node.label,
+                    "role": node.role,
+                    "title": node.title,
+                ]
+            )
+        }
+        for child in node.children {
+            collectAX(root: child, depth: depth + 1, into: &nodes)
+        }
+    }
+
+    private func probeAXRoot() -> Any? {
+        if let hostingView { return hostingView }
+        if let panel { return panel }
+        return nil
+    }
+}
+
+/// AppKit AX getters live on NSView, NSWindow, and NSAccessibilityElement.
+private struct ProbeAXNode {
+    let identifier: String
+    let label: String
+    let role: String
+    let title: String
+    let children: [Any]
+    let performPress: () -> Bool
+
+    init?(_ root: Any) {
+        if let view = root as? NSView {
+            identifier = view.accessibilityIdentifier()
+            label = view.accessibilityLabel() ?? ""
+            role = view.accessibilityRole().map { "\($0)" } ?? ""
+            title = view.accessibilityTitle() ?? ""
+            children = view.accessibilityChildren() ?? []
+            performPress = { view.accessibilityPerformPress() }
+            return
+        }
+        if let window = root as? NSWindow {
+            identifier = window.accessibilityIdentifier()
+            label = window.accessibilityLabel() ?? ""
+            role = window.accessibilityRole().map { "\($0)" } ?? ""
+            title = window.accessibilityTitle() ?? ""
+            children = window.accessibilityChildren() ?? []
+            performPress = { window.accessibilityPerformPress() }
+            return
+        }
+        if let element = root as? NSAccessibilityElement {
+            identifier = element.accessibilityIdentifier() ?? ""
+            label = element.accessibilityLabel() ?? ""
+            role = element.accessibilityRole().map { "\($0)" } ?? ""
+            title = element.accessibilityTitle() ?? ""
+            children = element.accessibilityChildren() ?? []
+            performPress = { element.accessibilityPerformPress() }
+            return
+        }
+        return nil
+    }
+}
+
+struct ProbeCommandError: Error, CustomStringConvertible {
+    let description: String
+    init(_ description: String) { self.description = description }
 }
 
 @MainActor
@@ -543,6 +829,7 @@ struct SnoozeWakeHUDView: View {
                     .buttonStyle(.plain)
                     .disabled(rows.isEmpty)
                     .accessibilityLabel(subtitleAccessibilityLabel)
+                    .accessibilityIdentifier(SnoozeWakeHUDController.ProbeIdentifier.body)
                     ForEach(Array(rows.prefix(3).enumerated()), id: \.offset) { entry in
                         let row = entry.element
                         Button {
@@ -562,6 +849,9 @@ struct SnoozeWakeHUDView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open \(row.title ?? "snoozed task")")
+                        .accessibilityIdentifier(
+                            SnoozeWakeHUDController.ProbeIdentifier.row(entry.offset)
+                        )
                     }
                     if state.presentation.remainingCount > 0 {
                         Text("+ \(state.presentation.remainingCount) more")
@@ -579,6 +869,7 @@ struct SnoozeWakeHUDView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss wake notice")
+                .accessibilityIdentifier(SnoozeWakeHUDController.ProbeIdentifier.dismiss)
             }
 
             HStack(spacing: 10) {
@@ -590,6 +881,7 @@ struct SnoozeWakeHUDView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(rows.isEmpty)
+                .accessibilityIdentifier(SnoozeWakeHUDController.ProbeIdentifier.open)
                 Button(action: onSnooze) {
                     Label("+15m", systemImage: "clock.arrow.circlepath")
                         .font(.system(size: 12, weight: .semibold))
@@ -597,6 +889,7 @@ struct SnoozeWakeHUDView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(state.isSnoozing || rows.isEmpty)
                 .accessibilityHint("Snooze every remaining task in this notice")
+                .accessibilityIdentifier(SnoozeWakeHUDController.ProbeIdentifier.snooze15)
                 if state.isSnoozing {
                     ProgressView().controlSize(.small)
                 }
