@@ -132,7 +132,13 @@ final class MeetingNotesSessionTests: XCTestCase {
         XCTAssertEqual(session.response?.meeting?.eventRef, "new#^event")
         try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(session.response?.meeting?.eventRef, "new#^event")
-        XCTAssertEqual(process.previewRequests.map(\.eventToken), ["old#^event", "new#^event"])
+        // enter() and selectMeeting() spawn preview Tasks back to back, so the
+        // fake can record them in either order under CI load.
+        XCTAssertEqual(process.previewRequests.count, 2)
+        XCTAssertEqual(
+            Set(process.previewRequests.compactMap(\.eventToken)),
+            Set(["old#^event", "new#^event"])
+        )
     }
 
     func testChangingStatusInvalidatesApprovalAndKeepsConfiguredDefaultInitially() async throws {
